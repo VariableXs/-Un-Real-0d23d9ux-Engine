@@ -380,6 +380,14 @@ async fn loop_start(
     };
     q.set_loop(Some(cfg.clone())).await;
 
+    // ★★ 把续轮内容存进 Queue ★★
+    // loop_start 只把 texts 里的每段**一次性**入队，
+    // 于是「填了首轮+后续每轮、却设3 轮」时只能发 2 次：
+    // 第 2 条发完队列就空，worker 直接停，第 3 轮永不发生。
+    // 存在 Queue 里后，worker 会在队列空时自动补下一段
+    // （见 loop.rs 的 next_loop_text），这才是「自动化循环」。
+    q.set_loop_texts(texts.clone());
+
     // 首轮立刻入队，让界面马上看到待发项
     let cid = conv_id.clone().unwrap_or_default();
     for (i, t) in texts.iter().enumerate() {
@@ -850,6 +858,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
+// ════════════════════════════════════════════════════════════════
+// ★★★ 注意：本文件 spawn 的是**内联 worker**，而 loop.rs 里另有一份
+//     `pub async fn worker(...)` —— **它从未被调用**。
+//     两份逻辑必须同步维护，否则会出现「改了没生效」。
+//     本文件这份已补上自动续轮（队列空时补下一轮）。
+// ════════════════════════════════════════════════════════════════
+
         .setup(|app| {
             // ══════════════════════════════════════════════════════════════
             // ★ 给自己的 WebView2 开调试端口（仅当环境变量要求时）★
@@ -858,6 +873,16 @@ pub fn run() {
             // 「某个前端函数到底存不存在」在真机上无法自证 —— 只能靠猜。
             // 开了端口就能用 CDP 直读 window。这是排障通道，默认关闭。
             //   用法：set VARIAP_AUTOPILOT_DEBUG=9333 && VarixAutoPilot.exe
+            // ★ 自测武装 ★
+            // 自测会往 WorkBuddy **真发内容**，绝不能默认就跑。
+            // 设 VARIAP_AUTOPILOT_SELFTEST=1 才注入武装标记。
+            if std::env::var("VARIAP_AUTOPILOT_SELFTEST").is_ok() {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.eval("window.__VAP_SELFTEST_ARMED__ = true;");
+                }
+                logx!("自测已武装（VARIAP_AUTOPILOT_SELFTEST=1）");
+            }
+
             if let Ok(p) = std::env::var("VARIAP_AUTOPILOT_DEBUG") {
                 if let Ok(port) = p.parse::<u16>() {
                     if let Some(w) = app.get_webview_window("main") {
@@ -921,14 +946,39 @@ pub fn run() {
                         return;
                     }
                     // 取一条 pending
-                    let Some(item) = q.take_next().await else { continue };
+                    let Some(item) = q.take_next().await else {
+                        // ═══ 自动循环：队列空时补下一轮 ═══
+                        // 没有这段，循环发完第一条就停——
+                        // 而界面上仍显示「运行中·N 轮」，看起来像坏了。
+                        if q.should_continue(&stop).await {
+                            if let Some(text) = q.next_loop_text() {
+                                if !text.trim().is_empty() {
+                                    let conv = q.last_conv_id().await;
+                                    let round = q.round_done().await;
+                                    q.push(&text, &conv, round).await;
+                                    logx!(
+                                        "自动补第 {} 轮（{} 字符）",
+                                        round + 1,
+                                        text.chars().count()
+                                    );
+                                    continue;
+                                }
+                            }
+                            // 内容用尽 ⇒ 结束循环（不空转）
+                            q.set_loop(None).await;
+                        }
+                        continue;
+                    };
                     // 没连接就先退回去等
                     let cdp = match ensure_cdp_inner(handle.state::<AppState>().inner()).await {
                         Ok(c) => c,
                         Err(e) => {
                             // ★ ErrPayload 不实现 Display，只能 {:?} ★
                             // （它有 what/why/next 三字段，是展示用结构体）
-                            log::warn!("worker 无连接，退回 pending：{e:?}");
+                            // ★ 错误内容要写进日志 ★
+                            //   只写「无连接」等于丢掉了「为什么连不上」——
+                            //   排障时只能猜。而 ErrPayload 正是为此设计的。
+                            logx!("worker 连不上 9222：{:?}", e);
                             q.finish(item.id, "pending", "", "等待连接 9222").await;
                             tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
                             continue;
@@ -952,7 +1002,7 @@ pub fn run() {
                     // 真发
                     match engine::send_only(&cdp, &item.text, &item.conv_id).await {
                         Ok(ev) => {
-                            log::info!("队列 #{} 已发：{ev}", item.id);
+                            logx!("队列 #{} 已发：{}", item.id, ev);
                             q.finish(item.id, "done", &ev, "").await;
                             q.bump_round().await;
                             q.prune(200).await;
@@ -963,7 +1013,7 @@ pub fn run() {
                                 q.finish(item.id, "pending", "", "等空闲").await;
                                 tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
                             } else {
-                                log::warn!("队列 #{} 失败：{msg}", item.id);
+                                logx!("队列 #{} 失败：{}", item.id, msg);
                                 q.finish(item.id, "failed", "", &msg).await;
                             }
                         }

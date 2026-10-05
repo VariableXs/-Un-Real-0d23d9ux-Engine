@@ -508,6 +508,27 @@ async function doSend(real) {
 // ═══════════════════════════════════════════════════════════════════
 window.VAP = { api, $, esc, renderErr, setScene, conn };
 
+// ════════════════════════════════════════════════════════════════
+// ★★★ 必须把自己的函数挂到裸全局 ★★★
+//
+// 现象（实测check_buttons_live.mjs）：
+//   点「预览」「填入」「填入并发送」→ console 报
+//   **ReferenceError: doPreview is not defined**
+//   而同一界面上loop_ui.js 的按钮（加入待发 / 刷新 / 首轮 / 读取）**全部正常**。
+//
+// 原因：HTML 里的内联 onclick 写的是裸名字（onclick="doPreview()"），
+// 浏览器去**全局作用域链**上找。而 app.js 是 ES module，
+// 模块里的函数**不在全局**——只有显式 window.doPreview= 才是。
+// loop_ui.js 做了这件事（Object.assign(window, VAPUI)），
+// app.js 一直没做，于是它的三个按钮全废。
+//
+// 「一半按钮能用一半不能」正是这个 bug 的签名。
+// ★ 而且它**静默**：界面上看不出按钮坏了，只有控制台有话说。
+window.doPreview = doPreview;
+window.doSend = doSend;
+window.render = render;
+window.setScene = setScene;
+
 // 启动自检：把「前端执行到哪一步」写进后端日志。
 // 后端 logx 写到 %TEMP%/varix-autopilot.log ——
 // 排障时第一件事就是 tail 它，不用猜、不用开 DevTools。

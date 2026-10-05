@@ -63,11 +63,20 @@ pub struct Queue {
     next_id: AtomicU64,
     /// 队列变化通知（worker 靠它唤醒）
     pub notify: Arc<tokio::sync::Notify>,
+    /// ═══ 自动循环的续轮内容 ═══
+    /// [0] = 首轮，[1] = 后续每轮（可与 [0] 相同）。
+    /// 存在这里而不是闭包里，是因为 worker 是 `spawn` 出来的独立任务，
+    /// 拿不到 lib.rs 的局部状态；而 Queue 本来就是双方共享的那一个。
+    loop_texts: std::sync::Mutex<Vec<String>>,
+    /// 续轮游标（0 = 该用首轮，1 = 该用后续每轮）
+    loop_cursor: std::sync::atomic::AtomicUsize,
 }
 
 impl Queue {
     pub fn new() -> Arc<Queue> {
         Arc::new(Queue {
+            loop_texts: std::sync::Mutex::new(Vec::new()),
+            loop_cursor: std::sync::atomic::AtomicUsize::new(0),
             inner: Mutex::new(Inner {
                 items: VecDeque::new(),
                 loop_cfg: None,
@@ -160,6 +169,58 @@ impl Queue {
     }
 
     /// 配置循环。
+    /// 最近一次入队用的对话 id。
+    ///
+    /// ★ 循环续轮必须沿用同一个对话 ★
+    /// 否则第一轮发到 A 对话、第二轮发到 B 对话，
+    /// 看起来「在循环」，实际是把内容散到不同会话里。
+    pub async fn last_conv_id(&self) -> String {
+        let g = self.inner.lock().await;
+        g.items
+            .iter()
+            .rev()
+            .find(|i| !i.conv_id.is_empty())
+            .map(|i| i.conv_id.clone())
+            .unwrap_or_default()
+    }
+
+    /// 设置循环内容（首轮 / 后续每轮）。
+    ///
+    /// ★ 与 set_loop 分开而不是合并成一个参数 ★
+    /// 两者语义不同：cfg 说「发几轮、什么节奏」，
+    /// texts 说「每轮发什么」。混在一个结构里会让「只改文案不改编排」
+    /// 这种最常见的调整也必须重传整个 cfg。
+    pub fn set_loop_texts(&self, texts: Vec<String>) {
+        if let Ok(mut g) = self.loop_texts.lock() {
+            *g = texts;
+        }
+        self.loop_cursor
+            .store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// 取下一段续轮内容。返回 None 表示内容用尽（或没设）。
+    ///
+    /// ★ 游标语义 ★
+    /// 第0 次取首轮，之后都取「后续每轮」。
+    /// 只有一段内容时，后续每轮重复用这一段（=常���「每轮都一样」）。
+    pub fn next_loop_text(&self) -> Option<String> {
+        let g = self.loop_texts.lock().ok()?;
+        if g.is_empty() {
+            return None;
+        }
+        let cur = self
+            .loop_cursor
+            .load(std::sync::atomic::Ordering::SeqCst);
+        let text = if cur == 0 {
+            g.first()?.clone()
+        } else {
+            g.get(1).or_else(|| g.first())?.clone()
+        };
+        self.loop_cursor
+            .store(1, std::sync::atomic::Ordering::SeqCst);
+        Some(text)
+    }
+
     pub async fn set_loop(&self, cfg: Option<LoopCfg>) {
         let mut g = self.inner.lock().await;
         g.loop_cfg = cfg;
@@ -226,12 +287,27 @@ pub async fn worker(
 
         // 取一条 pending
         let Some(item) = q.take_next().await else {
-            // 队列空：看看循环还要不要继续
+            // 队列空：若循环还要继续，就**自动补下一轮内容**。
+            //
+            // ★ 这一段是「自动化循环」真正落地的地方 ★
+            // 早先这里只有一句「应由上层回调补内容」的注释，
+            // 而那个回调从未被实现 ⇒ 循环发完第一条就停。
             if q.should_continue(&stop).await {
-                // 循环 mode：这里应补下一轮内容。
-                // 但"下一轮内容从哪来"是上层决策（可能来自多轮模板），
-                // 所以由 lib.rs 注册的回调处理——见 loop_fill_next。
-                // 找不到内容就停下，不空转。
+                if let Some(text) = q.next_loop_text() {
+                    if !text.trim().is_empty() {
+                        let conv = q.last_conv_id().await;
+                        let round = q.round_done().await;
+                        q.push(&text, &conv, round).await;
+                        log::info!(
+                            "[loop] 自动补第 {} 轮内容（{} 字符）",
+                            round + 1,
+                            text.chars().count()
+                        );
+                        continue;
+                    }
+                }
+                // 内容用尽 ⇒ 结束循环（不空转、不报错）
+                q.set_loop(None).await;
             }
             continue;
         };

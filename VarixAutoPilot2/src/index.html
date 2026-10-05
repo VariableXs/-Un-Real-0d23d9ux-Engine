@@ -716,6 +716,142 @@ select option { background: var(--panel); color: var(--fg); }
   }
 })();
 </script>
+<!-- ══════════════════════════════════════════════════════════════
+     ★ 真机自测入口（仅当设了 VARIAP_AUTOPILOT_SELFTEST=1 才生效）★
+     为什么需要：外部合成点击（mouse_event / SendInput / 键盘 Tab）
+     对 Tauri 的 WebView2 **无效**——症状是按钮有 hover 高亮但
+     onclick 不触发。真机自测只能走进程内路径。
+     它做两件事：
+       1. 调window.__VAP_SELFTEST__()，把关键状态与探针结果贴到页面上
+       2. 真实调用一次入队（等价于用户点「加入待发」）
+     ══════════════════════════════════════════════════════════════ -->
+<script>
+  // ★ 自测状态上报：把结果直接写进页面，任何时候都能看到 ★
+  window.__VAP_SELFTEST__ = function () {
+    const t = (id) => {
+      const e = document.getElementById(id);
+      if (!e) return '★元素缺失★';
+      return e.value !== undefined ? String(e.value).length + '字' : (e.textContent || '').slice(0, 20);
+    };
+    const line = [
+      'VAP=' + (window.VAP ? '有' : '★无★'),
+      'VAPUI=' + (window.VAPUI ? Object.keys(window.VAPUI).length + '键' : '★无★'),
+      'enqueueOne=' + (typeof window.enqueueOne),
+      'doPreview=' + (typeof window.doPreview),
+      'tpl=' + t('tpl'),
+      '队列=' + document.querySelectorAll('#qlist .qi').length,
+      '连接=' + ((document.getElementById('s-msg') || {}).textContent || '?'),
+    ].join(' · ');
+    const h = document.getElementById('hint');
+    if (h) { h.className = 'note'; h.textContent = '自测 · ' + line; }
+    return line;
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // ★ 自测 2：自动循环完整链路 ★
+  //
+  // 验证「入队 → 发送 → 队列空 → 自动补下一轮」——
+  // 也就是 Variable 要的「自动化循环化自动提交」。
+  //
+  // ★ 忙时的正确行为 ★
+  // worker 在忙时**不取队列项**（安全约束：发送键此刻语义是"停止"，
+  // 点下去会打断用户正在跑的活）。所以忙时队列项数不变是**正确行为**，
+  // 不是故障。续轮发生在「发完一条之后」，忙时看不到。
+  // 因此本自测在忙时只验证结构（循环已启动、内容已登记），
+  // 真发与续轮要等空闲。
+  // ══════════════════════════════════════════════════════════════
+  window.__VAP_LOOP_TEST__ = async function () {
+    const c = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+    const diag = (m) => (c ? c.invoke('diag', { msg: m }).catch(() => {}) : null);
+    const snap = () => ({
+      队列: document.querySelectorAll('#qlist .qi').length,
+      状态: (document.getElementById('loop-state') || {}).textContent || '',
+      说明: (document.getElementById('loop-note') || {}).textContent || '',
+      项: Array.from(document.querySelectorAll('#qlist .qi .st')).map((e) => e.textContent),
+    });
+
+    const log = (m) => { window.__VAP_SELFTEST__(); diag(m); };
+    await log('循环自测: 起点 ' + JSON.stringify(snap()));
+
+    // ① 填 3 轮
+    const rounds = document.getElementById('lp-rounds');
+    if (rounds) rounds.value = '3';
+    // ② 用自由文本（内容短、不会污染你的会话）
+    const ft = document.getElementById('free-text');
+    const cb = document.getElementById('o-free');
+    if (ft && cb) {
+      cb.checked = true;
+      ft.value = '【自动循环自测】第 N 轮 · 由 VarixAutoPilot 发出 · 内容可忽略';
+    }
+    await log('循环自测: 已填 3 轮 + 自由文本');
+
+    // ③ 启动循环
+    if (typeof window.startLoop !== 'function') {
+      await log('循环自测: ★ startLoop 不存在');
+      return;
+    }
+    await window.startLoop();
+    await new Promise((r) => setTimeout(r, 1200));
+    const s1 = snap();
+    await log('循环自测: 启动后 ' + JSON.stringify(s1));
+
+    // ④ 观察 20 秒：看队列是否变化
+    //    忙时项数不变 = 正确（worker 在等）；空闲时会看到 已发/补轮
+    for (let i = 1; i <= 4; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const s = snap();
+      await log('循环自测: 第 ' + (i * 5) + ' 秒 ' + JSON.stringify(s));
+      if (s.队列 === 0 && s.状态.indexOf('运行中') < 0) {
+        await log('循环自测: ★ 队列空且循环已停 —— 内容用尽或被清');
+        break;
+      }
+    }
+
+    // ⑤ 收尾：停止循环，避免继续占用
+    if (typeof window.stopLoop === 'function') {
+      await window.stopLoop();
+      await log('循环自测: 已停止');
+    }
+    await log('循环自测: 终态 ' + JSON.stringify(snap()));
+  };
+
+  // 启动后等界面就绪，再做自测
+  //
+  // ★ 默认不跑 ★
+  // 自测会往 WorkBuddy 真发内容，必须显式开启，否则会在用户不知情时打扰。
+  // 开启方式：启动前设 window.__VAP_SELFTEST_ARMED__ = true
+  //（由 VARIAP_AUTOPILOT_SELFTEST=1 启动时注入，见 lib.rs setup）
+  if (!window.__VAP_SELFTEST_ARMED__) {
+    // 未武装：只挂函数，不自动执行。仍可随时手动调 __VAP_SELFTEST__()
+    window.__VAP_SELFTEST_MANUAL__ = true;
+  } else {
+  setTimeout(async function () {
+    const c = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+    const diag = (m) => (c ? c.invoke('diag', { msg: m }).catch(() => {}) : null);
+    window.__VAP_SELFTEST__();
+    await diag('自测状态: ' + window.__VAP_SELFTEST__());
+    // 真点一次「加入待发」—— 走页面自己的 onclick，与用户点击等价
+    if (typeof window.enqueueOne === 'function') {
+      await diag('自测: 调用 enqueueOne()');
+      await window.enqueueOne();
+      await diag('自测: enqueueOne 已返回');
+      setTimeout(() => {
+        const n = document.querySelectorAll('#qlist .qi').length;
+        window.__VAP_SELFTEST__();
+        diag('自测结果: 队列 ' + n + ' 项');
+      }, 1200);
+      // ★ 入队验证完成后，接着验证「自动循环」★
+      // 顺序有意义：先证明单条入队 OK，再证明循环能续轮。
+      await new Promise((r) => setTimeout(r, 2500));
+      if (typeof window.__VAP_LOOP_TEST__ === 'function') {
+        await window.__VAP_LOOP_TEST__();
+      }
+    } else {
+      await diag('自测: enqueueOne 不存在');
+    }
+  }, 6500);
+  }
+</script>
 <script type="module" src="./app.js"></script>
 <script type="module" src="./loop_ui.js"></script>
 </body>
