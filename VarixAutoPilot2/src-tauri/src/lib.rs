@@ -273,6 +273,48 @@ async fn ui_click(state: State<'_, AppState>, selector: String) -> Result<String
 /// 于是「函数存不存在 / invoke 通不通 /回调挂上没有」只能靠猜。
 /// 前端每到关键节点就调一次这个 command，排障时只要
 /// `tail %TEMP%/varix-autopilot.log` 就能看到全部执行轨迹。
+
+/// ══════════════════════════════════════════════════════════════
+/// ★ 指令文件通道（外部驱动，但绝不碰界面）★
+/// ══════════════════════════════════════════════════════════════
+///
+/// 存在理由（实测踩过的坑）：
+///   真发验证必须在 WorkBuddy 空闲时做，而每次外部探测都会让它变忙。
+///   早先我用一个后台脚本「等空闲 → 重启程序 → 跑自测」，
+///   结果**把用户正在用的窗口杀了**，用户看到「点了没反应、界面又变」。
+///   ⇒ 任何会动用户界面的后台脚本都不该无人值守跑。
+///
+/// 正解：让**程序自己**等空闲。worker 循环里检查指令文件，
+///   有就执行、删掉，全程不碰窗口、不抢焦点。
+///   外部只写文件 —— 界面零干扰。
+///
+/// 格式：{"op":"enqueue"|"loop","text":"...","rounds":3}
+/// 放在 %TEMP%\varix_autopilot_cmd.json
+fn cmd_file_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("varix_autopilot_cmd.json")
+}
+
+/// 读指令并删除文件（一次性消费）。返回 Some(内容) 或 None。
+fn take_cmd() -> Option<String> {
+    let p = cmd_file_path();
+    let txt = std::fs::read_to_string(&p).ok()?;
+    let _ = std::fs::remove_file(&p); // 消费即删，避免重复执行
+    logx!("收到指令：{}", txt.replace('\n', " "));
+    Some(txt)
+}
+
+/// 往队列里塞一条（供指令通道用）。
+async fn cmd_enqueue(q: &Arc<looper::Queue>, cmd: &serde_json::Value) {
+    let text = cmd.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if text.trim().is_empty() {
+        logx!("指令 enqueue 缺 text，已忽略");
+        return;
+    }
+    let conv = cmd.get("conv").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let id = q.push(&text, &conv, 0).await;
+    logx!("指令已入队 #{}（{} 字符）", id, text.chars().count());
+}
+
 #[tauri::command]
 fn diag(msg: String) {
     logx!("前端: {msg}");
@@ -955,6 +997,19 @@ pub fn run() {
                     if stop.load(std::sync::atomic::Ordering::SeqCst) {
                         return;
                     }
+                    // ★ 指令通道：外部可驱动，但绝不碰界面 ★
+                    if let Some(txt) = take_cmd() {
+                        if let Ok(cmd) = serde_json::from_str::<serde_json::Value>(&txt) {
+                            match cmd.get("op").and_then(|v| v.as_str()).unwrap_or("") {
+                                "enqueue" => cmd_enqueue(&q, &cmd).await,
+                                "clear" => { q.prune(0).await; logx!("指令 clear：队列已清"); }
+                                other => logx!("未知指令 op={}", other),
+                            }
+                            q.kick();
+                            continue;
+                        }
+                    }
+
                     // 取一条 pending
                     let Some(item) = q.take_next().await else {
                         // ═══ 自动循环：队列空时补下一轮 ═══
