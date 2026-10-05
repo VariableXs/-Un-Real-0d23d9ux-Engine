@@ -55,15 +55,35 @@ def wait_idle(timeout: int = 300, poll: float = 2.0) -> bool:
 
 
 def probe_state():
-    """读忙闲 + 输入框。走页面内脚本。"""
+    """读忙闲 + 输入框。走页面内脚本。
+
+    注意 `chars`：空编辑器 innerText 是占位提示语（"今天帮你做些什么？@ 添加上下文…"，
+    约 25 字），所以 `chars == 0` **不能**当"输入框已清空"用。
+    需要真实字数请读 `charsReal`（已剔除占位提示语）。2026-10-06 实测修正。
+    """
     js = r"""(() => {
       const ed = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
       const btn = document.querySelector('button.cr-send-button');
       const cls = btn ? String(btn.className) : '';
+      const raw = ed ? (ed.innerText||'').trim() : '';
+      let real = 0;
+      if (ed) {
+        if (/今天帮你做些什么|有什么我可以帮|How can I help/i.test(raw)) {
+          real = 0;
+        } else {
+          let sum = 0;
+          ed.querySelectorAll('[data-slate-string]').forEach(
+            s => { sum += (s.textContent || '').length; });
+          real = sum || raw.length;
+        }
+      } else {
+        real = -1;
+      }
       return {
         sending: /--sending|--stop/.test(cls),
         label: (btn && btn.getAttribute('aria-label')) || (btn && btn.title) || '',
-        chars: ed ? (ed.innerText||'').trim().length : -1,
+        chars: raw.length,
+        charsReal: real,
         hasEditor: !!ed,
       };
     })()"""
