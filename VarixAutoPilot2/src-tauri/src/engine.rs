@@ -302,8 +302,12 @@ async fn fill_prompt(cdp: &Cdp, text: &str) -> Result<usize> {
                 Ok(v) if v.idle => break,
                 Ok(v) => {
                     if std::time::Instant::now() >= deadline {
+                        // ★ 这里用 bail!（而不是 EngineError::Busy）★
+                        // 因为 fill_prompt 返回 anyhow::Result，类型上只能 bail。
+                        // 「要不要标 busy」由 run_flow 层判定——那里才是边界。
                         bail!(
-                            "对方正在生成中，等了 {waited} 秒还没空闲。                             填入已取消（**没有打断它**）。                             等它生成完再点，或改用「加入待发」——                             队列会在空闲时自动发。"
+                            "对方正在生成中，等了 {waited} 秒还没空闲。\
+                             填入已取消（**没有打断它**）。"
                         );
                     }
                     if waited % 5 == 0 {
@@ -364,9 +368,8 @@ async fn fill_prompt(cdp: &Cdp, text: &str) -> Result<usize> {
         let body = why.get("body").and_then(|v| v.as_i64()).unwrap_or(0);
         if busy {
             bail!(
-                "找不到输入框——但页面**正忙**（发送键是「停止」）。\
-                 对方还在生成，编辑器暂不可用。\n\
-                 等它生成完再点，或用「加入待发」让队列在空闲时自动发。"
+                "找不到输入框——但页面**正忙**（发送键是「停止」）。\n\
+                 对方还在生成，编辑器暂不可用。"
             );
         }
         if !has_send || body < 50 {
@@ -659,7 +662,31 @@ pub async fn run_flow(
     //
     // 做法：填入前把原内容存下来（连同"是不是占位提示"一起判），
     // 干跑完原样写回。占位提示本身就等同于"空"，写回它没有副作用。
-    let n = fill_prompt(cdp, text).await?;
+    // ★★ 忙闲翻译层（本轮关键修复）★★
+    // `fill_prompt` 返回 anyhow::Error，里面混着「忙」与「真故障」两类。
+    // 而前端的自动降级入队**只看 `err.busy`**：
+    //     if (r.err?.busy && real) { 自动入队 }
+    // 所以必须在这里把「忙」挑出来升级成 EngineError::Busy，
+    // 否则降级逻辑永不触发（实测踩过：报错一字未变）。
+    //
+    // 判据：文案里出现「正在生成中」/「正忙」/「还没空闲」/「等空闲」。
+    // 为什么不改 fill_prompt 直接返回 EngineError：
+    //   它的签名是 anyhow::Result<usize>，改了会牵连 dry_run 的还原路径；
+    //   而 run_flow 才是面向前端的边界，翻译放这里最合适。
+    let n = match fill_prompt(cdp, text).await {
+        Ok(n) => n,
+        Err(e) => {
+            let msg = format!("{e:#}");
+            let busy_hint = ["正在生成中", "正忙", "还没空闲", "等空闲", "发送键是「停止」"]
+                .iter()
+                .any(|k| msg.contains(k));
+            return Err(if busy_hint {
+                EngineError::Busy(msg)
+            } else {
+                EngineError::Other(anyhow::anyhow!(msg))
+            });
+        }
+    };
 
     if dry_run {
         // ★ 还原必须「只删不插」★
