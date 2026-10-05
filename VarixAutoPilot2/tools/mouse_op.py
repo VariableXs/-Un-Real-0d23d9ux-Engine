@@ -169,136 +169,58 @@ def focus(hwnd: int, aggressive: bool = False):
     if tid_fg and tid_fg != tid_me:
         u.AttachThreadInput(tid_me, tid_fg, False)
 
-    # ★★ 越界/最小化自愈 ★★
-    # 判据：尺寸过小，或 rect 跑到屏幕外。
-    # 关键：**最小化的窗口必须先ShowWindow(SW_RESTORE) 恢复**，
-    # 否则 SetWindowPos 对它无效 —— 实测窗口长期停在 199x34 @(-32000,-32000)
-    # （-32000 是 Windows 最小化窗口的标准坐标），怎么改都不动。
-    # 恢复之后再显式设尺寸 + 位置。
-    for _ in range(3):
-        rc = wt.RECT()
-        u.GetWindowRect(hwnd, ctypes.byref(rc))
-        sw = u.GetSystemMetrics(0)
-        sh = u.GetSystemMetrics(1)
-        w, h = rc.right - rc.left, rc.bottom - rc.top
-        bad = (w < 400 or h < 300 or rc.left < 0 or rc.top < 0
-               or rc.right > sw + 20 or rc.bottom > sh + 20)
-        if not bad:
-            break
-        if rc.left <= -20000:            # ★ 最小化 ⇒ 先恢复（必须，否则改不动）
-            u.ShowWindow(hwnd, 9)        # SW_RESTORE
-            time.sleep(0.8)
-        # ★ 只有 aggressive=True 才改尺寸 ★
-        # 坑（实测）：截图/点击前改窗口尺寸会**打断 WebView2 加载**，
-        # 表现为顶栏一直「连接中…」、对话列表空 —— 但代码完全正常。
-        # 所以默认只「恢复最小化」，不碰尺寸。
-        if aggressive:
-            u.SetWindowPos(hwnd, None, 120, 60, 1500, 900, 0x0004)  # SWP_NOZORDER
-            time.sleep(0.6)
-        else:
-            break   # 非 aggressive ⇒ 不动尺寸，直接返回当前 rect
-    time.sleep(0.4)
+    # ══════════════════════════════════════════════════════════════
+    # ★★★ 越界/最小化自愈（★ 这段曾导致窗口塌成 199x34 ★★★）★★★
+    #
+    # 实测事故：窗口长期停在 `199x34 @(-32000,-32000)` + 最小化态。
+    #   -32000 是 Windows 最小化窗口的标准坐标，199x34 是它的占位尺寸。
+    #   用户此时点的是**幽灵窗口**，完全无反应，而日志一行都不会多。
+    #
+    # ★ 两个致命细节 ★
+    #  1) `SW_RESTORE` 只把窗口"恢复出来"，**不会把它变回正常尺寸**
+    #     （Tauri 的 min/max 约束参与计算，出来就是 199x34）。
+    #  2) `SetWindowPos` 带 `SWP_NOZORDER` 时**尺寸参数会被忽略**
+    #     —— 而窗口若仍处最小化态，连位置参数都无效。
+    #
+    # 正解顺序：SW_RESTORE → 等布局 → SetWindowPos(无 NOZORDER) → 再等
+    # ══════════════════════════════════════════════════════════════
     rc = wt.RECT()
     u.GetWindowRect(hwnd, ctypes.byref(rc))
+    sw = u.GetSystemMetrics(0) or 1920
+    sh = u.GetSystemMetrics(1) or 1080
+    w, h = rc.right - rc.left, rc.bottom - rc.top
+
+    # 判据：最小化（占位坐标/尺寸） 或 尺寸过小 或 越界
+    is_ghost = (w < 400 or h < 300
+                or rc.left <= -20000 or rc.top <= -20000
+                or rc.left < 0 or rc.top < 0
+                or rc.right > sw + 20 or rc.bottom > sh + 20)
+
+    if is_ghost:
+        # ① 先恢复（去掉 SW_RESTORE 的过期尺寸问题：恢复后重新量）
+        u.ShowWindow(hwnd, 9)          # SW_RESTORE
+        time.sleep(1.0)                # ★ 必须等：布局未完成时设尺寸无效
+        # ② 再显式设尺寸与位置——**不带 SWP_NOZORDER**，否则尺寸被忽略
+        u.SetWindowPos(hwnd, 0, 120, 60, 1500, 900, 0)
+        time.sleep(0.8)
+        # ③ 再量一次确认修好；还不行就再来一轮（最多 3 轮）
+        for _ in range(2):
+            u.GetWindowRect(hwnd, ctypes.byref(rc))
+            w2, h2 = rc.right - rc.left, rc.bottom - rc.top
+            if w2 >= 400 and h2 >= 300 and rc.left > -100:
+                break
+            u.ShowWindow(hwnd, 9)
+            time.sleep(0.9)
+            u.SetWindowPos(hwnd, 0, 120, 60, 1500, 900, 0)
+            time.sleep(0.9)
+
+    time.sleep(0.4)
+    u.GetWindowRect(hwnd, ctypes.byref(rc))
+    # ★ 复核并如实回报：窗口修不好就明说，不能让调用方以为已置前★
+    if rc.right - rc.left < 400 or rc.bottom - rc.top < 300:
+        print(f"[WARN] 窗口仍是 {rc.right-rc.left}x{rc.bottom-rc.top} "
+              f"@({rc.left},{rc.top}) —— 可能处于最小化态，截图与点击都会失败")
     return rc
-
-
-def move(x: int, y: int):
-    u.SetCursorPos(int(x), int(y))
-    time.sleep(0.25)
-
-
-def click(x: int, y: int, delay: float = 0.6):
-    move(x, y)
-    u.mouse_event(LEFTDOWN, 0, 0, 0, 0)
-    time.sleep(0.12)
-    u.mouse_event(LEFTUP, 0, 0, 0, 0)
-    time.sleep(delay)
-
-
-def wheel(x: int, y: int, clicks: int, up: bool = True):
-    """clicks>0 向上滚，<0 向下。"""
-    move(x, y)
-    d = 120 if up else -120
-    for _ in range(abs(clicks)):
-        u.mouse_event(WHEEL, 0, 0, d, 0)
-        time.sleep(0.06)
-    time.sleep(0.5)
-
-
-# ── 在窗口内按「相对位置」点击 ★────────────────────────────
-# 为什么不换算 Playwright 的视口坐标：exe 窗口与浏览器视口缩放不同，
-# 换算必然点偏。这里用「窗口内相对百分比」，对任何尺寸都对。
-def click_rel(hwnd: int, rx: float, ry: float):
-    """rx/ry 是窗口内的相对位置（0..1）。"""
-    r = wt.RECT()
-    u.GetWindowRect(hwnd, ctypes.byref(r))
-    x = r.left + int((r.right - r.left) * rx)
-    y = r.top + int((r.bottom - r.top) * ry)
-    focus(hwnd)
-    click(x, y)
-    return (x, y)
-
-
-# ══════════════════════════════════════════════════════════════
-# SendInput：真实物理输入队列
-#
-# ★ 为什么必须有它（实测决定性）★
-# mouse_event 是旧 API，合成的事件走「消息注入」路径，**WebView2 不认**
-# —— 症状极具迷惑性：按钮**有 hover 高亮**（说明鼠标移动到位、
-# 命中测试通过），但按下不触发 onclick。
-# SendInput 走系统物理输入队列，WebView2 才认。
-#
-# ★ 另一个坑 ★
-# 坐标必须**归一化到 0..65535 的绝对值**，
-# 并带 MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK，否则点击位置全错。
-# ══════════════════════════════════════════════════════════════
-INPUT_MOUSE = 0
-MOUSEEVENTF_MOVE = 0x0001
-MOUSEEVENTF_LEFTDOWN = 0x0002
-MOUSEEVENTF_LEFTUP = 0x0004
-MOUSEEVENTF_ABSOLUTE = 0x8000
-MOUSEEVENTF_VIRTUALDESK = 0x4000
-
-
-class _MOUSEINPUT(ctypes.Structure):
-    _fields_ = [("dx", wt.LONG), ("dy", wt.LONG), ("mouseData", wt.DWORD),
-                ("dwFlags", wt.DWORD), ("time", wt.DWORD),
-                ("dwExtraInfo", ctypes.POINTER(wt.ULONG))]
-
-
-class _INPUT(ctypes.Structure):
-    class _U(ctypes.Union):
-        _fields_ = [("mi", _MOUSEINPUT)]
-
-    _anonymous_ = ("u",)
-    _fields_ = [("type", wt.DWORD), ("u", _U)]
-
-
-u.SendInput.argtypes = [wt.UINT, ctypes.POINTER(_INPUT), ctypes.c_int]
-u.SendInput.restype = wt.UINT
-
-
-def _send(flags: int, x: int = 0, y: int = 0) -> int:
-    sw = u.GetSystemMetrics(0) or 1
-    sh = u.GetSystemMetrics(1) or 1
-    inp = _INPUT(type=INPUT_MOUSE)
-    inp.mi = _MOUSEINPUT(
-        dx=int(x * 65535 / sw), dy=int(y * 65535 / sh), mouseData=0,
-        dwFlags=flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
-        time=0, dwExtraInfo=None,
-    )
-    return u.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT))
-
-
-def click2(x: int, y: int, delay: float = 0.8):
-    """SendInput 版点击 —— WebView2 唯一认的方式。"""
-    _send(MOUSEEVENTF_MOVE, x, y)
-    time.sleep(0.45)
-    _send(MOUSEEVENTF_LEFTDOWN, x, y)
-    time.sleep(0.14)
-    _send(MOUSEEVENTF_LEFTUP, x, y)
-    time.sleep(delay)
 
 
 def main() -> int:
