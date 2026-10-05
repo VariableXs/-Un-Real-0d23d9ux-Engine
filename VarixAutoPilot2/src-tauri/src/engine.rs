@@ -152,9 +152,38 @@ pub async fn idle_verdict(cdp: &Cdp) -> Result<IdleVerdict> {
               const stopBtns = document.querySelectorAll(
                 'button[class*="stop"],button[aria-label*="停止"],[title*="停止"]'
               ).length;
-              const anims = document.querySelectorAll(
-                '[class*="streaming"],[class*="generating"],[class*="typing"],[class*="loading-"]'
-              ).length;
+              // ★★★ 动画判据必须排除假阳性 ★★★
+              //
+              // 实测踩到：对面上常驻一个
+              //   <span class="cr-message-list__top-loading-spinner">  13x13
+              // 它是**对话列表顶部的加载指示器**，与「对方是否在生成」无关，
+              // 却会命中 [class*="loading-"] ⇒ anims 恒 ≥1
+              // ⇒ by_anim 恒为忙 ⇒ 三判据凑不出 2/3 空闲
+              // ⇒ **worker 永远等，永远不发**（用户实测：等了 65 次仍不发）
+              //
+              // 三重过滤，缺一不可：
+              // ① 区域：只看消息区，不要全页面
+              // ② 尺寸：13x13 的装饰图标不算，真正的流式输出是大块文本
+              // ③ 黑名单：显式排除已知的列表指示器
+              const animSel = [
+                '[class*="streaming"]', '[class*="generating"]',
+                '[class*="typing"]', '[class*="loading-"]',
+              ].join(',');
+              const anims = Array.from(document.querySelectorAll(animSel)).filter((e) => {
+                // ① 区域：必须在消息列表或主内容区里
+                const inRegion = e.closest(
+                  '[class*="message-list"],[class*="message_list"],main,[role="main"]'
+                ) !== null;
+                if (!inRegion) return false;
+                // ② 尺寸：真正的流式输出是大块文本容器
+                const r = e.getBoundingClientRect();
+                if (r.width < 200 || r.height < 24) return false;
+                // ③ 黑名单：列表顶部的加载指示器
+                if (/top-loading-spinner|list__.*loading/.test(String(e.className || ''))) {
+                  return false;
+                }
+                return true;
+              }).length;
               return {
                 by_btn: btn ? !/--sending|--stop/.test(cls) : false,
                 by_stop_btn: stopBtns === 0,
@@ -334,9 +363,24 @@ pub async fn busy_state(cdp: &Cdp) -> Result<Busy> {
               // --stop 时（正在生成）徽章说空闲、闸门说忙 ⇒ 用户以为按钮坏了。
               // 闸门是对的（发送键此刻语义是「停止」，点了会打断对方），
               // 所以只能让徽章迁就闸门，绝不能放宽闸门。
-              const anims = document.querySelectorAll(
-                '[class*="streaming"],[class*="generating"],[class*="typing"],[class*="loading-"]'
-              ).length;
+              // ★ 与 idle_verdict 的动画判据完全一致（含三重过滤）★★
+              // 见idle_verdict 处的详细注释—— 那个 13x13 的
+              // top-loading-spinner 曾让 anims 恒 ≥1，害得worker 永不发。
+              const animSel = [
+                '[class*="streaming"]', '[class*="generating"]',
+                '[class*="typing"]', '[class*="loading-"]',
+              ].join(',');
+              const anims = Array.from(document.querySelectorAll(animSel)).filter((e) => {
+                if (e.closest(
+                  '[class*="message-list"],[class*="message_list"],main,[role="main"]'
+                ) === null) return false;
+                const r = e.getBoundingClientRect();
+                if (r.width < 200 || r.height < 24) return false;
+                if (/top-loading-spinner|list__.*loading/.test(String(e.className || ''))) {
+                  return false;
+                }
+                return true;
+              }).length;
               return { sending: /--sending|--stop/.test(cls) || anims > 0,
                        label: b ? (b.getAttribute('aria-label')||'') : '(无发送键)' };
             })()"#,
