@@ -17,6 +17,65 @@
 const $ = (id) => document.getElementById(id);
 
 // ══════════════════════════════════════════════════════════════
+// ★ 端口探测横幅
+// ══════════════════════════════════════════════════════════════
+//
+// ★ 为什么必须常驻显示（今晚最大的教训）★
+// 引擎靠 CDP 连 WorkBuddy 的 9222 端口。端口不通时：
+//   - 徽章仍显示「已连接」（那是 Tauri 连后端，不是连 WorkBuddy）
+//   - 发送失败只报「等空闲」⇒ **端口问题被误报成忙闲问题**
+//   - 真因只藏在日志深处
+// 我因此白挖了好几轮判据与绑定。
+//
+// 所以：启动即探，不通就挂横幅；点「知道了」可收起，但探测继续
+//（他自己开了端口就该自动消失）。
+
+async function probePort() {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch('http://127.0.0.1:9222/json/version', {
+      signal: ctl.signal,
+      cache: 'no-store',
+    });
+    clearTimeout(t);
+    return r.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+function setPortBanner(ok) {
+  const b = document.getElementById('port-banner');
+  if (!b) return;
+  if (ok) { b.hidden = true; return; }
+  // 用户手动关掉后不再自动弹（别在他明确知道了之后还烦）
+  if (b.dataset.dismissed === '1') return;
+  b.hidden = false;
+}
+
+async function watchPort() {
+  let last = await probePort();
+  setPortBanner(!last);
+  const closeBtn = document.getElementById('pb-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      const b = document.getElementById('port-banner');
+      if (b) { b.hidden = true; b.dataset.dismissed = '1'; }
+    });
+  }
+  setInterval(async () => {
+    const now = await probePort();
+    if (now === last) return;
+    last = now;
+    const b = document.getElementById('port-banner');
+    // 端口通了 ⇒ 撤销 dismiss，之后若又断仍会提示
+    if (now && b) b.dataset.dismissed = '0';
+    setPortBanner(!now);
+  }, 4000);
+}
+
+// ══════════════════════════════════════════════════════════════
 // ★ 内容来源指示器（常驻显示，不是出错才显示）★
 //
 // 要解决的问题：早先「勾了自由文本但框是空的」只在出错时
@@ -753,6 +812,9 @@ try {
 (async function init() {
   try {
     $('tpl').value = DEFAULT_TPL;
+    // ★ 启动即探 9222 端口 ★
+    // 前置条件不满足时横幅常驻，不等发送失败才暴露。
+    if (typeof watchPort === 'function') watchPort();
   // ★ 内容来源指示器：初始化 + 勾选变化时立刻刷新 ★
   if (typeof window.__VAP_SRC_NOTE__ === 'function') window.__VAP_SRC_NOTE__();
   for (const i of ['o-free', 'o-dry', 'free-text', 'tpl']) {

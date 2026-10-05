@@ -430,6 +430,79 @@ button.mini {
   border-radius: var(--r-sm);
 }
 button.warn { border-color: color-mix(in srgb, var(--warn) 50%, transparent); color: var(--warn); }
+
+/* ══════════════════════════════════════════════════════════════
+   打断发送按钮：琥珀渐变 = 有代价但有效
+   ★ 刻意不给绿色 —— 它会中断对方生成，视觉上要有「代价感」 ★
+   ══════════════════════════════════════════════════════════════ */
+button.warn#b-force {
+  background: linear-gradient(180deg, #b8791f 0%, #96610f 100%);
+  border: 1px solid #d99b32;
+  color: #fff6e6;
+  font-weight: 700;
+}
+button.warn#b-force:hover:not(:disabled) {
+  background: linear-gradient(180deg, #cc8630 0%, #a86a16 100%);
+  box-shadow: 0 0 0 1px #e8b357, 0 4px 14px rgba(190, 130, 30, .35);
+}
+button.warn#b-force:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ══════════════════════════════════════════════════════════════
+   端口不通横幅
+   ★ 为什么用红色：这是「完全不可用」，不是「降级」——
+     与「干跑模式」的琥珀色必须区分开，别混。
+   ★ 为什么常驻顶部：前置条件不满足时任何操作都会失败，
+     要让它第一眼就可见，而不是从错误信息里反推。
+   ══════════════════════════════════════════════════════════════ */
+.port-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  /* ★ flex: none 不可省 ★
+     body 是 flex column，<main> 占了 flex:1。
+     横幅若不写 flex:none 会被 flex 布局压缩，
+     表现为「横幅挤进右栏中间、只剩窄窄一条」。
+     —— 实测踩过：DOM 位置完全正确（</header> 之后、<main> 之前），
+     视觉上却还是错位。根因在这里，不在 HTML 结构。 */
+  flex: none;
+  margin: 8px 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(200, 50, 50, .13);
+  border: 1px solid rgba(220, 80, 80, .5);
+  color: #ffc0c0;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.port-banner[hidden] { display: none; }
+.port-banner .pb-icon {
+  flex: 0 0 20px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #d64545;
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
+.port-banner .pb-body { flex: 1; min-width: 0; }
+.port-banner b { color: #ff9d9d; }
+.port-banner .pb-why { color: #e8b0b0; margin-top: 3px; }
+.port-banner .pb-fix { color: #ffd0a0; margin-top: 5px; }
+.port-banner .pb-fix b { color: #ffc98a; }
+.port-banner .pb-close {
+  flex: 0 0 auto;
+  align-self: center;
+  background: rgba(255, 255, 255, .10);
+  border: 1px solid rgba(255, 255, 255, .22);
+  color: #ffd8d8;
+  border-radius: 5px;
+  padding: 3px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.port-banner .pb-close:hover { background: rgba(255, 255, 255, .18); }
 button.warn:hover:not(:disabled) { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 
 /* 队列是 Variable 明确要看的东西 ⇒ 放在显眼位置、给足高度 */
@@ -571,6 +644,7 @@ select option { background: var(--panel); color: var(--fg); }
     </svg>
     <h1>Varix<em>AutoPilot</em></h1>
   </div>
+  
   <div class="stats">
     <div class="stat"><span class="k">对话</span><span class="v" id="s-conv">–</span></div>
     <div class="stat"><span class="k">模型</span><span class="v" id="s-model">–</span></div>
@@ -580,6 +654,29 @@ select option { background: var(--panel); color: var(--fg); }
   </div>
   <div class="conn"><span class="dot idle" id="s-dot"></span><span id="s-msg">连接中…</span></div>
 </header>
+  <!-- ══════════════════════════════════════════════════════════════
+       ★ 端口横幅：WorkBuddy 调试端口不通时出现
+       今晚最大的教训：端口不通在界面上完全不可见 ——
+       徽章照样显示「已连接」（那是 Tauri 连后端，不是连 WorkBuddy），
+       发送失败只报「等空闲」⇒ **端口问题被误报成忙闲问题**，白挖好几轮。
+       ★ 前置条件必须常驻可见，不能等发送失败才暴露 ★
+       ══════════════════════════════════════════════════════════════ -->
+  <div id="port-banner" class="port-banner" hidden>
+    <div class="pb-icon">!</div>
+    <div class="pb-body">
+      <b>连不上 WorkBuddy 调试端口 9222 —— 现在无法自动发送</b>
+      <div class="pb-why">
+        WorkBuddy 在运行，但它的调试端口没开。引擎靠这个端口连它去填输入框、点发送；
+        端口不通就什么都发不出去。
+        注意：端口<b>只在 WorkBuddy 启动时决定</b>，事后怎么点都没用，必须带参数重启。
+      </div>
+      <div class="pb-fix">
+        点桌面「<b>VarixAutoPilot 开端口.bat</b>」—— 它会提示你重启 WorkBuddy
+        （<b>会中断正在进行的对话</b>，需你确认）。不想中断就等对话结束再点。
+      </div>
+    </div>
+    <button class="pb-close" id="pb-close" type="button">知道了</button>
+  </div>
 
 <main>
   <!-- 左：对话列表 -->
