@@ -24,6 +24,34 @@ pub mod engine;
 pub mod looper;
 pub mod template;
 
+/// 追加一行到日志文件（release 版无控制台，这是唯一的排障通道）。
+///
+/// ★ 为什么不用 env_logger 的文件 target ★
+/// 本项目锁定的 env_logger 版本没有 TargetType/Lazy。
+/// 与其升级依赖，不如自己写 20 行——零依赖、可控、必定能写。
+macro_rules! logx {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let p = std::env::temp_dir().join("varix-autopilot.log");
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+            let _ = writeln!(f, "[{}] {}", chrono_like_now(), format!($($arg)*));
+        }
+    }};
+}
+
+/// 极简时间戳（到秒，够排障用；不引 chrono 免依赖）。
+fn chrono_like_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let h = (secs / 3600 + 8) % 24;   // 本机为 UTC+8
+    let m = (secs / 60) % 60;
+    let s = secs % 60;
+    format!("{h:02}:{m:02}:{s:02}")
+}
+
+
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
@@ -46,6 +74,14 @@ pub struct AppState {
     queue: Arc<looper::Queue>,
     /// 循环 worker 的停止标志（常驻，不靠关窗口）
     stop: Arc<std::sync::atomic::AtomicBool>,
+    /// 主窗口句柄。仅供 `ui_click` 自测点击用——
+    /// 因为从外部合成点击 WebView2 不认（详见该函数注释）。
+    ///
+    /// ★ 用 AsyncMutex 而非 Option<Arc<..>> ★
+    /// setup 里要往里写，但 `State<T>` 是**不可变引用**，
+    /// 直接 `app.state::<AppState>().window = ...` 编译不过
+    /// （E0594: cannot assign to data in dereference）。
+    window: Arc<AsyncMutex<Option<Arc<tauri::WebviewWindow>>>>,
 }
 
 impl Default for AppState {
@@ -55,6 +91,7 @@ impl Default for AppState {
             cache: Arc::new(AsyncMutex::new(CwdCache::new())),
             queue: looper::Queue::new(),
             stop: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            window: Arc::new(AsyncMutex::new(None)),
         }
     }
 }
@@ -168,6 +205,79 @@ async fn drop_cdp(state: &State<'_, AppState>) {
 // Commands
 // ---------------------------------------------------------------------------
 
+/// ★ 在自己的 WebView 内触发某个按钮点击 ★
+///
+/// ★★ 为什么必须有它（实测决定性）★★
+/// 从外部用 SendInput / mouse_event 合成点击，Tauri 的 WebView2 **不认**：
+/// 症状极具迷惑性——按钮有 hover 高亮（MOVE 生效、命中测试通过），
+/// 但 DOWN/UP 被丢弃，onclick 永远不触发。
+/// 逐条排除后确认：后端正常、前端正常、命令映射正常，
+/// 唯一不通的就是「外部合成点击 → WebView2」这一段。
+///
+/// 解法：让**后端在自己进程内**通过 eval 触发 DOM 的 click()。
+/// 命中测试、事件构造全由 WebView 自己完成，不经过系统输入队列。
+///
+/// 仅用于自测/排障（真机走鼠标时不需要它）。
+#[tauri::command]
+async fn ui_click(state: State<'_, AppState>, selector: String) -> Result<String, ErrPayload> {
+    // ★ 用占位符替换，不在 raw string 里嵌转义，也不配 format! 的双花括号 ★
+    // 踩过的坑：`format!` + `r#"() => {{ ... }}"#` 会把双花括号吃成单花括号，
+    // 写出的 JS 语法坏；`String::from("""")` 编译竟能过、运行必错。
+    // ★ 锁的作用域要严格限制 ★
+    // 早先写成 
+    // 会让 slot（一个局部 Arc）活得比 h 短 ⇒ E0597。
+    // 正解：把取句柄单独收进一个立即执行的 async 块，让锁在块内就释放。
+    let h = {
+        let g = state.inner().window.lock().await;
+        g.clone()
+    };
+    let h = h.ok_or_else(|| ErrPayload::new("没有窗口", "webview 未就绪", "重启软件"))?;
+    // ★ Tauri 2 的 WebviewWindow::eval 返回 () —— 它只是「派发」，
+    //   不把 JS 的返回值带回 Rust。
+    // ★ 所以派发完必须让 JS 自己把结果上报，否则 Rust 侧无从知道成功与否 ★
+    let wrapped = format!(
+        r#"(() => {{
+  const want = {sel};
+  let el = null;
+  try {{ el = document.querySelector(want); }} catch (e) {{ el = null; }}
+  if (!el) {{
+    for (const b of document.querySelectorAll('button,[role="button"]')) {{
+      if ((b.innerText || b.textContent || '').trim() === want) {{ el = b; break; }}
+    }}
+  }}
+  if (!el) {{
+    const all = Array.from(document.querySelectorAll('button'))
+      .map(b => (b.innerText || '').trim()).filter(Boolean).slice(0, 14);
+    window.__TAURI__.core.invoke('diag', {{ msg: 'ui_click 找不到「' + want + '」现有按钮:' + all.join('|') }});
+    return;
+  }}
+  el.click();
+  window.__TAURI__.core.invoke('diag', {{ msg: 'ui_click 已 click: ' + (el.innerText||'').trim().slice(0,20) }});
+}})()"#,
+        sel = serde_json::to_string(&selector).unwrap_or_default()
+    );
+    h.eval(&wrapped).map_err(|e| {
+        ErrPayload::new(
+            "点击未派发",
+            &format!("{e:?}"),
+            "重启软件再试；若持续失败说明 webview 已销毁",
+        )
+    })?;
+    Ok("已派发 click()".into())
+}
+
+/// 前端自检上报通道。
+///
+/// ★ 为什么需要它 ★
+/// 真机上「前端到底执行到哪一步」一直是黑盒：Tauri 默认不开 DevTools，
+/// 于是「函数存不存在 / invoke 通不通 /回调挂上没有」只能靠猜。
+/// 前端每到关键节点就调一次这个 command，排障时只要
+/// `tail %TEMP%/varix-autopilot.log` 就能看到全部执行轨迹。
+#[tauri::command]
+fn diag(msg: String) {
+    logx!("前端: {msg}");
+}
+
 /// 采一份快照。断线时自动重连一次（一次性，不循环）。
 
 // ════════════════════════════════════════════════════════════════════
@@ -192,7 +302,10 @@ async fn enqueue(
         ));
     }
     let q = state.queue.clone();
-    let id = q.push(&text, conv_id.as_deref().unwrap_or(""), round.unwrap_or(0)).await;
+    let id = q
+        .push(&text, conv_id.as_deref().unwrap_or(""), round.unwrap_or(0))
+        .await;
+    logx!("enqueue: id={id} 字符={} conv={:?}", text.chars().count(), conv_id);
     q.kick();
     Ok(QueueView {
         items: q.snapshot().await,
@@ -708,12 +821,80 @@ async fn busy(state: State<'_, AppState>) -> Result<serde_json::Value, ErrPayloa
 
 /// 应用入口。
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+
 pub fn run() {
+    // ★ 日志必须写文件：release 版是 windows_subsystem（无控制台）★
+    // 只设 env_logger 的话出错信息无处可看——
+    // 实测「队列不入队」时界面也没红字，无从判断是前端还是后端。
+    //
+    // 不用 env_logger 的文件 target（本项目用的版本没有 TargetType），
+    // 改为**自己维护一个日志文件**：一个极简追加器，够用且零依赖。
+    let log_path = std::env::temp_dir().join("varix-autopilot.log");
+    {
+        use std::io::Write;
+        let _ = std::fs::create_dir_all(std::env::temp_dir());
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path);
+        if let Ok(f) = f.as_mut() {
+            let _ = writeln!(
+                f,
+                "---- 启动 {} ----",
+                chrono_like_now()
+            );
+        }
+    }
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .setup(|app| {
+            // ══════════════════════════════════════════════════════════════
+            // ★ 给自己的 WebView2 开调试端口（仅当环境变量要求时）★
+            //
+            // 为什么需要：Tauri 默认不开 DevTools 端口，于是
+            // 「某个前端函数到底存不存在」在真机上无法自证 —— 只能靠猜。
+            // 开了端口就能用 CDP 直读 window。这是排障通道，默认关闭。
+            //   用法：set VARIAP_AUTOPILOT_DEBUG=9333 && VarixAutoPilot.exe
+            if let Ok(p) = std::env::var("VARIAP_AUTOPILOT_DEBUG") {
+                if let Ok(port) = p.parse::<u16>() {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.eval(&format!(
+                            "window.__VAP_DEBUG_PORT__ = {port};"
+                        ));
+                    }
+                    logx!("调试端口已请求：{port}");
+                }
+            }
+
+            // ==========================================================
+            // 启动时把窗口放到安全位置与尺寸
+            //
+            // 起因：Variable 反馈「所有按钮点了没反应」。实测原因是
+            //   窗口被拖到 1818x1102 @ (102,0)，下边界 1102 超出
+            //   1920x1080 屏幕共 22px ⇒ 底部按钮在屏幕外，
+            //   点击被系统直接丢弃（WindowFromPoint 在那里返回 0）。
+            //
+            // 只做「固定安全尺寸 + 居中」，绝不读 current_monitor 做算术。
+            // 实测那套算术会把窗口搞成 199x34 @ (-32000,-32000)：
+            // 尺寸塌缩 + 跑到屏幕外，界面彻底不可见。
+            // 原因是外层窗口此刻尚未完成布局，outer_size()/current_monitor()
+            // 返回的是未就绪的值，算出来自然是错的。
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_size(tauri::PhysicalSize::new(1500, 900));
+                let _ = w.center();
+                logx!("窗口已置为 1500x900 并居中");
+                // 存进全局状态，供 ui_click 自测点击使用
+                // （外部合成点击 WebView2 不认，只能从进程内派发）
+                // ★ 守卫作用域必须限制在一条语句内 ★
+                // 早先写成 `if let Ok(mut g) = slot.try_lock() { *g = ... }`，
+                // 守卫在 if 块尾仍被视为可能借用 slot（局部变量）⇒ E0597。
+                let slot = app.state::<AppState>().window.clone();
+                *slot.blocking_lock() = Some(Arc::new(w.clone()));
+            }
+
             // ★ AppHandle 是 owned 且 'static，能安全交给 spawn ★
             // 直接闭包捕获 &App 会报「borrowed data escapes closure」。
             let handle = app.handle().clone();
@@ -791,7 +972,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![probe, preview, send, busy, enqueue, queue_view, queue_cancel, queue_clear, loop_start, loop_stop, idle_check, read_text_file, probe_skills])
+        .invoke_handler(tauri::generate_handler![diag, ui_click, probe, preview, send, busy, enqueue, queue_view, queue_cancel, queue_clear, loop_start, loop_stop, idle_check, read_text_file, probe_skills])
         .run(tauri::generate_context!())
         .expect("启动失败");
 }

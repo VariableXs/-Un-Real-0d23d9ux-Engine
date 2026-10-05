@@ -78,7 +78,6 @@ function localRender(tpl, vars) {
   });
   return { text, missing, chars: [...text].length };
 }
-
 const api = IS_TAURI
   ? {
       probe: () => invoke('probe'),
@@ -107,7 +106,6 @@ const api = IS_TAURI
         else {
           const e = new Error('这条已在发送中');
           e.what = '这条取消不了'; e.why = '内容已写入输入框'; e.next = '等这轮落地再取消下一条';
-          throw e;
         }
         return { items: MOCK.queue, id };
       },
@@ -198,6 +196,8 @@ function getCore() {
     idleCheck: 'idle_check',
     readTextFile: 'read_text_file',
     probeSkills: 'probe_skills',
+    diag: 'diag',
+    uiClick: 'ui_click',
     probe: 'probe', preview: 'preview', send: 'send', busy: 'busy',
   };
   return { invoke: (cmd, args) => {
@@ -213,6 +213,8 @@ function getCore() {
 
 if (IS_TAURI) {
   api.probe = () => getCore().invoke('probe');
+  api.diag = (msg) => getCore().invoke('diag', { msg });
+  api.uiClick = (selector) => getCore().invoke('ui_click', { selector });
   api.enqueue = (text, convId, round) =>
     getCore().invoke('enqueue', { text, convId, round });
   api.queueView = () => getCore().invoke('queueView');
@@ -506,9 +508,49 @@ async function doSend(real) {
 // ═══════════════════════════════════════════════════════════════════
 window.VAP = { api, $, esc, renderErr, setScene, conn };
 
+// 启动自检：把「前端执行到哪一步」写进后端日志。
+// 后端 logx 写到 %TEMP%/varix-autopilot.log ——
+// 排障时第一件事就是 tail 它，不用猜、不用开 DevTools。
+// ★★ 排障代码绝不能有能力搞挂主流程 ★★
+// .catch() 只捕获 Promise 拒绝，**捕获不了同步 throw**——
+// 而 api.diag 内部会调 getCore()，它在 Tauri 未注入时是同步抛的。
+// 后果实测过：这一行同步抛 ⇒ 整个模块顶层中断 ⇒ init() 从未执行
+// ⇒ 模板空、tick 不跑、界面永远停在「连接中…」。
+// 所以：try + .catch 双保险，且失败也只静默（它是纯排障通道）。
+try {
+  api.diag('app.js 已就绪').catch(() => {});
+} catch (_e) { /* 排障通道失败不影响主流程 */ }
+
+// ═══════════════════════════════════════════════════════════════════
+// ★ 共享契约的时机（这一段是本项目最隐蔽的坑，值得写清楚）★
+//
+// app.js 与 loop_ui.js 都是 <script type="module">，
+// 浏览器会**并行下载、并行执行**，谁先跑完不保证。
+//
+// 早先 loop_ui.js 顶层写 ，
+// 实测它常常**先**跑完 —— 那一刻 window.VAP 还没建（本文��� 507 行才赋值），
+// 于是解构 undefined 抛 TypeError → **整个 loop_ui 模块中断** →
+// 后面所有函数都没定义、Object.assign(window, VAPUI) 从未执行 →
+// HTML 里 onclick="enqueueOne()" 找不到函数
+// → **「加入待发」点了完全没反应**。
+//
+// 而同一行的「预览 / 填入」是好的——它们在 app.js 里，模块内直接可用。
+// **「一半按钮能用、一半不能」正是这个 bug 的签名。**
+//
+// 现在 loop_ui.js 里改成**在函数体内**才取 window.VAP.xxx
+//（回调被调用时 VAP 必然已就绪），顶层不再有任何依赖。
+// 这样两个模块谁先跑都无所谓——**顺序不再是问题**。
+//
+// 另：HTML 的内联 onclick 在**全局作用域**找函数，
+// 所以 loop_ui.js 的实现仍需 Object.assign 到 window（那边已加自检）。
+// ═══════════════════════════════════════════════════════════════════
+
 // ─────────────────────────── 启动 ───────────────────────────
 (async function init() {
-  $('tpl').value = DEFAULT_TPL;
+  try {
+    $('tpl').value = DEFAULT_TPL;
+  } catch (e) {
+  }
   // ★ 每一段都独立 try：早先 `await doPreview()` 一抛错，
   //  后面的 tick() 就不执行，界面永远停在初始态却看起来"正常"。
   //  这是"异常零静默"在启动链上的落实。

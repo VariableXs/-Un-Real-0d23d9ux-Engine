@@ -194,9 +194,60 @@ header {
 
 /* ═══ 主区 ═══ */
 main { position: relative; z-index: 1; flex: 1 1 auto; display: grid;
-       grid-template-columns: minmax(0,1.05fr) minmax(0,1fr); min-height: 0; }
-.col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+       grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); min-height: 0; }
+/* ★★★ 两栏都必须能独立滚动 ★★★
+   实测（tools/check_buttons.mjs，5 个尺寸逐个量 getBoundingClientRect）：
+     1818x1102 → 按钮落在 y=1300..1631（视口只有 1102 高）⇒ 5 个越界
+     1454x882  → 7 个越界
+     1280x800  → **13 个按钮全部越界**（0 个可见）
+   根因：右栏是 flex column + min-height:0，内容（模板 / 队列 /
+   循环 + 内容来源 + 日志）竖着堆起来**超过视口高度**，
+   而它自己不滚 ⇒ 溢出部分永久不可达。
+   这正是Variable 说的「所有按钮点了没反应」——
+   **不是按钮坏了，是按钮在屏幕外，点不到。**
+
+   正解：给两栏 overflow-y:auto，让内容超出时栏内滚动。 */
+.col { display: flex; flex-direction: column; min-height: 0; min-width: 0;
+       overflow-y: auto; overflow-x: hidden; }
 .col.left { border-right: 1px solid var(--line); }
+/* 滚动条样式统一，别让默认粗条割裂密度 */
+.col::-webkit-scrollbar { width: calc(9 * var(--kpx)); }
+.col::-webkit-scrollbar-track { background: transparent; }
+.col::-webkit-scrollbar-thumb {
+  background: var(--line-hi); border-radius: 99px;
+  border: calc(2 * var(--kpx)) solid transparent; background-clip: padding-box;
+}
+.col::-webkit-scrollbar-thumb:hover { background: var(--fg-3); background-clip: padding-box; }
+
+/* ★★ 右栏（第 2 个 .col）必须有最小宽度 ★★
+   实测（窗口 1454×882）：左栏吃掉 ~930px，右栏只剩 ~520px；
+   按钮行（2 个勾选 + 4 个按钮 + 一个 grow）在那宽度下排不开，
+   `.row` 有 flex-wrap 也会把末尾按钮推到可视区外
+   ⇒ 症状是「所有按钮点了没反应」（其实按钮在屏幕外，点不到）。
+
+   正解：给右栏一个 px 下限 + 窄宽时按钮均分宽度。 */
+main > .col:not(.left) { min-width: calc(430 * var(--kpx)); }
+main > .col:not(.left) .row { gap: var(--sp-6); }
+@media (max-width: 1860px) {
+  main > .col:not(.left) .row > button { flex: 1 1 auto; }
+}
+
+/* ★ 窄窗口改为上下堆叠 ★
+   两栏并排在<1400px 时右栏必然被压扁，而「选对话」与「填内容」
+   是有先后依赖的两步，分屏反而都不好用。堆叠后各自可滚。 */
+/* ★ 断点必须是「两栏真正需要堆叠」的宽度 ★
+   实测踩坑：原本设1400px，但窗口 1618 时 WebView 视口只有 1594
+   （窗口有边框/内边距），于是 1594 > 1400 不该堆叠却堆了——
+   界面变成「对话列表挤在上半屏、右栏挤在下半屏」，
+   按钮行被推到屏幕外，表现为「点了没反应」。
+
+   两栏各需 ≥340（左）+430（右）= 770px 才不压扁，
+   而默认窗口 1600 ⇒ 视口约 1576，远超 ⇒ 永远并排。
+   堆叠只留给真·小窗（视口 < 1100），那里堆叠反而是对的。 */
+@media (max-width: 1100px) {
+  main { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0,1fr) minmax(0,1fr); }
+  .col.left { border-right: none; border-bottom: 1px solid var(--line); }
+}
 
 .bar {
   display: flex; align-items: center; gap: var(--sp-10);
@@ -642,6 +693,29 @@ select option { background: var(--panel); color: var(--fg); }
   </div>
 </main>
 
+<!-- ★ 内联硬探针：不依赖任何模块，直接调后端 diag ★
+     作用：区分「Tauri invoke 本身不通」与「某个模块没执行」。
+     排障期保留，稳定后可删。 -->
+<script>
+(async () => {
+  const mk = (m) => { try { return m; } catch (e) { return 'ERR:' + e; } };
+  console.log('[probe] 内联脚本已执行');
+  try {
+    const core = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+    if (!core || !core.invoke) {
+      document.title = 'PROBE:no-invoke';
+      console.log('[probe] window.__TAURI__=' + mk(typeof window.__TAURI__) + ' core=' + mk(typeof core));
+      return;
+    }
+    await core.invoke('diag', { msg: '内联探针：Tauri invoke 正常' });
+    console.log('[probe] diag 已调用');
+    document.title = 'PROBE:ok';
+  } catch (e) {
+    console.log('[probe] diag 失败: ' + e);
+    document.title = 'PROBE:fail';
+  }
+})();
+</script>
 <script type="module" src="./app.js"></script>
 <script type="module" src="./loop_ui.js"></script>
 </body>

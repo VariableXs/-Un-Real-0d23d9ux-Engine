@@ -8,9 +8,27 @@
 //   前端传 0 表示无限，避免大数字在前端丢精度。
 // ═══════════════════════════════════════════════════════════════════
 
-// ★ 共享契约从 window.VAP 取（见 app.js 里的说明）★
-const { api, $, esc, renderErr, setScene, conn } = window.VAP;
-
+// ══════════════════════════════════════════════════════════════════
+// ★★★ 共享契约：惰性取，不用顶层解构 ★★★
+//
+// 现象：HTML 里onclick="enqueueOne()" 点了没反应，
+// 而同一行的「预览 / 填入」正常（它们在 app.js 里，模块内直接可用）。
+//
+// 根因：两个文件都是 <script type="module">，浏览器**并行执行**，
+// 谁先跑完不保证。loop_ui.js 常先跑完，而 app.js 是在它自己第 507 行
+// 才 （共 556 行）——于是这行顶层解构拿到 undefined，
+// 抛 TypeError ⇒ **整个模块中断** ⇒ 后面全没跑 ⇒
+// Object.assign(window, VAPUI) 从未执行 ⇒ 内联 onclick 找不到函数。
+//
+// 「一半按钮能用一半不能用」正是本 bug 的签名。
+//
+// ★ 为什么不用顶层 await ★
+// 顶层 await 一旦被拒绝，整个模块就死——本项目已因此栽过一次
+//（await import('/__TAURI__/core.js') 失败，GUI 永久停在「连接中…」）。
+//
+// 正解：**惰性取值**。api/$/esc 用到时才从 window.VAP 拿，
+// 拿不到时给出明确错误而不是崩在启动阶段。
+// ══════════════════════════════════════════════════════════════════
 const Q = {
   picked: '',        // 选中的对话 conv_id（'' = 当前对话）
   pickedTitle: '当前选中的对话',
@@ -28,9 +46,9 @@ function pickConv(convId, title) {
   for (const el of document.querySelectorAll('.conv')) {
     el.classList.toggle('picked', (el.dataset.cid || '') === Q.picked && !!Q.picked);
   }
-  const sel = $('lp-conv');
+  const sel = window.VAP.$('lp-conv');
   if (sel) sel.options[0].textContent = '当前选中：' + Q.pickedTitle.slice(0, 22);
-  const n = $('pick-note');
+  const n = window.VAP.$('pick-note');
   if (n) n.textContent = Q.picked ? '已选：' + Q.pickedTitle.slice(0, 26) : '未选（发到当前对话）';
 }
 
@@ -58,8 +76,8 @@ Object.assign(window, VAPUI);
 //   ③ 否则 → 用主模板渲染
 // ★ 统一在这里取，循环与单发共用，不会出现两套判断 ★
 async function pickContent() {
-  if ($('o-free').checked) {
-    const t = $('free-text').value;
+  if (window.VAP.$('o-free').checked) {
+    const t = window.VAP.$('free-text').value;
     if (!t.trim()) {
       const e = new Error('勾了用自由文本，但框是空的');
       e.what = '自由文本框是空的'; e.why = '勾了「用这段自由文本」但没写内容';
@@ -73,8 +91,8 @@ async function pickContent() {
     const t = Q.curTab === 'first' ? lt[0] : lt[1];
     return { text: t, chars: t.length, missing: [], 源: Q.curTab === 'first' ? '首轮' : '后续每轮' };
   }
-  const tpl = $('tpl').value;
-  const r = await api.preview(tpl, { '任务': $('v-task').value, '上下文': $('v-ctx').value });
+  const tpl = window.VAP.$('tpl').value;
+  const r = await window.VAP.api.preview(tpl, { '任务': window.VAP.$('v-task').value, '上下文': window.VAP.$('v-ctx').value });
   return { text: r.text, chars: r.chars, missing: r.missing, 源: '模板' };
 }
 
@@ -86,7 +104,7 @@ async function enqueueOne() {
     // 早先在这里硬拦，未填 {{任务}} 时队列永远是空的——
     // 而模板的既定语义就是「未填的原样保留」，那不该拦住入队，
     // 只该**提示**。拦下来反而让人以为功能坏了。
-    const v = await api.enqueue(r.text, Q.picked, 0);
+    const v = await window.VAP.api.enqueue(r.text, Q.picked, 0);
     renderQueue(v.items);
     if (r.missing.length) {
       setHint(
@@ -99,7 +117,7 @@ async function enqueueOne() {
       setHint(`已入队 · ${r.chars} 字符（来自${r.源}）· 对方空闲时会自动发`, 'ok');
     }
   } catch (e) {
-    renderErr(e);
+    window.VAP.renderErr(e);
   }
 }
 
@@ -107,11 +125,11 @@ async function enqueueOne() {
 const ST_TEXT = { pending: '等待', sending: '发送中', done: '已发', failed: '失败', canceled: '已取消' };
 
 function renderQueue(items) {
-  const box = $('qlist');
+  const box = window.VAP.$('qlist');
   box.innerHTML = '';
   if (!items || !items.length) {
     box.innerHTML = '<div class="empty">队列为空。点「加入待发」把内容排进来，或在下面设循环。</div>';
-    $('q-sum').textContent = '0 条';
+    window.VAP.$('q-sum').textContent = '0 条';
     return;
   }
   for (const it of items) {
@@ -134,10 +152,10 @@ function renderQueue(items) {
     x.disabled = it.state !== 'pending';
     x.onclick = async () => {
       try {
-        const v = await api.queueCancel(it.id);
+        const v = await window.VAP.api.queueCancel(it.id);
         renderQueue(v.items);
       } catch (e) {
-        renderErr(e);
+        window.VAP.renderErr(e);
       }
     };
     d.append(rd, pv, st, x);
@@ -145,41 +163,41 @@ function renderQueue(items) {
   }
   const wait = items.filter((i) => i.state === 'pending').length;
   const done = items.filter((i) => i.state === 'done').length;
-  $('q-sum').textContent = `待发 ${wait} · 已发 ${done} · 共 ${items.length}`;
-  $('q-sum').className = 'chip' + (wait ? ' busy' : done ? ' on' : '');
+  window.VAP.$('q-sum').textContent = `待发 ${wait} · 已发 ${done} · 共 ${items.length}`;
+  window.VAP.$('q-sum').className = 'chip' + (wait ? ' busy' : done ? ' on' : '');
 }
 
 async function refreshQueue() {
   try {
-    const v = await api.queueView();
+    const v = await window.VAP.api.queueView();
     renderQueue(v.items);
   } catch (e) {
-    renderErr(e);
+    window.VAP.renderErr(e);
   }
 }
 
 async function clearQueue() {
   try {
-    const v = await api.queueClear();
+    const v = await window.VAP.api.queueClear();
     renderQueue(v.items);
   } catch (e) {
-    renderErr(e);
+    window.VAP.renderErr(e);
   }
 }
 
 // ── 循环 ─────────────────────────────────────────────────
 function switchLoopTab(which) {
   // ★切换标签前先存当前框的内容 ★
-  Q.loopTexts[Q.curTab] = $('loop-text').value;
+  Q.loopTexts[Q.curTab] = window.VAP.$('loop-text').value;
   Q.curTab = which;
-  $('loop-text').value = Q.loopTexts[which] || '';
+  window.VAP.$('loop-text').value = Q.loopTexts[which] || '';
   for (const b of document.querySelectorAll('.tab[data-lt]')) {
     b.classList.toggle('on', b.dataset.lt === which);
   }
 }
 
 function loopTexts() {
-  Q.loopTexts[Q.curTab] = $('loop-text').value;
+  Q.loopTexts[Q.curTab] = window.VAP.$('loop-text').value;
   // 首轮为空时退回用后续轮的（常见用法：一套内容循环发）
   const first = (Q.loopTexts.first || '').trim();
   const rest = (Q.loopTexts.rest || '').trim();
@@ -199,71 +217,71 @@ async function startLoop() {
   if (!rounds_[0] || !rounds_[0].trim()) {
     return setHint('循环没内容：先在上面的框里写点东西', 'err');
   }
-  const inf = $('lp-inf').checked;
-  const rounds = inf ? 0 : Math.max(1, Math.min(99999, parseInt($('lp-rounds').value, 10) || 1));
+  const inf = window.VAP.$('lp-inf').checked;
+  const rounds = inf ? 0 : Math.max(1, Math.min(99999, parseInt(window.VAP.$('lp-rounds').value, 10) || 1));
   try {
-    const v = await api.loopStart(
+    const v = await window.VAP.api.loopStart(
       rounds_,
       Q.picked,
       rounds,
-      $('lp-trigger').value,
-      Math.max(1, parseInt($('lp-interval').value, 10) || 30),
+      window.VAP.$('lp-trigger').value,
+      Math.max(1, parseInt(window.VAP.$('lp-interval').value, 10) || 30),
       600
     );
     renderQueue(v.items);
     Q.loopRunning = true;
-    $('loop-state').textContent = inf ? '运行中 · 无限' : '运行中 · ' + rounds + ' 轮';
-    $('loop-state').className = 'chip on';
-    $('loop-note').textContent = (inf
+    window.VAP.$('loop-state').textContent = inf ? '运行中 · 无限' : '运行中 · ' + rounds + ' 轮';
+    window.VAP.$('loop-state').className = 'chip on';
+    window.VAP.$('loop-note').textContent = (inf
       ? '无限循环：会一直发下去，停止请点「停止」'
       : '共 ' + rounds + ' 轮（首轮 + 后续 ' + (rounds - 1) + ' 轮）')
       + ' · 内容来自' + p0.源;
     setHint(inf ? '无限循环已开始' : '循环已开始，共 ' + rounds + ' 轮', 'ok');
   } catch (e) {
-    renderErr(e);
+    window.VAP.renderErr(e);
   }
 }
 
 async function stopLoop() {
   try {
-    const v = await api.loopStop();
+    const v = await window.VAP.api.loopStop();
     renderQueue(v.items);
     Q.loopRunning = false;
-    $('loop-state').textContent = '已停止';
-    $('loop-state').className = 'chip';
-    $('loop-note').textContent = '队列里未发的项仍保留，可继续或清空';
+    window.VAP.$('loop-state').textContent = '已停止';
+    window.VAP.$('loop-state').className = 'chip';
+    window.VAP.$('loop-note').textContent = '队列里未发的项仍保留，可继续或清空';
     setHint('循环已停。未发的项还在队列里', 'ok');
   } catch (e) {
-    renderErr(e);
+    window.VAP.renderErr(e);
   }
 }
 
 // ── 内容来源：MD 文件 ─────────────────────────────────────
 async function readMd() {
-  const path = $('md-path').value.trim();
+  const path = window.VAP.$('md-path').value.trim();
   if (!path) return setHint('先填文件路径，或把文件拖到路径框里', 'err');
   try {
-    const f = await api.readTextFile(path);
-    $('md-info').innerHTML =
-      `<span class="e-next">${esc(f.name)} · ${f.chars} 字符 / ${f.bytes} 字节 · 编码 ${esc(f.encoding)}</span>`;
+    const f = await window.VAP.api.readTextFile(path);
+    window.VAP.$('md-info').innerHTML =
+      `<span class="e-next">${window.VAP.esc(f.name)} · ${f.chars} 字符 / ${f.bytes} 字节 · 编码 ${window.VAP.esc(f.encoding)}</span>`;
     // 填进「首轮」与「后续轮」——但只在它们为空时填，不覆盖用户已写的
     if (!Q.loopTexts.first.trim()) { Q.loopTexts.first = f.text; Q.loopTexts.rest = f.text; }
     else if (!Q.loopTexts.rest.trim()) { Q.loopTexts.rest = f.text; }
-    $('loop-text').value = Q.loopTexts[Q.curTab];
+    window.VAP.$('loop-text').value = Q.loopTexts[Q.curTab];
     setHint(`已读入 ${f.name}（${f.chars} 字符）。若下面框里已有内容，我没覆盖它`, 'ok');
   } catch (e) {
-    renderErr(e);
+    window.VAP.renderErr(e);
   }
 }
 
 // ── 内容来源：技能（斜杠命令） ───────────────────────────
 async function probeSkills() {
-  const info = $('skill-info');
+  const info = window.VAP.$('skill-info');
   info.innerHTML = '<span class="e-what">正在探测…（会往输入框打一个斜杠再清掉）</span>';
   try {
-    const r = await api.probeSkills();
+    const r = await window.VAP.api.probeSkills();
     Q.skills = r.items || [];
-    const sel = $('skill-pick');
+    const sel = window.VAP.$('skill-pick');
     sel.innerHTML = '<option value="">— 选择技能 —</option>';
     for (const s of Q.skills) {
       const o = document.createElement('option');
@@ -288,24 +306,24 @@ async function probeSkills() {
     }
   } catch (e) {
     info.innerHTML = '';
-    renderErr(e);
+    window.VAP.renderErr(e);
   }
 }
 
 function appendSkill() {
-  const s = $('skill-pick').value;
+  const s = window.VAP.$('skill-pick').value;
   if (!s) return setHint('先选一个技能', 'err');
   //技能名是「/命令名 描述」形态，插入时只取命令部分
   const cmd = s.trim().split(/\s+/)[0];
-  Q.loopTexts[Q.curTab] = $('loop-text').value;
+  Q.loopTexts[Q.curTab] = window.VAP.$('loop-text').value;
   Q.loopTexts[Q.curTab] += (Q.loopTexts[Q.curTab] ? '\n' : '') + cmd + ' ';
-  $('loop-text').value = Q.loopTexts[Q.curTab];
+  window.VAP.$('loop-text').value = Q.loopTexts[Q.curTab];
   setHint('已插入 ' + cmd + ' 到「' + (Q.curTab === 'first' ? '首轮' : '后续每轮') + '」', 'ok');
 }
 
 // ── 统一提示（与主流程同一套三要素样式）─────────────────
 function setHint(text, kind) {
-  const h = $('hint');
+  const h = window.VAP.$('hint');
   // ★ 三态：ok / warn / err ★
   // warn 用于「做成了但有瑕疵」（如带未填占位符入队），
   // 与 err（做不成）区分开，用户一眼能分清是哪种情况。
