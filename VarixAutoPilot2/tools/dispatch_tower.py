@@ -80,12 +80,19 @@ JS_CLICK_CONV = r"""((cid) => {
 })("%s")"""
 
 JS_CLICK_NEW = r"""(() => {
-  const btns = Array.from(document.querySelectorAll(
-    'button.conversation-list-tab-button, button'));
-  const b = btns.find(x => (x.innerText || '').trim() === '新建任务'
-                         && x.offsetWidth > 0);
+  const b = Array.from(document.querySelectorAll('button')).find(
+    x => (x.innerText || '').trim() === '新建任务' && x.offsetWidth > 0);
   if (!b) return { ok: false, why: '页面上没有可见的「新建任务」按钮' };
-  b.click();
+  // 实测：原生 b.click() 时灵时不灵（React 合成事件不吃裸 click），
+  // 与 switch_conv 同源问题。统一派发完整 MouseEvent 序列。
+  const r = b.getBoundingClientRect();
+  const o = { bubbles: true, cancelable: true, view: window,
+              clientX: r.left + 8, clientY: r.top + 8, button: 0, detail: 1 };
+  b.dispatchEvent(new MouseEvent('mouseover', o));
+  b.dispatchEvent(new MouseEvent('mousemove', o));
+  b.dispatchEvent(new MouseEvent('mousedown', o));
+  b.dispatchEvent(new MouseEvent('mouseup', o));
+  b.dispatchEvent(new MouseEvent('click', o));
   return { ok: true };
 })()"""
 
@@ -264,13 +271,14 @@ def switch_conv(conv_id: str, settle_s: float = 2.0) -> bool:
     `_card_` 元素派发完整 MouseEvent 序列（over/move/down/up/click）。
     返回 True 当且仅当切完后 active_conv() == conv_id。
     """
-    r = st.call_js(JS_CLICK_CONV % conv_id)
-    if not (isinstance(r, dict) and r.get("found")):
-        return False
-    for _ in range(6):
-        time.sleep(settle_s / 6 + 0.6)
-        if active_conv() == conv_id:
-            return True
+    for attempt in range(2):  # 实测：从空白新会话切回时首次点击偶发被吞，重试一轮即可
+        r = st.call_js(JS_CLICK_CONV % conv_id)
+        if not (isinstance(r, dict) and r.get("found")):
+            return False
+        for _ in range(6):
+            time.sleep(settle_s / 6 + 0.6)
+            if active_conv() == conv_id:
+                return True
     return False
 
 
@@ -331,13 +339,22 @@ def new_conversation(first_prompt: str, known_ids: set,
     r = st.call_js(JS_CLICK_NEW)
     if not (isinstance(r, dict) and r.get("ok")):
         return "", f"点「新建任务」失败：{r.get('why') if isinstance(r, dict) else r}"
-    time.sleep(1.5)
+    # 轮询确认真的切到空白会话（active='' 且消息列表消失），最多 8s
+    blank = False
+    for _ in range(11):
+        time.sleep(0.7)
+        if not active_conv() and not st.call_js(
+                "!!document.querySelector('.cr-message-list')"):
+            blank = True
+            break
+    if not blank:
+        return "", "点「新建任务」后 8s 内未进入空白会话（视图仍在原会话上，放弃填充）"
     s = st.probe_state()
     if not s or not s.get("hasEditor"):
         return "", "点击后没有出现输入框"
     # 安全闸：确认视图确实离开了原会话（否则填充会污染用户的会话）
     if active_conv():
-        return "", "点击后视图仍在原会话上，放弃填充（防污染）"
+        return "", "视图仍在原会话上，放弃填充（防污染）"
     if not wait_idle(30):
         return "", "新建出来的会话 30s 内未进入可发送态"
     ok, ev = send_text(first_prompt, tag)
