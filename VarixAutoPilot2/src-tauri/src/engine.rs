@@ -240,7 +240,16 @@ pub async fn busy_state(cdp: &Cdp) -> Result<Busy> {
             r#"(() => {
               const b = document.querySelector('button.cr-send-button');
               const cls = b ? ((typeof b.className==='string')?b.className:'') : '';
-              return { sending: /--sending/.test(cls),
+              // ★★ 与 idle_verdict 的 by_btn 判据完全一致 ★★
+              // 实测踩到的矛盾（用户截图）：徽章「空闲」vs 报错「正在生成中」。
+              // 原因：这里只判 --sending，闸门还判 --stop 与动画。
+              // --stop 时（正在生成）徽章说空闲、闸门说忙 ⇒ 用户以为按钮坏了。
+              // 闸门是对的（发送键此刻语义是「停止」，点了会打断对方），
+              // 所以只能让徽章迁就闸门，绝不能放宽闸门。
+              const anims = document.querySelectorAll(
+                '[class*="streaming"],[class*="generating"],[class*="typing"],[class*="loading-"]'
+              ).length;
+              return { sending: /--sending|--stop/.test(cls) || anims > 0,
                        label: b ? (b.getAttribute('aria-label')||'') : '(无发送键)' };
             })()"#,
         )
