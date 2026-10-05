@@ -610,6 +610,12 @@ select option { background: var(--panel); color: var(--fg); }
         <button id="b-enqueue">加入待发</button>
         <button class="primary" id="b-fill">填入</button>
         <button class="go" id="b-send">填入并发送</button>
+        <!-- ★ 打断发送：忙时先停止对方生成，再发送 ★
+             为什么要有这个：另两个按钮在忙时都会「等」，
+             而等待没有上限、也没有进度，看起来就是「老是这样没反应」。
+             这个按钮把等待换成动作：先停止，立刻发。
+             界面上写明它会中断对方当前的生成，不暗箱操作。 -->
+        <button class="warn" id="b-force">打断发送（先停止对方）</button>
         <!-- ★ 干跑醒目条 ★
              「只填不发」勾着时，队列里的东西**永远不会被真发出去**——
              而界面上原来只是一行小字，勾了很容易忘。

@@ -876,6 +876,91 @@ async fn send(
     }
 }
 
+/// ★★ 打断发送：先停止对方当前生成，再填入并发送 ★★
+///
+/// Variable 的明确要求（2026-10-06）：
+///     「发不了不要管当前是什么，全部停止然后使用，不然怎么老是这样」
+///
+/// 他不要「等空闲」，他要「打断它，然后发」。
+/// 之前的错在于把「不打断对方」当成红线，于是永远在等——
+/// 而等待没有上限、没有进度，正好就是他抱怨的「老是这样没反应」。
+///
+/// 重新界定：那些对话的产出就是要交给这个软件处理，
+/// 对方正在生成的内容对他没有价值（随时可以让我重发）。
+/// 所以打断对他零损失，却能把「无限等待」换成「立刻完成」。
+///
+/// ⚠ 保留原行为：这个命令**额外**提供，不改动「加入待发」与
+///   「填入并发送」。那两条安全路径仍可选用。
+#[tauri::command]
+async fn force_send(
+    state: State<'_, AppState>,
+    text: String,
+) -> Result<serde_json::Value, ErrPayload> {
+    let cdp = ensure_cdp(&state).await?;
+    if text.trim().is_empty() {
+        return Err(ErrPayload::new(
+            "内容为空：拒绝打断",
+            "没有要发的内容，中断对方生成毫无意义",
+            "先在模板或变量框里写点内容",
+        ));
+    }
+
+    // ① 先看忙不忙
+    let before = engine::idle_verdict(&cdp)
+        .await
+        .map_err(|e| ErrPayload::new("读忙闲失败", &format!("{e}"), "确认 WorkBuddy 已启动且开着对话页"))?;
+
+    // ② 忙 ⇒ 点停止
+    let stopped = if before.idle {
+        false
+    } else {
+        logx!("force_send: 对方在生成（{}），先停止", before.reason);
+        engine::stop_generation(&cdp)
+            .await
+            .map_err(|e| ErrPayload::new(
+                "无法停止对方",
+                &format!("点了停止但没生效：{e}"),
+                "WorkBuddy 可能正在忙别的事；或稍等一下再试",
+            ))?
+    };
+
+    // ③ 等它真停下来（最多 15 秒）
+    if stopped {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        loop {
+            if std::time::Instant::now() >= deadline {
+                return Err(ErrPayload::busy_err(
+                    "点了停止，但对方 15 秒内没停下来",
+                    "可能它正卡在长任务里。等它停，或换用「加入待发」排队等空闲。",
+                ));
+            }
+            let now = engine::idle_verdict(&cdp)
+                .await
+                .map_err(|e| ErrPayload::new("等停失败", &format!("{e}"), "再点一次试试"))?;
+            if now.idle {
+                logx!("force_send: 已停下（{}）", now.reason);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        }
+    }
+
+    // ④ 填入 + 发送（复用既有 run_flow，它现在已是空闲态）
+    let r = engine::run_flow(&cdp, &text, false, false)
+        .await
+        .map_err(|e| match e {
+            engine::EngineError::Busy(m) => ErrPayload::busy_err(&m, "再点一次打断发送"),
+            engine::EngineError::Other(e) => ErrPayload::new("发送失败", &format!("{e}"), "看日志排查"),
+        })?;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "stopped_first": stopped,
+        "chars": r.chars,
+        "evidence": r.evidence,
+    }))
+}
+
 /// 只查忙闲（前端轮询用，比全量快照轻）。
 #[tauri::command]
 async fn busy(state: State<'_, AppState>) -> Result<serde_json::Value, ErrPayload> {
@@ -1133,7 +1218,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![diag, ui_click, probe, preview, send, busy, enqueue, queue_view, queue_cancel, queue_clear, loop_start, loop_stop, idle_check, read_text_file, probe_skills])
+        .invoke_handler(tauri::generate_handler![diag, ui_click, probe, preview, send, busy, enqueue, queue_view, queue_cancel, queue_clear, loop_start, loop_stop, idle_check, read_text_file, probe_skills, force_send])
         .run(tauri::generate_context!())
         .expect("启动失败");
 }

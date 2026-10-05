@@ -54,6 +54,94 @@ pub struct IdleVerdict {
     pub reason: String,
 }
 
+/// ★ 点「停止」，打断对方当前的生成 ★
+///
+/// 定位依据（来自 `idle_verdict` 的实测）：
+///   `button.cr-send-button` 的 class 含 `--stop` 时，
+///   它的语义就是「停止」—— 这也是我们判定「忙」的依据之一。
+///
+/// 为什么要专门写这个：Variable 明确要求「不要等，直接停止然后发」
+/// （2026-10-06）。之前把「不打断对方」当成红线，于是永远在等，
+/// 而等待没有上限也没有进度 —— 正是他抱怨的「老是这样没反应」。
+///
+/// 用 CDP 原生鼠标事件而非页面内 `.click()`：
+/// 后者在这个 WebView2 里不触发 onclick（本项目已实测多次）。
+pub async fn stop_generation(cdp: &Cdp) -> Result<bool> {
+    // ① 先定位：找得到就拿它的中心坐标
+    let hit = cdp
+        .eval(
+            r#"(() => {
+              const cands = Array.from(document.querySelectorAll(
+                'button.cr-send-button[class*="stop"],button[class*="stop"],' +
+                'button[aria-label*="停止"],button[title*="停止"]'
+              )).filter((e) => {
+                const r = e.getBoundingClientRect();
+                return r.width > 8 && r.height > 8;   // 过滤不可见的
+              });
+              if (!cands.length) return { found: false };
+              const b = cands[0];
+              const r = b.getBoundingClientRect();
+              return {
+                found: true,
+                x: Math.round(r.left + r.width / 2),
+                y: Math.round(r.top + r.height / 2),
+                label: (b.getAttribute('aria-label') || b.innerText || '').trim().slice(0, 20),
+              };
+            })"#,
+        )
+        .await?;
+    let found = hit.get("found").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !found {
+        return Ok(false);   // 找不到 ⇒ 很可能它本来就没在跑
+    }
+    let x = hit.get("x").and_then(|v| v.as_i64()).unwrap_or(0);
+    let y = hit.get("y").and_then(|v| v.as_i64()).unwrap_or(0);
+    let label = hit
+        .get("label")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // ② CDP 原生点击（mousePressed + mouseReleased 必须成对）
+    cdp.call(
+        "Input.dispatchMouseEvent",
+        json!({
+            "type": "mouseMoved",
+            "x": x,
+            "y": y,
+            "button": "none",
+        }),
+    )
+    .await?;
+    cdp.call(
+        "Input.dispatchMouseEvent",
+        json!({
+            "type": "mousePressed",
+            "x": x,
+            "y": y,
+            "button": "left",
+            "clickCount": 1,
+        }),
+    )
+    .await?;
+    // 30~60ms 是真实人类点击的间隔，太短会被当成双击或被忽略
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    cdp.call(
+        "Input.dispatchMouseEvent",
+        json!({
+            "type": "mouseReleased",
+            "x": x,
+            "y": y,
+            "button": "left",
+            "clickCount": 1,
+        }),
+    )
+    .await?;
+
+    log::info!("[stop] 已点停止（{label}）@ {x},{y}");
+    Ok(true)
+}
+
 /// 空闲判定（三判据多数一致）。
 pub async fn idle_verdict(cdp: &Cdp) -> Result<IdleVerdict> {
     let v = cdp

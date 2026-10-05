@@ -198,8 +198,12 @@ def focus(hwnd: int, aggressive: bool = False):
 
     if is_ghost:
         # ① 先恢复（去掉 SW_RESTORE 的过期尺寸问题：恢复后重新量）
-        u.ShowWindow(hwnd, 9)          # SW_RESTORE
-        time.sleep(1.0)                # ★ 必须等：布局未完成时设尺寸无效
+        # ★★ SW_MAXIMIZE(3) 而非 SW_RESTORE(9) ★★
+        # 实测：Tauri 窗口在最小化态下，SW_RESTORE **恢复不出来**
+        # （仍是 199x34 @(-32000,-32000)），而 SW_MAXIMIZE 一次就恢复。
+        # Tauri 自管窗口状态，走 Win32 的 SW_RESTORE 拿不到正确尺寸。
+        u.ShowWindow(hwnd, 3)          # SW_MAXIMIZE
+        time.sleep(1.2)                # ★ 必须等：布局未完成时设尺寸无效
         # ② 再显式设尺寸与位置——**不带 SWP_NOZORDER**，否则尺寸被忽略
         u.SetWindowPos(hwnd, 0, 120, 60, 1500, 900, 0)
         time.sleep(0.8)
@@ -209,8 +213,8 @@ def focus(hwnd: int, aggressive: bool = False):
             w2, h2 = rc.right - rc.left, rc.bottom - rc.top
             if w2 >= 400 and h2 >= 300 and rc.left > -100:
                 break
-            u.ShowWindow(hwnd, 9)
-            time.sleep(0.9)
+            u.ShowWindow(hwnd, 3)      # 同上：SW_MAXIMIZE 才有效
+            time.sleep(1.0)
             u.SetWindowPos(hwnd, 0, 120, 60, 1500, 900, 0)
             time.sleep(0.9)
 

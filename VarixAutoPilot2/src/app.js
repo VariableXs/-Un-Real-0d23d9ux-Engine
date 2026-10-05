@@ -235,6 +235,8 @@ function getCore() {
     diag: 'diag',
     uiClick: 'ui_click',
     probe: 'probe', preview: 'preview', send: 'send', busy: 'busy',
+    // ★ 打断发送：后端 command 名 force_send，映射名 forceSend ★
+    forceSend: 'force_send',
   };
   return { invoke: (cmd, args) => {
     const real = SNAKE[cmd];
@@ -571,6 +573,65 @@ async function doSend(real) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// ★★★ 打断发送 ★★★
+//
+// Variable 明确要求（2026-10-06）：
+//   「发不了不要管当前是什么，全部停止然后使用，不然怎么老是这样」
+//
+// ★ 我之前把「不打断对方」当成红线，于是永远在等—— ★
+// 而等待没有上限、没有进度，正好就是他抱怨的「老是这样没反应」。
+// 现在给出第三条路：**先停止，立刻发**。
+//
+// ★ 保留原行为 ★
+// 「加入待发」「填入并发送」两条安全路径完全不受影响，仍可选用。
+// 打断是显式选择，不是默认行为。
+//
+// ⚠ 代价是明说的：它会中断对方当前正在生成的内容。
+async function forceSend() {
+  if (S.busy) return;
+  S.busy = true;
+  const btn = $('b-force');
+  btn.disabled = true;
+  const h = $('hint');
+  h.className = 'note';
+  h.textContent = '正在打断：停止对方生成 → 填入 → 发送…';
+  try {
+    const c = collect();
+    // ★ 用 preview 先渲染好文本（它已实现变量替换 + 缺占位符检出）★
+    //   后端 force_send 只收渲染好的 text，不做替换 ——
+    //   避免两处各实现一遍、行为不一致。
+    const pv = await api.preview(c.tpl, c.vars);
+    const r = await api.forceSend(pv.text);
+    h.className = 'note ok';
+    h.textContent = (r.stopped_first
+      ? '★ 已打断对方并发送'
+      : '★ 已发送（对方本来就没在生成）')
+      + ' · ' + pv.chars + ' 字符 · ' + r.evidence;
+    setScene('sent');
+    const f = $('flash');
+    f.classList.remove('go');
+    void f.offsetWidth;
+    f.classList.add('go');
+    setTimeout(() => setScene('idle'), 1400);
+  } catch (e) {
+    __why('forceSend', e);
+    h.className = 'note busy';
+    // ErrPayload 有 what/why/next 三字段，全展示，不裸抛
+    const what = e && e.what ? e.what : '打断发送失败';
+    const why = e && e.why ? e.why : (e && e.message ? e.message : String(e));
+    const next = e && e.next ? e.next : '再点一次，或改用「加入待发」排队等空闲。';
+    h.innerHTML =
+      '<span class="e-what">' + esc(what) + '</span>' +
+      '<span class="e-why">' + esc(why) + '</span>' +
+      '<span class="e-next">' + esc(next) + '</span>';
+  } finally {
+    S.busy = false;
+    btn.disabled = false;
+    tick();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // 共享契约（供 loop_ui.js 使用）
 //
 // ★ 为什么要显式挂 window ★
@@ -590,11 +651,22 @@ window.VAP = { api, $, esc, renderErr, setScene, conn };
     ['b-preview', () => window.VAP.api && doPreview()],
     ['b-fill', () => doSend(false)],
     ['b-send', () => doSend(true)],
+  // ★ 打断发送 ★（必须走 addEventListener，勿改回内联 onclick ——
+  //   今晚已确诊：module作用域下内联 onclick 静默失效）
+  ['b-force', () => forceSend()],
   ];
+  const ok = pairs.filter(([id]) => !!document.getElementById(id)).length;
   for (const [id, fn] of pairs) {
     const el = document.getElementById(id);
     if (el) el.addEventListener('click', fn);
   }
+  // ★ 报绑定结果 ★
+  // 早先这段只报 loop_ui 的 10 个，app.js 侧这4 个绑没绑上完全不可见——
+  // 而「按钮点了没反应」正是这类缺失的典型表现。
+  // 静默绑不上= 换UI 改id 时最容易踩的坑，必须让它显形。
+  try {
+    window.VAP.api.diag('app 按钮绑定 ' + ok + '/' + pairs.length).catch(() => {});
+  } catch (_e) { /* 排障通道失败不影响界面 */ }
 })();
 
 
@@ -635,6 +707,7 @@ window.VAP = { api, $, esc, renderErr, setScene, conn };
 // 「一半按钮能用一半不能」正是这个 bug 的签名。
 // ★ 而且它**静默**：界面上看不出按钮坏了，只有控制台有话说。
 window.doPreview = doPreview;
+window.forceSend = forceSend;
 window.doSend = doSend;
 window.render = render;
 window.setScene = setScene;
