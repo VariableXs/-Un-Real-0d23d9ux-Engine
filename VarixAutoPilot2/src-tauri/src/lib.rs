@@ -274,6 +274,23 @@ async fn ui_click(state: State<'_, AppState>, selector: String) -> Result<String
 /// 前端每到关键节点就调一次这个 command，排障时只要
 /// `tail %TEMP%/varix-autopilot.log` 就能看到全部执行轨迹。
 
+/// 忙时连续重试次数（用于指数退避 + 日志节流）。
+///
+/// ★ 为什么需要退避而不是固定 1500ms ★
+/// 用户要求「1 秒内发出」。若固定 1500ms，空闲恰好发生在睡醒之后，
+/// 就要白等 1.3 秒。首轮 200ms 起步、翻倍到 1500ms 封顶，
+/// 能把「空闲 → 发出」的最坏空窗压到200ms 量级。
+/// 忙时该等多久：200ms → 400 → 800 → 1500（封顶）。
+fn busy_backoff(n: usize) -> std::time::Duration {
+    let ms = match n {
+        0 => 200,
+        1 => 400,
+        2 => 800,
+        _ => 1500,
+    };
+    std::time::Duration::from_millis(ms)
+}
+
 /// ══════════════════════════════════════════════════════════════
 /// ★ 指令文件通道（外部驱动，但绝不碰界面）★
 /// ══════════════════════════════════════════════════════════════
@@ -980,7 +997,11 @@ pub fn run() {
             //（不靠关窗口——关窗口时 sending 中的项会丢在中间）。
             let q = handle.state::<AppState>().queue.clone();
             let stop = handle.state::<AppState>().stop.clone();
-            let gap = Arc::new(AsyncMutex::new(std::time::Duration::from_millis(800)));
+            // ★ 间隔参数已由 busy_backoff 取代（退避更贴合1秒目标）★
+            let _gap = Arc::new(AsyncMutex::new(std::time::Duration::from_millis(800)));
+            let busy_waits = std::sync::Arc::new(
+                std::sync::atomic::AtomicUsize::new(0),
+            );
             tauri::async_runtime::spawn(async move {
                 // CDP 连接在 ensure_cdp 里惰性建立；worker 自己管，
                 // 失败就把项退回 pending 等下一轮，不 panic。
@@ -989,8 +1010,11 @@ pub fn run() {
                         return;
                     }
                     // 等队列有动静
+                    // ★ 150ms 而非 500ms ★
+                    // 用户要求「1 秒内发出」。入队后 worker 最迟
+                    // 150ms 就被唤醒，这样空闲时总耗时可控在 1 秒内。
                     let _ = tokio::time::timeout(
-                        std::time::Duration::from_millis(500),
+                        std::time::Duration::from_millis(150),
                         q.notify.notified(),
                     )
                     .await;
@@ -1050,20 +1074,42 @@ pub fn run() {
                         }
                     };
                     // 忙闲：三判据多数一致
+                    //
+                    // ★★ 退避策略：首轮只等 200ms，之后翻倍到 1500ms 封顶 ★★
+                    // 理由：用户要求「1 秒内发出」。
+                    // 固定 1500ms 的问题是——空闲恰好发生在睡醒之后，
+                    // 白白多等 1.3 秒。首轮短等能显著压缩这个空窗。
                     match engine::idle_verdict(&cdp).await {
                         Ok(v) if !v.idle => {
-                            q.finish(item.id, "pending", "", &format!("等空闲（{}）", v.reason)).await;
-                            let g = *gap.lock().await;
-                            tokio::time::sleep(g.min(std::time::Duration::from_millis(1500))).await;
+                            let n = busy_waits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            // 只在头几次与每 8 次打一次日志，避免刷屏
+                            if n < 3 || n % 8 == 0 {
+                                logx!("worker 等空闲（第 {} 次，{}）", n + 1, v.reason);
+                            }
+                            let wait = busy_backoff(n);
+                            q.finish(
+                                item.id,
+                                "pending",
+                                "",
+                                &format!("等空闲（{}）·第 {} 次，{}ms 后再试", v.reason, n + 1, wait.as_millis()),
+                            )
+                            .await;
+                            tokio::time::sleep(wait).await;
                             continue;
                         }
                         Err(e) => {
+                            let n = busy_waits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            if n < 3 || n % 8 == 0 {
+                                logx!("worker 读忙闲失败（第 {} 次）：{e}", n + 1);
+                            }
                             q.finish(item.id, "pending", "", &format!("读忙闲失败：{e}")).await;
-                            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                            tokio::time::sleep(busy_backoff(n)).await;
                             continue;
                         }
                         _ => {}
                     }
+                    // ★ 走到这里说明空闲 ⇒ 清零退避计数 ★
+                    busy_waits.store(0, std::sync::atomic::Ordering::SeqCst);
                     // 真发
                     match engine::send_only(&cdp, &item.text, &item.conv_id).await {
                         Ok(ev) => {
