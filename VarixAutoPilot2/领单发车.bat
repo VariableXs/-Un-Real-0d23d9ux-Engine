@@ -10,14 +10,15 @@ echo  收口条件：任务板全部完成；否则一直运行，Ctrl+C 停塔�
 echo ════════════════════════════════════════════════════
 echo.
 
-where python >nul 2>nul
-if errorlevel 1 (
-  echo [错误] 未找到 python，请先安装并加入 PATH
+set "PY=C:\Users\varia\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+if not exist "%PY%" (
+  echo [错误] python.exe not found:
+  echo        %PY%
   pause
   exit /b 1
 )
 
-python tools\claim_tower.py --start 18 --watch --interval 10 %*
+"%PY%" tools\claim_tower.py --start 18 --watch --interval 10 %*
 echo.
 echo 塔已退出（工人仍在自循环）。按任意键关闭窗口。
 pause >nul
