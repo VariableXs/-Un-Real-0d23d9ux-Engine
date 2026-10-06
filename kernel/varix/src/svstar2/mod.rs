@@ -56,6 +56,7 @@
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
+//! | [`ver03_arch`] | F3602 创作生态总架构（三层五段+开放格式P0+激励双单源+沙箱复述+收敛两段线） | VE 册 #VE-F3602 |
 //! | [`vep01_arch`] | F3001 P 域开工与动效库总架构（三组接口+十项映射+单源分工+三底线+第一红线） | VE 册 #VE-F3001 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
@@ -211,8 +212,12 @@ pub mod ver01_arch;
 pub mod ver01_checks;
 pub mod ver02_arch;
 pub mod ver02_checks;
+pub mod ver03_arch;
+pub mod ver03_checks;
 pub mod ves01_sdomain_arch;
 pub mod vet01_a11y_render_pipeline;
+pub mod veu01_arch;
+pub mod veu01_checks;
 pub mod vev01_arch;
 pub mod vev01_checks;
 pub mod vew01_sdk_arch;
@@ -235,7 +240,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 65] = [
+    let blocks: [(&'static str, CheckSet); 67] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -293,8 +298,10 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F3401", ver01_arch::run_ver01_checks()),
         ("VE-F3601", ver02_arch::run_ver02_checks()),
+        ("VE-F3602", ver03_arch::run_ver03_checks()),
         ("VE-F3801", ves01_sdomain_arch::run_f3801_checks()),
         ("VE-F3802", vet01_a11y_render_pipeline::run_f3802_checks()),
+        ("VE-F4201", veu01_checks::run_veu01_checks()),
         ("VE-F4401", vev01_checks::run_vev01_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
