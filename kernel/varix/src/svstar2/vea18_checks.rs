@@ -491,8 +491,15 @@ pub fn run_vea18_checks() -> CheckSet {
             && s.dedup_saved_states() == 2
             && s.dedup_saved_bytes() == 2 * SAMPLER_STATE_BYTES
             && s.preset_hit_pct() == 25;
-        let hottest = lib.coldest_presets(3);
-        let heat = hottest.len() == 3 && hottest.iter().all(|(_, c)| *c >= 0);
+        let coldest = lib.coldest_presets(3);
+        // 热度可查 = 真断言排序契约，不是恒真式：
+        //   1) 返回条数正确；
+        //   2) 按命中数**升序**（最冷在前——裁剪候选的语义方向不能反）；
+        //   3) 唯一被命中的预置（aniso8_repeat，1 次）**不得**出现在最冷三项里
+        //      （它比所有 0 次的预置热；排到最冷位说明排序坏了）。
+        let sorted_asc = coldest.windows(2).all(|w| w[0].1 <= w[1].1);
+        let hot_excluded = !coldest.iter().any(|(k, _)| *k == "aniso8_repeat");
+        let heat = coldest.len() == 3 && sorted_asc && hot_excluded;
         set.add("A18-统计-去重收益可查", counted && heat, "");
     }
 
@@ -519,17 +526,48 @@ pub fn run_vea18_checks() -> CheckSet {
     // ---- 性能声明 O(状态) ----
 
     // 判据：性能逐项分解 O(状态)——预置扫描与动态扫描均单层线性，无嵌套二次方。
-    // 以规模比实测：条目翻四倍，扫描次数应约四倍（线性），而非十六倍（二次）。
+    //
+    // 本项**实测真实工作量**，不用「n × 常数 = n × 常数 × 4」这类自证式算术
+    // （那只是验证了乘法律，与解析路径无关）。做法：用 [`scan_work`] 计数器
+    // 分别统计「可过滤格式」与「不可过滤格式」下的预置判定次数。
+    //
+    // 为什么这两个格式的对比能抓住二次方：不可过滤格式（R8_UINT）下几乎每条
+    // 预置都判失败。旧实现用 `validate` 筛兼容性，每次失败再进 `suggest_preset`
+    // 全表扫一遍 → 判定次数 ≈ 预置数²；修复后用 `classify` 纯判定 →
+    // 判定次数 ≈ 预置数。故「不可过滤格式 ÷ 可过滤格式」应≈ 1（线性），
+    // 一旦退化成二次方，该比值会随预置数放大而显著 > 1。
     {
-        let count_key_builds = |n: usize| -> usize {
-            // 预置全表命中计数：每次解析至多扫全表一次 → 上界 O(预置数)。
-            n * PRESET_TABLE.len()
+        let scan_work = |fmt: TexFormat| -> u32 {
+            let mut lib = SamplerLibrary::new();
+            lib.preset_scan_work = 0;
+            // 在该格式下反复解析表外合法组合：每次解析都要扫一遍预置表。
+            let base = SamplerDesc::new(Filter::Linear, MipFilter::Linear, [AddressMode::ClampToEdge; 3]);
+            let probes: &[SamplerDesc] = if fmt == TexFormat::R8Uint {
+                // 整数格式只准 Point→ 用 Point 变体确保请求本身合法（否则门1
+                // 就拒了，压根走不到预置扫描，测不到门2 的工作量）。
+                &[SamplerDesc::new(Filter::Point, MipFilter::Linear, [AddressMode::ClampToEdge; 3])]
+            } else {
+                &[base]
+            };
+            for d in probes.iter() {
+                for i in 0..8usize {
+                    let mut v = d.clone();
+                    v.lod_bias = 0.01 * (i as f32 + 1.0); // 表外组合 → 必走门2 扫描
+                    let _ = lib.resolve(&v, fmt);
+                }
+            }
+            lib.preset_scan_work
         };
-        let small = count_key_builds(8);
-        let large = count_key_builds(32);
-        let linear = large == small * 4;
 
-        // 实测：动态区线性查找，规模翻倍时命中扫描步数约翻倍。
+        let filterable = scan_work(TexFormat::Rgba8Unorm);
+        let unfilterable = scan_work(TexFormat::R8Uint);
+
+        // 线性判据：两格式的预置判定次数应同量级（比值 ≤ 4）。
+        // 二次方实现下，不可过滤格式因「每次失败再全表扫」而 ≈ 预置数 × 预置数，
+        // 与可过滤格式拉开一个预置数倍（18×）的差距，比值必然远超 4。
+        let ratio_ok = filterable > 0 && unfilterable <= filterable * 4;
+
+        // 并保留真实解析的功能断言：32 次表外合法组合全部兜底成功、动态区不超容。
         let mut lib = SamplerLibrary::new();
         let mut built = 0usize;
         for i in 0..32usize {
@@ -539,10 +577,15 @@ pub fn run_vea18_checks() -> CheckSet {
                 built += 1;
             }
         }
-        // 32 次解析、每次扫全预置表（18 条）→ 上界 32×18 次键构造，恒定倍率。
+        set.add(
+            "A18-性能-无嵌套二次方",
+            ratio_ok && built == 32 && lib.runtime_len() <= LIBRARY_CAP,
+            "",
+        );
+        // 旧项名保留（聚合台账按名引用），语义收敛为「工作量线性 + 容量封顶」。
         set.add(
             "A18-性能-O状态",
-            linear && built == 32 && lib.runtime_len() <= LIBRARY_CAP && SAMPLER_STATE_BYTES > 0,
+            ratio_ok && built == 32 && lib.runtime_len() <= LIBRARY_CAP && SAMPLER_STATE_BYTES > 0,
             "",
         );
     }

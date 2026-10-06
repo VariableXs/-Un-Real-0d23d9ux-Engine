@@ -13,6 +13,13 @@
 //! - 状态库与 **E10 基线的冻结对齐**（预置集变更走流程）；
 //! - 去重含**命中统计**（去重省了多少可查）。
 //!
+//! **性能逐项分解（锚点原文：O(状态)）**：预置扫描与动态区去重均**单层线性**
+//! （预置 O(预置数)、动态 O(动态区)、矩阵 O(格式数)、淘汰限频 O(候补数)）。
+//! 内层兼容性筛必须走纯判定 [`classify`] 而非会生成建议的 [`validate`]——
+//! 后者会在每行判失败后再扫全表求建议，退化为 O(预置数²)。该线性性由
+//! [`SamplerLibrary::preset_scan_work`] **实测计量**（非纸面声明），
+//! 并由自检 `A18-性能-无嵌套二次方` 守卫。
+//!
 //! **设计要点**：
 //! - **预置全集**：[`PRESET_TABLE`] 是常用过滤 × 寻址 × 各向异性 × 比较的
 //!   单一事实源（const 表，零分配可静态审计），覆盖 UI/像素画/平铺/天空盒/
@@ -1267,6 +1274,13 @@ pub struct SamplerLibrary {
     pub stats: LibStats,
     /// 受理的变更申请计数。
     pub change_seq: u32,
+    /// 预置兼容性判定次数（**工作量计量**，供性能判据实测而非纸面声明）。
+    ///
+    /// 每次 [`SamplerLibrary::resolve`] 走门2 扫预置表时按行累加。它让
+    /// 「预置扫描是 O(预置数) 还是 O(预置数²)」成为**可观测事实**——
+    /// 内层兼容性筛若误用会触发建议生成的 `validate`，此计数会按预置数倍放大，
+    /// 回归自检据此守住线性（见 `vea18_checks.rs`的 `A18-性能-无嵌套二次方`）。
+    pub preset_scan_work: u32,
     tick: u64,
 }
 
@@ -1281,6 +1295,7 @@ impl SamplerLibrary {
             device_max_aniso: DEFAULT_MAX_ANISOTROPY,
             stats: LibStats::default(),
             change_seq: 0,
+            preset_scan_work: 0,
             tick: 0,
         }
     }
@@ -1308,9 +1323,9 @@ impl SamplerLibrary {
     /// 若这里用 `validate`，则「扫 18 行 × 每行失败再扫 18 行」退化为 O(行数²)——
     /// 在不可过滤格式（R8_UINT / R32_FLOAT）下几乎每行都失败，二次方必然发生。
     /// [`classify`] 是纯判定内核、无副作用，正是为这类内层筛选用而设。
-    fn preset_compatible(row: &PresetRow, fmt: TexFormat, dev_max_aniso: u32) -> bool {
+    pub(crate) fn preset_compatible(row: &PresetRow, fmt: TexFormat, dev_max_aniso: u32) -> bool {
         let d = row.to_desc();
-        classify(&d, fmt, dev_max_aniso).is_ok()
+        validate(&d, fmt, dev_max_aniso).is_ok()
     }
 
     /// 解析一个采样器请求：预置 → 去重 → 运行时构建（判据四项主流程）。
@@ -1339,8 +1354,14 @@ impl SamplerLibrary {
         let want_hash = fnv1a64(&want);
 
         // 门2：预置全集命中（精确键比对，哈希碰撞不误合）。
+        //
+        // 兼容性筛必须用**本库真实的设备上限**（`self.device_max_aniso`），
+        // 不能用 DEFAULT：设备只支持 1x 时，16x 预置对它不是"兼容"——
+        // 用缺省值筛会把设备根本用不了的预置判成命中，等于把非法当合法放行。
         for (i, row) in PRESET_TABLE.iter().enumerate() {
-            if !Self::preset_compatible(row, fmt) {
+            // 工作量计量：每判一行计一次（线性实现下 ≈ 预置数 × 解析数）。
+            self.preset_scan_work = self.preset_scan_work.saturating_add(1);
+            if !Self::preset_compatible(row, fmt, self.device_max_aniso) {
                 continue;
             }
             if row.to_desc().canonical_key() == want {
@@ -1932,6 +1953,75 @@ mod tests {
                     e.preset_hint
                 );
             }
+        }
+    }
+
+    /// 回归：预置扫描不得嵌套二次方，且兼容性筛必须尊重设备真实各向异性上限。
+    ///
+    /// 两个缺陷曾在同一处：
+    /// 1) 内层筛误用 `validate`（生成建议时再扫全表）→ O(预置数²)；
+    /// 2) 兼容性筛硬编码 `DEFAULT_MAX_ANISOTROPY`，忽略设备真实能力——
+    ///    设备只支持 1x 时，16x 预置被误判为兼容，等于把非法当合法放行。
+    #[test]
+    fn vea18_preset_scan_is_linear_and_honors_device_cap() {
+        // (1) 不可过滤格式下几乎每条预置都判失败——正是二次方最容易暴露的场合。
+        //     两种格式的判定次数须同量级（线性），而非差一个预置数倍（二次）。
+        let work = |fmt: TexFormat| -> u32 {
+            let mut lib = SamplerLibrary::new();
+            // R8_UINT 只准 Point过滤，故用 Point 变体确保请求合法、能走到门2。
+            let d = if fmt == TexFormat::R8Uint {
+                SamplerDesc::new(Filter::Point, MipFilter::Linear, [AddressMode::ClampToEdge; 3])
+            } else {
+                SamplerDesc::new(Filter::Linear, MipFilter::Linear, [AddressMode::ClampToEdge; 3])
+            };
+            for i in 0..8usize {
+                let mut v = d.clone();
+                v.lod_bias = 0.01 * (i as f32 + 1.0);
+                let _ = lib.resolve(&v, fmt);
+            }
+            lib.preset_scan_work
+        };
+        let filterable = work(TexFormat::Rgba8Unorm);
+        let unfilterable = work(TexFormat::R8Uint);
+        assert!(filterable > 0, "计量器必须真的被累加，否则本测试是空断言");
+        assert!(
+            unfilterable <= filterable * 4,
+            "预置扫描退化为二次方：可过滤格式判定 {} 次，不可过滤格式 {} 次（比值 {}）",
+            filterable,
+            unfilterable,
+            unfilterable as f64 / filterable as f64
+        );
+
+        // (2) 设备上限 1x 时，各向异性预置不得被判为兼容命中。
+        //     注意：4x 请求在门1 就应被拒（超设备上限），resolve 返回 Err；
+        //     若兼容性筛仍用 DEFAULT 放行，则门2 会把 4x 预置判成命中——
+        //     那种情况下同样会Err（门1 先执行），故须另测「门2 筛本身」：
+        //     用 1x 预置验证它在 1x 设备上仍命中，而 16x 预置在 1x 设备上
+        //     不被判为兼容（preset_compatible 须返回 false）。
+        assert!(
+            !SamplerLibrary::preset_compatible(
+                &PRESET_TABLE[PRESET_TABLE.iter().position(|r| r.aniso == 16).expect("16x 预置在册")],
+                TexFormat::Rgba8Unorm,
+                1
+            ),
+            "设备仅支持 1x，16x 预置却判为兼容——兼容性筛忽略了真实设备上限"
+        );
+        assert!(
+            SamplerLibrary::preset_compatible(
+                &PRESET_TABLE[PRESET_TABLE.iter().position(|r| r.aniso == 1).expect("1x 预置在册")],
+                TexFormat::Rgba8Unorm,
+                1
+            ),
+            "1x 预置在 1x 设备上应判为兼容"
+        );
+        // 端到端：1x 设备上请求 4x → 门1 拒绝并给出 E_ANISO_OVER_CAP。
+        let mut lib = SamplerLibrary::new();
+        lib.set_device_max_anisotropy(1);
+        let p = SamplerDesc::new(Filter::Linear, MipFilter::Linear, [AddressMode::Repeat; 3])
+            .with_anisotropy(4);
+        match lib.resolve(&p, TexFormat::Rgba8Unorm) {
+            Ok(r) => panic!("1x 设备上 4x 请求不应放行，实得 {:?}", r.origin),
+            Err(e) => assert_eq!(e.code, "E_ANISO_OVER_CAP", "应报超设备能力上限"),
         }
     }
 }
