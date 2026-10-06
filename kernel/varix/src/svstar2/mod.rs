@@ -53,6 +53,7 @@
 //! | [`ved14_traverse`] | F0614 图层渲染遍历器 | VE 册 #VE-F0614 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
+//! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
 //! | [`vep01_arch`] | F3001 P 域开工与动效库总架构（三组接口+十项映射+单源分工+三底线+第一红线） | VE 册 #VE-F3001 |
@@ -183,6 +184,8 @@ pub mod vem02_checks;
 pub mod vem02_track;
 pub mod vem03_checks;
 pub mod vem03_interp;
+pub mod vem04_batch;
+pub mod vem04_checks;
 pub mod vel03_checks;
 pub mod vel03_emitter;
 pub mod vel04_checks;
@@ -205,6 +208,9 @@ pub mod vev01_arch;
 pub mod vev01_checks;
 pub mod vew01_sdk_arch;
 pub mod vew02_manifest;
+pub mod vew03_loader;
+pub mod vew04_sandbox;
+pub mod vew05_trust;
 
 pub use vea01_index::{ProbeReport, effective_renderer, run_a01};
 
@@ -220,7 +226,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 57] = [
+    let blocks: [(&'static str, CheckSet); 61] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -261,6 +267,9 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0613", ved13_dirty::run_ved13_checks()),
         ("VE-F4601", vew01_sdk_arch::run_vew01_checks()),
         ("VE-F4602", vew02_manifest::run_vew02_checks()),
+        ("VE-F4603", vew03_loader::run_vew03_checks()),
+        ("VE-F4604", vew04_sandbox::run_vew04_checks()),
+        ("VE-F4605", vew05_trust::run_vew05_checks()),
         ("VE-F0614", ved14_traverse::run_ved14_checks()),
         ("VE-F0801", vee01_checks::run_vee01_checks()),
         ("VE-F0802", vee02_checks::run_vee02_checks()),
@@ -268,6 +277,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2004", vek04_checks::run_vek04_checks()),
         ("VE-F2402", vem02_checks::run_vem02_checks()),
         ("VE-F2403", vem03_checks::run_vem03_checks()),
+        ("VE-F2404", vem04_checks::run_vem04_checks()),
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F3401", ver01_arch::run_ver01_checks()),
