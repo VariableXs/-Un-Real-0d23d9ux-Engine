@@ -132,12 +132,8 @@ JS_REAL_CHARS = r"""(() => {
   return sum || t.length;
 })()"""
 
-JS_LAST_USER_MSG = r"""(() => {
-  const ms = document.querySelectorAll(
-    '[data-message-author-role="user"],.cr-user-message,[class*="user-message"]');
-  if (!ms.length) return '';
-  return (ms[ms.length - 1].innerText || '').trim().slice(0, 80);
-})()"""
+# JS_LAST_USER_MSG 已删除（D1：[data-message-author-role] 等选择器在本版
+# DOM 恒 0 个，该判据恒返回空串；消息入流证据改用 body 全文查唯一 tag）。
 
 
 def log(msg: str):
@@ -234,34 +230,39 @@ def wait_idle(timeout_s: int = 90) -> bool:
 
 
 def send_text(text: str, tag: str) -> tuple[bool, str]:
-    """填入 + 点发送 + 三重证据。调用方保证目标会话已空闲。
+    """填入 + 点发送 + 受理证据。调用方保证目标会话已空闲。
 
-    证据（任一成立即算发出，2026-10-06 实测重写）：
-      E1 强：本次发送的唯一 tag 出现在消息列表文本里（消息真入流）
-      E2 强：侧栏会话项数增加（首条场景——新会话被创建）
-      E3 弱：编辑器真实字数归零 且 发送键不再是 stop 态
-    旧实现的两条证据（[data-message-author-role] 入流 / chars==0 清空）
-    在本版 DOM 上恒不成立，已废弃。
+    证据（任一成立即算后端受理，2026-10-06 D11 实弹修订）：
+      E1 最强：发送键进入「停止」态 = AI 已开始生成 = 必然受理
+      E2 强：唯一 tag 出现在页面文本里（消息真入流）
+      E3 弱：编辑器真实字数归零 且 发送键非 stop
+    废弃证据：会话数+1（实测侧栏渲染延迟 30s+，新会话已建但列表不刷新）；
+              [data-message-author-role] 入流（本版 DOM 恒 0 个）。
+    填充：fill_cdp（CDP Input.insertText，trusted 输入管线）。
+    旧 execCommand 版只写 DOM 不进 Slate 状态——「编辑器有字但发送键
+    黑色发不出」的根因（D11），点击被 React 空内容逻辑静默吞掉。
     """
-    n = st.call_js(st.fill_js(text))
-    if not isinstance(n, int) or n < 10:
-        return False, f"填入失败（编辑器字数={n}）"
+    ok, ev = st.fill_cdp(text)
+    if not ok:
+        return False, f"填充失败：{ev}"
     time.sleep(0.6)
-    conv_before = len(snapshot_conv_ids())
     r = st.call_js(st.click_send_js())
     if not (isinstance(r, dict) and r.get("ok")):
         return False, f"发送键点击失败：{r}"
-    for _ in range(30):  # ≤15s
-        time.sleep(0.5)
-        if tag and tag in msg_tail():
-            return True, f"E1 消息入流（tag={tag}）"
-        if len(snapshot_conv_ids()) > conv_before:
-            return True, "E2 侧栏新增会话项（首条已落地）"
+    tag_js = json.dumps(tag)
+    for _ in range(30):  # ≤30s
+        time.sleep(1.0)
+        s = st.probe_state() or {}
+        if s.get("sending"):
+            return True, "E1 发送键进停止态（AI 生成中=已受理）"
+        if tag and st.call_js(
+                f"(document.body.innerText||'').includes({tag_js})"):
+            return True, f"E2 消息入流（tag={tag}）"
         if real_chars() == 0:
             idle_now, _ = idle3()
             if idle_now:
                 return True, "E3 编辑器清空且发送键非 stop（弱证据）"
-    return False, "15s 内三重证据均未成立（多为后端拒绝，如 429 限流）"
+    return False, "30s 内无受理证据（后端拒绝或网络异常）"
 
 
 def switch_conv(conv_id: str, settle_s: float = 2.0) -> bool:

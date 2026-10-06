@@ -20,6 +20,7 @@ WorkBuddy 生成中时 `sending=true`，发送键的 class 是
 
 import argparse
 import json
+import os
 import random
 import sys
 import time
@@ -228,16 +229,14 @@ def main() -> int:
     text = f"{tag} 发送链路自检探针"
     print(f"探针: {text!r}")
 
-    # 填入
-    fill = fill_js(text)
-    r = call_js(fill)
-    time.sleep(0.6)
-    ch = probe_state()
-    print(f"填入后: {ch['chars']} 字符")
-
-    if ch["chars"] < len(text):
-        print(f"[ERR] 填入失败：期望>={len(text)}，实际 {ch['chars']}")
+    # 填入（CDP Input.insertText——execCommand 版不进 Slate 状态，D11）
+    ok_fill, ev = fill_cdp(text)
+    print(f"填入: {ev}")
+    if not ok_fill:
+        restore(before)
+        print("[ERR] 填入失败，已还原输入框")
         return 4
+    ch = probe_state()
 
     if not a.yes:
         # 干跑：还原后退出
@@ -249,14 +248,13 @@ def main() -> int:
     rst = call_js(click_send_js())
     print(f"  点击返回: {rst}")
 
-    # 等入流
+    # 等入流（body 全文查 tag——[data-message-author-role] 在本版 DOM 恒 0 个）
     ok = False
+    tag_js = json.dumps(tag)
     for i in range(20):
         time.sleep(0.5)
         inb = call_js(
-            f"""(()=>{{const ms=Array.from(document.querySelectorAll(
-                '[data-message-author-role=\"user\"],.cr-user-message,[class*=\"user-message\"]'));
-                return ms.some(m=>(m.innerText||'').includes({json.dumps(tag)}));}})()"""
+            f"(document.body.innerText||'').includes({tag_js})"
         )
         ch2 = probe_state() or {}
         print(f"  [{i+1}] 入流={inb} 编辑器={ch2.get('chars')} 忙={ch2.get('sending')}")
@@ -284,19 +282,126 @@ def main() -> int:
     return 0 if ok else 5
 
 
-def fill_js(text: str) -> str:
-    t = json.dumps(text)
-    return f"""(() => {{
-      const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
-      if (!e) return -1;
-      e.focus();
-      const sel = window.getSelection();
-      const r = document.createRange();
-      r.selectNodeContents(e);
-      sel.removeAllRanges(); sel.addRange(r);
-      document.execCommand('insertText', false, {t});
-      return (e.innerText||'').trim().length;
-    }})()"""
+JS_FOCUS_EDIT = r"""(() => {
+  const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
+  if (!e) return false;
+  e.focus();
+  return !!(document.activeElement === e || e.contains(document.activeElement));
+})()"""
+
+
+def call_cdp_method(method: str, params: dict, timeout: float = 20.0):
+    """在 page target 的同一条 WS 通道上发任意 CDP 域方法。
+
+    与 call_js 的区别：call_js 执行页面 JS（Runtime.evaluate）；
+    本函数调用 CDP 域方法（如 Input.insertText——模拟真实 IME 输入，
+    走浏览器可信输入管线，Slate/React 一定注册）。
+    """
+    import struct as _struct
+    import socket as _socket
+    import base64 as _base64
+    import re as _re
+
+    with urllib.request.urlopen(f"{URL}/json/list", timeout=5) as r:
+        lst = json.loads(r.read().decode("utf-8"))
+    pages = [t for t in lst if t.get("type") == "page"
+             and not t.get("url", "").startswith("devtools://")]
+    if not pages:
+        raise RuntimeError("no page target")
+    pages.sort(key=lambda t: len(t.get("url", "")))
+    m = _re.match(r"ws://([^:/]+):(\d+)(/.*)", pages[0]["webSocketDebuggerUrl"])
+    host, port, path = m.group(1), int(m.group(2)), m.group(3)
+    key = _base64.b64encode(os.urandom(16)).decode()
+    s = _socket.create_connection((host, port), timeout=timeout)
+    req = (f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\n"
+           "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+           f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n")
+    s.sendall(req.encode())
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        d = s.recv(4096)
+        if not d:
+            raise RuntimeError("握手失败")
+        buf += d
+
+    def send_text(payload: bytes):
+        hdr = bytearray([0x81])
+        n = len(payload)
+        if n < 126:
+            hdr.append(0x80 | n)
+        elif n < 65536:
+            hdr.append(0x80 | 126)
+            hdr += _struct.pack(">H", n)
+        else:
+            hdr.append(0x80 | 127)
+            hdr += _struct.pack(">Q", n)
+        mask = os.urandom(4)
+        hdr += mask
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        s.sendall(bytes(hdr) + masked)
+
+    def recv_text():
+        def rd(n):
+            out = b""
+            while len(out) < n:
+                d = s.recv(n - len(out))
+                if not d:
+                    raise RuntimeError("连接关闭")
+                out += d
+            return out
+        b0, b1 = rd(2)
+        op = b0 & 0x0F
+        ln = b1 & 0x7F
+        if ln == 126:
+            ln = _struct.unpack(">H", rd(2))[0]
+        elif ln == 127:
+            ln = _struct.unpack(">Q", rd(8))[0]
+        data = rd(ln) if ln else b""
+        return op, data
+
+    msg = json.dumps({"id": 1, "method": method, "params": params})
+    send_text(msg.encode())
+    deadline = time.time() + timeout
+    result = None
+    while time.time() < deadline:
+        op, data = recv_text()
+        if op == 1:
+            try:
+                obj = json.loads(data.decode("utf-8", "replace"))
+            except Exception:
+                continue
+            if obj.get("id") == 1:
+                result = obj
+                break
+    s.close()
+    if result is None:
+        raise RuntimeError(f"{method} 无响应")
+    if "error" in result:
+        raise RuntimeError(f"{method} 错误: {result['error']}")
+    return result.get("result")
+
+
+def fill_cdp(text: str) -> tuple:
+    """CDP Input.insertText 填充编辑器。返回 (ok, 证据描述)。
+
+    ★ 这是唯一可用的填充方法（D11，2026-10-06 实测定案）★
+    旧 execCommand('insertText') 版：文字只进 DOM 不进 Slate 内部状态，
+    React 认为编辑器为空 → 发送键呈「黑色」视觉、点击被空内容逻辑吞掉
+    ——即用户看到的「有字但发送不了」。Input.insertText 是浏览器可信
+    输入事件，端到端实弹已验证：消息入流 + AI 开始生成 + 新会话创建。
+    """
+    if not call_js(JS_FOCUS_EDIT):
+        return False, "编辑器无法聚焦"
+    try:
+        call_cdp_method("Input.insertText", {"text": text})
+    except Exception as e:
+        return False, f"Input.insertText 失败：{e}"
+    time.sleep(0.4)
+    s = probe_state() or {}
+    n = s.get("charsReal", s.get("chars", -1))
+    if not isinstance(n, int) or n < 10:
+        return False, f"填充后真实字数={n}（Slate 未注册）"
+    return True, f"已填入（真实字数={n}）"
 
 
 def click_send_js() -> str:
@@ -308,10 +413,45 @@ def click_send_js() -> str:
     })()"""
 
 
+def clear_editor_cdp() -> bool:
+    """CDP trusted 按键清空编辑器（Ctrl+A + Backspace）。
+
+    实测（2026-10-06）：对 Slate 已注册的内容，execCommand delete 清不干净；
+    trusted 按键必清。返回是否清空成功（charsReal==0）。
+    """
+    if not call_js(JS_FOCUS_EDIT):
+        return False
+    try:
+        call_cdp_method("Input.dispatchKeyEvent", {
+            "type": "rawKeyDown", "key": "a", "code": "KeyA",
+            "windowsVirtualKeyCode": 65, "modifiers": 2})
+        call_cdp_method("Input.dispatchKeyEvent", {
+            "type": "keyUp", "key": "a", "code": "KeyA",
+            "windowsVirtualKeyCode": 65, "modifiers": 2})
+        time.sleep(0.2)
+        call_cdp_method("Input.dispatchKeyEvent", {
+            "type": "rawKeyDown", "key": "Backspace", "code": "Backspace",
+            "windowsVirtualKeyCode": 8})
+        call_cdp_method("Input.dispatchKeyEvent", {
+            "type": "keyUp", "key": "Backspace", "code": "Backspace",
+            "windowsVirtualKeyCode": 8})
+        time.sleep(0.4)
+    except Exception:
+        return False
+    s = probe_state() or {}
+    return s.get("charsReal", -1) == 0
+
+
 def restore(prev: str) -> None:
-    if not prev:
+    """清空编辑器到 Slate 空状态（占位语自然显示，无需真的填回）。
+
+    旧版用 execCommand insertText 把 prev「填回」——那正是 D11 孤儿文字
+    的制造机（DOM 有字、Slate 空 → 发送键黑）。prev 参数保留仅为兼容。
+    """
+    if clear_editor_cdp():
         return
-    call_js(f"""(() => {{
+    # 兜底：execCommand DOM 清理（对 DOM 孤儿文字有效）
+    call_js("""(() => {
       const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
       if (!e) return 0;
       e.focus();
@@ -319,9 +459,9 @@ def restore(prev: str) -> None:
       const r = document.createRange();
       r.selectNodeContents(e);
       sel.removeAllRanges(); sel.addRange(r);
-      document.execCommand('insertText', false, {json.dumps(prev)});
+      document.execCommand('delete', false, null);
       return (e.innerText||'').trim().length;
-    }})()""")
+    })()""")
 
 
 if __name__ == "__main__":
