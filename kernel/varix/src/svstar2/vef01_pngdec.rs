@@ -761,7 +761,9 @@ pub fn parse_container(file: &[u8]) -> Result<Parsed, PngFault> {
         if got != want {
             match class {
                 ChunkClass::Critical => {
-                    stats.crc_rejected += 1;
+                    // 拒绝路径：计数随故障五元组一起走（stats 随容器返回，
+                    // 但本路径直接 Err 不再返回容器，故计数记在 detail_b 之外的
+                    // 语义位——调用方由 kind=CrcCritical 即可复原该事实）
                     return Err(
                         PngFault::new(FaultKind::CrcCritical).at_chunk(fourcc).with(got as u64, want as u64)
                     );

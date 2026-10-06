@@ -23,6 +23,7 @@ use crate::checks::CheckSet;
 use crate::perfstar::imgsimd;
 use crate::perfstar::mech_inflate;
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -1086,7 +1087,6 @@ pub fn run_vef01_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     /// VE-F1001 自检全绿。
     #[test]
