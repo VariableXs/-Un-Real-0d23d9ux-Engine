@@ -12,6 +12,23 @@
   - 领到任务后：`BUSY <任务id>`
   - 无单可领待命时：`READY`
 
+## 0.5 必载技能（塔注入，动手前先执行）
+
+- 必载技能清单：{SKILLS_LINE}
+- 用 Skill 工具按名逐一加载上述技能（消息里的 @skill: 提及与清单等价，
+  哪种方式生效就用哪种；全部加载完才允许开工）。
+
+## 0.6 必读文档（消息附带 resource_link + 绝对路径双通道，二者等价）
+
+1. `D:/2/14/-Un-Real-0d23d9ux-Engine-main/VarixTaskOps/VTaskBoard/dist/VTaskBoard.exe`（任务板本体）
+2. `D:/2/14/-Un-Real-0d23d9ux-Engine-main/docs/Varix/VE-STAR-II/CGPU Varix STAR II · 总纲与施工书.md`
+3. `D:/2/14/-Un-Real-0d23d9ux-Engine-main/docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md`
+4. `D:/2/14/-Un-Real-0d23d9ux-Engine-main/docs/Varix/CoRun Varix STAR II · Unxreal/CoRun Varix STAR II · Unxreal.md`
+
+- 施工前先读任务对应的总纲章节；任务单的「规格/书路径」与总纲冲突时，
+  以任务单原文为准，同时把冲突记进完成报告。
+- 消息里若看到同名 resource_link 附件，与上述路径是同一批文件。
+
 ## 1. 领单（每轮循环第一件事）
 
 ```bash

@@ -442,6 +442,138 @@ def clear_editor_cdp() -> bool:
     return s.get("charsReal", -1) == 0
 
 
+def cdp_batch(calls: list) -> list:
+    """同一条 WS 连接上顺序执行多个 CDP 方法，返回结果列表。
+
+    为什么必须 batch：call_cdp_method 每次都开新连接，而 DOM 域的 nodeId
+    绑定在「会话首次 DOM.getDocument」上——跨连接引用 nodeId 必报
+    "Could not find node with given id"（2026-10-06 文件挂载探测实测）。
+    DOM.setFileInputFiles 三连（getDocument→querySelector→setFileInputFiles）
+    必须在同一条连接里完成。
+    calls: [(method, params), ...]；params 可传 dict，或传 callable(prev_results)
+    → dict（用前序结果动态构造参数，例如拿 getDocument 的 root nodeId）。
+    """
+    import struct as _struct
+    import socket as _socket
+    import base64 as _base64
+
+    with urllib.request.urlopen(f"{URL}/json/list", timeout=5) as r:
+        lst = json.loads(r.read().decode("utf-8"))
+    pages = [t for t in lst if t.get("type") == "page"
+             and not t.get("url", "").startswith("devtools://")]
+    if not pages:
+        raise RuntimeError("no page target")
+    pages.sort(key=lambda t: len(t.get("url", "")))
+    m = re.match(r"ws://([^:/]+):(\d+)(/.*)", pages[0]["webSocketDebuggerUrl"])
+    host, port, path = m.group(1), int(m.group(2)), m.group(3)
+    key = _base64.b64encode(os.urandom(16)).decode()
+    s = _socket.create_connection((host, port), timeout=30)
+    req = (f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\n"
+           "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+           f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n")
+    s.sendall(req.encode())
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        d = s.recv(4096)
+        if not d:
+            raise RuntimeError("握手失败")
+        buf += d
+
+    def send_text(payload: bytes):
+        hdr = bytearray([0x81])
+        n = len(payload)
+        if n < 126:
+            hdr.append(0x80 | n)
+        elif n < 65536:
+            hdr.append(0x80 | 126)
+            hdr += _struct.pack(">H", n)
+        else:
+            hdr.append(0x80 | 127)
+            hdr += _struct.pack(">Q", n)
+        mask = os.urandom(4)
+        hdr += mask
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        s.sendall(bytes(hdr) + masked)
+
+    def recv_text():
+        def rd(n):
+            out = b""
+            while len(out) < n:
+                d = s.recv(n - len(out))
+                if not d:
+                    raise RuntimeError("连接关闭")
+                out += d
+            return out
+        b0, b1 = rd(2)
+        op = b0 & 0x0F
+        ln = b1 & 0x7F
+        if ln == 126:
+            ln = _struct.unpack(">H", rd(2))[0]
+        elif ln == 127:
+            ln = _struct.unpack(">Q", rd(8))[0]
+        data = rd(ln) if ln else b""
+        return op, data
+
+    results = []
+    resolved = []         # 前序结果（供 callable 参数用）
+    pending = {}          # id -> index into results
+    next_id = 1
+    # ★ 顺序请求-响应：每发一条等一条，callable 参数才能拿到前序结果
+    # （旧版一口气全发，callable 解析时前序结果恒 None——2026-10-06 实测缺陷）
+    for i, (method, raw_params) in enumerate(calls):
+        params = raw_params(resolved) if callable(raw_params) else raw_params
+        msg = json.dumps({"id": next_id, "method": method, "params": params})
+        send_text(msg.encode())
+        pending[next_id] = i
+        results.append(None)
+        resolved.append(None)
+        got = False
+        deadline = time.time() + 20
+        while not got:
+            if time.time() > deadline:
+                s.close()
+                raise RuntimeError(f"{method} 无响应")
+            op, data = recv_text()
+            if op != 1:
+                continue
+            try:
+                obj = json.loads(data.decode("utf-8", "replace"))
+            except Exception:
+                continue
+            if obj.get("id") == next_id:
+                got = True
+                if "error" in obj:
+                    s.close()
+                    raise RuntimeError(f"{method} 错误: {obj['error']}")
+                results[i] = obj.get("result")
+                resolved[i] = results[i]
+                next_id += 1
+    s.close()
+    return results
+
+
+def set_file_input(paths: list) -> int:
+    """把本地文件注入页面隐藏 <input type=file>（并触发 change）。
+
+    getDocument → querySelector → setFileInputFiles 必须同一条连接
+    （nodeId 绑定会话，跨连接必报 "Could not find node with given id"）。
+    返回注入的节点 nodeId。调用方需自行验证附件 chip 是否真的出现在
+    composer 里（注入成功 ≠ 应用受理）。
+    """
+    files = [str(p) for p in paths]
+    res = cdp_batch([
+        # depth=-1 全树绑定：depth=1 时深层节点未入 DOM agent 缓存，
+        # setFileInputFiles 会报 "Could not find node with given id"（实测）
+        ("DOM.getDocument", {"depth": -1}),
+        ("DOM.querySelector", lambda prev: {
+            "nodeId": prev[0]["root"]["nodeId"],
+            "selector": 'input[type="file"]'}),
+        ("DOM.setFileInputFiles", lambda prev: {
+            "files": files, "nodeId": prev[1]["nodeId"]}),
+    ])
+    return res[1].get("nodeId", 0)
+
+
 def restore(prev: str) -> None:
     """清空编辑器到 Slate 空状态（占位语自然显示，无需真的填回）。
 

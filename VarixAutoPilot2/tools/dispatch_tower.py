@@ -24,6 +24,9 @@
   python tools/dispatch_tower.py --start 18 --watch      # 正式发车：建 18 会话+派首批+守护补位
   python tools/dispatch_tower.py --watch                 # 只守护（会话已建好时用）
   可选：--workers N --interval S --stale-min M --spec 路径 --skills 技能1,技能2 --out 目录
+  引导三件套（默认开，2026-10-06 上线）：新会话自动选工作空间、拖拽挂 4 份文件、
+  技能以 @skill: 内联；--no-bootstrap 关闭；--workspace/--files 可自定义；
+  自检：python tools/bootstrap_selftest.py
 """
 
 import argparse
@@ -39,6 +42,12 @@ _ROOT = Path(__file__).resolve().parent.parent
 _SPEC = importlib.util.spec_from_file_location("st", str(Path(__file__).parent / "send_selftest.py"))
 st = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(st)
+_BSPEC = importlib.util.spec_from_file_location("vb", str(Path(__file__).parent / "bootstrap.py"))
+vb = importlib.util.module_from_spec(_BSPEC)
+_BSPEC.loader.exec_module(vb)
+
+# 引导三件套配置（--no-bootstrap 可整体关闭；main() 里按 CLI 参数重填）
+BOOT = {"on": True, "ws": vb.WS_DEFAULT, "files": list(vb.FILES_DEFAULT)}
 
 DISPATCH = _ROOT / "dispatch"
 WORKERS_DIR = DISPATCH / "workers"
@@ -309,11 +318,13 @@ def write_conv(wid: str, conv_id: str):
 
 def render_first_prompt(wid: str, wp: str, spec: str, skills: str, outdir: str) -> str:
     tpl = PROMPT_TPL.read_text(encoding="utf-8")
+    skills_line = " ".join(
+        f"@skill:{s.strip()}" for s in skills.split(",") if s.strip())
     out = (tpl
            .replace("{WORKER_ID}", wid)
            .replace("{WP_ID}", wp)
            .replace("{SPEC_MD_PATH}", spec)
-           .replace("{SKILLS_LIST}", skills)
+           .replace("{SKILLS_LIST}", skills_line)
            .replace("{OUTPUT_DIR}", outdir))
     # 文件总线协议（开工/收工写 state）注入到提示词末尾
     bus = f"""
@@ -358,6 +369,12 @@ def new_conversation(first_prompt: str, known_ids: set,
         return "", "视图仍在原会话上，放弃填充（防污染）"
     if not wait_idle(30):
         return "", "新建出来的会话 30s 内未进入可发送态"
+    # ── 引导三件套（工作空间 + 文件附件；技能走提示词内联 @skill:）──
+    if BOOT["on"]:
+        ok_b, ev_b = vb.run(st, BOOT["ws"], BOOT["files"])
+        if not ok_b:
+            vb.cleanup_reset(st, JS_CLICK_NEW)
+            return "", f"引导失败（已重置空白）：{ev_b}"
     ok, ev = send_text(first_prompt, tag)
     if not ok:
         return "", f"首条发送失败：{ev}"
@@ -411,9 +428,27 @@ def main() -> int:
     ap.add_argument("--interval", type=int, default=20, help="守护轮询间隔秒")
     ap.add_argument("--stale-min", type=int, default=120, help="BUSY 超时分钟数（提醒线）")
     ap.add_argument("--spec", default="docs/kernel-spec.md", help="规格 MD 路径")
-    ap.add_argument("--skills", default="（由发车人填写，逗号分隔）")
+    ap.add_argument("--skills",
+                    default=",".join(vb.SKILLS_DEFAULT),
+                    help="逗号分隔技能清单（渲染为 @skill: 提及）")
+    ap.add_argument("--no-bootstrap", action="store_true",
+                    help="关闭引导三件套（不选工作空间/不挂文件）")
+    ap.add_argument("--workspace", default=vb.WS_DEFAULT,
+                    help="新会话工作空间名（默认 -Un-Real-0d23d9ux-Engine-main）")
+    ap.add_argument("--files", default="default",
+                    help='逗号分隔的附件绝对路径；"default"=内置4文件；""=不挂文件')
     ap.add_argument("--out", default="kernel-wp", help="工人产物根目录")
     a = ap.parse_args()
+
+    if a.no_bootstrap:
+        BOOT["on"] = False
+    BOOT["ws"] = a.workspace
+    if a.files == "default":
+        BOOT["files"] = list(vb.FILES_DEFAULT)
+    elif a.files.strip() == "":
+        BOOT["files"] = []
+    else:
+        BOOT["files"] = [s.strip() for s in a.files.split(",") if s.strip()]
 
     WORKERS_DIR.mkdir(parents=True, exist_ok=True)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)

@@ -37,6 +37,10 @@
   python tools/claim_tower.py --start 18 --watch     # ★ 正式发车：建 18 对话+守护到收口
   python tools/claim_tower.py --watch                # 只守护（会话已建好/塔重启接管）
   可选：--workers N --interval S --nudge-min M --board-port P --board-exe 路径
+  引导三件套（默认开，2026-10-06 上线）：新会话自动选工作空间
+  -Un-Real-0d23d9ux-Engine-main、拖拽挂 4 份文件（VTaskBoard.exe + 3 份总纲 MD）、
+  技能以 @skill: 内联进首条提示词；--no-bootstrap 关闭，
+  --workspace/--files/--skills 可自定义；自检：python tools/bootstrap_selftest.py
 """
 
 import argparse
@@ -53,6 +57,12 @@ _ROOT = Path(__file__).resolve().parent.parent
 _SPEC = importlib.util.spec_from_file_location("st", str(Path(__file__).parent / "send_selftest.py"))
 st = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(st)
+_BSPEC = importlib.util.spec_from_file_location("vb", str(Path(__file__).parent / "bootstrap.py"))
+vb = importlib.util.module_from_spec(_BSPEC)
+_BSPEC.loader.exec_module(vb)
+
+# 引导三件套配置（--no-bootstrap 可整体关闭；main() 里按 CLI 参数重填）
+BOOT = {"on": True, "ws": vb.WS_DEFAULT, "files": list(vb.FILES_DEFAULT)}
 
 DISPATCH = _ROOT / "dispatch"
 WORKERS_DIR = DISPATCH / "workers"
@@ -62,6 +72,7 @@ TOWER_LOG = DISPATCH / "claim_tower.log"
 
 BOARD_PORT = 8767
 BOARD_EXE = Path(r"D:\2\14\-Un-Real-0d23d9ux-Engine-main\VarixTaskOps\VTaskBoard\dist\VTaskBoard.exe")
+SKILLS_ARG = ",".join(vb.SKILLS_DEFAULT)
 
 
 def log(msg: str):
@@ -360,7 +371,10 @@ def state_mtime(wid: str) -> float:
 def render_protocol(wid: str) -> str:
     """首条提示词：协议全文内联（新对话零上下文也能开工）+ VARIX 标记。"""
     tpl = PROTOCOL_MD.read_text(encoding="utf-8")
-    body = tpl.replace("{WORKER_ID}", wid)
+    body = (tpl
+            .replace("{WORKER_ID}", wid)
+            .replace("{SKILLS_LINE}", vb.skills_inline(
+                [s.strip() for s in SKILLS_ARG.split(",") if s.strip()])))
     return f"【VARIX-{wid}·产线领单工人】\n\n{body}"
 
 
@@ -433,6 +447,12 @@ def new_conversation(first_prompt: str, known_ids: set,
         return "", "视图仍在原会话上，放弃填充（防污染）"
     if not wait_idle(30):
         return "", "新建出来的会话 30s 内未进入可发送态"
+    # ── 引导三件套（工作空间 + 文件附件；技能走提示词内联 @skill:）──
+    if BOOT["on"]:
+        ok_b, ev_b = vb.run(st, BOOT["ws"], BOOT["files"])
+        if not ok_b:
+            vb.cleanup_reset(st, JS_CLICK_NEW)
+            return "", f"引导失败（已重置空白）：{ev_b}"
     ok, ev = send_text(first_prompt, tag)
     if not ok:
         return "", f"首条发送失败：{ev}"
@@ -457,7 +477,7 @@ def dispatch_continue(wid: str, conv_id: str, msg: str) -> tuple[bool, str]:
 # ══════════════════════ 主流程 ══════════════════════
 
 def main() -> int:
-    global BOARD_PORT, BOARD_EXE
+    global BOARD_PORT, BOARD_EXE, SKILLS_ARG
     ap = argparse.ArgumentParser(description="领单产线塔（VTaskBoard 版）")
     ap.add_argument("--probe", action="store_true", help="只读体检（CDP/任务板/DOM）")
     ap.add_argument("--dry-run", action="store_true", help="演练：渲染协议+看忙闲，零 UI 动作")
@@ -471,10 +491,28 @@ def main() -> int:
                     help="BUSY 超时多少分钟记 STALE 警告（默认 90）")
     ap.add_argument("--board-port", type=int, default=BOARD_PORT)
     ap.add_argument("--board-exe", default=str(BOARD_EXE))
+    ap.add_argument("--no-bootstrap", action="store_true",
+                    help="关闭引导三件套（不选工作空间/不挂文件）")
+    ap.add_argument("--workspace", default=vb.WS_DEFAULT,
+                    help="新会话工作空间名（默认 -Un-Real-0d23d9ux-Engine-main）")
+    ap.add_argument("--files", default="default",
+                    help='逗号分隔的附件绝对路径；"default"=内置4文件；""=不挂文件')
+    ap.add_argument("--skills", default=SKILLS_ARG,
+                    help="逗号分隔的技能清单（渲染为 @skill: 提及进首条提示词）")
     a = ap.parse_args()
 
     BOARD_PORT = a.board_port
     BOARD_EXE = Path(a.board_exe)
+    SKILLS_ARG = a.skills
+    if a.no_bootstrap:
+        BOOT["on"] = False
+    BOOT["ws"] = a.workspace
+    if a.files == "default":
+        BOOT["files"] = list(vb.FILES_DEFAULT)
+    elif a.files.strip() == "":
+        BOOT["files"] = []
+    else:
+        BOOT["files"] = [s.strip() for s in a.files.split(",") if s.strip()]
 
     WORKERS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -517,6 +555,9 @@ def main() -> int:
     if a.dry_run:
         wid = "W01"
         print("\n── DRY-RUN 演练 ──")
+        print(f"引导三件套：{'开' if BOOT['on'] else '关'}，"
+              f"工作空间={BOOT['ws']}，文件 {len(BOOT['files'])} 个，"
+              f"技能行={vb.skills_inline([s.strip() for s in SKILLS_ARG.split(',') if s.strip()])[:120]}…")
         print(f"首条提示词（{wid}）渲染预览：\n")
         print(render_protocol(wid)[:1000])
         print("……")

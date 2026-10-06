@@ -16,7 +16,13 @@
 
 1. `dispatch/PLAN.md` 中 `{WP_ID}` 的完整条目（规格、判据、输出路径）。
 2. 项目规格 MD：`{SPEC_MD_PATH}`（全部工人共用同一份，保证认知一致）。
-3. 必须加载的技能：{SKILLS_LIST}（用 Skill 工具逐一加载后再动手）。
+3. 必载技能（消息内 @skill: 提及与下列清单等价，用 Skill 工具逐一加载后再动手）：
+   {SKILLS_LIST}
+4. 必读文档（消息附带 resource_link 与下列绝对路径等价）：
+   - `D:/2/14/-Un-Real-0d23d9ux-Engine-main/VarixTaskOps/VTaskBoard/dist/VTaskBoard.exe`
+   - `D:/2/14/-Un-Real-0d23d9ux-Engine-main/docs/Varix/VE-STAR-II/CGPU Varix STAR II · 总纲与施工书.md`
+   - `D:/2/14/-Un-Real-0d23d9ux-Engine-main/docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md`
+   - `D:/2/14/-Un-Real-0d23d9ux-Engine-main/docs/Varix/CoRun Varix STAR II · Unxreal/CoRun Varix STAR II · Unxreal.md`
 
 ## 执行纪律
 
