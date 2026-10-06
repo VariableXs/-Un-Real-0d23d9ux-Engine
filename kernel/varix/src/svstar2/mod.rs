@@ -69,6 +69,7 @@
 //! | [`vei02_locale`] | F4002 语言标签与 Locale 模型（BCP47 四段+扩展/容错表/回退链/解析缓存/单源声明） | VE 册 #VE-F4002 |
 //! | [`vei03_text_direction`] | F4003 文字方向模型（三方向统一+三层优先级/isolate自动补齐/首强启发可覆写） | VE 册 #VE-F4003 |
 //! | [`vei04_typeset`] | F4004 国际化排版管线（四族路由/语言覆盖红线/降级显性/五段策略与执行分工） | VE 册 #VE-F4004 |
+//! | [`vei05_font`] | F4005 字体国际化选型（四族字体集/回退链配置/字符覆盖验证/度量对齐/许可地域/三单源复用） | VE 册 #VE-F4005 |
 //! | [`vef01_pngdec`] | F1001 PNG 解码器核心（签名/IHDR七参数/PLTE/tRNS/反滤波/CRC 分级/输出 RGBA） | VE 册 #VE-F1001 |
 //! | [`vef02_pngenc`] | F1002 PNG 编码器核心（五滤波两策略/zlib 与九档权衡/IDAT 分块/CRC/颜色降档/场景建议表） | VE 册 #VE-F1002 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
@@ -188,6 +189,8 @@ pub mod vei03_checks;
 pub mod vei03_text_direction;
 pub mod vei04_checks;
 pub mod vei04_typeset;
+pub mod vei05_checks;
+pub mod vei05_font;
 pub mod veh01_checks;
 pub mod veh02_audioarch;
 pub mod veh02_checks;
@@ -260,7 +263,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 74] = [
+    let blocks: [(&'static str, CheckSet); 75] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -333,6 +336,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4002", vei02_checks::run_vei02_checks()),
         ("VE-F4003", vei03_checks::run_vei03_checks()),
         ("VE-F4004", vei04_checks::run_vei04_checks()),
+        ("VE-F4005", vei05_checks::run_vei05_checks()),
         ("VE-F1001", vef01_checks::run_vef01_checks()),
         ("VE-F1002", vef02_checks::run_vef02_checks()),
     ];
