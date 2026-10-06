@@ -46,10 +46,15 @@ _SPEC.loader.exec_module(st)
 _BSPEC = importlib.util.spec_from_file_location("vb", str(Path(__file__).parent / "bootstrap.py"))
 vb = importlib.util.module_from_spec(_BSPEC)
 _BSPEC.loader.exec_module(vb)
+_ASPEC = importlib.util.spec_from_file_location("apool", str(Path(__file__).parent / "account_pool.py"))
+apool = importlib.util.module_from_spec(_ASPEC)
+_ASPEC.loader.exec_module(apool)
 
 # 引导三件套配置（--no-bootstrap 可整体关闭；main() 里按 CLI 参数重填）
 BOOT = {"on": True, "ws": vb.WS_DEFAULT, "files": list(vb.FILES_DEFAULT)}
 SKILLS_ARG = ",".join(vb.SKILLS_DEFAULT)
+REMAIN_MIN = 30            # 切号目标账号的最低余量门槛（积分）
+QUOTA_CHECK_EVERY = 600.0  # 预防性积分巡检间隔（秒）
 
 DISPATCH = _ROOT / "dispatch"
 WORKERS_DIR = DISPATCH / "workers"
@@ -439,8 +444,77 @@ def claim_next_wp(blocks: dict) -> str:
     return ""
 
 
+# ══════════ 积分切号（2026-10-06 Variable 指定，claim_tower 同款）══════════
+
+def _reset_plan_inprogress(plan_text: str) -> str:
+    """全部「进行中(Wxx)」→「待派」（切号后原工人已不存在，WP 回池重派）。"""
+    return re.sub(r"进行中\(([^)]*)\)", "待派", plan_text)
+
+
+def switch_account_flow(reason: str, workers: int, spec: str, skills: str,
+                        out: str, plan_text: str) -> tuple[str, str]:
+    """积分耗尽 → TreeCode 切号 → 等 WorkBuddy → PLAN 进行中回池 → 重建全部工人。
+
+    返回 (result, plan_text)。result: "ok" / "no_account"（无可用积分账号 →
+    停机信号）/ "fail:<why>"。
+    """
+    log(f"[积分] 触发切号检查（{reason}）…")
+    info = apool.probe_all(REMAIN_MIN)
+    if not info.get("ok"):
+        return f"fail:账号池不可读 {info.get('why')}", plan_text
+    log(f"[积分] 池子 {info['accounts']} 号 / 总余 {info['pool_remain']} / "
+        f"最高 {info['richest']}({info['richest_remain']}) / 可切 {info['switchable']} 号")
+    target = apool.pick_richest(REMAIN_MIN)
+    if not target:
+        ledger("停机", "-", "调度塔", f"无可用积分账号（门槛 {REMAIN_MIN}）：{info}")
+        return "no_account", plan_text
+    label = target.get("label")
+    log(f"[切号] → {label}（余 {target.get('remain')}）。TreeCode 将重启 WorkBuddy…")
+    ledger("切号", "-", "调度塔", f"→ {label} 余 {target.get('remain')}（{reason}）")
+    ok, msg = apool.switch(label)
+    if not ok:
+        return f"fail:切号失败 {msg}", plan_text
+    ok_b, ev = apool.wait_workbuddy_back(log=log)
+    if not ok_b:
+        return f"fail:WorkBuddy 未恢复 {ev}", plan_text
+    log(f"[切号] WorkBuddy 已恢复（{ev}）→ PLAN 进行中回池 + 重建 {workers} 路")
+    ledger("切号完成", "-", "调度塔", f"{label} 就绪，{ev}")
+    plan_text = _reset_plan_inprogress(plan_text)
+    PLAN.write_text(plan_text, encoding="utf-8")
+    for i in range(1, workers + 1):    # 旧账号的会话全部作废
+        write_conv(f"W{i:02d}", "")
+        write_state(f"W{i:02d}", "")
+    built = 0
+    known = snapshot_conv_ids()
+    for i in range(1, workers + 1):
+        wid = f"W{i:02d}"
+        wp = claim_next_wp(parse_plan()[1])
+        if not wp:
+            log(f"[切号重建] PLAN 无待派，{wid} 留空（READY 补位路径兜底）")
+            break
+        prompt_fn = lambda missing, _wid=wid, _wp=wp: render_first_prompt(  # noqa: E731
+            _wid, _wp, spec, skills, out, missing)
+        conv, ev2 = new_conversation(prompt_fn, known)
+        if not conv:
+            ledger("切号重建失败", wp, wid, ev2)
+            log(f"[FAIL] [切号重建] {wid} ← {wp}：{ev2}")
+            time.sleep(2.0)
+            continue
+        known.add(conv)
+        write_conv(wid, conv)
+        write_state(wid, f"BUSY {wp}")
+        plan_text = mark_plan(plan_text, wp, f"进行中({wid})")
+        PLAN.write_text(plan_text, encoding="utf-8")
+        built += 1
+        log(f"[切号重建] {wid} ← {wp} ✓")
+        time.sleep(2.0)
+    log(f"[切号] 重建完成 {built} 路")
+    ledger("切号重建", "-", "调度塔", f"{built} 路")
+    return "ok", plan_text
+
+
 def main() -> int:
-    global SKILLS_ARG
+    global SKILLS_ARG, REMAIN_MIN
     ap = argparse.ArgumentParser()
     ap.add_argument("--probe", action="store_true", help="只读体检")
     ap.add_argument("--dry-run", action="store_true", help="演练，零 UI 动作")
@@ -449,6 +523,10 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=18)
     ap.add_argument("--interval", type=int, default=20, help="守护轮询间隔秒")
     ap.add_argument("--stale-min", type=int, default=120, help="BUSY 超时分钟数（提醒线）")
+    ap.add_argument("--remain-min", type=int, default=REMAIN_MIN,
+                    help="切号目标账号最低余量门槛（默认 30 积分）")
+    ap.add_argument("--no-account-pool", action="store_true",
+                    help="关闭积分监控与自动切号（TreeCode 不在线时用）")
     ap.add_argument("--spec", default="docs/kernel-spec.md", help="规格 MD 路径")
     ap.add_argument("--skills",
                     default=SKILLS_ARG,
@@ -463,6 +541,8 @@ def main() -> int:
     ap.add_argument("--out", default="kernel-wp", help="工人产物根目录")
     a = ap.parse_args()
 
+    REMAIN_MIN = a.remain_min
+    USE_POOL = not a.no_account_pool
     if a.no_bootstrap:
         BOOT["on"] = False
     BOOT["ws"] = a.workspace
@@ -541,9 +621,12 @@ def main() -> int:
 
     # ── 守护：READY → 续单，直到 PLAN 清空 ──
     if a.watch:
-        log(f"守护开始：{a.workers} 路，轮询 {a.interval}s，BUSY 超时线 {a.stale_min}min")
+        log(f"守护开始：{a.workers} 路，轮询 {a.interval}s，BUSY 超时线 {a.stale_min}min"
+            + (f"，积分门槛 {REMAIN_MIN}" if USE_POOL else "，积分监控关"))
+        last_quota_check = time.time()
         try:
             while True:
+                round_fail = 0    # 本轮补位失败次数（积分巡检触发器）
                 _, blocks = parse_plan()
                 pending = claim_next_wp(blocks)
                 all_done = not pending and all(
@@ -581,9 +664,38 @@ def main() -> int:
                             log(f"{wid} ← {pending}（{ev}）")
                             pending = ""  # 本轮已用掉，下轮重新解析
                         else:
+                            round_fail += 1
                             ledger("补位失败", pending, wid, ev)
                             log(f"[FAIL] {wid} ← {pending} 失败：{ev}")
                             time.sleep(5)
+                # 积分巡检与自动切号（单轮补位失败 ≥3 或每 10 分钟预防性）
+                quota_due = time.time() - last_quota_check >= QUOTA_CHECK_EVERY
+                if USE_POOL and (round_fail >= 3 or quota_due):
+                    last_quota_check = time.time()
+                    info = apool.probe_all(REMAIN_MIN)
+                    if not info.get("ok"):
+                        log(f"[积分] 账号池不可读：{info.get('why')}（下轮再试）")
+                    else:
+                        log(f"[积分巡检] 池 {info['accounts']} 号 总余 "
+                            f"{info['pool_remain']} 最高 {info['richest']}"
+                            f"({info['richest_remain']}) 可切 {info['switchable']}"
+                            f" / 本轮补位失败 {round_fail}")
+                        if round_fail >= 3:
+                            if info.get("switchable", 0) <= 0:
+                                log("★ 停机 ★ 补位连败且账号池无可用积分账号")
+                                ledger("停机", "-", "调度塔",
+                                       f"补位连败 {round_fail} + 无可用积分账号：{info}")
+                                return 2
+                            r, plan_text = switch_account_flow(
+                                f"单轮补位失败 {round_fail} 次",
+                                a.workers, a.spec, a.skills, a.out, plan_text)
+                            if r == "no_account":
+                                log("★ 停机 ★ 无可用积分账号——产线终止")
+                                return 2
+                            if r == "ok":
+                                log("[切号] 全部工人已重建，产线继续")
+                            else:
+                                log(f"[FAIL] 切号失败：{r}（下轮重试）")
                 remaining = sum(1 for s in blocks.values() if s == "待派")
                 log(f"心跳：忙 {busy_cnt} / 空 {ready_cnt} / 待派 {remaining}")
                 if all_done and ready_cnt == a.workers:

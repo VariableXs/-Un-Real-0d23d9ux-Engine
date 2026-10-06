@@ -4,6 +4,8 @@
 
 | 时间 | 事件 | WP | 工人 | 结果/原因 |
 |---|---|---|---|---|
+| 10-06 19:13 | 产线上线 | - | 领单塔 | 积分切号+卡死归档：TreeCode API（/api/quota 35号32599.9可切29 / /api/accounts/login）接成 account_pool；watch 加 dead-min 10min 卡死归档重建（release_worker 退单+同编号重建）、连败≥3 切号、无号停机；技能扩到 10 个 exact 匹配 |
+| 10-06 19:13 | 缺陷🟡 | - | 调度塔 | 「新建任务」不丢弃上轮草稿——残留文件节点让 / trigger 失效（自检 0/10 假绿）；修：run() 技能挂载前强制清空 + add_skill 面板未开自愈清空重试；selftest 复跑 10/10 exact 全绿 |
 | 10-06 18:37 | 引导升级 | - | 调度塔 | Variable 指路「/」面板=技能正解（probe12~14 实测）：按显示名过滤+scrollIntoView+点选→真 mention 节点；bootstrap.mount_skills 上线，内联 @skill: 降为兜底；selftest 5/5 技能全 UI 挂载零兜底 |
 | 10-06 18:01 | 引导上线 | - | 调度塔 | 三件套实装：新会话自动选工作空间 -Un-Real-0d23d9ux-Engine-main（chip 验证）+ 拖拽挂 4 文件（resource_link）+ 技能 @skill: 内联首条提示词；bootstrap_selftest 全绿 |
 | 10-06 18:01 | 缺陷🟢 | - | 调度塔 | 宿主行为记录：隐藏 input[type=file] 条件挂载（空白视图 null）；DOM 域 nodeId 跨调用不稳；「+」技能子面板点击/悬停/键盘全竞态——三条路线弃用，探针归档 _attic/2026-10-06-bootstrap/ |

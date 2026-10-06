@@ -51,16 +51,28 @@ SKILLS_DEFAULT = [
     "rust-raspberrypi-os",
     "rust-best-practices",
     "karpathy-coding-constraints",
+    "self-ent-tech-os-kernel",
+    "rust-code-review",
+    "rust",
+    "karpathy-guidelines",
+    "andrej-karpathy-skills",
 ]
 
-# 技能 slug → 「/」面板显示名（probe13/14 实测：面板条目按显示名展示，
+# 技能 slug → 「/」面板显示名（probe13/14/15 实测：面板条目按显示名展示，
 # option 上没有 slug/data-id 属性，机器匹配只能靠显示名文本）。
+# ★ "Rust" 必须精确匹配（startsWith 会先命中 "Rust 编程最佳实践" 等，
+#   probe15 教训）→ JS_SKILL_CLICK 走 exact 首行优先。
 SLASH_SKILL_DISPLAY = {
     "rust-code-audit": "Rust代码审计",
     "rust-desktop-app-cn": "Rust桌面应用助手",
     "rust-raspberrypi-os": "Rust 裸机操作系统开发教练",
     "rust-best-practices": "Rust 编程最佳实践",
     "karpathy-coding-constraints": "Karpathy 编码四原则",
+    "self-ent-tech-os-kernel": "操作系统内核开发",
+    "rust-code-review": "Rust Code Review",
+    "rust": "Rust",
+    "karpathy-guidelines": "Karpathy行为准则",
+    "andrej-karpathy-skills": "编码协作 缺陷规避 质量门禁",
 }
 
 JS_WS_CHIP = r"""(() => {
@@ -199,15 +211,26 @@ JS_SLASH_PANEL = r"""(() => {
   return { open: true, n: opts.length };
 })()"""
 
-# 按显示名点选（startsWith 优先、includes 放宽）；长列表必须先 scrollIntoView
-# （probe5 教训：可视区外的项坐标点击落空）。
+# 按显示名点选：**exact 首行等值优先**（"Rust" 若走 startsWith 会先命中
+# "Rust 编程最佳实践"，probe15 教训）→ startsWith 唯一命中 → includes 唯一命中；
+# 长列表必须先 scrollIntoView（probe5 教训：可视区外的项坐标点击落空）。
 JS_SKILL_CLICK = r"""((name) => {
   const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4; };
+  const firstLine = (t) => t.split('\n')[0].trim();
   const items = Array.from(document.querySelectorAll('[role="option"]')).filter(vis);
-  let hit = null;
+  let hit = null, why = '';
   for (const it of items) {
-    const t = (it.innerText || '').trim();
-    if (t.startsWith(name) || t.includes(name)) { hit = it; break; }
+    if (firstLine(it.innerText || '') === name) { hit = it; why = 'exact'; break; }
+  }
+  if (!hit) {
+    const m = items.filter(it => firstLine(it.innerText || '').startsWith(name));
+    if (m.length === 1) { hit = m[0]; why = 'startsWith'; }
+    else if (m.length > 1) return { ok: false, why: 'ambiguous startsWith ×' + m.length + ': ' + m.map(x=>firstLine(x.innerText)).slice(0,3).join('|') };
+  }
+  if (!hit) {
+    const m2 = items.filter(it => (it.innerText || '').includes(name));
+    if (m2.length === 1) { hit = m2[0]; why = 'includes'; }
+    else if (m2.length > 1) return { ok: false, why: 'ambiguous includes ×' + m2.length };
   }
   if (!hit) return { ok: false, why: 'no option named ' + name };
   hit.scrollIntoView({ block: 'center' });
@@ -217,7 +240,8 @@ JS_SKILL_CLICK = r"""((name) => {
               clientX: r.left + 12, clientY: r.top + Math.min(14, r.height / 2), button: 0, detail: 1 };
   for (const tp of ['mouseover','mousemove','mousedown','mouseup','click'])
     hit.dispatchEvent(new MouseEvent(tp, o));
-  return { ok: true, text: (hit.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 60) };
+  return { ok: true, mode: why, fl: firstLine(hit.innerText || ''),
+           text: (hit.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 60) };
 })"""
 
 # 编辑器 mention 计数（挂载验证：点击后 mentions 必须 +1）
@@ -325,8 +349,21 @@ def add_skill_via_slash(st, slug: str, retries: int = 2) -> tuple:
             continue
         p = _wait_slash_panel(st, 8, want_items=False)
         if not p.get("open"):
-            last = {"why": "/ 面板未开"}
-            continue
+            # 自愈（2026-10-06 自检实测）：WorkBuddy「新建任务」不丢弃上一轮
+            # 草稿——编辑器带残留时 / 追加在内容后面（不在空行首）→ trigger
+            # 失效。清空编辑器再重试一次（此时还未挂文件，清空无损）。
+            try:
+                st.clear_editor_cdp()
+            except Exception:
+                pass
+            time.sleep(0.5)
+            if not insert_raw(st, "/"):
+                last = {"why": "插入 / 失败（清空后重试仍失败）"}
+                continue
+            p = _wait_slash_panel(st, 8, want_items=False)
+            if not p.get("open"):
+                last = {"why": "/ 面板未开（清空后仍未触发）"}
+                continue
         if not insert_raw(st, filt):
             last = {"why": "插入过滤词失败"}
             continue
@@ -337,15 +374,20 @@ def add_skill_via_slash(st, slug: str, retries: int = 2) -> tuple:
         click = st.call_js(JS_SKILL_CLICK + "(" + json.dumps(display, ensure_ascii=False) + ")")
         time.sleep(1.6)
         v = st.call_js(JS_SKILL_STATE)
-        ok = (isinstance(v, dict) and not v.get("gone")
+        clicked_right = (isinstance(click, dict) and click.get("ok")
+                         and click.get("fl", display) == display)
+        ok = (clicked_right
+              and isinstance(v, dict) and not v.get("gone")
               and display in v.get("text", "")
               and isinstance(v.get("mentions"), int) and v["mentions"] > before
               and ("/" + filt) not in v.get("text", ""))
         if ok:
             return True, {"slug": slug, "display": display, "attempt": attempt,
-                          "mentions": v.get("mentions")}
-        last = {"why": "点击后未见新 mention", "click":
-                (click or {}).get("text", "")[:40] if isinstance(click, dict) else click,
+                          "mode": click.get("mode"), "mentions": v.get("mentions")}
+        last = {"why": ("点选首行不匹配: " + str((click or {}).get('fl'))[:40])
+                if isinstance(click, dict) and click.get("ok")
+                else "点击后未见新 mention",
+                "click": str((click or {}).get("why") or (click or {}).get("text", ""))[:60],
                 "mentions": v.get("mentions") if isinstance(v, dict) else None}
     _close_slash_panel(st)
     _backspace_residue(st, filt)
@@ -381,6 +423,13 @@ def run(st, ws: str = WS_DEFAULT, files=None, need_files: bool = True,
         return False, ev
     skill_list = SKILLS_DEFAULT if skills is None else list(skills)
     if skill_list:
+        # 「新建任务」可能恢复上一轮草稿（2026-10-06 自检实测）——/ trigger
+        # 只在空行首生效，技能挂载（第一个编辑器动作）前强制清空。
+        try:
+            st.clear_editor_cdp()
+            time.sleep(0.4)
+        except Exception:
+            pass
         mounted, failed, ev_sk = mount_skills(st, skill_list)
         ev["skills_ui"] = {"mounted": mounted, "failed": failed}
         ev["skills_detail"] = ev_sk

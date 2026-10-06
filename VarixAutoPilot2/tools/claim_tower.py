@@ -5,17 +5,24 @@
   claim_tower    = 工人 AI 自己去任务板（VTaskBoard.exe，端口 8767）领单，
                    塔只负责「保持 18 路工人永远有活干」。
 
-塔的三件事：
+塔的四件事：
   1. 发车（--start N）：点「新建任务」建 N 个全新对话，把「领单工人协议」
      以【正文全文 + MD 文件路径】双通道发给每个新对话（AI 零上下文也能开工）。
   2. 守护（--watch）：每 --interval 秒（默认 10s）轮询工人状态文件总线
      （dispatch/workers/Wxx.state）：
        READY            → 切到该会话 → 发续跑指令 → 工人去领下一单；
-       BUSY             → 施工中不动它；超 --nudge-min 分钟无动静 →
-                          切过去确认空闲后补发「续跑检查」（自愈假死）；
+       BUSY             → 施工中不动它；超 --dead-min 分钟（默认 10）无动静 →
+                          **归档重建**（写 dispatch/archive/ + 释放名下已领单 +
+                          新建同编号工人会话继续）；--nudge-min 补发检查仍在
+                          （dead_min=0 时作为唯一自愈手段）；
        会话 id 丢失      → 用首条提示词里的 VARIX-Wxx 标记在侧栏标题里重链。
-  3. 收口：任务板「待领/已领/阻塞」全为 0 且塔内无 BUSY 工人 → 全部完成退出；
-     否则永远运行，直到人工 Ctrl+C。
+  3. 积分监控与自动切号（--no-account-pool 关闭）：单轮发送失败 ≥3 或
+     每 10 分钟预防性巡检 → 查 TreeCode 账号池（127.0.0.1:8792）；发送连败
+     且池里有 ≥门槛余量的号 → 自动切号（TreeCode 重启 WorkBuddy，塔等待
+     CDP 恢复并兜底带参重启）→ 释放全部在途任务 → 重建 18 路；池里没有
+     可用号 → 判定「无可用积分账号」→ 优雅停机。
+  4. 收口：任务板「待领/已领/阻塞」全为 0 且塔内无 BUSY 工人 → 全部完成退出；
+     否则永远运行，直到 ① 50000+ 任务全部完成 ② 无可用积分账号 ③ 人工 Ctrl+C。
 
 为什么工人状态走文件总线而不是读 UI：
   UI 忙闲只反映「正在生成」，不反映「任务做完没有」；文件是工人与塔共享的
@@ -61,6 +68,9 @@ _SPEC.loader.exec_module(st)
 _BSPEC = importlib.util.spec_from_file_location("vb", str(Path(__file__).parent / "bootstrap.py"))
 vb = importlib.util.module_from_spec(_BSPEC)
 _BSPEC.loader.exec_module(vb)
+_ASPEC = importlib.util.spec_from_file_location("apool", str(Path(__file__).parent / "account_pool.py"))
+apool = importlib.util.module_from_spec(_ASPEC)
+_ASPEC.loader.exec_module(apool)
 
 # 引导三件套配置（--no-bootstrap 可整体关闭；main() 里按 CLI 参数重填）
 BOOT = {"on": True, "ws": vb.WS_DEFAULT, "files": list(vb.FILES_DEFAULT)}
@@ -70,10 +80,13 @@ WORKERS_DIR = DISPATCH / "workers"
 LEDGER = DISPATCH / "LEDGER.md"
 PROTOCOL_MD = DISPATCH / "CLAIM_WORKER_PROMPT.md"
 TOWER_LOG = DISPATCH / "claim_tower.log"
+ARCHIVE_ROOT = DISPATCH / "archive"
 
 BOARD_PORT = 8767
 BOARD_EXE = Path(r"D:\2\14\-Un-Real-0d23d9ux-Engine-main\VarixTaskOps\VTaskBoard\dist\VTaskBoard.exe")
 SKILLS_ARG = ",".join(vb.SKILLS_DEFAULT)
+REMAIN_MIN = 30            # 切号目标账号的最低余量门槛（积分）
+QUOTA_CHECK_EVERY = 600.0  # 预防性积分巡检间隔（秒）
 
 
 def log(msg: str):
@@ -497,21 +510,125 @@ def dispatch_continue(wid: str, conv_id: str, msg: str) -> tuple[bool, str]:
     return send_text(msg, f"VARIX-{wid}·塔")
 
 
+# ══════════════ 卡死归档重建 & 积分切号（2026-10-06 Variable 指定）══════════════
+
+def release_worker_tasks(wid: str = "") -> str:
+    """把 AI-{wid}（wid="" = 全部工人）名下已领单退回待领（任务板 /api/release_worker）。"""
+    try:
+        r = board_api("/api/release_worker", {"worker": f"AI-{wid}" if wid else ""})
+        if r.get("ok"):
+            return f"释放 {r.get('n')} 单"
+        return f"无在途单（{r.get('err')}）"
+    except Exception as e:
+        return f"释放失败：{e}（板上可能有孤儿已领单，需人工看板）"
+
+
+def archive_dead_worker(wid: str, conv: str, state: str,
+                        age_min: float, reason: str) -> Path:
+    """卡死工人归档：写 dispatch/archive/日期/Wxx_HHMMSS.md + 释放名下任务 +
+    作废会话映射与状态。旧会话留在 WorkBuddy 历史里（天然归档，不删）。"""
+    d = ARCHIVE_ROOT / time.strftime("%Y-%m-%d")
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / f"{wid}_{time.strftime('%H%M%S')}.md"
+    freed = release_worker_tasks(wid)
+    f.write_text(
+        f"# {wid} 卡死归档 · {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"- 原因：{reason}\n"
+        f"- 状态文件内容：`{state}`（{age_min:.0f} 分钟无 mtime 更新）\n"
+        f"- 会话 id：`{conv}`（保留在 WorkBuddy 历史中）\n"
+        f"- 任务板：{freed}\n"
+        f"- 处置：会话映射作废，重建同编号工人继续领单\n",
+        encoding="utf-8")
+    write_conv(wid, "")
+    write_state(wid, "")
+    return f
+
+
+def rebuild_worker(wid: str) -> tuple[str, str]:
+    """重建同编号工人：新建会话（引导三件套 + 协议全文）。返回 (conv_id, evidence)。"""
+    known = snapshot_conv_ids()
+    prompt_fn = lambda missing: render_protocol(wid, missing)  # noqa: E731
+    conv, ev = new_conversation(prompt_fn, known, f"VARIX-{wid}")
+    if conv:
+        write_conv(wid, conv)
+        write_state(wid, "BUSY claim")
+    elif "发送成功" in ev:
+        write_state(wid, "BUSY claim")   # 侧栏没来得及刷新 → 标记重链兜底
+    return conv, ev
+
+
+def switch_account_flow(reason: str, workers: int) -> str:
+    """积分耗尽 → TreeCode 切号 → 等 WorkBuddy 回来 → 释放全部任务并重建。
+
+    返回："ok" / "no_account"（无可用积分账号 → 停机信号）/"fail:<why>"。
+    """
+    log(f"[积分] 触发切号检查（{reason}）…")
+    info = apool.probe_all(REMAIN_MIN)
+    if not info.get("ok"):
+        return f"fail:账号池不可读 {info.get('why')}"
+    log(f"[积分] 池子 {info['accounts']} 号 / 总余 {info['pool_remain']} / "
+        f"最高 {info['richest']}({info['richest_remain']}) / 可切 {info['switchable']} 号")
+    target = apool.pick_richest(REMAIN_MIN)
+    if not target:
+        ledger("停机", "-", "领单塔",
+               f"无可用积分账号（门槛 {REMAIN_MIN}）：池 {info}")
+        return "no_account"
+    label = target.get("label")
+    log(f"[切号] → {label}（余 {target.get('remain')}）。TreeCode 将重启 WorkBuddy…")
+    ledger("切号", "-", "领单塔",
+           f"→ {label} 余 {target.get('remain')}（{reason}）")
+    ok, msg = apool.switch(label)
+    if not ok:
+        return f"fail:切号失败 {msg}"
+    ok_b, ev = apool.wait_workbuddy_back(log=log)
+    if not ok_b:
+        return f"fail:WorkBuddy 未恢复 {ev}"
+    log(f"[切号] WorkBuddy 已恢复（{ev}）→ 释放全部在途任务并重建 {workers} 路")
+    ledger("切号完成", "-", "领单塔", f"{label} 就绪，{ev}")
+    release_worker_tasks("")            # 全部已领单退回待领
+    for i in range(1, workers + 1):     # 会话映射/状态全部作废（旧账号的会话不可用）
+        wid = f"W{i:02d}"
+        write_conv(wid, "")
+        write_state(wid, "")
+    # 逐个重建（每路 = 新会话 + 引导三件套 + 协议全文，约 2-3 分钟/路）
+    built = 0
+    for i in range(1, workers + 1):
+        wid = f"W{i:02d}"
+        conv2, ev2 = rebuild_worker(wid)
+        if conv2 or "发送成功" in ev2:
+            built += 1
+            log(f"[切号重建] {wid} ✓")
+        else:
+            ledger("切号重建失败", "-", wid, ev2)
+            log(f"[FAIL] [切号重建] {wid}：{ev2}")
+        time.sleep(2.5)
+    log(f"[切号] 重建完成 {built}/{workers} 路")
+    ledger("切号重建", "-", "领单塔", f"{built}/{workers} 路")
+    return "ok"
+
+
 # ══════════════════════ 主流程 ══════════════════════
 
 def main() -> int:
-    global BOARD_PORT, BOARD_EXE, SKILLS_ARG
+    global BOARD_PORT, BOARD_EXE, SKILLS_ARG, REMAIN_MIN
     ap = argparse.ArgumentParser(description="领单产线塔（VTaskBoard 版）")
-    ap.add_argument("--probe", action="store_true", help="只读体检（CDP/任务板/DOM）")
+    ap.add_argument("--probe", action="store_true", help="只读体检（CDP/任务板/DOM/账号池）")
     ap.add_argument("--dry-run", action="store_true", help="演练：渲染协议+看忙闲，零 UI 动作")
     ap.add_argument("--start", type=int, metavar="N", help="发车：建 N 个新会话并派首批协议")
-    ap.add_argument("--watch", action="store_true", help="守护：READY 补发/超时自愈/直到收口")
+    ap.add_argument("--watch", action="store_true", help="守护：READY 补发/卡死归档重建/积分切号/直到收口")
     ap.add_argument("--workers", type=int, default=18, help="工人数（默认 18）")
     ap.add_argument("--interval", type=int, default=10, help="守护轮询间隔秒（默认 10）")
+    ap.add_argument("--dead-min", type=int, default=10,
+                    help="BUSY 无动静多少分钟归档重建（默认 10，0=关）")
     ap.add_argument("--nudge-min", type=int, default=25,
-                    help="BUSY 超时多少分钟自动补发检查（默认 25，0=关）")
+                    help="BUSY 超时多少分钟自动补发检查（默认 25，0=关；"
+                         "dead-min 生效时先到先触发）")
     ap.add_argument("--stale-min", type=int, default=90,
                     help="BUSY 超时多少分钟记 STALE 警告（默认 90）")
+    ap.add_argument("--remain-min", type=int, default=REMAIN_MIN,
+                    help="切号目标账号最低余量门槛（默认 30 积分）")
+    ap.add_argument("--no-account-pool", action="store_true",
+                    help="关闭积分监控与自动切号（TreeCode 不在线时用）")
     ap.add_argument("--board-port", type=int, default=BOARD_PORT)
     ap.add_argument("--board-exe", default=str(BOARD_EXE))
     ap.add_argument("--no-bootstrap", action="store_true",
@@ -528,6 +645,8 @@ def main() -> int:
     BOARD_PORT = a.board_port
     BOARD_EXE = Path(a.board_exe)
     SKILLS_ARG = a.skills
+    REMAIN_MIN = a.remain_min
+    USE_POOL = not a.no_account_pool
     if a.no_bootstrap:
         BOOT["on"] = False
     BOOT["ws"] = a.workspace
@@ -542,21 +661,30 @@ def main() -> int:
 
     # ── 体检模式 ──
     if a.probe:
-        print("── 1/3 CDP ──")
+        print("── 1/4 CDP ──")
         if not st.devtools_alive():
             print("[ERR] 9222 不通。先跑 开端口.bat 彻底重启 WorkBuddy")
             return 1
         print(f"OK，侧栏会话数 {len(snapshot_conv_ids())}")
         ok, why = idle3()
         print(f"当前忙闲：idle={ok}（{why}）")
-        print("── 2/3 任务板 ──")
+        print("── 2/4 任务板 ──")
         try:
             c = board_counts()
             print(f"OK：总 {c['total']}，待领 {c['待领']}，已领 {c['已领']}，"
                   f"阻塞 {c['阻塞']}，已完成 {c['已完成']}")
         except Exception as e:
             print(f"[WARN] 任务板不通（{e}）；发车时会自动拉起 {BOARD_EXE.name}")
-        print("── 3/3 DOM 详检 ──")
+        print("── 3/4 TreeCode 账号池 ──")
+        info = apool.probe_all(REMAIN_MIN)
+        if info.get("ok"):
+            print(f"OK：{info['accounts']} 号 / 池总余 {info['pool_remain']} / "
+                  f"最高 {info['richest']}({info['richest_remain']}) / "
+                  f"可切（≥{REMAIN_MIN}）{info['switchable']} 号")
+        else:
+            print(f"[WARN] 账号池不可读：{info.get('why')}"
+                  f"（TreeCode 未开时用 --no-account-pool 关闭积分监控）")
+        print("── 4/4 DOM 详检 ──")
         sys.path.insert(0, str(Path(__file__).parent))
         return __import__("check_tower_dom").main()
 
@@ -633,15 +761,19 @@ def main() -> int:
                 time.sleep(5)
         log(f"发车完成：新建 {created} 路")
 
-    # ── 守护：READY 补发 / 超时自愈 / 收口判定 ──
+    # ── 守护：READY 补发 / 卡死归档重建 / 积分切号 / 收口判定 ──
     if a.watch:
         log(f"守护开始：{a.workers} 路，轮询 {a.interval}s，"
-            f"自愈补发 {a.nudge_min}min，STALE 线 {a.stale_min}min")
+            f"卡死线 {a.dead_min}min（归档重建），补发 {a.nudge_min}min，"
+            f"STALE 线 {a.stale_min}min"
+            + (f"，积分门槛 {REMAIN_MIN}" if USE_POOL else "，积分监控关"))
         fail_until: dict[str, float] = {}   # wid → 该时间前不再尝试派发（失败冷却）
         last_hb = 0.0
         last_board_ok = True
+        last_quota_check = time.time()
         try:
             while True:
+                round_fail = 0      # 本轮发送失败次数（积分巡检触发器）
                 # 1) 任务板心跳（决定 stop 条件与派发许可）
                 board_ok, pend, claimed, blocked, done = True, None, None, None, None
                 try:
@@ -674,6 +806,27 @@ def main() -> int:
                         busy_cnt += 1
                         any_busy = True
                         age_min = (now - state_mtime(wid)) / 60.0
+                        # 卡死归档重建（Variable 2026-10-06 指定：10min 无动静
+                        # → 归档 + 释放名下任务 + 重建同编号工人继续）
+                        if (a.dead_min and age_min > a.dead_min
+                                and now >= fail_until.get(wid, 0)):
+                            arch = archive_dead_worker(
+                                wid, conv, state, age_min,
+                                f"BUSY {age_min:.0f}min 无动静")
+                            ledger("卡死归档", "-", wid,
+                                   f"{state} {age_min:.0f}min → {arch.name}，重建中")
+                            log(f"[卡死] {wid} {age_min:.0f}min 无动静 → "
+                                f"归档 {arch.name} → 重建")
+                            fail_until[wid] = time.time() + 60
+                            conv2, ev2 = rebuild_worker(wid)
+                            if conv2 or "发送成功" in ev2:
+                                ledger("卡死重建", "-", wid, ev2)
+                                log(f"{wid} 重建 ✓ {ev2}")
+                            else:
+                                ledger("卡死重建失败", "-", wid, ev2)
+                                log(f"[FAIL] {wid} 重建失败：{ev2}")
+                            time.sleep(2.5)
+                            continue
                         if a.stale_min and age_min > a.stale_min:
                             log(f"[STALE] {wid} BUSY 超 {age_min:.0f}min（{state}）")
                         if (a.nudge_min and age_min > a.nudge_min
@@ -685,6 +838,7 @@ def main() -> int:
                                 log(f"{wid} 超时 {age_min:.0f}min → 补发检查 ✓")
                             else:
                                 fail_until[wid] = time.time() + 45
+                                round_fail += 1
                                 log(f"[FAIL] {wid} 补发检查失败：{why}")
                             time.sleep(1.5)
 
@@ -701,6 +855,7 @@ def main() -> int:
                             log(f"{wid} ← 续跑（{why}）")
                         else:
                             fail_until[wid] = time.time() + 45
+                            round_fail += 1
                             ledger("补位失败", "-", wid, why)
                             log(f"[FAIL] {wid} 续跑失败：{why}")
                         time.sleep(1.5)
@@ -715,6 +870,7 @@ def main() -> int:
                                 log(f"{wid} ← 补发协议 ✓")
                             else:
                                 fail_until[wid] = time.time() + 45
+                                round_fail += 1
                                 log(f"[FAIL] {wid} 补发协议失败：{why}")
                             time.sleep(1.5)
 
@@ -725,6 +881,38 @@ def main() -> int:
                                  f"完成 {done}/{c['total']}" if board_ok else "任务板失联")
                     log(f"心跳：忙 {busy_cnt} / 待命 {ready_cnt} / 未链会话 {missing_conv}"
                         f" / 任务板[{board_txt}]")
+
+                # 3.5) 积分巡检与自动切号（Variable 2026-10-06 指定）：
+                #      单轮发送失败 ≥3（异常信号）或每 10 分钟预防性巡检。
+                #      连败且池里有号 → 切号重建；池里没号 → 停机。
+                quota_due = time.time() - last_quota_check >= QUOTA_CHECK_EVERY
+                if USE_POOL and (round_fail >= 3 or quota_due):
+                    last_quota_check = time.time()
+                    info = apool.probe_all(REMAIN_MIN)
+                    if not info.get("ok"):
+                        log(f"[积分] 账号池不可读：{info.get('why')}（下轮再试）")
+                    else:
+                        log(f"[积分巡检] 池 {info['accounts']} 号 总余 "
+                            f"{info['pool_remain']} 最高 {info['richest']}"
+                            f"({info['richest_remain']}) 可切 {info['switchable']}"
+                            f" / 本轮发送失败 {round_fail}")
+                        if round_fail >= 3:
+                            if info.get("switchable", 0) <= 0:
+                                log("★ 停机 ★ 发送连败且账号池无可用积分账号"
+                                    "——产线终止（50000 任务未完，需人工补充账号）")
+                                ledger("停机", "-", "领单塔",
+                                       f"发送连败 {round_fail} + 无可用积分账号"
+                                       f"（门槛 {REMAIN_MIN}）：{info}")
+                                return 2
+                            r = switch_account_flow(
+                                f"单轮发送失败 {round_fail} 次", a.workers)
+                            if r == "no_account":
+                                log("★ 停机 ★ 无可用积分账号——产线终止")
+                                return 2
+                            if r == "ok":
+                                log("[切号] 全部工人已重建，产线继续")
+                            else:
+                                log(f"[FAIL] 切号失败：{r}（下轮重试）")
 
                 # 4) 收口判定：板上无单可领、无在途、无阻塞，塔内也无人 BUSY
                 if board_ok and pend == 0 and claimed == 0 and blocked == 0 \
