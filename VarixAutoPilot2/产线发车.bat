@@ -15,6 +15,8 @@ REM  Step 3: settle 5 min untouched, then health-check all 18 workers;
 REM          any that never started on its own (state file still the
 REM          tower's placeholder) gets archived + rebuilt as a NEW
 REM          conversation with the full protocol.
+REM  Protocol embeds the owner's directive: ALL features revolve
+REM  around the Rust kernel and are implemented in Rust only.
 REM
 REM  Account switch: abnormal/banned TreeCode accounts are skipped and
 REM  the next candidate is tried until one works. After a switch, if
