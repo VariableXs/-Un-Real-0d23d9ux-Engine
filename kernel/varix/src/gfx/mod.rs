@@ -18,6 +18,7 @@ pub mod capture;
 /// 判据四 压缩比-质量权衡表（逐属性 × 逐档位）、
 /// 判据五 量化确定性（同输入同输出）。
 pub mod meshquant;
+pub mod normtangent;
 pub mod ime;
 pub mod surface;
 pub mod text;

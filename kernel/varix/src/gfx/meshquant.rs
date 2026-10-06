@@ -34,7 +34,7 @@ use alloc::vec::Vec;
 ///
 /// 内核不链接 libm，`f32::sqrt` 是 std-only，故自建。对本模块的用途
 /// （法线归一化、长度、角度换算）精度远够：4 次迭代后相对误差 < 1e-6。
-fn fsqrt(v: f32) -> f32 {
+pub fn fsqrt(v: f32) -> f32 {
     if !(v > 0.0) {
         // 负数与 NaN 都归零：调用点已在入口处筛过非有限值，此处只需
         // 防止 0/0 与负数开方传播出 NaN 污染后续比较。
@@ -53,7 +53,7 @@ fn fsqrt(v: f32) -> f32 {
 }
 
 /// 绝对值（`f32::abs` 在 no_std 下为 std-only，自建以保持内核可编译）。
-fn fabs(v: f32) -> f32 {
+pub fn fabs(v: f32) -> f32 {
     if v < 0.0 {
         -v
     } else {
@@ -67,7 +67,7 @@ fn fabs(v: f32) -> f32 {
 /// 差异已在 `determinism` 判据的注释中登记：内核侧采用 away-from-zero，
 /// 理由是量化档位为非负整数区间，负半值的两种取整都不影响结果，
 /// 但 away-from-zero 的对称性使误差上界推导不必分情况。
-fn round_i32(v: f32) -> i32 {
+pub fn round_i32(v: f32) -> i32 {
     if !(v > -1.0e9) || !(v < 1.0e9) {
         // 非有限或越界：返回哨兵而非 saturate，避免把 NaN 伪装成 0。
         return i32::MIN;
@@ -103,7 +103,7 @@ fn clamp_i32(v: i32, lo: i32, hi: i32) -> i32 {
 }
 
 /// 三维向量长度（`fsqrt` 之上的便利封装）。
-fn len3(x: f32, y: f32, z: f32) -> f32 {
+pub fn len3(x: f32, y: f32, z: f32) -> f32 {
     fsqrt(x * x + y * y + z * z)
 }
 
@@ -113,7 +113,7 @@ fn len3(x: f32, y: f32, z: f32) -> f32 {
 /// 自变量的幂次增长）。先折区再逼近，是所有 libm 实现的共同做法：
 /// 折到 `±π/4` 后，10 次项的截断误差约 `(π/4)^11/11! ≈ 3e-11`，
 /// f32 的 1.2e-7eps 完全淹没不掉它——精度由f32 自身封顶，而非级数。
-fn trig_reduce(x: f32) -> (i32, f32) {
+pub fn trig_reduce(x: f32) -> (i32, f32) {
     const HALF_PI: f32 = 1.570_796_3;
     // 四舍五入到最近象限（而非截断：截断会把误差留在区间端点，那里
     // 恰是多项式误差最大的位置）。
@@ -123,19 +123,19 @@ fn trig_reduce(x: f32) -> (i32, f32) {
 }
 
 /// `sin` 的小区间多项式（`r ∈ [−π/4, π/4]`）。
-fn sin_poly(r: f32) -> f32 {
+pub fn sin_poly(r: f32) -> f32 {
     let r2 = r * r;
     r * (1.0 + r2 * (-1.0 / 6.0 + r2 * (1.0 / 120.0 + r2 * (-1.0 / 5040.0 + r2 / 362_880.0))))
 }
 
 /// `cos` 的小区间多项式（`r ∈ [−π/4, π/4]`）。
-fn cos_poly(r: f32) -> f32 {
+pub fn cos_poly(r: f32) -> f32 {
     let r2 = r * r;
     1.0 + r2 * (-0.5 + r2 * (1.0 / 24.0 + r2 * (-1.0 / 720.0 + r2 / 40_320.0)))
 }
 
 /// `cos` 的自建实现（先折区到 `[−π/4, π/4]` 再多项式逼近）。
-fn fcos(x: f32) -> f32 {
+pub fn fcos(x: f32) -> f32 {
     let (n, r) = trig_reduce(x);
     //象限 n 对应 `cos(x) = ±cos(r)` 或 `±sin(r)`，符号按象限循环。
     let v = match n.rem_euclid(4) {
@@ -148,7 +148,7 @@ fn fcos(x: f32) -> f32 {
 }
 
 /// `sin` 的自建实现（与 `fcos` 共用折区，`sin(x) = cos(x − π/2)`）。
-fn fsin(x: f32) -> f32 {
+pub fn fsin(x: f32) -> f32 {
     fcos(x - 1.570_796_3)
 }
 
@@ -168,7 +168,7 @@ fn fsin(x: f32) -> f32 {
 /// 弦长口径没有这个问题：先取单位向量之差 `|a−b| = 2sin(θ/2)`（差值
 /// 运算不放大误差），再由 `θ = 2·asin(chord/2)` 反解，asin 在 `[0,1]`
 /// 上经 `atan2(s, √((1−s)(1+s)))` 求值，小角处条件数良好。
-fn angle_deg3(
+pub fn angle_deg3(
     ax: f32,
     ay: f32,
     az: f32,
@@ -208,7 +208,7 @@ fn angle_deg3(
 /// `0.0037°`（octahedral）与 `0.0436°`（逐分量）两个量级，
 /// 6.7e-4 度的测量底噪虽不致命，但双重归约让它降到 1.5e-5，
 /// 「测量精度比最坏信号低两个数量级」从「勉强够」变成「宽裕」。
-fn atan2_deg(y: f32, x: f32) -> f32 {
+pub fn atan2_deg(y: f32, x: f32) -> f32 {
     if !(x > 0.0) || !(y >= 0.0) {
         return 0.0;
     }
