@@ -394,10 +394,19 @@ def add_skill_via_slash(st, slug: str, retries: int = 2) -> tuple:
     return False, {"slug": slug, "display": display, **last}
 
 
-def mount_skills(st, skills=None) -> tuple:
-    """逐个经 / 面板挂载技能（连续挂载：编辑器已有 mention 仍可触发，实测）。"""
+def mount_skills(st, skills=None, guard=None) -> tuple:
+    """逐个经 / 面板挂载技能（连续挂载：编辑器已有 mention 仍可触发，实测）。
+
+    guard: 可选 () -> (ok, why)，每个技能挂载前调用；返回 False 立即中止
+    （塔用它在引导中途检测「视图被用户切走」，见 run()）。
+    """
     mounted, failed, ev = [], [], []
     for s in (skills or SKILLS_DEFAULT):
+        if guard is not None:
+            ok_g, why_g = guard()
+            if not ok_g:
+                ev.append({"guard_abort": why_g})
+                break
         ok, e = add_skill_via_slash(st, s)
         ev.append(e)
         (mounted if ok else failed).append(s)
@@ -406,7 +415,7 @@ def mount_skills(st, skills=None) -> tuple:
 
 
 def run(st, ws: str = WS_DEFAULT, files=None, need_files: bool = True,
-        skills=None) -> tuple:
+        skills=None, guard=None) -> tuple:
     """在已确认的空白会话上执行引导三件套。
 
     顺序：工作空间 → 技能（/ 面板 UI 挂载，编辑器最干净时做最娇气的交互）
@@ -415,11 +424,28 @@ def run(st, ws: str = WS_DEFAULT, files=None, need_files: bool = True,
     / 面板挂载失败的技能记入 ev["skills_fallback"]，由塔把它们以
     @skill: 内联渲染进首条提示词（前端输入时自动转 mention，实测）。
     返回 (ok, 证据dict)。工作空间或文件失败即整体失败（塔负责重置重试）。
+    guard: 可选 () -> (ok, why)，在开头 / 工作空间后 / 逐技能 / 拖文件前
+    各调用一次；返回 False 立即整体中止且 ev["why_guard"]=why —— 塔据此
+    跳过「新建任务」重置（视图已被用户接管时点新建 = 抢用户窗口）。
     """
     ev = {}
+
+    def _guard_check() -> tuple[bool, str] | None:
+        if guard is None:
+            return None
+        ok_g, why_g = guard()
+        if not ok_g:
+            ev["why_guard"] = why_g
+            return False, why_g
+        return None
+
+    if (r := _guard_check()) is not None:
+        return False, ev
     ok_ws, ev_ws = select_workspace(st, ws)
     ev["workspace"] = ev_ws
     if not ok_ws:
+        return False, ev
+    if (r := _guard_check()) is not None:
         return False, ev
     skill_list = SKILLS_DEFAULT if skills is None else list(skills)
     if skill_list:
@@ -430,13 +456,20 @@ def run(st, ws: str = WS_DEFAULT, files=None, need_files: bool = True,
             time.sleep(0.4)
         except Exception:
             pass
-        mounted, failed, ev_sk = mount_skills(st, skill_list)
+        mounted, failed, ev_sk = mount_skills(st, skill_list, guard=guard)
         ev["skills_ui"] = {"mounted": mounted, "failed": failed}
         ev["skills_detail"] = ev_sk
+        guard_abort = next((e["guard_abort"] for e in ev_sk
+                            if isinstance(e, dict) and "guard_abort" in e), None)
+        if guard_abort:
+            ev["skills_fallback"] = list(failed)
+            return False, ev
     else:
         mounted, failed = [], []
     ev["skills_fallback"] = list(failed)
     if need_files:
+        if (r := _guard_check()) is not None:
+            return False, ev
         ok_f, ev_f = attach_files(st, files)
         ev["files"] = ev_f
         if not ok_f:

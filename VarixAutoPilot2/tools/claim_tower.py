@@ -41,6 +41,10 @@
   3. 切会话必须确认选中态（D2/D3/D9/D14 同源教训），确认失败放弃填充。
   4. 发送失败有 45s 冷却（限流静默吞发送时绝不轰炸，D7/D10）。
   5. Ctrl+C 优雅停止：工人不受影响（它们靠领单 API 自循环），塔随时可重启接管。
+  6. 视图归属守卫（2026-10-06 Variable 指定）：您正在查看的对话绝不被写入——
+     填充前后各校验一次活跃会话（续跑=必须等于目标 conv_id；新建=不得落进
+     旧会话集合），漂移即拦截不发送；引导三件套每阶段之间同样校验；
+     续跑/发车先在侧栏全列表（含滚动加载）里找回既有对话，新建只是最后手段。
 
 用法（在 VarixAutoPilot2/ 下）：
   python tools/claim_tower.py --probe                # 只读体检（CDP/任务板/DOM）
@@ -57,6 +61,7 @@
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -220,6 +225,95 @@ JS_CLICK_CONV = r"""((cid) => {
   return { found: true };
 })("%s")"""
 
+# 滚动查找后点击：会话多后旧项被虚拟化/滚出渲染区（不在 DOM），fast path
+# 找不到时先定位侧栏可滚动容器，从顶部渐进 scrollTop（两遍扫描，吃滚动
+# 加载的分页），目标项渲染出来后走同样的完整 MouseEvent 序列点击。
+JS_SCROLL_CLICK_CONV = r"""((cid) => {
+  const find = () => document.querySelector(
+    'div.conversation-item[data-conversation-id="' + cid + '"]');
+  let el = find();
+  let scrolled = false;
+  if (!el) {
+    const any = document.querySelector('div.conversation-item');
+    let sc = null;
+    for (let p = any && any.parentElement; p; p = p.parentElement) {
+      if (p.scrollHeight > p.clientHeight + 40 &&
+          /auto|scroll/.test(getComputedStyle(p).overflowY)) { sc = p; break; }
+    }
+    if (!sc) return { found: false, why: '目标不在 DOM 且侧栏无可滚动容器' };
+    const step = Math.max(240, sc.clientHeight - 80);
+    for (let pass = 0; pass < 2 && !el; pass++) {
+      sc.scrollTop = 0;
+      let done = 0;
+      while (!el) {
+        sc.scrollTop += step; done += step; scrolled = true;
+        el = find();
+        if (done > sc.scrollHeight * 1.5 + 4000) break;
+      }
+    }
+    if (!el) return { found: false, why: '滚动全列表仍未找到该会话' };
+  }
+  const node = el.querySelector('[class*="_card_"]') || el.firstElementChild || el;
+  const fire = (n) => {
+    const r = n.getBoundingClientRect();
+    const o = { bubbles: true, cancelable: true, view: window,
+                clientX: r.left + 8, clientY: r.top + 8, button: 0, detail: 1 };
+    n.dispatchEvent(new MouseEvent('mouseover', o));
+    n.dispatchEvent(new MouseEvent('mousemove', o));
+    n.dispatchEvent(new MouseEvent('mousedown', o));
+    n.dispatchEvent(new MouseEvent('mouseup', o));
+    n.dispatchEvent(new MouseEvent('click', o));
+  };
+  fire(node);
+  return { found: true, scrolled: scrolled };
+})("%s")"""
+
+# 按标记（VARIX-Wxx）全列表搜索（只读，不点击）：含滚动加载的两遍扫描，
+# 搜完把侧栏滚动位置还原（不动用户侧栏）。用于会话映射丢失时的重链。
+# 第二参 exclude = 已归档会话 id 列表（卡死归档的旧对话标题同样带标记，
+# 滚动全列表会把它们翻出来，必须跳过——归档的会话绝不复活）。
+JS_FIND_CONV_BY_MARKER = r"""((marker, exclude) => {
+  const items = () => Array.from(document.querySelectorAll(
+    'div.conversation-item[data-conversation-id]'));
+  const scan = () => {
+    for (const e of items()) {
+      const id = e.getAttribute('data-conversation-id');
+      if (!id || exclude.includes(id)) continue;
+      if ((e.innerText || '').includes(marker)) {
+        return { id: id,
+                 title: (e.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 60) };
+      }
+    }
+    return null;
+  };
+  let hit = scan();
+  let scrolled = false;
+  if (!hit) {
+    const any = items()[0];
+    let sc = null;
+    for (let p = any && any.parentElement; p; p = p.parentElement) {
+      if (p.scrollHeight > p.clientHeight + 40 &&
+          /auto|scroll/.test(getComputedStyle(p).overflowY)) { sc = p; break; }
+    }
+    if (sc) {
+      const top0 = sc.scrollTop;
+      const step = Math.max(240, sc.clientHeight - 80);
+      for (let pass = 0; pass < 2 && !hit; pass++) {
+        sc.scrollTop = 0;
+        let done = 0;
+        while (!hit) {
+          sc.scrollTop += step; done += step; scrolled = true;
+          hit = scan();
+          if (done > sc.scrollHeight * 1.5 + 4000) break;
+        }
+      }
+      sc.scrollTop = top0;
+    }
+  }
+  return hit ? { found: true, scrolled: scrolled, id: hit.id, title: hit.title }
+             : { found: false, why: '全列表（含滚动）未命中标记 ' + marker };
+})("%s", %s)"""
+
 # 新建对话：完整 MouseEvent 序列（裸 click 时灵时不灵，D8）
 JS_CLICK_NEW = r"""(() => {
   const b = Array.from(document.querySelectorAll('button')).find(
@@ -297,19 +391,72 @@ def wait_idle(timeout_s: int = 90) -> bool:
     return False
 
 
-def send_text(text: str, tag: str) -> tuple[bool, str]:
+def _target_ok(now_active: str, expect) -> tuple[bool, str]:
+    """目标守卫判定。expect: str=精确相等 / set=不在其中（旧会话黑名单）。"""
+    lbl_now = f"会话[{now_active[:12]}]" if now_active else "无选中视图（空白/新会话）"
+    if isinstance(expect, str):
+        if now_active == expect:
+            return True, ""
+        want = f"会话[{expect[:12]}]" if expect else "空白新建视图"
+        return False, (f"当前活跃 {lbl_now} ≠ 目标 {want}"
+                       f"（窗口可能正被您查看/操作）")
+    if isinstance(expect, set):
+        if now_active not in expect:
+            return True, ""
+        return False, (f"当前活跃 {lbl_now} 是旧会话（您可能正在查看它）——拦截")
+    return True, ""
+
+
+def send_text(text: str, tag: str, expect_active=None) -> tuple[bool, str]:
     """填入 + 点发送 + 受理证据。调用方保证目标会话已空闲。
 
-    证据（任一成立即算后端受理，D11 实弹修订版）：
-      E1 最强：发送键进入停止态 = AI 已开始生成
-      E2 强：唯一 tag 出现在页面文本里（消息真入流）
-      E3 弱：编辑器真实字数归零 且 当前空闲
-    填充走 st.fill_cdp（CDP Input.insertText，trusted 输入管线，D11 正解）。
+    expect_active（目标守卫，2026-10-06 Variable 指定「提示词不许进到我
+    正在看的对话」）：
+      None → 不校验（accept_tower 等旧调用方兼容）；
+      str  → 当前活跃会话必须等于它（续跑路径传 conv_id）；
+      set  → 当前活跃会话不得属于该集合（新建路径传旧会话 id 黑名单：
+             空白视图 active='' 或新会话自身 id 都放行）。
+    填充前 + 点击发送前各校验一次；漂移即中止并显性记日志，绝不发送。
+    续跑路径（str 且非空）填充前检查编辑器残留：含 VARIX-（上次失败填充
+    的遗留）→ 先清空防双份（insertText 是追加不是替换）；是非塔内容
+    （可能是您的草稿）→ 拒绝覆盖并显性报错。
     """
+    now = active_conv()
+    if expect_active is not None:
+        ok_t, why_t = _target_ok(now, expect_active)
+        if not ok_t:
+            return False, f"填充前视图漂移拦截：{why_t}"
+    if isinstance(expect_active, str) and expect_active:
+        s0 = st.probe_state() or {}
+        if (s0.get("charsReal") or 0) > 0:
+            has_varix = st.call_js(
+                '(() => { const e = document.querySelector('
+                "'div[data-slate-editor=\"true\"][contenteditable=\"true\"]');"
+                " return e ? (e.innerText||'').includes('VARIX-') : false; })()")
+            if has_varix:
+                st.clear_editor_cdp()
+            else:
+                return False, ("目标会话输入框已有非塔内容（可能是您的草稿）"
+                               "——拒绝覆盖，本轮放弃；请手动处理后重试")
     ok, ev = st.fill_cdp(text)
     if not ok:
         return False, f"填充失败：{ev}"
     time.sleep(0.6)
+    if expect_active is not None:
+        ok_t, why_t = _target_ok(active_conv(), expect_active)
+        if not ok_t:
+            # 文本可能已落进漂移后的编辑器：仅当内容确属我们（含唯一 tag）
+            # 时才清掉，绝不动用户自己的草稿
+            tag_js = json.dumps(tag, ensure_ascii=False)
+            has_ours = st.call_js(
+                '(() => { const e = document.querySelector('
+                "'div[data-slate-editor=\"true\"][contenteditable=\"true\"]');"
+                " return e ? (e.innerText||'').includes(" + tag_js + ") : false; })()")
+            extra = ""
+            if has_ours:
+                st.clear_editor_cdp()
+                extra = "；检测到塔文本已落进漂移视图，已清空"
+            return False, f"点击发送前视图漂移拦截：{why_t}{extra}"
     r = st.call_js(st.click_send_js())
     if not (isinstance(r, dict) and r.get("ok")):
         return False, f"发送键点击失败：{r}"
@@ -330,9 +477,16 @@ def send_text(text: str, tag: str) -> tuple[bool, str]:
 
 
 def switch_conv(conv_id: str, settle_s: float = 2.0) -> bool:
-    """切到指定会话并确认真的切过去了（D3/D9/D14 同源教训全吸收）。"""
+    """切到指定会话并确认真的切过去了（D3/D9/D14 同源教训全吸收）。
+
+    目标项不在 DOM（侧栏长列表虚拟化/滚出渲染区）时，先渐进滚动侧栏把
+    它找出来再点——续跑必须点进既有对话，旧对话被滚没导致找不到就算
+    失败重试，绝不静默改开新对话（2026-10-06 Variable 指定）。
+    """
     for attempt in range(2):
         r = st.call_js(JS_CLICK_CONV % conv_id)
+        if not (isinstance(r, dict) and r.get("found")):
+            r = st.call_js(JS_SCROLL_CLICK_CONV % conv_id)
         if not (isinstance(r, dict) and r.get("found")):
             return False
         for _ in range(6):
@@ -519,16 +673,61 @@ def nudge_msg(wid: str) -> str:
 
 # ══════════════════════ 核心动作 ══════════════════════
 
-def relink_conv(wid: str) -> str:
-    """会话 id 丢失时按首条提示词头部的 VARIX-Wxx 标记在侧栏标题里重链。"""
-    marker = f"VARIX-{wid}"
+_relink_last: dict[str, float] = {}   # wid → 上次全量重链扫描时间（节流）
+_archived_ids: dict[str, set] = {}    # wid → 已归档会话 id（重链时排除）
+
+
+def archived_conv_ids(wid: str) -> set:
+    """从 dispatch/archive/日期/Wxx_*.md 回收已归档会话 id。
+
+    卡死归档的旧对话标题同样带 VARIX-Wxx 标记且永久留在侧栏历史里；
+    重链滚动全列表时必须把它们排除——归档的会话绝不复活顶替新会话。
+    结果按 wid 缓存（归档文件只增不改）。
+    """
+    if wid in _archived_ids:
+        return _archived_ids[wid]
+    out = set()
     try:
-        for c in snapshot_convs():
-            if marker in (c.get("title") or ""):
-                write_conv(wid, c["id"])
-                log(f"{wid} 会话重链成功 → {c['id'][:12]}…")
-                ledger("会话重链", "-", wid, c["id"][:16])
-                return c["id"]
+        if ARCHIVE_ROOT.is_dir():
+            for f in ARCHIVE_ROOT.glob(f"*/{wid}_*.md"):
+                m = re.search(r"会话 id：`([^`]+)`", f.read_text(encoding="utf-8"))
+                if m:
+                    out.add(m.group(1).strip())
+    except OSError as e:
+        log(f"[WARN] 归档 id 回收失败（{wid}）：{e}")
+    _archived_ids[wid] = out
+    return out
+
+
+def relink_conv(wid: str, min_gap_s: float = 60.0) -> str:
+    """会话 id 丢失时按首条提示词头部的 VARIX-Wxx 标记在侧栏标题里重链。
+
+    2026-10-06 升级：侧栏长列表会虚拟化（旧会话滚出渲染区就不在 DOM），
+    现在做全量滚动搜索（两遍扫描，吃滚动加载），搜完还原滚动位置——
+    找回既有对话永远优先于新建（Variable 指定：续跑点进旧对话，不开新的）。
+    已归档会话 id 一律排除（见 archived_conv_ids）。
+    min_gap_s 节流：守护循环每轮都会来问，全量扫描同一工人 60s 内只跑一次。
+    """
+    now = time.time()
+    if now - _relink_last.get(wid, 0.0) < min_gap_s:
+        return ""
+    _relink_last[wid] = now
+    marker = f"VARIX-{wid}"
+    exclude = sorted(archived_conv_ids(wid))
+    try:
+        r = st.call_js(JS_FIND_CONV_BY_MARKER
+                       % (json.dumps(marker), json.dumps(exclude)))
+        if isinstance(r, dict) and r.get("found"):
+            write_conv(wid, r["id"])
+            log(f"{wid} 会话重链成功 → {r['id'][:12]}…"
+                f"（{'滚动全列表找回' if r.get('scrolled') else '当前列表命中'}，"
+                f"标题≈{r.get('title', '')}）")
+            ledger("会话重链", "-", wid, r["id"][:16])
+            return r["id"]
+        why = r.get("why") if isinstance(r, dict) else r
+        if exclude:
+            why += f"（已排除 {len(exclude)} 个归档会话）"
+        log(f"[WARN] {wid} 重链未命中：{why}")
     except Exception as e:
         log(f"[WARN] {wid} 重链失败：{e}")
     return ""
@@ -544,6 +743,13 @@ def new_conversation(first_prompt_fn, known_ids: set,
 
     顺序重要（实测）：先点新建，再判忙闲——忙闲是按会话的，
     新建出来的空白会话必然空闲，不能用全局 wait_idle 卡死自己。
+
+    防污染双保险（2026-10-06 Variable 指定「提示词不许进到我正在看的对话」）：
+      A. 引导全程守卫：工作空间/逐技能/拖文件每个阶段之间都确认视图没有
+         落进 known_ids（旧会话 = 您可能正在查看的那批），落进即中止引导，
+         且不点「新建任务」抢视图，把窗口原样还给您；
+      B. 发送守卫：send_text(expect_active=known_ids) 填充前后各校验一次，
+         漂移即拦截。
     """
     r = st.call_js(JS_CLICK_NEW)
     if not (isinstance(r, dict) and r.get("ok")):
@@ -567,19 +773,36 @@ def new_conversation(first_prompt_fn, known_ids: set,
     if not wait_idle(30):
         return "", "新建出来的会话 30s 内未进入可发送态"
     # ── 引导三件套（工作空间 + 技能 / 面板挂载 + 文件拖拽）──
+    drift = {"hit": False, "why": ""}
+
+    def guard():
+        now = active_conv()
+        if now and now in known_ids:
+            drift["hit"] = True
+            drift["why"] = (f"引导中视图被切到旧会话[{now[:12]}]"
+                            f"（您可能正在查看）→ 立即中止，不动您的窗口")
+            return False, drift["why"]
+        return True, ""
+
     if BOOT["on"]:
         skills = [s.strip() for s in SKILLS_ARG.split(",") if s.strip()]
-        ok_b, ev_b = vb.run(st, BOOT["ws"], BOOT["files"], skills=skills)
+        ok_b, ev_b = vb.run(st, BOOT["ws"], BOOT["files"], skills=skills,
+                            guard=guard)
         if not ok_b:
+            if drift["hit"]:
+                # 视图已被用户接管：绝不点「新建任务」抢窗口，原样让位
+                log(f"[让位] {drift['why']}")
+                return "", f"引导中止（让位用户视图）：{drift['why']}"
             vb.cleanup_reset(st, JS_CLICK_NEW)
-            return "", f"引导失败（已重置空白）：{ev_b}"
+            return "", f"引导失败（已重置空白）：{ev_b.get('why_guard') or ev_b}"
         mounted = ev_b.get("skills_ui", {}).get("mounted", [])
         fallback = ev_b.get("skills_fallback", [])
         log(f"引导：工作空间✓ 技能 / 面板挂载 {len(mounted)}/{len(skills)}"
             f"（内联兜底 {len(fallback)}：{','.join(fallback) or '无'}） 文件✓")
     else:
         fallback = None   # 未开引导 → 技能全走内联 @skill:
-    ok, ev = send_text(first_prompt_fn(fallback), tag)
+    ok, ev = send_text(first_prompt_fn(fallback), tag,
+                       expect_active=set(known_ids))
     if not ok:
         return "", f"首条发送失败：{ev}"
     # 侧栏渲染有 30s+ 延迟（实测），差集轮询 35s；再不行靠标记重链兜底
@@ -592,12 +815,18 @@ def new_conversation(first_prompt_fn, known_ids: set,
 
 
 def dispatch_continue(wid: str, conv_id: str, msg: str) -> tuple[bool, str]:
-    """切到工人会话 → 确认空闲 → 发指令。"""
+    """重新点进该工人的既有会话 → 确认空闲 → 发指令。
+
+    2026-10-06 Variable 指定：续跑永远「点回旧对话发送」，绝不开新对话。
+    expect_active=conv_id：wait_idle 期间用户若点开别的对话，填充前会被
+    拦截（绝不把续跑指令发进您正在看的对话）；目标项被侧栏虚拟化滚出
+    渲染区时 switch_conv 会先滚动找回再点。
+    """
     if not switch_conv(conv_id):
-        return False, f"切会话失败：{conv_id[:12]}"
+        return False, f"切会话失败（含滚动查找）：{conv_id[:12]}"
     if not wait_idle(60):
         return False, "切过去后 60s 仍忙，本轮回头再试"
-    return send_text(msg, f"VARIX-{wid}·塔")
+    return send_text(msg, f"VARIX-{wid}·塔", expect_active=conv_id)
 
 
 # ══════════════ 卡死归档重建 & 积分切号（2026-10-06 Variable 指定）══════════════
@@ -823,14 +1052,20 @@ def main() -> int:
         print("nothing to do：加 --start N / --watch / --probe / --dry-run")
         return 0
 
-    # ── 发车：建 N 个会话 + 派首批协议 ──
+    # ── 发车：能找回既有对话就继续用，实在没有才建新会话 + 派首批协议 ──
     if a.start:
         known = snapshot_conv_ids()
         created = 0
         for i in range(1, a.start + 1):
             wid = f"W{i:03d}"
-            if read_conv(wid):
-                log(f"{wid} 已有会话 {read_conv(wid)[:12]}…，跳过新建")
+            conv = read_conv(wid)
+            if not conv:
+                conv = relink_conv(wid)   # 全列表滚动搜索：找回既有对话优先
+                if conv:
+                    ledger("发车找回", "-", wid, f"既有会话 {conv[:16]}，跳过新建")
+            if conv:
+                known.add(conv)
+                log(f"{wid} 已有会话 {conv[:12]}…，继续用它（不另开新对话）")
                 continue
             prompt_fn = lambda missing: render_protocol(wid, missing)  # noqa: E731
             log(f"{wid} 新建会话并派协议 …")
@@ -863,6 +1098,7 @@ def main() -> int:
             f"STALE 线 {a.stale_min}min"
             + (f"，积分门槛 {REMAIN_MIN}" if USE_POOL else "，积分监控关"))
         fail_until: dict[str, float] = {}   # wid → 该时间前不再尝试派发（失败冷却）
+        missing_since: dict[str, float] = {}  # wid → 首次观测到会话失链的时间
         last_hb = 0.0
         last_board_ok = True
         last_quota_check = time.time()
@@ -890,13 +1126,41 @@ def main() -> int:
                     wid = f"W{i:03d}"
                     state = read_state(wid)
                     conv = read_conv(wid)
-                    if state and not conv:
-                        conv = relink_conv(wid)  # 标记重链（只读侧栏，零干扰）
                     if not conv:
-                        if state:
-                            missing_conv += 1
+                        # 标记重链（全列表滚动搜索，60s 节流；只读侧栏标题）
+                        conv = relink_conv(wid)
+                    if not conv:
+                        missing_conv += 1
+                        # 失链兜底（2026-10-06 Variable 指定：续跑必点进旧
+                        # 对话，新建只是最后手段）——READY/空状态且全列表
+                        # （含滚动）彻底搜索 15min 仍找不回 → 该对话已不可达，
+                        # 作废映射后重建；BUSY 失链绝不新建（工人可能还在
+                        # 旧对话里干活，等它写 READY 再兜底）。
+                        if state.startswith("BUSY"):
+                            continue
+                        first = missing_since.setdefault(wid, now)
+                        if (now - first >= 900
+                                and now >= fail_until.get(wid, 0)):
+                            missing_since.pop(wid, None)
+                            ledger("失链重建", "-", wid,
+                                   "READY/空状态 15min 找不回会话"
+                                   "（全列表搜索过）→ 作废映射重建（最后手段）")
+                            log(f"[失链] {wid} 会话 15min 找不回 → "
+                                f"作废映射重建（最后手段）")
+                            write_conv(wid, "")
+                            release_worker_tasks(wid)   # 防名下有看不见的已领单
+                            fail_until[wid] = time.time() + 120
+                            conv2, ev2 = rebuild_worker(wid)
+                            if conv2 or "发送成功" in ev2:
+                                ledger("失链重建完成", "-", wid, ev2)
+                                log(f"{wid} 失链重建 ✓ {ev2}")
+                            else:
+                                ledger("失链重建失败", "-", wid, ev2)
+                                log(f"[FAIL] {wid} 失链重建失败：{ev2}")
+                            time.sleep(2.5)
                         continue
 
+                    missing_since.pop(wid, None)   # 会话已找回，清失链计时
                     if state.startswith("BUSY"):
                         busy_cnt += 1
                         any_busy = True
