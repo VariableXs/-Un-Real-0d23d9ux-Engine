@@ -172,6 +172,8 @@ pub mod vee03_outline;
 pub mod vef01_checks;
 pub mod vef01_pngdec;
 pub mod veh01_boundary;
+pub mod vei02_checks;
+pub mod vei02_locale;
 pub mod veh01_checks;
 pub mod veh02_audioarch;
 pub mod veh02_checks;
@@ -226,7 +228,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 61] = [
+    let blocks: [(&'static str, CheckSet); 62] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -288,6 +290,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
         ("VE-F3001", vep01_checks::run_vep01_checks()),
+        ("VE-F4002", vei02_checks::run_vei02_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
