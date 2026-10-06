@@ -151,7 +151,24 @@ export type DiagCode =
   /** P1 非EXPORTED 态导出或重复导出（F0208）。 */
   | "BLOB_EXPORT_STATE_INVALID"
   /** P2 生命周期压测观测项（F0208 · 记账）。 */
-  | "BLOB_LIFECYCLE_STRESS_OBSERVED";
+  | "BLOB_LIFECYCLE_STRESS_OBSERVED"
+  /* ── 扩展段二：VE-F0209 扫描输出与呈现 ── */
+  /** P1 scanout 绑定请求非法（F0209）。 */
+  | "SCANOUT_BIND_INVALID"
+  /** P1 多屏 display rect 空间重叠（F0209）。 */
+  | "SCANOUT_LAYOUT_OVERLAP"
+  /** P1 布局几何越界（F0209）。 */
+  | "SCANOUT_LAYOUT_OUT_OF_BOUNDS"
+  /** P0 资源未flush 即请求呈现（F0209）。 */
+  | "SCANOUT_RESOURCE_NOT_FLUSHED"
+  /** P0 呈现时序脱钩致旧帧（F0209）。 */
+  | "SCANOUT_STALE_FRAME"
+  /** P1 dmabuf 直呈现退化为拷贝（F0209）。 */
+  | "SCANOUT_DMABUF_DEGRADED"
+  /** P2 host 呈现回报缺失致节奏降级（F0209）。 */
+  | "SCANOUT_VSYNC_REPORT_MISSING"
+  /** P1 GET_DISPLAY_INFO 响应畸形（F0209）。 */
+  | "SCANOUT_DISPLAY_INFO_MALFORMED";
 
 /** 一条诊断。stage 标注判定发生在哪个阶段，便于 UI 定位而非只报码。 */
 export interface Diagnostic {
