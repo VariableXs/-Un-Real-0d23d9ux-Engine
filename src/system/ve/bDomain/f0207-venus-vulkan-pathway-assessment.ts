@@ -130,7 +130,28 @@ export type DiagCode =
   /** P2 回落路径未显性通知用户（软渲降级须告知）。 */
   | "VENUS_FALLBACK_NOT_ANNOUNCED"
   /** P2 能力位图未登记 Venus 位（记账，登记即可）。 */
-  | "VENUS_CAPBIT_NOT_REGISTERED";
+  | "VENUS_CAPBIT_NOT_REGISTERED"
+  /* ── 扩展段：VE-B 域后续条目（F0208 blob 起）的诊断码由属主条目登记 ──
+   * 登记纪律：B1 组共用本域的 DiagCode 联合。后续条目**只增不改**——
+   * 增是安全的（联合变大，旧消费者不受影响），改则会让已推送的守卫判据
+   * 与远端不一致。故扩段只允许追加，不得删改既有码。
+   */
+  /** P0 同一 blob 上出现混合 cache/uncache 映射（F0208 · 花屏源）。 */
+  | "BLOB_ATTR_MIXED"
+  /** P0 销毁顺序乱序（F0208）。 */
+  | "BLOB_DESTROY_ORDER_VIOLATION"
+  /** P0 生命周期状态机非法跃迁（F0208）。 */
+  | "BLOB_LIFECYCLE_TRANSITION_INVALID"
+  /** P1 映射属性与 mem_type 推导口径不符（F0208 · 可纠正）。 */
+  | "BLOB_MAPPING_ATTR_SUBOPTIMAL"
+  /** P1 跨服务导出后退化为拷贝（F0208）。 */
+  | "BLOB_EXPORT_DEGRADED_TO_COPY"
+  /** P1 blob 创建参数非法（F0208）。 */
+  | "BLOB_CREATE_PARAM_INVALID"
+  /** P1 非EXPORTED 态导出或重复导出（F0208）。 */
+  | "BLOB_EXPORT_STATE_INVALID"
+  /** P2 生命周期压测观测项（F0208 · 记账）。 */
+  | "BLOB_LIFECYCLE_STRESS_OBSERVED";
 
 /** 一条诊断。stage 标注判定发生在哪个阶段，便于 UI 定位而非只报码。 */
 export interface Diagnostic {
