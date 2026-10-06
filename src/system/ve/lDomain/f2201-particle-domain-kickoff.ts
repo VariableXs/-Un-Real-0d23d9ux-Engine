@@ -12,7 +12,7 @@
  *   粒子是 VE 里唯一一个**同一场景可能同时跑两套完全不同的模拟后端**的域。
  *   CPU 路径逐位可复现（同种子同参数双跑 diff=0，F2215 断言），GPU 路径
  *   只能承诺视觉等效（统计特征一致，浮点归约序不可控）。这两条语义若在开工时
- *   不写死，后续每个条目都会各自解释「确定」二字meaning。到L05 才吵这件事，
+ *   不写死，后续每个条目都会各自解释「确定」二字的含义。等到 L05 才吵这件事，
  *   已经有二十个条目把错误语义编进了自己的单元测试里——那才是真正的返工。
  *   故本条把「诚实语义」做成**架构守卫**：任何模块若给 GPU 路径贴上逐位确定的
  *   标签，在开发期就被拦下（F2253 正式声明的前置条件）。
@@ -851,7 +851,10 @@ export interface RouteDecision {
  * 强制 CPU 排查 GPU 疑似错误）。但覆盖仍受三条硬约束：
  *   ① 需求逐位确定 + 指定 GPU → MANUAL_OVERRIDE_CONFLICT（不静默降语义）；
  *   ② 指定 GPU + 无 compute → PATH_HARDWARE_UNAVAILABLE；
- *   ③ 规模超出该路径区间 → PATH_SCALE_OUT_OF_RANGE（带建议值）。
+ *   ③ 规模落在该路径目标区间之外（**双侧**：超上界或低于下界）→
+ *      PATH_SCALE_OUT_OF_RANGE（带建议值）。下界同样受约束的理由：规格表把
+ *      「十万以下GPU 无成本优势」写成了不承诺项，只卡上界会让覆盖成为绕过
+ *      该声明的后门——用户会拿到一个「路由成功、实则必然掉帧」的配置。
  */
 export function routePath(req: RouteRequest, bag: DiagBag): Outcome<RouteDecision> {
   const table = PATH_TABLE as Record<string, PathSpec | undefined>;
@@ -859,7 +862,7 @@ export function routePath(req: RouteRequest, bag: DiagBag): Outcome<RouteDecisio
   const gpu = table["gpu-compute-sim"] as PathSpec;
   const count = req.host.liveParticleCount;
 
-  // 入参合法性：规模必须是��负有限整数。NaN 会让所有比较为 false 而静默走到
+  // 入参合法性：规模必须是非负有限整数。NaN 会让所有比较为 false 而静默走到
   // 「规模超出区间」分支，诊断信息会误导人——所以单独拦。
   if (!Number.isFinite(count) || count < 0 || !Number.isInteger(count)) {
     bag.push(
@@ -914,18 +917,27 @@ export function routePath(req: RouteRequest, bag: DiagBag): Outcome<RouteDecisio
       );
       return fail("PATH_HARDWARE_UNAVAILABLE", `${spec.name} 所需 compute 能力不可用`, `改用 ${cpu.name}`);
     }
-    // 约束③：规模区间。
-    if (count > spec.targetScale.hi) {
+    // 约束③：规模区间（双侧）。上界防「超区间」，下界防「反区间」——
+    // 规格表把 GPU 的下界（十万）写成本就含「小于十万粒子时成本不划算」的
+    // 不承诺项，若手动覆盖只卡上界，用户就能把 GPU 强推到 5 万粒子：路由返回成功，
+    // 场景却跑在一台明确声明过「此规模无优势」的路径上，且全程无告警。
+    // 宁可让覆盖失败并说清「低于下界」，也不要一个看起来生效、实则必然掉帧的配置。
+    if (count > spec.targetScale.hi || count < spec.targetScale.lo) {
+      const below = count < spec.targetScale.lo;
       bag.push(
         "PATH_SCALE_OUT_OF_RANGE",
-        `手动覆盖指定 ${spec.name}，但活粒子数 ${count} 超出其目标上限 ${spec.targetScale.hi}`,
-        `该路径的设计规模区间是 ${spec.targetScale.lo}~${spec.targetScale.hi}。`
-          + `建议：降低粒子密度档（F2217）到 ${spec.targetScale.hi} 以下，或改用 ${gpu.name}`,
+        `手动覆盖指定 ${spec.name}，但活粒子数 ${count} ${below ? "低于" : "超出"}其目标区间 `
+          + `${spec.targetScale.lo}~${spec.targetScale.hi}`,
+        below
+          ? `该路径的设计规模区间是 ${spec.targetScale.lo}~${spec.targetScale.hi}，且规格表已声明`
+            + `「小于 ${spec.targetScale.lo} 粒子时无成本优势」。请改用 ${cpu.name}`
+          : `该路径的设计规模区间是 ${spec.targetScale.lo}~${spec.targetScale.hi}。`
+            + `建议：降低粒子密度档（F2217）到 ${spec.targetScale.hi} 以下，或改用 ${gpu.name}`,
       );
       return fail(
         "PATH_SCALE_OUT_OF_RANGE",
-        `活粒子数 ${count} 超出 ${spec.name} 上限 ${spec.targetScale.hi}`,
-        "降密度档或改用 GPU 路径",
+        `活粒子数 ${count} ${below ? "低于" : "超出"} ${spec.name} 区间 ${spec.targetScale.lo}~${spec.targetScale.hi}`,
+        below ? `该规模低于 ${spec.name} 的设计下界，改用 ${cpu.name}` : "降密度档或改用 GPU 路径",
       );
     }
     return ok(
@@ -1532,8 +1544,8 @@ export const AUTO_ROUTE_ORDER: readonly string[] = [
   "第 0 步：确定性需求优先于规模——要求逐位可复现时直接排除 GPU 路径（不看规模）",
   "第 1 步：规模落在 CPU 区间 → CPU（成本更低且语义更强）",
   "第 2 步：规模落入 GPU 区间且 compute 可用 → GPU（只承诺统计等效）",
-  "第 2b步：规模落入 GPU 区间但 compute 不可用 → 显性失败，不静默退回 CPU",
-  "第 3 步：规模超GPU 上限 → 显性失败（建议分区/剔除/LOD）",
+  "第 2b 步：规模落入 GPU 区间但 compute 不可用 → 显性失败，不静默退回 CPU",
+  "第 3 步：规模超 GPU 上限 → 显性失败（建议分区/剔除/LOD）",
   "第 4 步：规模落在区间空隙 → 显性失败并提示重定标区间表",
 ];
 
@@ -1971,21 +1983,38 @@ export function selfCheckDualPath(): SelfCheck[] {
       : "手动覆盖冲突被静默吞掉（这会让用户以为得到了逐位确定，实际没有）",
   });
 
-  // 手动覆盖合法态：显式指定 CPU 覆盖自动决策（用于排查 GPU 疑似错误）。
+  // 手动覆盖合法态：在 CPU 区间内显式指定 CPU（用于排查 GPU 疑似错误）。
+  // 规模取 5 万——刻意让自动路由本来也会选 CPU，再用它反证「覆盖被采纳」的唯一
+  // 证据就是 manual=true 与 reason 中的「手动覆盖」字样（若实现把覆盖吞掉、
+  // 悄悄走自动分支，manual 会是 false，本项即红）。
   const r7 = routePath(
     {
-      host: { computeAvailable: true, liveParticleCount: 500_000 },
+      host: { computeAvailable: true, liveParticleCount: 50_000 },
       manualOverride: "cpu-scalar-sim",
     },
     new DiagBag(),
   );
-  const inRange = r7.ok && 500_000 <= PATH_TABLE["cpu-scalar-sim"].targetScale.hi;
   out.push({
     name: "route-manual-override-honored-in-range",
-    pass: inRange ? r7.ok && r7.value.manual && r7.value.path === "cpu-scalar-sim" : true,
-    detail: inRange
-      ? `手动覆盖 CPU 被采纳（manual=${r7.ok ? r7.value.manual : "n/a"}），且在 CPU 区间内`
-      : "规模 500000 超出 CPU 区间，手动覆盖应被规模约束拒绝（由范围约束自检覆盖）",
+    pass: r7.ok && r7.value.manual && r7.value.path === "cpu-scalar-sim",
+    detail: r7.ok
+      ? `区间内手动覆盖 CPU 被采纳（manual=${r7.value.manual}，规模 ${r7.value.targetScale.lo}~${r7.value.targetScale.hi}）`
+      : `区间内手动覆盖 CPU 竟被拒绝：${r7.code}/${r7.message}`,
+  });
+
+  // 手动覆盖反区间态：规模低于该路径下界 → 必须显性失败（不得让用户拿到
+  // 「路由成功但跑在规格表已声明无优势之路径上」的配置）。
+  const b7b = new DiagBag();
+  const r7b = routePath(
+    { host: { computeAvailable: true, liveParticleCount: 50_000 }, manualOverride: "gpu-compute-sim" },
+    b7b,
+  );
+  out.push({
+    name: "route-manual-override-below-lower-bound-rejected",
+    pass: !r7b.ok && r7b.code === "PATH_SCALE_OUT_OF_RANGE",
+    detail: !r7b.ok
+      ? `手动覆盖 GPU 但规模 5 万低于其下界 → 显性失败（${r7b.code}），未放行到无优势路径`
+      : "低于下界的覆盖被放行（规格表的『小规模无成本优势』不承诺项形同虚设）",
   });
 
   // 手动覆盖非法态：规模超该路径区间 → 范围约束拒绝。
