@@ -26,8 +26,13 @@
   3. 积分监控与自动切号（--no-account-pool 关闭）：单轮发送失败 ≥3 或
      每 10 分钟预防性巡检 → 查 TreeCode 账号池（127.0.0.1:8792）；发送连败
      且池里有 ≥门槛余量的号 → 自动切号（TreeCode 重启 WorkBuddy，塔等待
-     CDP 恢复并兜底带参重启）→ 释放全部在途任务 → 重建 18 路；池里没有
-     可用号 → 判定「无可用积分账号」→ 优雅停机。
+     CDP 恢复并兜底带参重启）。切号异常自动换号（2026-10-06 Variable 指定）：
+     切号失败 / WorkBuddy 未恢复 / 切入后账号显示异常（疑似封号）→ 拉黑
+     该号换下一个，直到切到可用号；全池耗尽 → 判定「无可用积分账号」→
+     优雅停机。切号后先看 18 路对话存活情况（Variable 指定）：≥2/3 会话
+     还在且状态真实 → 保全续用（逐路点回旧对话唤醒 + 静置 --settle-min
+     分钟体检补活，不释放任务不整体重建）；不足 → 释放全部在途任务 +
+     重建 18 路。
   4. 收口：任务板「待领/已领/阻塞」全为 0 且塔内无 BUSY 工人 → 全部完成退出；
      否则永远运行，直到 ① 50000+ 任务全部完成 ② 无可用积分账号 ③ 人工 Ctrl+C。
 
@@ -880,7 +885,8 @@ def rebuild_worker(wid: str) -> tuple[str, str]:
     return conv, ev
 
 
-def post_start_check(started: int, settle_min: float, reused: set) -> None:
+def post_start_check(started: int, settle_min: float, reused: set,
+                     fresh_since: float | None = None) -> None:
     """发车后静置体检（2026-10-06 Variable 指定）：N 路开完先零干预跑满
     settle 分钟，再逐路核对有没有「没正常运行」的，有就新建对话完成。
 
@@ -888,6 +894,9 @@ def post_start_check(started: int, settle_min: float, reused: set) -> None:
       健康 = 状态文件被工人本人改写过（领到单写 BUSY <任务id>，或写 READY 报到）；
       异常 = 状态还是塔写的占位「BUSY claim」（协议发出 5 分钟工人没动）/
              状态为空 / 会话映射缺失（强制全列表重链一次仍找不回）。
+    fresh_since（切号保全体检用，2026-10-06 Variable 指定）：给定时刻后还要求
+      状态文件有工人本人的心跳（mtime ≥ fresh_since）——切号唤醒后静置期内
+      没心跳 = 唤醒未生效，状态内容再真实也按异常处理（归档旧会话新建重来）。
     处置（分来源，两种都不违背「续跑必进旧对话」铁律）：
       找回的既有对话（reused）→ 点回原对话补发协议，绝不为它开新对话；
       本次新建的对话 → 归档旧会话（释放名下任务 + 断绝重链复活）后
@@ -913,12 +922,19 @@ def post_start_check(started: int, settle_min: float, reused: set) -> None:
         conv = read_conv(wid).strip()
         if not conv:
             conv = relink_conv(wid, min_gap_s=0.0)   # 体检期强制全列表搜一次
-        if state and state != "BUSY claim":
+        fresh_ok = not (state and fresh_since is not None
+                        and state_mtime(wid) < fresh_since)
+        if state and state != "BUSY claim" and fresh_ok:
             ok_cnt += 1
             log(f"[体检] {wid} ✓（{state[:48]}）")
             continue
-        why = ("状态仍是塔占位 BUSY claim（协议发出后工人没动）"
-               if state == "BUSY claim" else "状态为空")
+        if state == "BUSY claim":
+            why = "状态仍是塔占位 BUSY claim（协议发出后工人没动）"
+        elif not state:
+            why = "状态为空"
+        else:
+            why = (f"状态无唤醒后心跳（{state[:32]}… 是静置开始前的旧状态，"
+                   f"唤醒未生效）")
         if not conv:
             why += "，且会话映射缺失（全列表重链未找回）"
         log(f"[体检] {wid} ✗ {why} → 处置")
@@ -957,34 +973,129 @@ def post_start_check(started: int, settle_min: float, reused: set) -> None:
            f"{settle_min:g}min 静置后：健康 {ok_cnt}，修复 {fixed}，共 {started}")
 
 
-def switch_account_flow(reason: str, workers: int) -> str:
-    """积分耗尽 → TreeCode 切号 → 等 WorkBuddy 回来 → 释放全部任务并重建。
+def switch_account_flow(reason: str, workers: int,
+                        settle_min: float = 5.0) -> str:
+    """积分耗尽 → TreeCode 切号 → 等 WorkBuddy 回来 → 按存活情况续用或重建。
 
     返回："ok" / "no_account"（无可用积分账号 → 停机信号）/"fail:<why>"。
+
+    切号循环（2026-10-06 Variable 指定「账号异常可能被封，继续切直到可用」）：
+      候选号最富优先逐个试；切号失败 / WorkBuddy 未恢复 / 切入后账号显示
+      异常（ok=false 或余量不达标，疑似封号）→ 拉黑该号换下一个，
+      直到切到可用号；全池耗尽 → no_account 停机。
+
+    WorkBuddy 恢复后的对话保全检查（2026-10-06 Variable 指定「先看 18 个
+    对话还在不在、还跑不跑」）：切号会重启客户端、打断所有生成——
+      存活 ≥2/3（会话还在侧栏且状态文件是工人本人写的真实状态）
+        → 保全续用：不释放任务、不作废映射，逐路点回旧对话发唤醒
+          （nudge 对任何状态安全），静置 settle_min 分钟后走发车体检
+          （fresh_since=唤醒完成时刻：静置期内有工人本人心跳=真恢复；
+          没心跳=唤醒未生效 → 归档旧会话新建对话重来）；
+      存活不足 2/3 → 释放全部在途任务 + 作废全部映射 + 逐路新建（原路径）。
     """
     log(f"[积分] 触发切号检查（{reason}）…")
-    info = apool.probe_all(REMAIN_MIN)
-    if not info.get("ok"):
-        return f"fail:账号池不可读 {info.get('why')}"
-    log(f"[积分] 池子 {info['accounts']} 号 / 总余 {info['pool_remain']} / "
-        f"最高 {info['richest']}({info['richest_remain']}) / 可切 {info['switchable']} 号")
-    target = apool.pick_richest(REMAIN_MIN)
-    if not target:
-        ledger("停机", "-", "领单塔",
-               f"无可用积分账号（门槛 {REMAIN_MIN}）：池 {info}")
-        return "no_account"
-    label = target.get("label")
-    log(f"[切号] → {label}（余 {target.get('remain')}）。TreeCode 将重启 WorkBuddy…")
-    ledger("切号", "-", "领单塔",
-           f"→ {label} 余 {target.get('remain')}（{reason}）")
-    ok, msg = apool.switch(label)
-    if not ok:
-        return f"fail:切号失败 {msg}"
-    ok_b, ev = apool.wait_workbuddy_back(log=log)
-    if not ok_b:
-        return f"fail:WorkBuddy 未恢复 {ev}"
-    log(f"[切号] WorkBuddy 已恢复（{ev}）→ 释放全部在途任务并重建 {workers} 路")
-    ledger("切号完成", "-", "领单塔", f"{label} 就绪，{ev}")
+    banned: set[str] = set()
+    label, ev, remain_txt = "", "", "?"
+    while True:
+        info = apool.probe_all(REMAIN_MIN)
+        if not info.get("ok"):
+            return f"fail:账号池不可读 {info.get('why')}"
+        log(f"[积分] 池子 {info['accounts']} 号 / 总余 {info['pool_remain']} / "
+            f"最高 {info['richest']}({info['richest_remain']}) / 可切 "
+            f"{info['switchable']} 号"
+            + (f"（已拉黑异常号 {len(banned)} 个）" if banned else ""))
+        target = apool.pick_richest(REMAIN_MIN, exclude_labels=banned)
+        if not target:
+            ledger("停机", "-", "领单塔",
+                   f"无可用积分账号（门槛 {REMAIN_MIN}）"
+                   + (f"；{len(banned)} 号异常/疑似封号已跳过：{sorted(banned)}"
+                      if banned else f"：池 {info}"))
+            return "no_account"
+        label = target.get("label")
+        log(f"[切号] → {label}（余 {target.get('remain')}）。TreeCode 将重启 WorkBuddy…")
+        ledger("切号", "-", "领单塔",
+               f"→ {label} 余 {target.get('remain')}（{reason}）")
+        ok, msg = apool.switch(label)
+        if not ok:
+            log(f"[FAIL] 切号 {label} 失败：{msg} → 疑似异常号，拉黑换下一个")
+            banned.add(label)
+            ledger("切号跳过", "-", "领单塔", f"{label} 切号失败：{msg}")
+            continue
+        ok_b, ev = apool.wait_workbuddy_back(log=log)
+        if not ok_b:
+            log(f"[FAIL] 切到 {label} 后 WorkBuddy 未恢复：{ev} → 疑似异常号，拉黑换下一个")
+            banned.add(label)
+            ledger("切号跳过", "-", "领单塔", f"{label} WorkBuddy 未恢复：{ev}")
+            continue
+        # 切入后体检该号：显示异常（可能封号）→ 拉黑换下一个
+        remain_txt = str(target.get("remain"))
+        try:
+            time.sleep(3)   # TreeCode 登录落账要几秒
+            cur = next((a for a in apool.accounts(apool.quota(fresh=True))
+                        if a.get("label") == label), None)
+            if cur is None or not cur.get("ok") \
+                    or (cur.get("remain") or 0) < REMAIN_MIN:
+                log(f"[FAIL] {label} 切入后显示异常"
+                    f"（ok={cur.get('ok') if cur else '无记录'}，"
+                    f"remain={cur.get('remain') if cur else '无记录'}）"
+                    f"→ 疑似封号，拉黑换下一个")
+                banned.add(label)
+                ledger("切号跳过", "-", "领单塔", f"{label} 切入后异常/疑似封号")
+                continue
+            remain_txt = str(cur.get("remain"))
+        except Exception as e:
+            log(f"[WARN] {label} 切入后账号体检失败（{e}）→ 不拉黑，交给运行期判据")
+        log(f"[切号] {label} 可用（余 {remain_txt}）✓")
+        break
+
+    # ── WorkBuddy 已恢复：先看 18 路对话还在不在、还跑不跑 ──
+    mapped = {read_conv(f"W{i:03d}") for i in range(1, workers + 1)}
+    mapped.discard("")
+    snapshot: set = set()
+    deadline = time.time() + 60.0   # 侧栏渲染要时间；我们的对话出现才早停
+    while time.time() < deadline:
+        time.sleep(3)
+        snapshot = snapshot_conv_ids()
+        if snapshot and (snapshot & mapped):
+            break
+    alive: list[str] = []
+    for i in range(1, workers + 1):
+        wid = f"W{i:03d}"
+        conv = read_conv(wid)
+        state = read_state(wid).strip()
+        # 存活判据：会话还在侧栏 + 状态文件是工人本人写的真实状态
+        # （BUSY <任务id>/READY；塔占位 BUSY claim 或空 = 从没跑起来过）
+        if conv and conv in snapshot and state and state != "BUSY claim":
+            alive.append(wid)
+    keep_min = max(1, (workers * 2) // 3)   # 「绝大部分」= ≥2/3
+    if len(alive) >= keep_min:
+        log(f"[切号] {len(alive)}/{workers} 路对话存活且状态真实（≥2/3）"
+            f"→ 保全续用：不释放任务，逐路点回旧对话唤醒后静置体检")
+        ledger("切号保全", "-", "领单塔",
+               f"{label} 就绪（余 {remain_txt}）；{len(alive)}/{workers} 路存活"
+               f"→ 唤醒+静置体检（不整体重建）")
+        # 切号重启打断了所有生成：逐路点回旧对话发唤醒（nudge 对任何状态安全）
+        for wid in alive:
+            conv = read_conv(wid)
+            state = read_state(wid)
+            ok, ev2 = dispatch_continue(wid, conv, nudge_msg(wid))
+            if ok:
+                write_state(wid, state)   # 原内容覆盖 = 刷新 mtime（唤醒送达）
+                log(f"[切号唤醒] {wid} ✓")
+            else:
+                log(f"[WARN] [切号唤醒] {wid} 失败：{ev2}（静置体检会处理）")
+            time.sleep(1.5)
+        if settle_min > 0:
+            # fresh_since=唤醒完成之后：静置期内有工人本人心跳=真恢复；
+            # 没心跳（唤醒未生效）→ 体检按异常处理：归档旧会话新建对话重来
+            post_start_check(workers, settle_min, reused=set(),
+                             fresh_since=time.time())
+        return "ok"
+    # 存活不足 → 全量重建（原路径）
+    log(f"[切号] 仅 {len(alive)}/{workers} 路存活（不足 2/3）"
+        f"→ 释放全部在途任务并重建 {workers} 路")
+    ledger("切号完成", "-", "领单塔",
+           f"{label} 就绪（余 {remain_txt}，跳过异常号 {len(banned)} 个），{ev}")
     release_worker_tasks("")            # 全部已领单退回待领
     for i in range(1, workers + 1):     # 会话映射/状态全部作废（旧账号的会话不可用）
         wid = f"W{i:03d}"
@@ -1355,12 +1466,13 @@ def main() -> int:
                                        f"（门槛 {REMAIN_MIN}）：{info}")
                                 return 2
                             r = switch_account_flow(
-                                f"单轮发送失败 {round_fail} 次", a.workers)
+                                f"单轮发送失败 {round_fail} 次", a.workers,
+                                settle_min=a.settle_min)
                             if r == "no_account":
                                 log("★ 停机 ★ 无可用积分账号——产线终止")
                                 return 2
                             if r == "ok":
-                                log("[切号] 全部工人已重建，产线继续")
+                                log("[切号] 工人已重建/保全续用，产线继续")
                             else:
                                 log(f"[FAIL] 切号失败：{r}（下轮重试）")
 

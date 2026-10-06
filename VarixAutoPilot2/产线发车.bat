@@ -16,6 +16,12 @@ REM          any that never started on its own (state file still the
 REM          tower's placeholder) gets archived + rebuilt as a NEW
 REM          conversation with the full protocol.
 REM
+REM  Account switch: abnormal/banned TreeCode accounts are skipped and
+REM  the next candidate is tried until one works. After a switch, if
+REM  >=2/3 of the 18 conversations survived with real worker state they
+REM  are KEPT (nudged back to work + settle health check) instead of a
+REM  full 18-conversation rebuild.
+REM
 REM  Requires: WorkBuddy running with CDP port 9222.
 REM  If probe fails, run open-port.bat first.
 REM
