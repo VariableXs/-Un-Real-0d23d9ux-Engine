@@ -197,6 +197,13 @@ pub enum DiagCode {
     MipChainOverQuota,
     /// 级数切换待提交（帧边界生效，F1762 规则；非错误，是显性挂起态）。
     LevelSwitchPending,
+    /// 曝光联动开启但曝光系统未启用 → 自动切手动 + 告警（F2005 依赖检查）。
+    ///
+    /// 复用 F2004 的诊断枚举而非另立一套：诊断码是跨条目共享的机器口径，
+    /// 每个条目私造一套会让遥测聚合无从下手。
+    ExposureSystemUnavailable,
+    /// 动画与手调写入冲突 → 后到优先且记冲突（F2005 仲裁，F1924 同款）。
+    WriteConflict,
 }
 
 impl DiagCode {
@@ -215,6 +222,8 @@ impl DiagCode {
             DiagCode::SourceMaskInvalid => "BLOOM_SOURCE_MASK_INVALID",
             DiagCode::MipChainOverQuota => "BLOOM_MIP_CHAIN_OVER_QUOTA",
             DiagCode::LevelSwitchPending => "BLOOM_LEVEL_SWITCH_PENDING",
+            DiagCode::ExposureSystemUnavailable => "BLOOM_EXPOSURE_SYSTEM_UNAVAILABLE",
+            DiagCode::WriteConflict => "BLOOM_WRITE_CONFLICT",
         }
     }
 
@@ -224,8 +233,10 @@ impl DiagCode {
             // 契约缺失与显存超配是"链仍能跑但语义/预算已变"，走显性降级不阻断。
             DiagCode::SourceMaskMissing
             | DiagCode::SourceMaskInvalid
-            | DiagCode::MipChainOverQuota
-            | DiagCode::LevelSwitchPending => Severity::Degraded,
+            |             DiagCode::MipChainOverQuota
+            | DiagCode::LevelSwitchPending
+            | DiagCode::ExposureSystemUnavailable
+            | DiagCode::WriteConflict => Severity::Degraded,
             // 量纲钳制是参数纠错，不阻断渲染。
             _ => Severity::Corrected,
         }
@@ -250,6 +261,12 @@ impl DiagCode {
             DiagCode::SourceMaskInvalid => "源标记描述非法（非半分辨率或非 R8）：该掩码已忽略，链路按无掩码运行",
             DiagCode::MipChainOverQuota => "mip 链显存超配额：已自动降级数并保留告警；配额账本见 F1776 K 段",
             DiagCode::LevelSwitchPending => "mip 级数已改：待帧边界提交才换链（F1762 规则），帧内立即生效会出现半新半旧的一帧亮度跳变",
+            DiagCode::ExposureSystemUnavailable => {
+                "曝光联动已开启但曝光系统未启用：已自动切手动模式——阈值现按绝对物理值算，开关不再自动补偿（如需联动请先启用曝光系统）"
+            }
+            DiagCode::WriteConflict => {
+                "同一帧内动画轨道与手动设置同时写同一参数：已按后到优先裁决并保留本告警——若拖动滑杆无响应，说明动画轨道仍在每帧覆写该参数"
+            }
         }
     }
 }
