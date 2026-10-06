@@ -65,6 +65,7 @@
 //! | [`vet01_a11y_render_pipeline`] | F3802 无障碍渲染管线 | VE 册 #VE-F3802 |
 //! | [`ves01_sdomain_arch`] | F3801 S 域开工与无障碍渲染总架构 | VE 册 #VE-F3801 |
 //! | [`vei02_locale`] | F4002 语言标签与 Locale 模型（BCP47 四段+扩展/容错表/回退链/解析缓存/单源声明） | VE 册 #VE-F4002 |
+//! | [`vei03_text_direction`] | F4003 文字方向模型（三方向统一+三层优先级/isolate自动补齐/首强启发可覆写） | VE 册 #VE-F4003 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
 
@@ -174,6 +175,8 @@ pub mod vef01_pngdec;
 pub mod veh01_boundary;
 pub mod vei02_checks;
 pub mod vei02_locale;
+pub mod vei03_checks;
+pub mod vei03_text_direction;
 pub mod veh01_checks;
 pub mod veh02_audioarch;
 pub mod veh02_checks;
@@ -232,7 +235,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 64] = [
+    let blocks: [(&'static str, CheckSet); 65] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -297,6 +300,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3202", veq02_graph::run_veq02_checks()),
         ("VE-F3001", vep01_checks::run_vep01_checks()),
         ("VE-F4002", vei02_checks::run_vei02_checks()),
+        ("VE-F4003", vei03_checks::run_vei03_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
