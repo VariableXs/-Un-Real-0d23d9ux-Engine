@@ -10,6 +10,14 @@
 
 pub mod blur;
 pub mod capture;
+/// VE-I · I01 网格格式与几何基础组 · 网格量化压缩（VE-F1605）
+///
+/// 判据一 顶点位置量化（fp32 → 16bit 网格局部坐标系，误差有界可预算）、
+/// 判据二 法线八面体编码（32bit 双通道，同等字节下优于逐分量）、
+/// 判据三 UV 量化（range 显式声明，支持平铺）、
+/// 判据四 压缩比-质量权衡表（逐属性 × 逐档位）、
+/// 判据五 量化确定性（同输入同输出）。
+pub mod meshquant;
 pub mod ime;
 pub mod surface;
 pub mod text;
