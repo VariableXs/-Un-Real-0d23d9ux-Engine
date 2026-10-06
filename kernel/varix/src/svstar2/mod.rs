@@ -57,6 +57,7 @@
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
 //! | [`ver03_arch`] | F3602 创作生态总架构（三层五段+开放格式P0+激励双单源+沙箱复述+收敛两段线） | VE 册 #VE-F3602 |
+//! | [`ver04_arch`] | F3603 创作资产模型（七要素+七类两轴+许可三态+兼容四级+schema两级复用） | VE 册 #VE-F3603 |
 //! | [`vep01_arch`] | F3001 P 域开工与动效库总架构（三组接口+十项映射+单源分工+三底线+第一红线） | VE 册 #VE-F3001 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
@@ -69,6 +70,7 @@
 //! | [`vei03_text_direction`] | F4003 文字方向模型（三方向统一+三层优先级/isolate自动补齐/首强启发可覆写） | VE 册 #VE-F4003 |
 //! | [`vei04_typeset`] | F4004 国际化排版管线（四族路由/语言覆盖红线/降级显性/五段策略与执行分工） | VE 册 #VE-F4004 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
+//! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
 //! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
 
 pub mod vea01_arbitrate;
@@ -184,7 +186,9 @@ pub mod vei04_typeset;
 pub mod veh01_checks;
 pub mod veh02_audioarch;
 pub mod veh02_checks;
-pub mod veh02_service;
+// veh02_service.rs 为越权重复施工的孤儿文件（F1402 认领人 AI-ZCode-1，
+// 落位 veh02_audioarch/veh02_checks）——其 run_veh02_checks 与在册实现
+// 符号冲突，故不声明；文件保留待其作者自行清理。
 pub mod vej04_checks;
 pub mod vej04_pointlight;
 pub mod vek04_bloom;
@@ -219,10 +223,14 @@ pub mod ver02_arch;
 pub mod ver02_checks;
 pub mod ver03_arch;
 pub mod ver03_checks;
+pub mod ver04_arch;
+pub mod ver04_checks;
 pub mod ves01_sdomain_arch;
 pub mod vet01_a11y_render_pipeline;
 pub mod veu01_arch;
 pub mod veu01_checks;
+pub mod veu02_checks;
+pub mod veu02_model;
 pub mod vev01_arch;
 pub mod vev01_checks;
 pub mod vew01_sdk_arch;
@@ -245,7 +253,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 69] = [
+    let blocks: [(&'static str, CheckSet); 70] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -305,9 +313,11 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3401", ver01_arch::run_ver01_checks()),
         ("VE-F3601", ver02_arch::run_ver02_checks()),
         ("VE-F3602", ver03_arch::run_ver03_checks()),
+        ("VE-F3603", ver04_arch::run_ver04_checks()),
         ("VE-F3801", ves01_sdomain_arch::run_f3801_checks()),
         ("VE-F3802", vet01_a11y_render_pipeline::run_f3802_checks()),
         ("VE-F4201", veu01_checks::run_veu01_checks()),
+        ("VE-F4202", veu02_checks::run_veu02_checks()),
         ("VE-F4401", vev01_checks::run_vev01_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
