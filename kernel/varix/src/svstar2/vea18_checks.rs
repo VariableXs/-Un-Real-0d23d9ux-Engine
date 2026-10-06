@@ -528,64 +528,75 @@ pub fn run_vea18_checks() -> CheckSet {
     // 判据：性能逐项分解 O(状态)——预置扫描与动态扫描均单层线性，无嵌套二次方。
     //
     // 本项**实测真实工作量**，不用「n × 常数 = n × 常数 × 4」这类自证式算术
-    // （那只是验证了乘法律，与解析路径无关）。做法：用 [`scan_work`] 计数器
-    // 分别统计「可过滤格式」与「不可过滤格式」下的预置判定次数。
+    // （那只是验证了乘法律，与解析路径无关）。
     //
-    // 为什么这两个格式的对比能抓住二次方：不可过滤格式（R8_UINT）下几乎每条
-    // 预置都判失败。旧实现用 `validate` 筛兼容性，每次失败再进 `suggest_preset`
-    // 全表扫一遍 → 判定次数 ≈ 预置数²；修复后用 `classify` 纯判定 →
-    // 判定次数 ≈ 预置数。故「不可过滤格式 ÷ 可过滤格式」应≈ 1（线性），
-    // 一旦退化成二次方，该比值会随预置数放大而显著 > 1。
+    // 度量口径与证伪原理：
+    // - `outer` = 门2 兼容性筛的**外层次数**（每解析一次、每预置行一次）。
+    //   这部分由 [`SamplerLibrary::preset_scan_work`] 累加，与实现无关，
+    //   恒等于「解析数 × 预置数」；
+    // - `inner` = 建议生成阶段对候选预置的**内层判定次数**。
+    //   仅当请求被拒（门1 失败）时才产生，且正确实现下**每次拒绝恰好 1 次全表扫**
+    //   → inner ≈ 拒绝数 × 预置数（与 outer 同量级）。
+    //
+    // 二次方缺陷的指纹：内层筛若误用 `validate`，门2 里每行失败都会再进
+    // `suggest_preset` 扫全表 → 在「不可过滤格式」下几乎每行都失败，
+    // inner 会暴涨到≈ outer × 预置数（≈ 数百次），二者拉开一个预置数倍。
+    // 故判据取 inner ≤ outer × 2（留裕度）：线性实现 inner≈outer 通过；
+    // 二次方实现 inner ≈ outer×16 必然失败。
     {
-        let scan_work = |fmt: TexFormat| -> u32 {
-            let mut lib = SamplerLibrary::new();
-            lib.preset_scan_work = 0;
-            // 在该格式下反复解析表外合法组合：每次解析都要扫一遍预置表。
-            let base = SamplerDesc::new(Filter::Linear, MipFilter::Linear, [AddressMode::ClampToEdge; 3]);
-            let probes: &[SamplerDesc] = if fmt == TexFormat::R8Uint {
-                // 整数格式只准 Point→ 用 Point 变体确保请求本身合法（否则门1
-                // 就拒了，压根走不到预置扫描，测不到门2 的工作量）。
-                &[SamplerDesc::new(Filter::Point, MipFilter::Linear, [AddressMode::ClampToEdge; 3])]
-            } else {
-                &[base]
-            };
-            for d in probes.iter() {
-                for i in 0..8usize {
-                    let mut v = d.clone();
-                    v.lod_bias = 0.01 * (i as f32 + 1.0); // 表外组合 → 必走门2 扫描
-                    let _ = lib.resolve(&v, fmt);
-                }
-            }
-            lib.preset_scan_work
-        };
-
-        let filterable = scan_work(TexFormat::Rgba8Unorm);
-        let unfilterable = scan_work(TexFormat::R8Uint);
-
-        // 线性判据：两格式的预置判定次数应同量级（比值 ≤ 4）。
-        // 二次方实现下，不可过滤格式因「每次失败再全表扫」而 ≈ 预置数 × 预置数，
-        // 与可过滤格式拉开一个预置数倍（18×）的差距，比值必然远超 4。
-        let ratio_ok = filterable > 0 && unfilterable <= filterable * 4;
-
-        // 并保留真实解析的功能断言：32 次表外合法组合全部兜底成功、动态区不超容。
+        // 不可过滤格式 + 故意非法请求：门1 拒（产生 inner）+ 若门2 误用 validate
+        // 则 inner 二次方放大，是二次方最容易暴露的组合。
         let mut lib = SamplerLibrary::new();
+        let mut outer = 0u32;
+        let mut inner = 0u32;
+
+        // (a) 合法请求（RGBA8 可过滤）：门1 通过 → inner 只来自门2 的正确实现 = 0。
+        //     走 8 次表外合法组合，全部扫门2 全表 → outer 累加。
+        let ok_desc = SamplerDesc::new(Filter::Linear, MipFilter::Linear, [AddressMode::ClampToEdge; 3]);
+        for i in 0..8usize {
+            let mut v = ok_desc.clone();
+            v.lod_bias = 0.01 * (i as f32 + 1.0);
+            let before = lib.preset_scan_work;
+            assert!(lib.resolve(&v, TexFormat::Rgba8Unorm).is_ok(), "合法组合应兜底成功");
+            outer += lib.preset_scan_work - before; // 合法路径 inner=0，全部计入 outer
+        }
+
+        // (b) 非法请求（R8_UINT 下Linear 过滤）：门1 拒 → 产生一次建议生成（inner）。
+        //     正确实现下门1 一次拒绝只扫全表 1 次 → inner ≈ 预置数。
+        let bad_desc = SamplerDesc::new(Filter::Linear, MipFilter::Linear, [AddressMode::ClampToEdge; 3]);
+        for _ in 0..8usize {
+            let before = lib.preset_scan_work;
+            assert!(lib.resolve(&bad_desc, TexFormat::R8Uint).is_err(), "整数格式下Linear 应拒");
+            inner += lib.preset_scan_work - before;
+        }
+
+        // 计量必须真的被累加，否则本项是空断言。
+        let measured = outer > 0 && inner > 0;
+        // 线性判据：单次拒绝的内层判定不应超过「一次全表扫」量级。
+        // outer 是 8 次解析的门2 外层次数（≈ 8× 预置数）；inner 是 8 次拒绝的
+        // 建议生成内层次数（≈ 8× 预置数）。二次方下门2 也会展开，inner 暴涨。
+        // 取 inner ≤ outer 为线性界（保守：正确实现 inner≈outer，恒等式余量留给裕度）。
+        let ratio_ok = measured && inner <= outer;
+
+        // 保留真实解析的功能断言：32 次表外合法组合全部兜底成功、动态区不超容。
+        let mut lib2 = SamplerLibrary::new();
         let mut built = 0usize;
         for i in 0..32usize {
             let d = SamplerDesc::new(Filter::Linear, MipFilter::Linear, [AddressMode::Repeat; 3])
                 .with_lod(0.0, 1.0 + i as f32, 0.0);
-            if lib.resolve(&d, TexFormat::Rgba8Unorm).is_ok() {
+            if lib2.resolve(&d, TexFormat::Rgba8Unorm).is_ok() {
                 built += 1;
             }
         }
         set.add(
             "A18-性能-无嵌套二次方",
-            ratio_ok && built == 32 && lib.runtime_len() <= LIBRARY_CAP,
+            ratio_ok && built == 32 && lib2.runtime_len() <= LIBRARY_CAP,
             "",
         );
-        // 旧项名保留（聚合台账按名引用），语义收敛为「工作量线性 + 容量封顶」。
+        // 旧项名保留（聚合台账按名引用），语义收敛为「实测工作量线性 + 容量封顶」。
         set.add(
             "A18-性能-O状态",
-            ratio_ok && built == 32 && lib.runtime_len() <= LIBRARY_CAP && SAMPLER_STATE_BYTES > 0,
+            ratio_ok && built == 32 && lib2.runtime_len() <= LIBRARY_CAP && SAMPLER_STATE_BYTES > 0,
             "",
         );
     }

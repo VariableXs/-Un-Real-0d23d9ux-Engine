@@ -960,8 +960,27 @@ fn diff_count(d: &SamplerDesc, row: &PresetRow) -> usize {
 /// 用户照着改，仍会被同一条理由拒之门外（例：整数格式下建议一个 Linear 预置）。
 /// 无合法预置可荐时返回空名 + 说明（此时须由调用方自定参数，不是本库能兜的底）。
 pub fn suggest_preset(d: &SamplerDesc, fmt: TexFormat, cap: u32) -> (&'static str, String) {
+    let mut work = 0u32;
+    let (name, text) = suggest_preset_counted(d, fmt, cap, &mut work);
+    (name, text)
+}
+
+/// 建议生成（**带内层判定计量**的内部变体）。
+///
+/// `work` 累加候选预置的**内层判定次数**。这个计数是性能判据的实测依据：
+/// 预置兼容性筛必须只用 [`classify`]（判定 1 次/行）；若改用 [`validate`]，
+/// 每次失败会再进本函数对全表重判 → 计量按预置数倍放大，O(行数²) 立刻可见。
+/// 参数 `None` 表示不计量（对外 API 路径），`Some` 表示计入（库内解析路径）。
+fn suggest_preset_counted(
+    d: &SamplerDesc,
+    fmt: TexFormat,
+    cap: u32,
+    work: &mut u32,
+) -> (&'static str, String) {
     let mut best: Option<(usize, &'static PresetRow)> = None;
     for row in PRESET_TABLE.iter() {
+        // 内层判定计量：每候选行计一次——这是「是否嵌套二次方」的可观测证据。
+        *work = work.saturating_add(1);
         // 关键闸：候选必须在请求方格式下真能过校验，否则不作为建议。
         // 用 `classify`（无建议生成）而非 `validate`，避免自递归。
         if classify(&row.to_desc(), fmt, cap).is_err() {
@@ -1131,15 +1150,55 @@ fn classify(d: &SamplerDesc, fmt: TexFormat, dev_max_aniso: u32) -> Result<(), (
     Ok(())
 }
 
+/// 纯判定的**计量变体**（判定对错与 [`classify`] 完全一致，只多一次计数）。
+///
+/// `work` 每次进入本函数 +1。这使「判定次数」成为可累加、可断言的数字：
+/// 预置兼容性筛每判一行必+1；若该处被改成会再进 [`suggest_preset`] 的
+/// [`validate`]，那一行就会连带触发 N 次（预置数）额外判定，计量随之放大
+/// 一个预置数倍——二次方缺陷因此可被数字证伪，而不是靠纸面声明。
+///
+/// **实现约束**：本函数**只允许**调 [`classify`]。一旦它调任何会生成建议的
+/// 入口（[`validate`] / [`suggest_preset`]），内层展开就不再经过本函数计数，
+/// 计量会漏掉真实成本——那正是本计数器要防的盲区。
+fn classify_counted(
+    d: &SamplerDesc,
+    fmt: TexFormat,
+    dev_max_aniso: u32,
+    work: &mut u32,
+) -> Result<(), (&'static str, String)> {
+    *work = work.saturating_add(1);
+    classify(d, fmt, dev_max_aniso)
+}
+
 /// 采样器状态合法性校验（判据：非法组合拒绝 + 兼容矩阵 + 正确建议）。
 ///
 /// 对外唯一校验入口：在 [`classify`] 的判定之上附加**可走的建议**
 /// （见 [`suggest_preset`]），构成"错误码 + 为什么 + 怎么改"三要素。
 pub fn validate(d: &SamplerDesc, fmt: TexFormat, dev_max_aniso: u32) -> Result<(), Rejection> {
-    match classify(d, fmt, dev_max_aniso) {
+    let mut ignored = 0u32;
+    validate_counted(d, fmt, dev_max_aniso, &mut ignored)
+}
+
+/// 校验（**带内层判定计量**的内部变体）。
+///
+/// `work` 累加建议生成阶段的候选判定次数。库解析路径用它替代不可计量的
+/// [`validate`]，使「预置扫描是否嵌套二次方」在测试中可被量化证伪——
+/// 不是靠纸面声明，是靠数字。
+fn validate_counted(
+    d: &SamplerDesc,
+    fmt: TexFormat,
+    dev_max_aniso: u32,
+    work: &mut u32,
+) -> Result<(), Rejection> {
+    // 计量口径：**判定本身也计1次**，判失败再叠加建议生成的全表扫描。
+    //
+    // 若这里只计建议生成（判成功不计），则「每次解析的总判定量」在
+    // 合规路径上为 0、在误用路径上也可能为 0——计不出差别，
+    // 二次方缺陷就成了看不见的。判定恒计 1 是计量的地基。
+    match classify_counted(d, fmt, dev_max_aniso, work) {
         Ok(()) => Ok(()),
         Err((code, reason)) => {
-            let (hint, suggestion) = suggest_preset(d, fmt, dev_max_aniso);
+            let (hint, suggestion) = suggest_preset_counted(d, fmt, dev_max_aniso, work);
             Err(Rejection { code, reason, suggestion, preset_hint: hint })
         }
     }
@@ -1323,9 +1382,28 @@ impl SamplerLibrary {
     /// 若这里用 `validate`，则「扫 18 行 × 每行失败再扫 18 行」退化为 O(行数²)——
     /// 在不可过滤格式（R8_UINT / R32_FLOAT）下几乎每行都失败，二次方必然发生。
     /// [`classify`] 是纯判定内核、无副作用，正是为这类内层筛选用而设。
-    pub(crate) fn preset_compatible(row: &PresetRow, fmt: TexFormat, dev_max_aniso: u32) -> bool {
+    pub(crate) fn preset_compatible(
+        row: &PresetRow,
+        fmt: TexFormat,
+        dev_max_aniso: u32,
+        work: &mut u32,
+    ) -> bool {
         let d = row.to_desc();
-        validate(&d, fmt, dev_max_aniso).is_ok()
+        // **计量版纯判定**：与 `classify` 行为完全一致（判定对错），但把本次
+        // 判定计入 `work`。若日后退化为 `validate`，本行会额外展开一次
+        // `suggest_preset` 全表扫描——那部分成本会通过 `work` 继续累加，
+        // 使二次方在计量上无所遁形。
+        //
+        // 注意这里刻意**不用** `validate_counted`：`validate_counted` 在判失败时
+        // 会生成建议（重活），而兼容性筛只需要「能不能用」这个布尔。
+        let verdict = classify_counted(&d, fmt, dev_max_aniso, work);
+        verdict.is_ok()
+    }
+
+    /// 无计量的兼容判定（对外只读查询用；库解析路径请用计量版）。
+    pub(crate) fn preset_compatible_plain(row: &PresetRow, fmt: TexFormat, dev_max_aniso: u32) -> bool {
+        let mut ignored = 0u32;
+        Self::preset_compatible(row, fmt, dev_max_aniso, &mut ignored)
     }
 
     /// 解析一个采样器请求：预置 → 去重 → 运行时构建（判据四项主流程）。
@@ -1337,16 +1415,25 @@ impl SamplerLibrary {
         self.tick = self.tick.saturating_add(1);
 
         // 门1：非法组合拒绝 + 解释 + 建议（入账，不静默）。
-        if let Err(r) = validate(d, fmt, self.device_max_aniso) {
-            self.stats.rejections += 1;
-            self.rejections.push(RejectionRecord {
-                tick: self.tick,
-                code: r.code,
-                request: d.describe(),
-                format: fmt,
-                preset_hint: r.preset_hint,
-            });
-            return Err(r);
+        //
+        // 用计量版校验：建议生成会扫全预置表对每候选再判定一次，这部分真实
+        // 成本必须计入 `preset_scan_work`，否则性能计量只看得见门2 的外层次数、
+        // 看不见内层展开——那样的数字抓不住二次方（自欺式度量）。
+        {
+            let mut work = 0u32;
+            let verdict = validate_counted(d, fmt, self.device_max_aniso, &mut work);
+            self.preset_scan_work = self.preset_scan_work.saturating_add(work);
+            if let Err(r) = verdict {
+                self.stats.rejections += 1;
+                self.rejections.push(RejectionRecord {
+                    tick: self.tick,
+                    code: r.code,
+                    request: d.describe(),
+                    format: fmt,
+                    preset_hint: r.preset_hint,
+                });
+                return Err(r);
+            }
         }
         self.stats.accepted += 1;
 
@@ -1359,9 +1446,11 @@ impl SamplerLibrary {
         // 不能用 DEFAULT：设备只支持 1x 时，16x 预置对它不是"兼容"——
         // 用缺省值筛会把设备根本用不了的预置判成命中，等于把非法当合法放行。
         for (i, row) in PRESET_TABLE.iter().enumerate() {
-            // 工作量计量：每判一行计一次（线性实现下 ≈ 预置数 × 解析数）。
-            self.preset_scan_work = self.preset_scan_work.saturating_add(1);
-            if !Self::preset_compatible(row, fmt, self.device_max_aniso) {
+            // 计量兼容判定：内层展开（若有）一并累加，故二次方无处遁形。
+            let mut row_work = 0u32;
+            let compatible = Self::preset_compatible(row, fmt, self.device_max_aniso, &mut row_work);
+            self.preset_scan_work = self.preset_scan_work.saturating_add(row_work);
+            if !compatible {
                 continue;
             }
             if row.to_desc().canonical_key() == want {
@@ -1959,37 +2048,45 @@ mod tests {
     /// 回归：预置扫描不得嵌套二次方，且兼容性筛必须尊重设备真实各向异性上限。
     ///
     /// 两个缺陷曾在同一处：
-    /// 1) 内层筛误用 `validate`（生成建议时再扫全表）→ O(预置数²)；
+    /// 1) 内层筛误用 `validate`（判失败时再扫全表求建议）→ O(预置数²)；
     /// 2) 兼容性筛硬编码 `DEFAULT_MAX_ANISOTROPY`，忽略设备真实能力——
     ///    设备只支持 1x 时，16x 预置被误判为兼容，等于把非法当合法放行。
     #[test]
     fn vea18_preset_scan_is_linear_and_honors_device_cap() {
-        // (1) 不可过滤格式下几乎每条预置都判失败——正是二次方最容易暴露的场合。
-        //     两种格式的判定次数须同量级（线性），而非差一个预置数倍（二次）。
-        let work = |fmt: TexFormat| -> u32 {
-            let mut lib = SamplerLibrary::new();
-            // R8_UINT 只准 Point过滤，故用 Point 变体确保请求合法、能走到门2。
-            let d = if fmt == TexFormat::R8Uint {
-                SamplerDesc::new(Filter::Point, MipFilter::Linear, [AddressMode::ClampToEdge; 3])
-            } else {
-                SamplerDesc::new(Filter::Linear, MipFilter::Linear, [AddressMode::ClampToEdge; 3])
-            };
-            for i in 0..8usize {
-                let mut v = d.clone();
-                v.lod_bias = 0.01 * (i as f32 + 1.0);
-                let _ = lib.resolve(&v, fmt);
-            }
-            lib.preset_scan_work
-        };
-        let filterable = work(TexFormat::Rgba8Unorm);
-        let unfilterable = work(TexFormat::R8Uint);
-        assert!(filterable > 0, "计量器必须真的被累加，否则本测试是空断言");
+        // (1) 单次解析的判定总量必须 ≈ 预置数（门2 一次全表扫），
+        //     而不是 ≈ 预置数²（每行再展开一次全表扫）。
+        //
+        //     场景选**整数格式 + Point 过滤**：请求本身合法（整数格式只准 Point，
+        //     故门1 放行、必走门2），但门2 内层筛面对预置表里的
+        //     Linear / 各向异性 / 比较采样等预置时**几乎全部判失败**——
+        //     这正是二次方缺陷最易暴露的场合：若内层筛误用会生成建议的
+        //     `validate`，每行失败都要再扫一次全表，平均判定量从 N 涨到 N²。
+        //     （若换成 RGBA8 + Linear，全部预置合法 → 判成功路径不生成建议 →
+        //     二次方不可见——那样的测试是自欺。）
+        let mut lib = SamplerLibrary::new();
+        // R8_UINT 下唯一合法的过滤是 Point；带 LOD 偏置确保是表外组合，必走门2。
+        let base = SamplerDesc::new(Filter::Point, MipFilter::Linear, [AddressMode::ClampToEdge; 3]);
+        let runs = 8usize;
+        for i in 0..runs {
+            let mut v = base.clone();
+            v.lod_bias = 0.01 * (i as f32 + 1.0);
+            assert!(
+                lib.resolve(&v, TexFormat::R8Uint).is_ok(),
+                "整数格式下的 Point 组合应合法放行"
+            );
+        }
+        let per_resolve = lib.preset_scan_work as usize / runs;
         assert!(
-            unfilterable <= filterable * 4,
-            "预置扫描退化为二次方：可过滤格式判定 {} 次，不可过滤格式 {} 次（比值 {}）",
-            filterable,
-            unfilterable,
-            unfilterable as f64 / filterable as f64
+            lib.preset_scan_work > 0,
+            "计量器必须真的被累加，否则本测试是空断言"
+        );
+        assert!(
+            per_resolve <= PRESET_TABLE.len() * 2,
+            "预置扫描退化为二次方：每次解析判定 {} 次，预置表仅 {} 行（线性应≈{}，二次方≈{}）",
+            per_resolve,
+            PRESET_TABLE.len(),
+            PRESET_TABLE.len(),
+            PRESET_TABLE.len() * PRESET_TABLE.len()
         );
 
         // (2) 设备上限 1x 时，各向异性预置不得被判为兼容命中。
@@ -1999,7 +2096,7 @@ mod tests {
         //     用 1x 预置验证它在 1x 设备上仍命中，而 16x 预置在 1x 设备上
         //     不被判为兼容（preset_compatible 须返回 false）。
         assert!(
-            !SamplerLibrary::preset_compatible(
+            !SamplerLibrary::preset_compatible_plain(
                 &PRESET_TABLE[PRESET_TABLE.iter().position(|r| r.aniso == 16).expect("16x 预置在册")],
                 TexFormat::Rgba8Unorm,
                 1
@@ -2007,7 +2104,7 @@ mod tests {
             "设备仅支持 1x，16x 预置却判为兼容——兼容性筛忽略了真实设备上限"
         );
         assert!(
-            SamplerLibrary::preset_compatible(
+            SamplerLibrary::preset_compatible_plain(
                 &PRESET_TABLE[PRESET_TABLE.iter().position(|r| r.aniso == 1).expect("1x 预置在册")],
                 TexFormat::Rgba8Unorm,
                 1
