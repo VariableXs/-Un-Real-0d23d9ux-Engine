@@ -720,23 +720,58 @@ pub async fn send_only(cdp: &Cdp, text: &str, conv_id: &str) -> Result<String> {
 }
 
 /// 切换到指定对话（点侧栏项）。
+///
+/// ★ 为什么不能用 `el.click()` ★（2026-10-06 实测，D3/D9 同源）
+/// React 合成事件对脚本派发的裸 `.click()` 不响应——会话项点了没反应、
+/// 视图不切换，随后 fill_prompt 会把内容填进**当前打开的别的会话**。
+/// 正解（tools/dispatch_tower.py 同款、已实测）：点内层 `_card_` 元素，
+/// 派发完整 MouseEvent 序列，并轮询确认选中态真的落在了目标会话上。
+/// 首次点击偶发被吞（D9），所以每轮都重派发，直到确认或超时。
 async fn switch_conversation(cdp: &Cdp, conv_id: &str) -> Result<()> {
-    let ok = cdp
-        .eval(&format!(
-            r#"(() => {{
-              const sel = 'div.conversation-item[data-conversation-id={}]';
-              const e = document.querySelector(sel);
-              if (!e) return {{ err: '侧栏找不到该对话（可能已被关闭）' }};
-              e.click();
-              return {{ ok: true }};
-            }})()"#,
-            serde_json::to_string(conv_id).unwrap_or_else(|_| String::from("\"\""))
-        ))
-        .await?;
-    if let Some(e) = ok.get("err").and_then(|v| v.as_str()) {
-        bail!("{e}");
+    // ① 派发点击（mouseover→…→click，坐标取内层卡片左上角附近）
+    let click_js = format!(
+        r#"((cid) => {{
+          const el = document.querySelector(
+            'div.conversation-item[data-conversation-id="' + cid + '"]');
+          if (!el) return {{ found: false }};
+          const node = el.querySelector('[class*="_card_"]')
+            || el.firstElementChild || el;
+          const r = node.getBoundingClientRect();
+          const o = {{ bubbles: true, cancelable: true, view: window,
+            clientX: r.left + 8, clientY: r.top + 8, button: 0, detail: 1 }};
+          ['mouseover','mousemove','mousedown','mouseup','click']
+            .forEach((t) => node.dispatchEvent(new MouseEvent(t, o)));
+          return {{ found: true }};
+        }})({})"#,
+        serde_json::to_string(conv_id)
+            .unwrap_or_else(|_| String::from("\"\""))
+    );
+    // ② 选中态确认：选中标记在侧栏项**后代**的 `_selected_` 类上
+    //   （不在侧栏项自身——实测踩过，D2）
+    let active_js = r#"(() => {
+      for (const e of document.querySelectorAll('div.conversation-item')) {
+        const hit = Array.from(e.querySelectorAll('*')).find(
+          (k) => /_selected_/.test(String(k.className || '')));
+        if (hit) return e.getAttribute('data-conversation-id') || '';
+      }
+      return '';
+    })()"#;
+
+    for round in 0..8 {
+        let hit = cdp.eval(&click_js).await?;
+        if !hit.get("found").and_then(|v| v.as_bool()).unwrap_or(false) {
+            bail!("侧栏找不到该对话（可能已被关闭）");
+        }
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let active = cdp.eval(active_js).await?;
+        if active.as_str() == Some(conv_id) {
+            if round > 0 {
+                log::info!("[switch] 第 {} 次点击才生效（首次被吞，D9）", round + 1);
+            }
+            return Ok(());
+        }
     }
-    Ok(())
+    bail!("切换后 3 秒内未确认选中态落在目标会话上，放弃（防填错会话）")
 }
 
 /// 清空输入框（★ 只删不插 ★）。

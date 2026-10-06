@@ -326,6 +326,11 @@ if (IS_TAURI) {
   api.preview = (tpl, vars) => getCore().invoke('preview', { tpl, vars });
   api.send = (tpl, vars, dryRun, openNew) =>
     getCore().invoke('send', { tpl, vars, dryRun, openNew });
+  // ★ 打断发送 ★（2026-10-06 实测踩坑：SNAKE 映射表里加了 forceSend，
+  //   这里却漏了装配 ⇒ api.forceSend 是 undefined ⇒ 按钮报
+  //   「api.forceSend is not a function」。新增命令时两边必须同步——
+  //   映射表管翻译，这个块管装配，缺一不可。）
+  api.forceSend = (text) => getCore().invoke('forceSend', { text });
 }
 
 
