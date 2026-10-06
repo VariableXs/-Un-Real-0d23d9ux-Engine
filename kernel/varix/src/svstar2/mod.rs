@@ -184,6 +184,8 @@ pub mod vek04_bloom;
 pub mod vek04_checks;
 pub mod vek05_params;
 pub mod vek05_checks;
+pub mod vek06_tonemap;
+pub mod vek06_checks;
 pub mod vem02_checks;
 pub mod vem02_track;
 pub mod vem03_checks;
@@ -230,7 +232,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 63] = [
+    let blocks: [(&'static str, CheckSet); 64] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -280,6 +282,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0803", vee03_checks::run_vee03_checks()),
         ("VE-F2004", vek04_checks::run_vek04_checks()),
         ("VE-F2005", vek05_checks::run_vek05_checks()),
+        ("VE-F2006", vek06_checks::run_vek06_checks()),
         ("VE-F2402", vem02_checks::run_vem02_checks()),
         ("VE-F2403", vem03_checks::run_vem03_checks()),
         ("VE-F2404", vem04_checks::run_vem04_checks()),
