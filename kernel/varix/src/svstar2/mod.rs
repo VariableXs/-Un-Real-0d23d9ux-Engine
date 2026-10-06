@@ -73,6 +73,7 @@
 //! | [`vei04_typeset`] | F4004 国际化排版管线（四族路由/语言覆盖红线/降级显性/五段策略与执行分工） | VE 册 #VE-F4004 |
 //! | [`vei05_font`] | F4005 字体国际化选型（四族字体集/回退链配置/字符覆盖验证/度量对齐/许可地域/三单源复用） | VE 册 #VE-F4005 |
 //! | [`vei06_datetime`] | F4006 日期时间数字格式（CLDR 规则集锚定/五类格式/多历法转换/时区断言/热表单源） | VE 册 #VE-F4006 |
+//! | [`vei07_plural`] | F4007 复数与性别规则（CLDR 六类复数/规则族函数表/语法性别模板/联合选择器/双向覆盖红线/缓存键七段） | VE 册 #VE-F4007 |
 //! | [`vef01_pngdec`] | F1001 PNG 解码器核心（签名/IHDR七参数/PLTE/tRNS/反滤波/CRC 分级/输出 RGBA） | VE 册 #VE-F1001 |
 //! | [`vef02_pngenc`] | F1002 PNG 编码器核心（五滤波两策略/zlib 与九档权衡/IDAT 分块/CRC/颜色降档/场景建议表） | VE 册 #VE-F1002 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
@@ -196,6 +197,8 @@ pub mod vei05_checks;
 pub mod vei05_font;
 pub mod vei06_checks;
 pub mod vei06_datetime;
+pub mod vei07_checks;
+pub mod vei07_plural;
 pub mod veh01_checks;
 pub mod veh02_audioarch;
 pub mod veh02_checks;
@@ -270,7 +273,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 78] = [
+    let blocks: [(&'static str, CheckSet); 80] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -347,6 +350,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4004", vei04_checks::run_vei04_checks()),
         ("VE-F4005", vei05_checks::run_vei05_checks()),
         ("VE-F4006", vei06_checks::run_vei06_checks()),
+        ("VE-F4007", vei07_checks::run_vei07_checks()),
         ("VE-F1001", vef01_checks::run_vef01_checks()),
         ("VE-F1002", vef02_checks::run_vef02_checks()),
     ];
