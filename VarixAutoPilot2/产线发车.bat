@@ -17,6 +17,11 @@ REM          tower's placeholder) gets archived + rebuilt as a NEW
 REM          conversation with the full protocol.
 REM  Protocol embeds the owner's directive: ALL features revolve
 REM  around the Rust kernel and are implemented in Rust only.
+REM  Legacy TypeScript (~1400 files under src/) is fully migrated
+REM  to Rust: tasks landing in TS areas migrate the involved TS
+REM  modules to Rust first, then build on the Rust implementation.
+REM  Replaced TS files may be deleted after the Rust version
+REM  passes acceptance and no other references remain.
 REM
 REM  Account switch: abnormal/banned TreeCode accounts are skipped and
 REM  the next candidate is tried until one works. After a switch, if
