@@ -482,12 +482,12 @@ def switch_account_flow(reason: str, workers: int, spec: str, skills: str,
     plan_text = _reset_plan_inprogress(plan_text)
     PLAN.write_text(plan_text, encoding="utf-8")
     for i in range(1, workers + 1):    # 旧账号的会话全部作废
-        write_conv(f"W{i:02d}", "")
-        write_state(f"W{i:02d}", "")
+        write_conv(f"W{i:03d}", "")
+        write_state(f"W{i:03d}", "")
     built = 0
     known = snapshot_conv_ids()
     for i in range(1, workers + 1):
-        wid = f"W{i:02d}"
+        wid = f"W{i:03d}"
         wp = claim_next_wp(parse_plan()[1])
         if not wp:
             log(f"[切号重建] PLAN 无待派，{wid} 留空（READY 补位路径兜底）")
@@ -572,7 +572,7 @@ def main() -> int:
         f"DONE {sum(s == 'DONE' for s in blocks.values())}")
 
     if a.dry_run:
-        wid = "W01"
+        wid = "W001"
         wp = claim_next_wp(blocks) or "(无待派)"
         print("\n── DRY-RUN 演练 ──")
         print(f"首条提示词（{wid} / {wp}）渲染结果预览：\n")
@@ -593,7 +593,7 @@ def main() -> int:
         known = snapshot_conv_ids()
         created = 0
         for i in range(1, a.start + 1):
-            wid = f"W{i:02d}"
+            wid = f"W{i:03d}"
             if read_conv(wid):
                 log(f"{wid} 已有会话 {read_conv(wid)[:12]}，跳过新建")
                 continue
@@ -633,7 +633,7 @@ def main() -> int:
                     s == "DONE" for s in blocks.values()) if blocks else False
                 busy_cnt = ready_cnt = 0
                 for i in range(1, a.workers + 1):
-                    wid = f"W{i:02d}"
+                    wid = f"W{i:03d}"
                     state = read_state(wid)
                     conv = read_conv(wid)
                     if state.startswith("BUSY"):

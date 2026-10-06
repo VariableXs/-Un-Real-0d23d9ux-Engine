@@ -4,6 +4,8 @@
   dispatch_tower = 塔从 PLAN.md 切块派 WP，工人只做派给自己的那一包；
   claim_tower    = 工人 AI 自己去任务板（VTaskBoard.exe，端口 8767）领单，
                    塔只负责「保持 18 路工人永远有活干」。
+                   工人编号 W001、W002…W018（三位数，新建任务时自动递增，
+                   每个会话唯一不复用；领单号/状态文件/重链标记全部跟随编号）。
 
 塔的四件事：
   1. 发车（--start N）：点「新建任务」建 N 个全新对话，先跑引导三件套
@@ -384,14 +386,100 @@ def state_mtime(wid: str) -> float:
 
 # ══════════════════════ 提示词渲染 ══════════════════════
 
-def render_protocol(wid: str, skills_fallback: list | None = None) -> str:
-    """首条提示词：Variable 指令原文 + 操作要点（模板=CLAIM_WORKER_PROMPT.md）。
+# 首条提示词模板（Variable 2026-10-06 指定原话 + 操作要点，全文内联进脚本，
+# 脚本自包含。启动时塔会把本模板自动写回 dispatch/CLAIM_WORKER_PROMPT.md，
+# 供工人续跑时按路径重读——文件只是输出产物，唯一事实来源在这里）。
+# 占位符：{WORKER_ID}=W001 式编号；{SKILLS_LINE}=兜底技能行。用 .replace 注入，
+# 禁用 str.format（模板里的 curl JSON 含大量花括号）。
+PROTOCOL_TEMPLATE = """hello 去在这个软件领一下任务并完成，然后在领任务的时候，注意标记一下，不要让其他AI 领到同样的任务呀还有，全面完整的分析要完成的所有内容，每一个要完成的功能和内容都要达到验收标准和深度打磨的情况下才算完成呀，不要完成其他AI的功能啦，直到全部任务56000个任务全部完成时才算结束呀，还有推送github仓库时，不要把任何非功能代码，截图，比如日志，测试代码还有脚本，提交，还有提交的介绍，只写纯功能的内容就可以了，然后先写完代码然后再进行修复呀，祝你好运呀，一定要深度打磨哦
 
+---
+
+↑ 以上是塔主 Variable 的原话指令，一字不改。以下是照做所需的操作要点。
+
+## 0. 你的身份与"标记"机制
+
+- 你是 **{WORKER_ID}**。领单时用 `AI-{WORKER_ID}`（一字不差）。
+- "注意标记，不让其他 AI 领到同样的任务" = 领单 API 本身：
+  **原子领单**，领到即被任务板标记为你的专属任务，其他 AI 再领同一单会
+  收到 409 被拒。你不需要另做标记文件，报上编号领单就是标记。
+
+## 1. 领单（每轮循环第一件事）
+
+```bash
+curl -s -m 15 -X POST http://127.0.0.1:8767/api/claim -d '{"worker":"AI-{WORKER_ID}"}'
+```
+
+- 成功返回 task：记住 `id`、`title`、`规格`、`书路径`、`验收`。
+- **领到后立即**把状态文件写为 `BUSY <任务id>`（塔靠它感知你是忙是闲）：
+  `D:/2/14/-Un-Real-0d23d9ux-Engine-main/VarixAutoPilot2/dispatch/workers/{WORKER_ID}.state`
+- 板子没响应：先运行附带的 `VTaskBoard.exe`，等 3 秒重试；
+  连续 3 次失败 → 状态文件写 `READY`，回复说明原因并停止。
+- **心跳**：施工期间至少每 5 分钟刷新一次状态文件（如 `BUSY <任务id> 正在编译`）。
+  超 10 分钟不刷新，塔判定你卡死：归档会话、释放名下任务、重建同编号新会话——
+  长构建/长测试也必须按时写心跳。
+
+## 2. 施工与验收（验收标准 + 深度打磨，一个都不能少）
+
+- 全面完整分析要完成的所有内容，严格按任务单 `验收`/`规格`/`书路径` 原文施工。
+- 附带的 3 份总纲 MD（CGPU / VE / CoRun Varix STAR II · 总纲与施工书）是总规格，
+  动手前先读任务对应章节；任务单与总纲冲突时以任务单原文为准，并记进完成报告。
+- 每个功能和内容都要达到验收标准并深度打磨才算完成；只做领到的任务，
+  不做其他 AI 的功能。
+- 纪律：动手前 git status；只 add 显式路径；源码只增不减不移动；异常零静默——
+  卡住就说卡在哪/需要什么/建议，不许空转。
+
+## 3. 收单与循环（直到 56000 个任务全部完成）
+
+```bash
+curl -s -m 15 -X POST http://127.0.0.1:8767/api/complete -d '{"id":"<任务id>","worker":"AI-{WORKER_ID}","result":"<一句话结果，含关键验证数据>"}'
+```
+
+- 收单后**立即回到第 1 步**领下一单，循环执行。
+- 做不下去：`curl -s -m 15 -X POST http://127.0.0.1:8767/api/block -d '{"id":"<id>","reason":"<原因>"}'`
+- 想放弃已领的单：`curl -s -m 15 -X POST http://127.0.0.1:8767/api/release -d '{"id":"<id>"}'`
+  （单子回待领栏，他人可领）。禁止领了不做还占着不放。
+- **无单可领**：状态文件写 `READY`，回复「产线无单，待命」——
+  塔有新单会自动给你发续跑指令，收到后从第 1 步重新开始。
+- 所有 API 必须真实执行并以真实响应为准，禁止编造领取/完成状态；
+  只写自己的状态文件，不碰其他工人文件、不碰调度塔与工具源码。
+
+## 4. GitHub 提交纪律（照 Variable 原话执行）
+
+- 仓库：`github.com/VariableXs/-Un-Real-0d23d9ux-Engine.git`（main 分支）。
+- **只提交功能代码**：日志、测试代码、测试脚本、截图、临时探针一律**不提交**
+  （过程产物放 `_attic/`，保持被 .gitignore 排除，不入库）。
+- commit 介绍只写纯功能的内容；先写完代码，然后再进行修复。
+
+## 5. 必载技能
+
+- {SKILLS_LINE}
+- 挂载形态三者等价，消息里有哪种算哪种，全部就位才允许开工：
+  ① 消息里的**技能提及节点**（塔经「/」面板挂载，显示为中文技能名，
+     如「Rust 编程最佳实践」）；
+  ② 消息里的 `@skill:xxx` 提及文本；
+  ③ 以上都没有 → 用 Skill 工具按名逐一加载。
+
+现在开始：执行第 1 步领单。
+"""
+
+
+def sync_protocol_file() -> None:
+    """把脚本内联模板写回 dispatch/CLAIM_WORKER_PROMPT.md（工人续跑参考文件）。"""
+    try:
+        PROTOCOL_MD.write_text(PROTOCOL_TEMPLATE, encoding="utf-8")
+    except Exception as e:
+        log(f"[WARN] 协议文件同步失败（工人续跑参考仍可用旧文件）：{e}")
+
+
+def render_protocol(wid: str, skills_fallback: list | None = None) -> str:
+    """首条提示词：脚本内联模板（Variable 原话 + 操作要点）按编号渲染。
+
+    每个会话编号唯一（W001、W002…由发车循环递增生成），绝不复用。
     skills_fallback=None          → 全部技能内联 @skill:（dry-run/补发场景）；
     skills_fallback=非空 list     → 仅把 / 面板没挂上的技能内联为兜底；
     skills_fallback=[]            → 技能已全部经 / 面板挂载为 mention 节点。
     """
-    tpl = PROTOCOL_MD.read_text(encoding="utf-8")
     all_skills = [s.strip() for s in SKILLS_ARG.split(",") if s.strip()]
     if skills_fallback is None:
         line = vb.skills_inline(all_skills)
@@ -399,7 +487,7 @@ def render_protocol(wid: str, skills_fallback: list | None = None) -> str:
         line = vb.skills_inline(skills_fallback)
     else:
         line = "（全部技能已由塔经「/」面板以技能提及节点挂载在本消息中）"
-    body = (tpl
+    body = (PROTOCOL_TEMPLATE
             .replace("{WORKER_ID}", wid)
             .replace("{SKILLS_LINE}", line))
     return f"【VARIX-{wid}·产线领单工人】\n\n{body}"
@@ -589,13 +677,13 @@ def switch_account_flow(reason: str, workers: int) -> str:
     ledger("切号完成", "-", "领单塔", f"{label} 就绪，{ev}")
     release_worker_tasks("")            # 全部已领单退回待领
     for i in range(1, workers + 1):     # 会话映射/状态全部作废（旧账号的会话不可用）
-        wid = f"W{i:02d}"
+        wid = f"W{i:03d}"
         write_conv(wid, "")
         write_state(wid, "")
     # 逐个重建（每路 = 新会话 + 引导三件套 + 协议全文，约 2-3 分钟/路）
     built = 0
     for i in range(1, workers + 1):
-        wid = f"W{i:02d}"
+        wid = f"W{i:03d}"
         conv2, ev2 = rebuild_worker(wid)
         if conv2 or "发送成功" in ev2:
             built += 1
@@ -698,6 +786,7 @@ def main() -> int:
     if not ensure_board():
         print("[ERR] 任务板无法就绪，退出。工人提示词里的自启逻辑同样依赖它。")
         return 1
+    sync_protocol_file()   # 脚本内联模板 → 写回 CLAIM_WORKER_PROMPT.md（工人续跑参考）
     try:
         c = board_counts()
         log(f"任务板概览：总 {c['total']}，待领 {c['待领']}，已领 {c['已领']}，"
@@ -707,14 +796,18 @@ def main() -> int:
 
     # ── 演练模式 ──
     if a.dry_run:
-        wid = "W01"
         print("\n── DRY-RUN 演练 ──")
         print(f"引导三件套：{'开' if BOOT['on'] else '关'}，"
               f"工作空间={BOOT['ws']}，文件 {len(BOOT['files'])} 个，"
               f"技能行={vb.skills_inline([s.strip() for s in SKILLS_ARG.split(',') if s.strip()])[:120]}…")
-        print(f"首条提示词（{wid}）渲染预览：\n")
-        print(render_protocol(wid)[:1000])
-        print("……")
+        print("会话编号：新建任务时自动递增 W001、W002、W003…（每个会话唯一，绝不复用）")
+        for wid in ("W001", "W002"):
+            p = render_protocol(wid)
+            print(f"\n首条提示词（{wid}）开头预览：")
+            print("  " + p[:130].replace("\n", "\n  ") + " …")
+            print(f"  [核验] 编号行={('【VARIX-' + wid + '·产线领单工人】') in p}"
+                  f" 领单号={('AI-' + wid) in p}"
+                  f" 状态文件={('.state') in p and wid in p}")
         ok, why = idle3()
         print(f"\n当前忙闲：idle={ok}（{why}）")
         print(f"侧栏会话数：{len(snapshot_conv_ids())}")
@@ -735,7 +828,7 @@ def main() -> int:
         known = snapshot_conv_ids()
         created = 0
         for i in range(1, a.start + 1):
-            wid = f"W{i:02d}"
+            wid = f"W{i:03d}"
             if read_conv(wid):
                 log(f"{wid} 已有会话 {read_conv(wid)[:12]}…，跳过新建")
                 continue
@@ -794,7 +887,7 @@ def main() -> int:
                 any_busy = False
                 now = time.time()
                 for i in range(1, a.workers + 1):
-                    wid = f"W{i:02d}"
+                    wid = f"W{i:03d}"
                     state = read_state(wid)
                     conv = read_conv(wid)
                     if state and not conv:
