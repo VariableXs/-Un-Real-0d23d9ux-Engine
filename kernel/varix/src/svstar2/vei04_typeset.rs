@@ -66,6 +66,24 @@
 //! 打不开，代价更大），但必须同时产出降级记录，并在 [`LanguageCoverageReport`]
 //! 里把它列成"覆盖缺口"。上层可以据此报警、可以补表，但**不许静默**。
 //!
+//! # 关于「全语言覆盖」为什么要求两级查表
+//!
+//! 锚点的「全语言覆盖」不是"把主流语言列全"就完事——**调用方交来的标签是
+//! F4002 规范化后的完整 BCP47 形式**（`zh-Hans-CN` / `ar-EG` / `ta-IN`），
+//! 不是裸主语言码。所以 [`route`] 先整串精确查表，再退到 [`primary_subtag`]
+//! 取主语言子标签查表，两级都落空才降级。
+//!
+//! 这不是"多写一层保险"，而是修一个会持续污染上游的真实缺陷：若只按整串
+//! 查表，`ar-EG` 会落空并被标成"阿拉伯语未收录"——于是每个带区域标签的
+//! 阿拉伯语用户都被误报降级，覆盖报告里堆满**假缺口**，上层照着假缺口补表
+//! 永远补不完，真正的缺口反而被淹没。
+//!
+//! 命中层级由 [`RouteMatch`] 记录（`Exact` / `PrimarySubtag` / `Missed`），
+//! 否则"精确命中"与"退化到子标签命中"分不开，补表时无从下手。
+//!
+//! 畸形标签（空串、`-CN` 开头、`und`、`x-` 私有用途、通配 `*`）一律**显性
+//! 降级**，绝不猜族——把私有标签猜成某个族，正是降级红线要禁止的静默行为。
+//!
 //! # 确定性
 //!
 //! 零时钟、零 IO、零环境依赖；输入是语言标签与参数，输出是纯数据结构。同一
@@ -339,6 +357,39 @@ pub struct Degradation {
     pub fell_back_to: ScriptFamily,
 }
 
+/// 路由命中层级（让"为什么命中/没命中"可追因，不让路由变黑箱）。
+///
+/// 为什么需要这个枚举：锚点的「全语言覆盖」要求**完整 BCP47 标签**也能路由
+/// （调用方交的是 F4002 规范化后的 `zh-Hans-CN` / `ar-EG`，不是裸码 `zh` / `ar`）。
+/// 若只做整串查表，`ar-EG` 会落空并被误判成"阿拉伯语未收录"——**假缺口**；
+/// 若只做主语言子标签查表，`und` 这类无族语言的语义就丢了。
+/// 两级都试之后仍需知道**是哪一级命中的**，否则覆盖报告分不清
+/// "精确命中"与"退化到子标签命中"，补表时无从下手。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RouteMatch {
+    /// 整串精确命中（如表内若收录了 `zh-Hans-CN` 这类整标签）。
+    Exact,
+    /// 由主语言子标签命中（`ar-EG` → `ar`）。
+    PrimarySubtag,
+    /// 两级都没命中，已降级。
+    Missed,
+}
+
+impl RouteMatch {
+    /// 是否算"已收录"（`Missed` 为false）。
+    pub fn is_covered(&self) -> bool {
+        !matches!(self, RouteMatch::Missed)
+    }
+    /// 短码（供诊断与表格显示）。
+    pub fn short(&self) -> &'static str {
+        match self {
+            RouteMatch::Exact => "exact",
+            RouteMatch::PrimarySubtag => "primary",
+            RouteMatch::Missed => "missed",
+        }
+    }
+}
+
 /// 路由结果。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Route {
@@ -350,17 +401,49 @@ pub struct Route {
     pub degraded: bool,
     /// 降级详情（`degraded=false` 时为 `None`）。
     pub degradation: Option<Degradation>,
+    /// 命中层级（让"整串/子标签/未命中"可追因）。
+    pub matched: RouteMatch,
 }
 
 /// 降级红线：**未收录语言一律降级到拉丁族并显性标记**。
 pub const FALLBACK_FAMILY: ScriptFamily = ScriptFamily::Latin;
 
+/// 抽取主语言子标签（第一个 `-` 之前的部分；无 `-` 时返回整串）。
+///
+/// 边界处置：
+/// - 空串 → 返回空串（由查表落空 → 降级，不 panic）；
+/// - 以 `-` 开头（`-CN` 这类畸形标签）→ 返回空串，同样落空降级；
+/// - `*` 或 `x-...`（私有用途/通配）→ 返回原样，落空降级——**不猜族**，
+///   因为把私有标签猜成某个族正是降级红线要禁止的静默行为。
+pub fn primary_subtag(language: &str) -> &str {
+    match language.find('-') {
+        Some(i) => &language[..i],
+        None => language,
+    }
+}
+
 /// 语言→排版策略路由（锚点：路由 O(1) 查表）。
+///
+/// # 两级查表：为什么必须查两次
+///
+/// 锚点写的是「**全语言覆盖**」。而本项的调用方拿到的语言标签来自 F4002 的
+/// [`LanguageTag`](F4002) 规范化结果，形如 `zh-Hans-CN` / `ar-EG` / `ta-IN`——
+/// **不是**裸主语言码。若只按整串查表，`ar-EG` 会落空并被标成"阿拉伯语未收录"，
+/// 于是每个带区域标签的阿拉伯语用户都被误报降级，覆盖报告里塞满**假缺口**，
+/// 上层照着假缺口去补表，永远补不完。
+///
+/// 反过来只按主语言子标签查表也不对：那会让 `und`（无法判定）被当成一个
+/// 普通语言码去查，丢掉"它其实没有语言"这层语义。
+///
+/// 所以：**先整串精确查表（表内若将来收录整标签则优先），再退到主语言子标签
+/// 查表**。两级都落空才降级。全程O(表长)= O(1)（表是编译期常量数组），
+/// 无堆分配、无 IO、零时钟。
 ///
 /// 未知语言返回 [`FALLBACK_FAMILY`] + `degraded: true`，**不拒绝**——理由
 /// 见头注「未收录语言→Latin 降级」的显性红线：阻断的代价（整页打不开）
 /// 大于排版不完美的代价。但降级记录里**带真实语言名**，不静默。
 pub fn route(language: &str) -> Route {
+    // 第一级：整串精确命中。
     for entry in LANGUAGE_TABLE.iter() {
         if entry.language == language {
             return Route {
@@ -368,10 +451,28 @@ pub fn route(language: &str) -> Route {
                 rtl: entry.rtl,
                 degraded: false,
                 degradation: None,
+                matched: RouteMatch::Exact,
             };
         }
     }
-    // 未收录 → 拉丁降级 + 显性标记（不静默），记录真实语言名。
+    // 第二级：主语言子标签命中（`ar-EG` → `ar`）。
+    // 已是裸码时 `primary_subtag` 返回整串，必然与第一级同结果，
+    // 故用 `!= language` 跳过，避免重复扫表。
+    let primary = primary_subtag(language);
+    if primary != language {
+        for entry in LANGUAGE_TABLE.iter() {
+            if entry.language == primary {
+                return Route {
+                    family: entry.family,
+                    rtl: entry.rtl,
+                    degraded: false,
+                    degradation: None,
+                    matched: RouteMatch::PrimarySubtag,
+                };
+            }
+        }
+    }
+    // 两级都没命中 → 拉丁降级 + 显性标记（不静默），记录真实语言名。
     Route {
         family: FALLBACK_FAMILY,
         rtl: false,
@@ -380,6 +481,7 @@ pub fn route(language: &str) -> Route {
             language: language.to_string(),
             fell_back_to: FALLBACK_FAMILY,
         }),
+        matched: RouteMatch::Missed,
     }
 }
 
@@ -968,7 +1070,7 @@ pub struct SpecItem {
 }
 
 /// 规格表（五条判据逐条落到条目）。
-pub const SPEC_SHEET: [SpecItem; 13] = [
+pub const SPEC_SHEET: [SpecItem; 15] = [
     // 判据一：四族路由（3 条）
     SpecItem { no: 1, key: "route-four-families", label: "四族 Latin/CJK/Arabic/TaiIndic 齐备", enforced_by: "route_four_families" },
     SpecItem { no: 2, key: "route-table-lookup", label: "语言到族为查表路由", enforced_by: "route_table_lookup" },
@@ -987,12 +1089,15 @@ pub const SPEC_SHEET: [SpecItem; 13] = [
     // 判据五：预留激活（2 条）
     SpecItem { no: 12, key: "reserved-not-lied", label: "预留槽位未激活不谎报", enforced_by: "reserved_not_lied" },
     SpecItem { no: 13, key: "zero-privacy-surface", label: "零隐私面（只策略无用户数据）", enforced_by: "zero_privacy_surface" },
+    // 判据二补强（2 条）：完整 BCP47 标签与子标签边界——「全语言覆盖」的本域落点。
+    SpecItem { no: 14, key: "coverage-full-tag-primary", label: "完整 BCP47 标签按主语言子标签命中", enforced_by: "coverage_full_tag_hits_primary_subtag" },
+    SpecItem { no: 15, key: "coverage-subtag-edges", label: "畸形/私有标签不猜族，一律显性降级", enforced_by: "coverage_primary_subtag_edges" },
 ];
 
 /// 判据（锚点五条）到规格表键的映射。
 pub const CRITERIA: [(&str, [&str; 2]); 5] = [
     ("四族路由", ["route-four-families", "route-table-lookup"]),
-    ("语言覆盖", ["coverage-no-silent-default", "coverage-report-lists-gaps"]),
+    ("语言覆盖", ["coverage-no-silent-default", "coverage-full-tag-primary"]),
     ("降级显性", ["degrade-to-latin-marked", "degrade-diagnostic-emitted"]),
     ("策略执行分工", ["split-five-stages", "render-execution-only"]),
     ("预留激活", ["reserved-not-lied", "stage-handoff-checked"]),
@@ -1217,6 +1322,58 @@ mod tests {
         assert_eq!(r.uncovered.len(), 2);
         assert!(r.has_gap);
         assert!(r.coverage_percent() < 100);
+    }
+
+    /// 回归钉：完整 BCP47 标签必须按主语言子标签命中（真缺陷修复的守卫）。
+    ///
+    /// 缺陷背景：`route()` 曾只按整串查表，而调用方交的是 F4002 规范化后的
+    /// 完整标签，于是 `ar-EG` / `ta-IN` / `zh-Hans-CN` 全被误报"未收录"，
+    /// 覆盖报告塞满假缺口。这项若失败，说明两级查表被退回单级。
+    #[test]
+    fn full_bcp47_tags_route_via_primary_subtag() {
+        for (tag, family, rtl) in [
+            ("en-US", ScriptFamily::Latin, false),
+            ("zh-Hans-CN", ScriptFamily::Cjk, false),
+            ("ar-EG", ScriptFamily::Arabic, true),
+            ("ta-IN", ScriptFamily::TaiIndic, false),
+            ("he-IL", ScriptFamily::Arabic, true),
+            ("th-TH", ScriptFamily::TaiIndic, false),
+        ] {
+            let r = route(tag);
+            assert!(!r.degraded, "完整标签 {} 被误报未收录", tag);
+            assert_eq!(r.family, family, "标签 {} 族错", tag);
+            assert_eq!(r.rtl, rtl, "标签 {} 方向错", tag);
+            assert_eq!(r.matched, RouteMatch::PrimarySubtag, "标签 {} 命中层级错", tag);
+        }
+        // 裸码走 Exact 层级（两级查表不能让命中层级失去追因价值）。
+        assert_eq!(route("ar").matched, RouteMatch::Exact);
+        assert!(route("ar").matched.is_covered());
+        assert!(!route("sw").matched.is_covered());
+        // 带扩展私用的完整标签同样命中（`-u-co-...` 一长串不能把路由打空）。
+        assert!(!route("de-DE-u-co-phonebk").degraded);
+    }
+
+    /// 畸形与私有标签**不得被猜族**——猜族就是降级红线禁止的静默行为。
+    #[test]
+    fn malformed_tags_degrade_visibly_without_guessing() {
+        for tag in ["", "-CN", "und", "und-CN", "x-private", "*", "zz-ZZ", "汉"] {
+            let r = route(tag);
+            assert!(r.degraded, "畸形标签 {:?} 未显性降级", tag);
+            assert_eq!(r.matched, RouteMatch::Missed);
+            assert_eq!(r.family, FALLBACK_FAMILY);
+            let d = r.degradation.expect("降级必须有记录");
+            assert_eq!(d.language, tag, "降级记录必须带真实传入名");
+            assert_eq!(d.fell_back_to, FALLBACK_FAMILY);
+        }
+        // 子标签抽取的边界。
+        assert_eq!(primary_subtag("zh-Hans-CN"), "zh");
+        assert_eq!(primary_subtag("ar"), "ar");
+        assert_eq!(primary_subtag(""), "");
+        assert_eq!(primary_subtag("-CN"), "");
+        // 畸形标签喂给plan 走降级路径且产诊断，不 panic。
+        let p = plan("und-CN", "hello").expect("畸形标签应降级而非拒绝");
+        assert!(p.route.degraded);
+        assert!(p.bag.count_of(DiagKind::DegradedToLatin) >= 1);
     }
 
     #[test]

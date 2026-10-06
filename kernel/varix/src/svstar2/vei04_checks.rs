@@ -5,7 +5,8 @@
 //! - **四族路由** → `C04-四族-四族齐备`、`C04-四族-每族有语言路由`、
 //!   `C04-四族-路由为查表`、`C04-四族-族守卫拒域外`；
 //! - **语言覆盖** → `C04-覆盖-未收录不静默`、`C04-覆盖-报告列出缺口`、
-//!   `C04-覆盖-收录语言不误标降级`、`C04-覆盖-族性差异影响策略`；
+//!   `C04-覆盖-收录语言不误标降级`、`C04-覆盖-族性差异影响策略`、
+//!   `C04-覆盖-完整标签按子标签命中`、`C04-覆盖-子标签边界不猜族`；
 //! - **降级显性** → `C04-降级-落拉丁且标记`、`C04-降级-产诊断`、
 //!   `C04-降级-记录带真实语言名`；
 //! - **策略执行分工** → `C04-分工-五段唯一归属`、`C04-分工-渲染归执行`、
@@ -58,6 +59,8 @@ fn run(set: &mut CheckSet) {
     vs.push(coverage_report_lists_gaps());
     vs.push(coverage_known_not_degraded());
     vs.push(coverage_family_affects_policy());
+    vs.push(coverage_full_tag_hits_primary_subtag());
+    vs.push(coverage_primary_subtag_edges());
 
     // 判据三：降级显性
     vs.push(degrade_to_latin_marked());
@@ -240,6 +243,75 @@ fn coverage_family_affects_policy() -> Verdict {
         return Verdict::new("C04-覆盖-族性差异影响策略", false, "self-check-fail");
     }
     Verdict::new("C04-覆盖-族性差异影响策略", true, "")
+}
+
+/// 完整 BCP47 标签必须能路由（锚点「全语言覆盖」的本域落点）。
+///
+/// 这项是**为堵一个真缺陷而设**：原`route()` 只按整串查表，而调用方交的是
+/// F4002 规范化后的完整标签（`zh-Hans-CN` / `ar-EG` / `ta-IN`），于是每个带
+/// 区域/脚本子标签的语言都被误报"未收录"——覆盖报告塞满假缺口。
+/// 这里逐族各取一个真实标签，断言**族与方向都与裸码一致且不降级**。
+fn coverage_full_tag_hits_primary_subtag() -> Verdict {
+    let cases: [(&str, ts::ScriptFamily, bool); 6] = [
+        ("en-US", ts::ScriptFamily::Latin, false),
+        ("zh-Hans-CN", ts::ScriptFamily::Cjk, false),
+        ("ja-JP", ts::ScriptFamily::Cjk, false),
+        ("ar-EG", ts::ScriptFamily::Arabic, true),
+        ("ta-IN", ts::ScriptFamily::TaiIndic, false),
+        ("de-DE-u-co-phonebk", ts::ScriptFamily::Latin, false),
+    ];
+    for (tag, want_family, want_rtl) in cases.iter() {
+        let r = ts::route(tag);
+        if r.degraded
+            || r.family != *want_family
+            || r.rtl != *want_rtl
+            || r.matched != ts::RouteMatch::PrimarySubtag
+        {
+            return Verdict::new("C04-覆盖-完整标签按子标签命中", false, "self-check-fail");
+        }
+    }
+    // 裸码必须走 Exact 层级（两级查表不能把裸码也标成子标签命中，
+    // 否则命中层级失去追因价值）。
+    if ts::route("ar").matched != ts::RouteMatch::Exact {
+        return Verdict::new("C04-覆盖-完整标签按子标签命中", false, "self-check-fail");
+    }
+    Verdict::new("C04-覆盖-完整标签按子标签命中", true, "")
+}
+
+/// 主语言子标签抽取的边界（畸形标签不得panic、不得被猜族）。
+///
+/// 覆盖：空串、以 `-` 开头、`und`、`x-` 私有用途、通配 `*`。
+/// 这些都**必须落空降级**而不是猜一个族——猜族就是降级红线禁止的静默行为。
+fn coverage_primary_subtag_edges() -> Verdict {
+    if ts::primary_subtag("zh-Hans-CN") != "zh" {
+        return Verdict::new("C04-覆盖-子标签边界不猜族", false, "self-check-fail");
+    }
+    if ts::primary_subtag("ar") != "ar" {
+        return Verdict::new("C04-覆盖-子标签边界不猜族", false, "self-check-fail");
+    }
+    if !ts::primary_subtag("").is_empty() {
+        return Verdict::new("C04-覆盖-子标签边界不猜族", false, "self-check-fail");
+    }
+    if !ts::primary_subtag("-CN").is_empty() {
+        return Verdict::new("C04-覆盖-子标签边界不猜族", false, "self-check-fail");
+    }
+    // 这些一律 Missed + 显性降级，不得静默给族。
+    for tag in ["", "-CN", "und", "und-CN", "x-private", "*", "zz-ZZ", "汉"] {
+        let r = ts::route(tag);
+        if !r.degraded
+            || r.matched != ts::RouteMatch::Missed
+            || r.degradation.is_none()
+            || r.family != ts::FALLBACK_FAMILY
+        {
+            return Verdict::new("C04-覆盖-子标签边界不猜族", false, "self-check-fail");
+        }
+        // 降级记录必须带真实传入名（不能是占位符）。
+        let d = r.degradation.unwrap();
+        if d.language != tag {
+            return Verdict::new("C04-覆盖-子标签边界不猜族", false, "self-check-fail");
+        }
+    }
+    Verdict::new("C04-覆盖-子标签边界不猜族", true, "")
 }
 
 // ---------------------------------------------------------------------------
