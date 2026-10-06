@@ -24,8 +24,9 @@
   python tools/dispatch_tower.py --start 18 --watch      # 正式发车：建 18 会话+派首批+守护补位
   python tools/dispatch_tower.py --watch                 # 只守护（会话已建好时用）
   可选：--workers N --interval S --stale-min M --spec 路径 --skills 技能1,技能2 --out 目录
-  引导三件套（默认开，2026-10-06 上线）：新会话自动选工作空间、拖拽挂 4 份文件、
-  技能以 @skill: 内联；--no-bootstrap 关闭；--workspace/--files 可自定义；
+  引导三件套（默认开，2026-10-06 上线）：新会话自动选工作空间、技能经「/」
+  面板挂载为技能提及节点（失败者回退 @skill: 内联）、拖拽挂 4 份文件；
+  --no-bootstrap 关闭；--workspace/--files/--skills 可自定义；
   自检：python tools/bootstrap_selftest.py
 """
 
@@ -48,6 +49,7 @@ _BSPEC.loader.exec_module(vb)
 
 # 引导三件套配置（--no-bootstrap 可整体关闭；main() 里按 CLI 参数重填）
 BOOT = {"on": True, "ws": vb.WS_DEFAULT, "files": list(vb.FILES_DEFAULT)}
+SKILLS_ARG = ",".join(vb.SKILLS_DEFAULT)
 
 DISPATCH = _ROOT / "dispatch"
 WORKERS_DIR = DISPATCH / "workers"
@@ -316,10 +318,18 @@ def write_conv(wid: str, conv_id: str):
     (WORKERS_DIR / f"{wid}.conv").write_text(conv_id, encoding="utf-8")
 
 
-def render_first_prompt(wid: str, wp: str, spec: str, skills: str, outdir: str) -> str:
+def render_first_prompt(wid: str, wp: str, spec: str, skills: str, outdir: str,
+                        skills_fallback: list | None = None) -> str:
+    """渲染首条提示词。skills_fallback 语义同 claim_tower.render_protocol：
+    None=全部内联（dry-run）；非空 list=仅兜底内联；[]=已全部 UI 挂载。"""
     tpl = PROMPT_TPL.read_text(encoding="utf-8")
-    skills_line = " ".join(
-        f"@skill:{s.strip()}" for s in skills.split(",") if s.strip())
+    skill_list = [s.strip() for s in skills.split(",") if s.strip()]
+    if skills_fallback is None:
+        skills_line = " ".join(f"@skill:{s}" for s in skill_list)
+    elif skills_fallback:
+        skills_line = " ".join(f"@skill:{s}" for s in skills_fallback)
+    else:
+        skills_line = "（全部技能已由塔经「/」面板以技能提及节点挂载在本消息中）"
     out = (tpl
            .replace("{WORKER_ID}", wid)
            .replace("{WP_ID}", wp)
@@ -340,9 +350,13 @@ def render_first_prompt(wid: str, wp: str, spec: str, skills: str, outdir: str) 
     return out + bus
 
 
-def new_conversation(first_prompt: str, known_ids: set,
+def new_conversation(first_prompt_fn, known_ids: set,
                      tag: str = "") -> tuple[str, str]:
-    """点「新建任务」→ 发首条 → 差集捕获新会话 id。返回 (conv_id, evidence)。
+    """点「新建任务」→ 引导三件套 → 发首条 → 差集捕获新会话 id。
+
+    first_prompt_fn(skills_fallback: list | None) -> str：引导完成后才知道
+    哪些技能没挂上，首条提示词由本工厂按兜底清单渲染。
+    返回 (conv_id, evidence)。
 
     顺序重要（2026-10-06 实测）：先点新建，再判忙闲。
     实测「AI 正在别的会话生成」时，新建出来的空白会话发送键是「发送」（空闲态），
@@ -369,13 +383,20 @@ def new_conversation(first_prompt: str, known_ids: set,
         return "", "视图仍在原会话上，放弃填充（防污染）"
     if not wait_idle(30):
         return "", "新建出来的会话 30s 内未进入可发送态"
-    # ── 引导三件套（工作空间 + 文件附件；技能走提示词内联 @skill:）──
+    # ── 引导三件套（工作空间 + 技能 / 面板挂载 + 文件拖拽）──
     if BOOT["on"]:
-        ok_b, ev_b = vb.run(st, BOOT["ws"], BOOT["files"])
+        skills = [s.strip() for s in SKILLS_ARG.split(",") if s.strip()]
+        ok_b, ev_b = vb.run(st, BOOT["ws"], BOOT["files"], skills=skills)
         if not ok_b:
             vb.cleanup_reset(st, JS_CLICK_NEW)
             return "", f"引导失败（已重置空白）：{ev_b}"
-    ok, ev = send_text(first_prompt, tag)
+        mounted = ev_b.get("skills_ui", {}).get("mounted", [])
+        fallback = ev_b.get("skills_fallback", [])
+        log(f"引导：工作空间✓ 技能 / 面板挂载 {len(mounted)}/{len(skills)}"
+            f"（内联兜底 {len(fallback)}：{','.join(fallback) or '无'}） 文件✓")
+    else:
+        fallback = None   # 未开引导 → 技能全走内联 @skill:
+    ok, ev = send_text(first_prompt_fn(fallback), tag)
     if not ok:
         return "", f"首条发送失败：{ev}"
     for _ in range(10):  # 等侧栏出现新会话项
@@ -419,6 +440,7 @@ def claim_next_wp(blocks: dict) -> str:
 
 
 def main() -> int:
+    global SKILLS_ARG
     ap = argparse.ArgumentParser()
     ap.add_argument("--probe", action="store_true", help="只读体检")
     ap.add_argument("--dry-run", action="store_true", help="演练，零 UI 动作")
@@ -429,8 +451,9 @@ def main() -> int:
     ap.add_argument("--stale-min", type=int, default=120, help="BUSY 超时分钟数（提醒线）")
     ap.add_argument("--spec", default="docs/kernel-spec.md", help="规格 MD 路径")
     ap.add_argument("--skills",
-                    default=",".join(vb.SKILLS_DEFAULT),
-                    help="逗号分隔技能清单（渲染为 @skill: 提及）")
+                    default=SKILLS_ARG,
+                    help="逗号分隔技能清单（默认经 / 面板挂载为技能提及节点，"
+                         "失败者回退为 @skill: 内联）")
     ap.add_argument("--no-bootstrap", action="store_true",
                     help="关闭引导三件套（不选工作空间/不挂文件）")
     ap.add_argument("--workspace", default=vb.WS_DEFAULT,
@@ -443,6 +466,7 @@ def main() -> int:
     if a.no_bootstrap:
         BOOT["on"] = False
     BOOT["ws"] = a.workspace
+    SKILLS_ARG = a.skills
     if a.files == "default":
         BOOT["files"] = list(vb.FILES_DEFAULT)
     elif a.files.strip() == "":
@@ -497,9 +521,10 @@ def main() -> int:
             if not wp:
                 log("PLAN 已无待派，停止新建")
                 break
-            prompt = render_first_prompt(wid, wp, a.spec, a.skills, a.out)
+            prompt_fn = lambda missing: render_first_prompt(  # noqa: E731
+                wid, wp, a.spec, a.skills, a.out, missing)
             log(f"{wid} 新建会话并派 {wp} …")
-            conv, ev = new_conversation(prompt, known)
+            conv, ev = new_conversation(prompt_fn, known)
             if not conv:
                 log(f"[FAIL] {wid} 新建失败：{ev}")
                 ledger("发车失败", wp, wid, ev)

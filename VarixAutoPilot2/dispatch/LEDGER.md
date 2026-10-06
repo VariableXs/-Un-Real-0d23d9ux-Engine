@@ -4,6 +4,7 @@
 
 | 时间 | 事件 | WP | 工人 | 结果/原因 |
 |---|---|---|---|---|
+| 10-06 18:37 | 引导升级 | - | 调度塔 | Variable 指路「/」面板=技能正解（probe12~14 实测）：按显示名过滤+scrollIntoView+点选→真 mention 节点；bootstrap.mount_skills 上线，内联 @skill: 降为兜底；selftest 5/5 技能全 UI 挂载零兜底 |
 | 10-06 18:01 | 引导上线 | - | 调度塔 | 三件套实装：新会话自动选工作空间 -Un-Real-0d23d9ux-Engine-main（chip 验证）+ 拖拽挂 4 文件（resource_link）+ 技能 @skill: 内联首条提示词；bootstrap_selftest 全绿 |
 | 10-06 18:01 | 缺陷🟢 | - | 调度塔 | 宿主行为记录：隐藏 input[type=file] 条件挂载（空白视图 null）；DOM 域 nodeId 跨调用不稳；「+」技能子面板点击/悬停/键盘全竞态——三条路线弃用，探针归档 _attic/2026-10-06-bootstrap/ |
 | 10-06 16:52 | 派工(新会话) | WP-00001 | W02 | E1 发送键进停止态（AI 生成中=已受理） |

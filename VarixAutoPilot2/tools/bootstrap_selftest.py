@@ -1,10 +1,11 @@
 """引导三件套真发自检（填入不发送：零配额、不建会话）。
 
-验证链条（对应 2026-10-06 十一轮探测定案）：
+验证链条（对应 2026-10-06 十四轮探测定案）：
   1. 顶部新建 → 空白视图（安全闸：编辑器空 + 视图已离开原会话）
-  2. vb.run()：选工作空间（chip 验证）+ 拖拽挂 4 文件（resource_link 验证）
-  3. fill_cdp 填入含 @skill: 的测试提示词（验证附件在场上填充不被破坏）
-  4. 终态三验：chip 文本 / 4 文件名全在 / 编辑器真实字数
+  2. vb.run()：选工作空间（chip 验证）→ 技能「/」面板挂载（mention 计数验证）
+     → 拖拽挂 4 文件（resource_link 验证）
+  3. fill_cdp 填入测试提示词（仅含 / 面板没挂上的技能兜底内联，若有）
+  4. 终态四验：chip 文本 / 4 文件名全在 / 技能 mention 显示名全在 / 真实字数
   5. 清场：点顶部新建丢弃草稿（从未发送 → 不落库、不耗配额）
   6. 还原原视图（带重试）
 
@@ -26,8 +27,7 @@ _bspec = importlib.util.spec_from_file_location("vb", str(_HERE / "bootstrap.py"
 vb = importlib.util.module_from_spec(_bspec)
 _bspec.loader.exec_module(vb)
 
-TEST_PROMPT = ("【VARIX-W99·引导自检】本条不发送，仅验证编辑器组合态。"
-               "必载技能：" + vb.skills_inline() + "。")
+TEST_PROMPT = "【VARIX-W99·引导自检】本条不发送，仅验证编辑器组合态。"
 
 JS_ACTIVE_CONV = r"""(() => {
   const items = Array.from(document.querySelectorAll('div.conversation-item'));
@@ -65,7 +65,8 @@ JS_EDITOR_FILES = r"""((names) => {
   const missing = names.filter(n => !text.includes(n));
   return { ok: missing.length === 0, missing,
            links: (html.match(/resource_link/g) || []).length,
-           text: text.trim().slice(0, 400) };
+           mentions: (html.match(/mention/g) || []).length,
+           text: text.trim().slice(0, 500) };
 })"""
 
 
@@ -146,17 +147,22 @@ def main() -> int:
             return 3
         time.sleep(1.0)
 
-        print("── 2/5 引导：工作空间 + 4 文件 ──")
+        print("── 2/5 引导：工作空间 → 技能 / 面板挂载 → 4 文件 ──")
         ok_b, ev = vb.run(st)
         print(f"  {json.dumps(ev, ensure_ascii=False)}")
         ok_all &= ok_b
+        fallback = ev.get("skills_fallback", []) if ok_b else list(vb.SKILLS_DEFAULT)
+        mounted = ev.get("skills_ui", {}).get("mounted", []) if ok_b else []
 
         print("── 3/5 填入测试提示词（不发送） ──")
-        ok_f, ev_f = st.fill_cdp(TEST_PROMPT)
+        prompt = TEST_PROMPT
+        if fallback:
+            prompt += "必载技能：" + vb.skills_inline(fallback) + "。"
+        ok_f, ev_f = st.fill_cdp(prompt)
         print(f"  fill: {ev_f}")
         ok_all &= ok_f
 
-        print("── 4/5 终态三验 ──")
+        print("── 4/5 终态四验 ──")
         chip = st.call_js(JS_WS_CHIP) or {}
         ws_ok = vb.WS_DEFAULT in (chip.get("text") or "")
         print(f"  工作空间 chip: {chip.get('text')!r} → {'✓' if ws_ok else '✗'}")
@@ -165,8 +171,14 @@ def main() -> int:
         files_ok = bool(isinstance(v, dict) and v.get("ok"))
         print(f"  4 文件在编辑器: {'✓' if files_ok else '✗ missing=' + str(v.get('missing'))}"
               f"（resource_link×{v.get('links')}）")
-        sk_ok = all(f"@skill:{s}" in v.get("text", "") for s in vb.SKILLS_DEFAULT)
-        print(f"  @skill: 提及文本在编辑器: {'✓' if sk_ok else '✗'}")
+        txt = v.get("text", "")
+        ui_ok = all(vb.SLASH_SKILL_DISPLAY.get(s, s) in txt for s in mounted)
+        fb_ok = all(f"@skill:{s}" in txt for s in fallback)
+        print(f"  技能 / 面板挂载 {len(mounted)}/{len(vb.SKILLS_DEFAULT)}: "
+              f"{'✓' if ui_ok else '✗'}（mention 节点×{v.get('mentions')}）")
+        if fallback:
+            print(f"  兜底内联 @skill: {','.join(fallback)} → {'✓' if fb_ok else '✗'}")
+        sk_ok = ui_ok and fb_ok
         s = st.probe_state() or {}
         print(f"  编辑器真实字数: {s.get('charsReal')}（含提示词文本）")
         ok_all &= ws_ok and files_ok and sk_ok

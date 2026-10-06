@@ -20,9 +20,13 @@
 
 ③ 技能
   - 「+」菜单的技能子面板（cr-skills-submenu）点击/悬停/键盘全是竞态，弃用。
-  - ★ 正解 = 首条提示词内联 @skill:xxx 文本。铁证：本调度会话收到的用户
-    消息就是纯文本 @skill:清单，技能全部真实挂载（后端按消息文本解析）。
-  - 双保险：提示词同时要求工人用 Skill 工具按名加载。
+  - ★ 正解（Variable 指路 + probe12~14 实测）= 「/」面板：编辑器插入 / 弹出
+    技能(161)+指令(2) 面板，条目按**中文显示名**展示（无 slug 属性），
+    过滤词用显示名前缀（slug 搜不到），点击前 scrollIntoView，点选后编辑器
+    插入真 mention 节点（mentions 计数 +1 即验证，查询文本被消费无残留）；
+    已有 mention/文件的编辑器上可连续触发（probe14 clean=False 实测）。
+  - 兜底：/ 面板挂载失败的技能，由塔把 @skill:xxx 内联进首条提示词
+    （前端输入时自动转成技能 mention 节点，2026-10-06 实测）。
 
 安全约定：
   - 所有动作在「已确认的空白会话」上执行；失败可重试一次，仍失败显性报错，
@@ -48,6 +52,16 @@ SKILLS_DEFAULT = [
     "rust-best-practices",
     "karpathy-coding-constraints",
 ]
+
+# 技能 slug → 「/」面板显示名（probe13/14 实测：面板条目按显示名展示，
+# option 上没有 slug/data-id 属性，机器匹配只能靠显示名文本）。
+SLASH_SKILL_DISPLAY = {
+    "rust-code-audit": "Rust代码审计",
+    "rust-desktop-app-cn": "Rust桌面应用助手",
+    "rust-raspberrypi-os": "Rust 裸机操作系统开发教练",
+    "rust-best-practices": "Rust 编程最佳实践",
+    "karpathy-coding-constraints": "Karpathy 编码四原则",
+}
 
 JS_WS_CHIP = r"""(() => {
   const c = document.querySelector('button.cr-workspace-picker');
@@ -167,21 +181,212 @@ def attach_files(st, files=None, retries: int = 2) -> tuple:
 
 
 def skills_inline(skills=None) -> str:
-    """技能清单 → 首条提示词内的 @skill: 提及文本。"""
+    """技能清单 → 首条提示词内的 @skill: 提及文本（/ 面板挂载失败时的兜底）。"""
     return " ".join(f"@skill:{s}" for s in (skills or SKILLS_DEFAULT))
 
 
-def run(st, ws: str = WS_DEFAULT, files=None, need_files: bool = True) -> tuple:
-    """在已确认的空白会话上执行引导（工作空间 + 文件）。
+# ── 「/」面板技能挂载（probe12~14 实测路径）──
 
-    技能不在此处 UI 挂载——走首条提示词内联 @skill: 文本（skills_inline）。
-    返回 (ok, 证据dict)。任一步失败即整体失败（塔负责重置重试）。
+# 根面板判定必须用 class token 完全匹配——[class*="cr-trigger-search-panel"]
+# 会命中 __group-title-count 等子元素（probe12 的误配教训）。
+JS_SLASH_PANEL = r"""(() => {
+  const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4; };
+  const roots = Array.from(document.querySelectorAll('[class*="cr-trigger-search-panel"]'))
+    .filter(e => String(e.className).split(/\s+/).includes('cr-trigger-search-panel'))
+    .filter(vis);
+  if (!roots.length) return { open: false };
+  const opts = Array.from(document.querySelectorAll('[role="option"]')).filter(vis);
+  return { open: true, n: opts.length };
+})()"""
+
+# 按显示名点选（startsWith 优先、includes 放宽）；长列表必须先 scrollIntoView
+# （probe5 教训：可视区外的项坐标点击落空）。
+JS_SKILL_CLICK = r"""((name) => {
+  const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4; };
+  const items = Array.from(document.querySelectorAll('[role="option"]')).filter(vis);
+  let hit = null;
+  for (const it of items) {
+    const t = (it.innerText || '').trim();
+    if (t.startsWith(name) || t.includes(name)) { hit = it; break; }
+  }
+  if (!hit) return { ok: false, why: 'no option named ' + name };
+  hit.scrollIntoView({ block: 'center' });
+  const r = hit.getBoundingClientRect();
+  if (r.width < 4 || r.height < 4) return { ok: false, why: 'invisible after scroll' };
+  const o = { bubbles: true, cancelable: true, view: window,
+              clientX: r.left + 12, clientY: r.top + Math.min(14, r.height / 2), button: 0, detail: 1 };
+  for (const tp of ['mouseover','mousemove','mousedown','mouseup','click'])
+    hit.dispatchEvent(new MouseEvent(tp, o));
+  return { ok: true, text: (hit.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 60) };
+})"""
+
+# 编辑器 mention 计数（挂载验证：点击后 mentions 必须 +1）
+JS_SKILL_STATE = r"""(() => {
+  const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
+  if (!e) return { gone: true };
+  return { gone: false,
+           mentions: (e.innerHTML.match(/mention/g) || []).length,
+           text: (e.innerText || '') };
+})()"""
+
+
+def insert_raw(st, text: str) -> bool:
+    """裸 focus + Input.insertText（trusted 输入）。
+
+    不能用 st.fill_cdp：它有 charsReal>=10 的门槛，而 / 和过滤词只有几个
+    字符，会被误判为失败。
+    """
+    if not st.call_js(st.JS_FOCUS_EDIT):
+        return False
+    try:
+        st.call_cdp_method("Input.insertText", {"text": text})
+    except Exception:
+        return False
+    time.sleep(0.35)
+    return True
+
+
+def _wait_slash_panel(st, timeout: float, want_items: bool) -> dict:
+    """轮询 / 面板；want_items=True 时等到选项数 >0（搜索是异步的，~2-5s）。"""
+    deadline = time.time() + timeout
+    last = {"open": False}
+    while time.time() < deadline:
+        time.sleep(0.5)
+        v = st.call_js(JS_SLASH_PANEL)
+        if isinstance(v, dict) and v.get("open"):
+            last = v
+            if (not want_items) or v.get("n", 0) > 0:
+                return v
+        elif isinstance(v, dict):
+            last = v
+    return last
+
+
+def _mention_count(st) -> int:
+    v = st.call_js(JS_SKILL_STATE)
+    return v.get("mentions", -1) if isinstance(v, dict) else -1
+
+
+def _close_slash_panel(st):
+    """trusted Escape 关掉残留面板（合成 keydown 关不掉 Radix，但 trusted 可以）。"""
+    try:
+        for _ in range(2):
+            st.call_cdp_method("Input.dispatchKeyEvent",
+                               {"type": "rawKeyDown", "key": "Escape", "code": "Escape",
+                                "windowsVirtualKeyCode": 27})
+            st.call_cdp_method("Input.dispatchKeyEvent",
+                               {"type": "keyUp", "key": "Escape", "code": "Escape",
+                                "windowsVirtualKeyCode": 27})
+            time.sleep(0.3)
+    except Exception:
+        pass
+
+
+def _backspace_residue(st, filt: str):
+    """失败重试路径上编辑器可能残留 /filt 查询文本 → trusted Backspace 清掉。"""
+    for _ in range(3):
+        v = st.call_js(JS_SKILL_STATE)
+        if not (isinstance(v, dict) and not v.get("gone")):
+            return
+        if ("/" + filt) not in v.get("text", ""):
+            return
+        if not st.call_js(st.JS_FOCUS_EDIT):
+            return
+        try:
+            for _i in range(len(filt) + 2):
+                st.call_cdp_method("Input.dispatchKeyEvent", {
+                    "type": "rawKeyDown", "key": "Backspace", "code": "Backspace",
+                    "windowsVirtualKeyCode": 8})
+                st.call_cdp_method("Input.dispatchKeyEvent", {
+                    "type": "keyUp", "key": "Backspace", "code": "Backspace",
+                    "windowsVirtualKeyCode": 8})
+                time.sleep(0.05)
+        except Exception:
+            return
+        time.sleep(0.4)
+
+
+def add_skill_via_slash(st, slug: str, retries: int = 2) -> tuple:
+    """经「/」面板按显示名点选技能 → 编辑器插入真 mention 节点。
+
+    返回 (ok, 证据)。无显示名映射的 slug 直接 False（调用方走内联兜底）。
+    """
+    display = SLASH_SKILL_DISPLAY.get(slug)
+    if not display:
+        return False, {"slug": slug, "why": "无 / 面板显示名映射"}
+    filt = display[:4]
+    last = {}
+    for attempt in range(1, retries + 1):
+        _close_slash_panel(st)
+        _backspace_residue(st, filt)
+        before = _mention_count(st)
+        if not insert_raw(st, "/"):
+            last = {"why": "插入 / 失败"}
+            continue
+        p = _wait_slash_panel(st, 8, want_items=False)
+        if not p.get("open"):
+            last = {"why": "/ 面板未开"}
+            continue
+        if not insert_raw(st, filt):
+            last = {"why": "插入过滤词失败"}
+            continue
+        p2 = _wait_slash_panel(st, 12, want_items=True)
+        if not p2.get("n"):
+            last = {"why": f"过滤[{filt}]无结果", "panel_n": p2.get("n")}
+            continue
+        click = st.call_js(JS_SKILL_CLICK + "(" + json.dumps(display, ensure_ascii=False) + ")")
+        time.sleep(1.6)
+        v = st.call_js(JS_SKILL_STATE)
+        ok = (isinstance(v, dict) and not v.get("gone")
+              and display in v.get("text", "")
+              and isinstance(v.get("mentions"), int) and v["mentions"] > before
+              and ("/" + filt) not in v.get("text", ""))
+        if ok:
+            return True, {"slug": slug, "display": display, "attempt": attempt,
+                          "mentions": v.get("mentions")}
+        last = {"why": "点击后未见新 mention", "click":
+                (click or {}).get("text", "")[:40] if isinstance(click, dict) else click,
+                "mentions": v.get("mentions") if isinstance(v, dict) else None}
+    _close_slash_panel(st)
+    _backspace_residue(st, filt)
+    return False, {"slug": slug, "display": display, **last}
+
+
+def mount_skills(st, skills=None) -> tuple:
+    """逐个经 / 面板挂载技能（连续挂载：编辑器已有 mention 仍可触发，实测）。"""
+    mounted, failed, ev = [], [], []
+    for s in (skills or SKILLS_DEFAULT):
+        ok, e = add_skill_via_slash(st, s)
+        ev.append(e)
+        (mounted if ok else failed).append(s)
+        time.sleep(0.6)
+    return mounted, failed, ev
+
+
+def run(st, ws: str = WS_DEFAULT, files=None, need_files: bool = True,
+        skills=None) -> tuple:
+    """在已确认的空白会话上执行引导三件套。
+
+    顺序：工作空间 → 技能（/ 面板 UI 挂载，编辑器最干净时做最娇气的交互）
+    → 文件（拖拽注入）。
+    skills=None 用 SKILLS_DEFAULT；空 list 跳过技能挂载。
+    / 面板挂载失败的技能记入 ev["skills_fallback"]，由塔把它们以
+    @skill: 内联渲染进首条提示词（前端输入时自动转 mention，实测）。
+    返回 (ok, 证据dict)。工作空间或文件失败即整体失败（塔负责重置重试）。
     """
     ev = {}
     ok_ws, ev_ws = select_workspace(st, ws)
     ev["workspace"] = ev_ws
     if not ok_ws:
         return False, ev
+    skill_list = SKILLS_DEFAULT if skills is None else list(skills)
+    if skill_list:
+        mounted, failed, ev_sk = mount_skills(st, skill_list)
+        ev["skills_ui"] = {"mounted": mounted, "failed": failed}
+        ev["skills_detail"] = ev_sk
+    else:
+        mounted, failed = [], []
+    ev["skills_fallback"] = list(failed)
     if need_files:
         ok_f, ev_f = attach_files(st, files)
         ev["files"] = ev_f

@@ -38,8 +38,9 @@
   python tools/claim_tower.py --watch                # 只守护（会话已建好/塔重启接管）
   可选：--workers N --interval S --nudge-min M --board-port P --board-exe 路径
   引导三件套（默认开，2026-10-06 上线）：新会话自动选工作空间
-  -Un-Real-0d23d9ux-Engine-main、拖拽挂 4 份文件（VTaskBoard.exe + 3 份总纲 MD）、
-  技能以 @skill: 内联进首条提示词；--no-bootstrap 关闭，
+  -Un-Real-0d23d9ux-Engine-main、技能经「/」面板按显示名挂载为技能提及节点
+  （挂载失败的回退为 @skill: 内联进首条提示词）、拖拽挂 4 份文件
+  （VTaskBoard.exe + 3 份总纲 MD）；--no-bootstrap 关闭，
   --workspace/--files/--skills 可自定义；自检：python tools/bootstrap_selftest.py
 """
 
@@ -368,13 +369,24 @@ def state_mtime(wid: str) -> float:
 
 # ══════════════════════ 提示词渲染 ══════════════════════
 
-def render_protocol(wid: str) -> str:
-    """首条提示词：协议全文内联（新对话零上下文也能开工）+ VARIX 标记。"""
+def render_protocol(wid: str, skills_fallback: list | None = None) -> str:
+    """首条提示词：协议全文内联（新对话零上下文也能开工）+ VARIX 标记。
+
+    skills_fallback=None          → 全部技能内联 @skill:（dry-run/补发场景）；
+    skills_fallback=非空 list     → 仅把 / 面板没挂上的技能内联为兜底；
+    skills_fallback=[]            → 技能已全部经 / 面板挂载为 mention 节点。
+    """
     tpl = PROTOCOL_MD.read_text(encoding="utf-8")
+    all_skills = [s.strip() for s in SKILLS_ARG.split(",") if s.strip()]
+    if skills_fallback is None:
+        line = vb.skills_inline(all_skills)
+    elif skills_fallback:
+        line = vb.skills_inline(skills_fallback)
+    else:
+        line = "（全部技能已由塔经「/」面板以技能提及节点挂载在本消息中）"
     body = (tpl
             .replace("{WORKER_ID}", wid)
-            .replace("{SKILLS_LINE}", vb.skills_inline(
-                [s.strip() for s in SKILLS_ARG.split(",") if s.strip()])))
+            .replace("{SKILLS_LINE}", line))
     return f"【VARIX-{wid}·产线领单工人】\n\n{body}"
 
 
@@ -419,9 +431,13 @@ def relink_conv(wid: str) -> str:
     return ""
 
 
-def new_conversation(first_prompt: str, known_ids: set,
+def new_conversation(first_prompt_fn, known_ids: set,
                      tag: str) -> tuple[str, str]:
-    """点「新建任务」→ 发首条 → 差集/标记捕获新会话 id。返回 (conv_id, evidence)。
+    """点「新建任务」→ 引导三件套 → 发首条 → 差集/标记捕获新会话 id。
+
+    first_prompt_fn(skills_fallback: list | None) -> str：引导完成后才知道
+    哪些技能没挂上，首条提示词由本工厂按兜底清单渲染。
+    返回 (conv_id, evidence)。
 
     顺序重要（实测）：先点新建，再判忙闲——忙闲是按会话的，
     新建出来的空白会话必然空闲，不能用全局 wait_idle 卡死自己。
@@ -447,13 +463,20 @@ def new_conversation(first_prompt: str, known_ids: set,
         return "", "视图仍在原会话上，放弃填充（防污染）"
     if not wait_idle(30):
         return "", "新建出来的会话 30s 内未进入可发送态"
-    # ── 引导三件套（工作空间 + 文件附件；技能走提示词内联 @skill:）──
+    # ── 引导三件套（工作空间 + 技能 / 面板挂载 + 文件拖拽）──
     if BOOT["on"]:
-        ok_b, ev_b = vb.run(st, BOOT["ws"], BOOT["files"])
+        skills = [s.strip() for s in SKILLS_ARG.split(",") if s.strip()]
+        ok_b, ev_b = vb.run(st, BOOT["ws"], BOOT["files"], skills=skills)
         if not ok_b:
             vb.cleanup_reset(st, JS_CLICK_NEW)
             return "", f"引导失败（已重置空白）：{ev_b}"
-    ok, ev = send_text(first_prompt, tag)
+        mounted = ev_b.get("skills_ui", {}).get("mounted", [])
+        fallback = ev_b.get("skills_fallback", [])
+        log(f"引导：工作空间✓ 技能 / 面板挂载 {len(mounted)}/{len(skills)}"
+            f"（内联兜底 {len(fallback)}：{','.join(fallback) or '无'}） 文件✓")
+    else:
+        fallback = None   # 未开引导 → 技能全走内联 @skill:
+    ok, ev = send_text(first_prompt_fn(fallback), tag)
     if not ok:
         return "", f"首条发送失败：{ev}"
     # 侧栏渲染有 30s+ 延迟（实测），差集轮询 35s；再不行靠标记重链兜底
@@ -498,7 +521,8 @@ def main() -> int:
     ap.add_argument("--files", default="default",
                     help='逗号分隔的附件绝对路径；"default"=内置4文件；""=不挂文件')
     ap.add_argument("--skills", default=SKILLS_ARG,
-                    help="逗号分隔的技能清单（渲染为 @skill: 提及进首条提示词）")
+                    help="逗号分隔的技能清单（默认经 / 面板挂载为技能提及节点，"
+                         "失败者回退为 @skill: 内联）")
     a = ap.parse_args()
 
     BOARD_PORT = a.board_port
@@ -585,9 +609,9 @@ def main() -> int:
             if read_conv(wid):
                 log(f"{wid} 已有会话 {read_conv(wid)[:12]}…，跳过新建")
                 continue
-            prompt = render_protocol(wid)
+            prompt_fn = lambda missing: render_protocol(wid, missing)  # noqa: E731
             log(f"{wid} 新建会话并派协议 …")
-            conv, ev = new_conversation(prompt, known, f"VARIX-{wid}")
+            conv, ev = new_conversation(prompt_fn, known, f"VARIX-{wid}")
             if conv:
                 known.add(conv)
                 write_conv(wid, conv)
