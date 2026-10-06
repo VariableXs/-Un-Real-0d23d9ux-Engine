@@ -58,6 +58,7 @@
 //! | [`vet01_a11y_render_pipeline`] | F3802 无障碍渲染管线 | VE 册 #VE-F3802 |
 //! | [`vei02_locale`] | F4002 语言标签与 Locale 模型（BCP47 四段+扩展/容错表/回退链/解析缓存/单源声明） | VE 册 #VE-F4002 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
+//! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -104,6 +105,10 @@ pub mod veb03_checks;
 pub mod veb03_resource;
 pub mod veb04_2dupdate;
 pub mod veb04_checks;
+pub mod veb05_checks;
+pub mod veb05_virgl;
+pub mod veb06_checks;
+pub mod veb06_stream;
 pub mod veb10_checks;
 pub mod veb10_cursor;
 pub mod vec01_checks;
@@ -130,19 +135,48 @@ pub mod vec11_checks;
 pub mod vec11_prepro;
 pub mod vec12_checks;
 pub mod vec12_macro;
+pub mod vec13_checks;
+pub mod vec13_cond;
+pub mod vec14_checks;
+pub mod vec14_include;
 pub mod ved01_checks;
 pub mod ved01_tree;
 pub mod ved02_checks;
 pub mod ved02_xform;
 pub mod ved03_alpha;
 pub mod ved03_checks;
+pub mod ved04_checks;
+pub mod ved04_clip;
+pub mod ved05_checks;
+pub mod ved05_isolation;
+pub mod ved06_checks;
+pub mod ved06_zorder;
+pub mod ved07_checks;
+pub mod ved07_visibility;
 pub mod ved13_dirty;
 pub mod vee01_arch;
 pub mod vee01_checks;
+pub mod vee02_checks;
+pub mod vee02_utf8;
+pub mod vef01_checks;
+pub mod vef01_pngdec;
+pub mod veh01_boundary;
+pub mod veh01_checks;
+pub mod veh02_audioarch;
+pub mod veh02_checks;
+pub mod veh02_service;
+pub mod vej04_checks;
+pub mod vej04_pointlight;
 pub mod vek04_bloom;
 pub mod vek04_checks;
 pub mod vem02_checks;
 pub mod vem02_track;
+pub mod veo01_arch;
+pub mod veo01_checks;
+pub mod vep01_arch;
+pub mod vep01_checks;
+pub mod veq01_checks;
+pub mod veq01_pipeline;
 pub mod ver01_arch;
 pub mod ver01_checks;
 pub mod vet01_a11y_render_pipeline;
@@ -163,7 +197,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 42] = [
+    let blocks: [(&'static str, CheckSet); 46] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -197,15 +231,19 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0410", vec10_brace::run_vec10_checks()),
         ("VE-F0411", vec11_prepro::run_vec11_checks()),
         ("VE-F0412", vec12_macro::run_vec12_checks()),
+        ("VE-F0414", vec14_include::run_vec14_checks()),
         ("VE-F0601", ved01_checks::run_ved01_checks()),
         ("VE-F0602", ved02_checks::run_ved02_checks()),
         ("VE-F0603", ved03_checks::run_ved03_checks()),
         ("VE-F0613", ved13_dirty::run_ved13_checks()),
         ("VE-F0801", vee01_checks::run_vee01_checks()),
+        ("VE-F0802", vee02_checks::run_vee02_checks()),
         ("VE-F2004", vek04_checks::run_vek04_checks()),
         ("VE-F2402", vem02_checks::run_vem02_checks()),
         ("VE-F3401", ver01_arch::run_ver01_checks()),
         ("VE-F3802", vet01_a11y_render_pipeline::run_f3802_checks()),
+        ("VE-F4401", vev01_checks::run_vev01_checks()),
+        ("VE-F3201", veq01_pipeline::run_veq01_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
