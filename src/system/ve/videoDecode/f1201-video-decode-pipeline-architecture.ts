@@ -559,6 +559,27 @@ export function verifyContractShape(
 ): Outcome<FrozenLayerContract> {
   const diagnostics: Diagnostic[] = [];
 
+  // 4.0 邻接必须与序表逐位吻合（不许「无上游」蔓延到中间层）。
+  //
+  // 存在的理由：本函数早先只校验「非null 侧的邻居对称性」，于是把中间层的
+  // upstream 改成 null 就完全绕过——L1 声明无上游是合法的，L3 也声明无上游
+  // 却意味着容器层的产出凭空消失。校验不写这一条，邻接断裂就成了静默事实。
+  const canonical = baselineAdjacency(contract.layerId);
+  if (contract.upstream !== canonical.upstream) {
+    diagnostics.push({
+      code: "LAYER_ADJACENCY_MISMATCH",
+      message: `层 ${contract.layerId} 的上游声明为 ${String(contract.upstream)}，序表位置为 ${String(canonical.upstream)}。`,
+      hint: `邻接由 LAYER_ORDER 唯一决定：容器层无上游、输出层无下游，中间层不得自认无上游；修正声明而非改序表。`,
+    });
+  }
+  if (contract.downstream !== canonical.downstream) {
+    diagnostics.push({
+      code: "LAYER_ADJACENCY_MISMATCH",
+      message: `层 ${contract.layerId} 的下游声明为 ${String(contract.downstream)}，序表位置为 ${String(canonical.downstream)}。`,
+      hint: `邻接由 LAYER_ORDER 唯一决定；修正声明而非改序表。`,
+    });
+  }
+
   // 4.1 邻居对称性：我认上游，下游必须认我。
   if (contract.upstream !== null) {
     const up = all.get(contract.upstream);
@@ -621,6 +642,22 @@ export function verifyContractShape(
     if (first !== undefined) return err(first.code, first.message, first.hint, diagnostics);
   }
   return ok(contract, diagnostics);
+}
+
+/**
+ * 由序表推导某层的规范邻接（容器层无上游、输出层无下游、中间层前后各一）。
+ *
+ * 存在的理由：邻接若只靠「双方互指」来校验，就少了一半校验力——
+ * 把中间层的 upstream 改成 null 后，它不再声明任何邻居，于是「我认上游、
+ * 上游认我」这条对称性校验根本不会触发，断裂静默通过。序表是邻接的
+ * 唯一事实源，本函数把该事实显式化，校验才有可对照的基准。
+ */
+export function baselineAdjacency(layerId: LayerId): { readonly upstream: LayerId | null; readonly downstream: LayerId | null } {
+  const idx = LAYER_ORDER.indexOf(layerId);
+  if (idx < 0) return { upstream: null, downstream: null };
+  const upstream = idx > 0 ? (LAYER_ORDER[idx - 1] ?? null) : null;
+  const downstream = idx < LAYER_ORDER.length - 1 ? (LAYER_ORDER[idx + 1] ?? null) : null;
+  return { upstream, downstream };
 }
 
 /**
@@ -1134,17 +1171,30 @@ export function propagateFailure(
   }
 
   // I2 处置不得比契约更松：契约 skip-frame 允许 recover/skip，不允许 abort 后假装继续。
-  const dispositionToStrictness: Readonly<Record<FailureDisposition, number>> = {
-    abort: 4,
-    recover: 3,
-    degrade: 2,
-    skip: 1,
+  //
+  // 标尺必须同量纲，否则「等值即放行」会变成放松通道。
+  // 反例（本条修复的真缺陷）：契约 abort 严格度 3，而处置 recover 严格度也是 3，
+  // 判定 3 < 3 为假 ⇒ 契约要求「中止整条管线」的实现却用「恢复后继续」被放行，
+  // 上层以为会中止，实际拿到的是一帧继续跑的输出——处置声明与实际行为反向。
+  //
+  // 正解：把处置折算到契约三档上再比。折算规则——
+  //   abort   → 就是 abort（最严，一一对应）；
+  //   recover → 视作 skip-frame（恢复后跳过坏帧，不中止管线）；
+  //   degrade → 视作 degrade-to-software（降级重试，不中止）；
+  //   skip    → 视作 skip-frame。
+  // 折算后契约 abort(3) 对处置 recover(1) 判定 1 < 3 ⇒ 拒绝，放松被拦。
+  const dispositionToPolicy: Readonly<Record<FailureDisposition, FailurePolicy>> = {
+    abort: "abort",
+    recover: "skip-frame",
+    degrade: "degrade-to-software",
+    skip: "skip-frame",
   };
-  if (dispositionToStrictness[disposition] < FAILURE_POLICY_STRICTNESS[contractPolicy]) {
-    // 契约比处置更严（例如契约 abort 而处置 skip）——这是危险的放松，直接拒绝。
+  const effectivePolicy = dispositionToPolicy[disposition];
+  if (FAILURE_POLICY_STRICTNESS[effectivePolicy] < FAILURE_POLICY_STRICTNESS[contractPolicy]) {
+    // 契约比处置更严（例如契约 abort 而处置 recover）——这是危险的放松，直接拒绝。
     diagnostics.push({
       code: "FAILURE_POLICY_UNREGISTERED",
-      message: `层 ${layerId} 的处置 ${disposition} 比契约策略 ${contractPolicy} 更松。`,
+      message: `层 ${layerId} 的处置 ${disposition}（折算为 ${effectivePolicy}）比契约策略 ${contractPolicy} 更松。`,
       hint: `处置强度不得低于契约（严格度序 abort > degrade-to-software > skip-frame）；要么按契约中止，要么先收紧契约。`,
     });
   }
@@ -1236,6 +1286,44 @@ export interface LatencyDecomposition {
 }
 
 /**
+ * 帧预算闸门：预算非法即返回诊断，合规则返回 null。
+ *
+ * 存在的理由：预算在本模块有两处消费点——decomposeLatency 判超标、freeze
+ * 记架构凭据。前者自己守正有限，后者曾完全不校验，于是非法预算能进快照。
+ * 把校验抽成一个函数供两处共用，杜绝「一处守一处漏」。
+ *
+ * 上界同样守：预算宽到离谱（比如 1e9ms）时超标永不触发，门禁形同虚设，
+ * 与其等到超标判据长期沉默，不如在入口就拒绝。
+ */
+export const FRAME_BUDGET_MIN_MS = 0.1;
+export const FRAME_BUDGET_MAX_MS = 1000;
+
+export function inspectFrameBudget(budgetMs: number): Diagnostic | null {
+  if (typeof budgetMs !== "number" || Number.isNaN(budgetMs) || !Number.isFinite(budgetMs) || budgetMs <= 0) {
+    return {
+      code: "FRAME_BUDGET_INVALID",
+      message: `帧预算 ${String(budgetMs)} 非法（须为正有限数）。`,
+      hint: "帧预算来自播放时钟（33.3ms@30fps / 16.7ms@60fps）；未声明或非法预算则无法做超标归因。",
+    };
+  }
+  if (budgetMs < FRAME_BUDGET_MIN_MS) {
+    return {
+      code: "FRAME_BUDGET_INVALID",
+      message: `帧预算 ${budgetMs}ms 低于下限 ${FRAME_BUDGET_MIN_MS}ms。`,
+      hint: "小于 0.1ms 的预算不可能被任何真实解码路径满足，多为帧率单位换算错误（毫秒/微秒混用）。",
+    };
+  }
+  if (budgetMs > FRAME_BUDGET_MAX_MS) {
+    return {
+      code: "FRAME_BUDGET_INVALID",
+      message: `帧预算 ${budgetMs}ms 超过上限 ${FRAME_BUDGET_MAX_MS}ms。`,
+      hint: "预算过宽会让超标永不触发，延迟归因判据形同虚设；按真实帧间隔声明预算（60fps≈16.7ms）。",
+    };
+  }
+  return null;
+}
+
+/**
  * 延迟分解（锚点：每层耗时；层延迟超标 → 定位到层）。
  *
  * 三条纪律：
@@ -1247,14 +1335,9 @@ export interface LatencyDecomposition {
 export function decomposeLatency(ledger: LatencyLedger, budgetMs: number): Outcome<LatencyDecomposition> {
   const diagnostics: Diagnostic[] = [];
 
-  // D0 预算合法性：不合法即无法判超标。
-  if (!(budgetMs > 0) || !Number.isFinite(budgetMs)) {
-    return err(
-      "FRAME_BUDGET_INVALID",
-      `帧预算 ${budgetMs} 非法（须为正有限数）。`,
-      "帧预算来自播放时钟（33.3ms@30fps / 16.7ms@60fps）；未声明预算则无法做超标归因。",
-    );
-  }
+  // D0 预算合法性：不合法即无法判超标（与入口闸门共用同一把尺）。
+  const budgetProblem = inspectFrameBudget(budgetMs);
+  if (budgetProblem !== null) return err(budgetProblem.code, budgetProblem.message, budgetProblem.hint);
 
   // 记过的层不允许重复（重复即账被双写，分解会翻倍）。
   const seen = new Set<LayerId>();
@@ -1607,6 +1690,15 @@ export interface DomainKickoff {
  * @param now 冻结时间戳（调用方注入，本模块不读时钟，保持可测试与可重放）。
  */
 export function openDomain(assembly: PipelineAssembly, now: number): Outcome<DomainKickoff> {
+  // 闸门 0：帧预算合法性。
+  //
+  // 存在的理由：decomposeLatency 自己守正有限，但冻结快照是它的上游——
+  // 若这里不拦，0/负/NaN/无穷预算会一路写进 freeze.fingerprint，
+  // 于是「超标必归因到层」这条判据在正式运行时永远不成立（NaN 比较恒假），
+  // 而指纹看上去仍是合法架构。预算失真必须止于入口。
+  const budgetProblem = inspectFrameBudget(assembly.frameBudgetMs);
+  if (budgetProblem !== null) return err(budgetProblem.code, budgetProblem.message, budgetProblem.hint);
+
   // 闸门 1：五层齐备与装配正确性。
   const audit = auditArchitecture(assembly);
   if (!audit.ok) return audit;
@@ -2274,6 +2366,118 @@ export function renderArchitectureDeclaration(freeze: ArchitectureFreeze, finger
  * 运行全量判据自检。
  * 汇总为一份可机读结果，供门禁消费（F1218 文档、F1219 基准共用）。
  */
+/**
+ * 判据自检·回归组：本条四次修复留下的护栏。
+ *
+ * 存在的理由：修复若只落在实现里而无断言，下次重构就会把它悄悄改回去。
+ * 每项对应一个曾真实放行的错误输入，断言写死「必须被拒 + 必须报某码」，
+ * 任何回归都会立刻红。
+ */
+export function selfCheckRegressions(): SelfCheck[] {
+  const out: SelfCheck[] = [];
+  const base = buildReferenceAssembly();
+  const baselines = buildBaselineContracts();
+  const L3 = baselines.get("L3-decode");
+
+  // R1 处置严格度标尺错位：契约 abort 时用 recover 处置必须被拒。
+  //旧实现用两把不同量纲的标尺直接比大小（abort=3 对 recover=3），
+  // 判定 3<3 为假而放行——契约要求中止，实现却恢复后继续，行为与声明反向。
+  {
+    const ctx = createFrameContext(9001, "P", 90000);
+    const chain = [...LAYER_ORDER].reverse();
+    const r = ctx.ok
+      ? propagateFailure(
+          ctx.value,
+          "L1-container",
+          { what: "moov 缺失", cause: "非 faststart", action: "中止播放", contextSnapshot: "box=moov" },
+          "recover",
+          "abort",
+          chain,
+        )
+      : ctx;
+    out.push({
+      name: "regression-disposition-strictness-scale",
+      pass: !r.ok && r.code === "FAILURE_POLICY_UNREGISTERED",
+      detail: r.ok
+        ? "契约 abort 被 recover 处置放过（处置严于契约的声明被忽略）"
+        : `契约 abort 下的 recover 处置被拒（${r.code}）`,
+    });
+  }
+
+  // R2 邻接序表基准：中间层自认无上游必须被拒。
+  // 旧实现只校验「非null 侧的对称性」，upstream=null 时整段校验被跳过。
+  if (L3 !== undefined) {
+    const hacked = { ...L3, upstream: null };
+    const r = verifyContractShape(hacked, baselines);
+    out.push({
+      name: "regression-mid-layer-null-upstream-rejected",
+      pass: !r.ok && r.code === "LAYER_ADJACENCY_MISMATCH",
+      detail: r.ok
+        ? "中间层声明 upstream=null 未被拦截（容器层产出凭空消失）"
+        : `中间层自认无上游被拒（${r.code}）`,
+    });
+
+    // R2b 合法邻接不得误报（序表基准不能把对的判成错的）。
+    const good = verifyContractShape(L3, baselines);
+    out.push({
+      name: "regression-canonical-adjacency-no-false-positive",
+      pass: good.ok,
+      detail: good.ok ? "序表邻接未被误判" : `序表邻接被误拒（${good.code}）`,
+    });
+  }
+
+  // R3 帧预算闸门必须止于入口：非法预算不得进入冻结快照。
+  // 旧实现 openDomain 完全不校验预算，0/负/NaN/无穷可一路写进 fingerprint，
+  // 于是「超标必归因到层」在正式运行时永不成立，而指纹看上去仍合法。
+  {
+    const bads: readonly number[] = [0, -5, Number.NaN, Number.POSITIVE_INFINITY, FRAME_BUDGET_MAX_MS * 10];
+    let allBlocked = true;
+    const seen: string[] = [];
+    for (const v of bads) {
+      const k = openDomain({ ...base, frameBudgetMs: v }, 1);
+      if (k.ok) allBlocked = false;
+      else seen.push(`${String(v)}→${k.code}`);
+    }
+    out.push({
+      name: "regression-invalid-budget-blocked-at-entry",
+      pass: allBlocked,
+      detail: allBlocked ? `非法预算全部被拒（${seen.length} 类）` : "非法预算被放进冻结快照",
+    });
+
+    // R3b 合法预算不得误拒（含上下界之内与恰在边界上的值）。
+    const goods: readonly number[] = [FRAME_BUDGET_MIN_MS, 16.7, 33.3, FRAME_BUDGET_MAX_MS];
+    const wrongRejects = goods.filter((v) => inspectFrameBudget(v) !== null);
+    out.push({
+      name: "regression-valid-budget-accepted",
+      pass: wrongRejects.length === 0,
+      detail: wrongRejects.length === 0
+        ? `合法预算全部放行（${goods.length} 个含边界）`
+        : `合法预算被误拒：${wrongRejects.join(",")}`,
+    });
+  }
+
+  // R4 预算闸门在入口与分解处必须同尺（同一把尺，不允许一处守一处漏）。
+  {
+    const ledger: LatencyLedger = {
+      frameIndex: 1,
+      samples: LAYER_ORDER.map((id, i) => ({ layerId: id, elapsedMs: i + 1, calls: 1 })),
+    };
+    let consistent = true;
+    for (const v of [0, -1, Number.NaN, FRAME_BUDGET_MAX_MS * 10]) {
+      const atEntry = inspectFrameBudget(v) !== null;
+      const atDecompose = !decomposeLatency(ledger, v).ok;
+      if (atEntry !== atDecompose) consistent = false;
+    }
+    out.push({
+      name: "regression-budget-gate-single-scale",
+      pass: consistent,
+      detail: consistent ? "入口与延迟分解对同一批非法预算判定一致" : "入口与延迟分解对非法预算判定不一致",
+    });
+  }
+
+  return out;
+}
+
 export function runSelfCheck(): { readonly checks: readonly SelfCheck[]; readonly allPass: boolean } {
   const checks: SelfCheck[] = [
     ...selfCheckFiveLayers(),
@@ -2283,6 +2487,7 @@ export function runSelfCheck(): { readonly checks: readonly SelfCheck[]; readonl
     ...selfCheckFailurePropagation(),
     ...selfCheckFrameContext(),
     ...selfCheckRoutePlacement(),
+    ...selfCheckRegressions(),
   ];
   const allPass = checks.every((c) => c.pass);
   return { checks, allPass };
