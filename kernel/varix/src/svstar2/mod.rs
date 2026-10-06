@@ -67,6 +67,7 @@
 //! | [`ves01_sdomain_arch`] | F3801 S 域开工与无障碍渲染总架构 | VE 册 #VE-F3801 |
 //! | [`vei02_locale`] | F4002 语言标签与 Locale 模型（BCP47 四段+扩展/容错表/回退链/解析缓存/单源声明） | VE 册 #VE-F4002 |
 //! | [`vei03_text_direction`] | F4003 文字方向模型（三方向统一+三层优先级/isolate自动补齐/首强启发可覆写） | VE 册 #VE-F4003 |
+//! | [`vei04_typeset`] | F4004 国际化排版管线（四族路由/语言覆盖红线/降级显性/五段策略与执行分工） | VE 册 #VE-F4004 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
 
@@ -178,6 +179,8 @@ pub mod vei02_checks;
 pub mod vei02_locale;
 pub mod vei03_checks;
 pub mod vei03_text_direction;
+pub mod vei04_checks;
+pub mod vei04_typeset;
 pub mod veh01_checks;
 pub mod veh02_audioarch;
 pub mod veh02_checks;
@@ -190,6 +193,8 @@ pub mod vek05_params;
 pub mod vek05_checks;
 pub mod vek06_tonemap;
 pub mod vek06_checks;
+pub mod vek07_checks;
+pub mod vek07_exposure;
 pub mod vem02_checks;
 pub mod vem02_track;
 pub mod vem03_checks;
@@ -240,7 +245,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 67] = [
+    let blocks: [(&'static str, CheckSet); 69] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -291,6 +296,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2004", vek04_checks::run_vek04_checks()),
         ("VE-F2005", vek05_checks::run_vek05_checks()),
         ("VE-F2006", vek06_checks::run_vek06_checks()),
+        ("VE-F2007", vek07_checks::run_vek07_checks()),
         ("VE-F2402", vem02_checks::run_vem02_checks()),
         ("VE-F2403", vem03_checks::run_vem03_checks()),
         ("VE-F2404", vem04_checks::run_vem04_checks()),
@@ -308,6 +314,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3001", vep01_checks::run_vep01_checks()),
         ("VE-F4002", vei02_checks::run_vei02_checks()),
         ("VE-F4003", vei03_checks::run_vei03_checks()),
+        ("VE-F4004", vei04_checks::run_vei04_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
