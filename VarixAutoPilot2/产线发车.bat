@@ -11,6 +11,10 @@ REM
 REM  Step 1: probe (read-only health check). Abort if it fails.
 REM  Step 2: create 18 worker conversations + bootstrap (workspace
 REM          + 4 files + 10 skills via slash panel) + send prompt.
+REM  Step 3: settle 5 min untouched, then health-check all 18 workers;
+REM          any that never started on its own (state file still the
+REM          tower's placeholder) gets archived + rebuilt as a NEW
+REM          conversation with the full protocol.
 REM
 REM  Requires: WorkBuddy running with CDP port 9222.
 REM  If probe fails, run open-port.bat first.
@@ -38,7 +42,7 @@ if errorlevel 1 (
 
 echo.
 echo === [2/2] Launch 18-worker claim production line ===
-"%PY%" "%AP_DIR%\tools\claim_tower.py" --start 18 --watch %*
+"%PY%" "%AP_DIR%\tools\claim_tower.py" --start 18 --watch --settle-min 5 %*
 
 echo.
 echo Tower stopped. Workers keep running; rerun this to resume.

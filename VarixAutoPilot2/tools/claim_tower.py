@@ -12,6 +12,9 @@
      （选工作空间 + 拖拽挂 4 文件 + 「/」面板挂 10 技能），再把
      「Variable 指令原文 + 操作要点」（CLAIM_WORKER_PROMPT.md 模板，
      首条即塔主原话）发给每个新对话（AI 零上下文也能开工）。
+     发完静置 --settle-min 分钟（默认 5）再体检：状态文件仍是塔占位
+     （工人没自己领单/报到）= 没正常运行 → 归档旧会话并新建对话重来
+     （找回的既有对话则点回原对话补发协议，不开新的）。
   2. 守护（--watch）：每 --interval 秒（默认 10s）轮询工人状态文件总线
      （dispatch/workers/Wxx.state）：
        READY            → 切到该会话 → 发续跑指令 → 工人去领下一单；
@@ -51,7 +54,7 @@
   python tools/claim_tower.py --dry-run              # 演练：渲染协议/看忙闲，零 UI 动作
   python tools/claim_tower.py --start 18 --watch     # ★ 正式发车：建 18 对话+守护到收口
   python tools/claim_tower.py --watch                # 只守护（会话已建好/塔重启接管）
-  可选：--workers N --interval S --nudge-min M --board-port P --board-exe 路径
+  可选：--workers N --interval S --nudge-min M --settle-min M --board-port P --board-exe 路径
   引导三件套（默认开，2026-10-06 上线）：新会话自动选工作空间
   -Un-Real-0d23d9ux-Engine-main、技能经「/」面板按显示名挂载为技能提及节点
   （挂载失败的回退为 @skill: 内联进首条提示词）、拖拽挂 4 份文件
@@ -860,6 +863,7 @@ def archive_dead_worker(wid: str, conv: str, state: str,
         encoding="utf-8")
     write_conv(wid, "")
     write_state(wid, "")
+    _archived_ids.pop(wid, None)   # 归档缓存失效：后续重链立即可见新归档 id
     return f
 
 
@@ -874,6 +878,83 @@ def rebuild_worker(wid: str) -> tuple[str, str]:
     elif "发送成功" in ev:
         write_state(wid, "BUSY claim")   # 侧栏没来得及刷新 → 标记重链兜底
     return conv, ev
+
+
+def post_start_check(started: int, settle_min: float, reused: set) -> None:
+    """发车后静置体检（2026-10-06 Variable 指定）：N 路开完先零干预跑满
+    settle 分钟，再逐路核对有没有「没正常运行」的，有就新建对话完成。
+
+    判据（只读状态文件总线，零视图侵入、不切会话不打扰您）：
+      健康 = 状态文件被工人本人改写过（领到单写 BUSY <任务id>，或写 READY 报到）；
+      异常 = 状态还是塔写的占位「BUSY claim」（协议发出 5 分钟工人没动）/
+             状态为空 / 会话映射缺失（强制全列表重链一次仍找不回）。
+    处置（分来源，两种都不违背「续跑必进旧对话」铁律）：
+      找回的既有对话（reused）→ 点回原对话补发协议，绝不为它开新对话；
+      本次新建的对话 → 归档旧会话（释放名下任务 + 断绝重链复活）后
+                       新建同编号对话重发协议全文（Variable 指定：
+                       没正常运行的「新建对话完成」）。
+    """
+    log(f"静置 {settle_min:g} 分钟开始（期间零干预，让工人自己起跑）…")
+    deadline = time.time() + settle_min * 60.0
+    next_ping = time.time() + 60.0
+    while True:
+        remain = deadline - time.time()
+        if remain <= 0:
+            break
+        time.sleep(min(5.0, remain))
+        if time.time() >= next_ping:
+            next_ping = time.time() + 60.0
+            log(f"静置中… 体检还剩 {max(0, int((deadline - time.time()) / 60))} 分钟")
+    log(f"发车体检：逐路核对 {started} 路（健康=工人已自己领单/报到）")
+    ok_cnt = fixed = 0
+    for i in range(1, started + 1):
+        wid = f"W{i:03d}"
+        state = read_state(wid).strip()
+        conv = read_conv(wid).strip()
+        if not conv:
+            conv = relink_conv(wid, min_gap_s=0.0)   # 体检期强制全列表搜一次
+        if state and state != "BUSY claim":
+            ok_cnt += 1
+            log(f"[体检] {wid} ✓（{state[:48]}）")
+            continue
+        why = ("状态仍是塔占位 BUSY claim（协议发出后工人没动）"
+               if state == "BUSY claim" else "状态为空")
+        if not conv:
+            why += "，且会话映射缺失（全列表重链未找回）"
+        log(f"[体检] {wid} ✗ {why} → 处置")
+        if conv and wid in reused:
+            # 找回的既有对话：点回原对话补发协议（绝不为它开新对话）
+            ok, ev = dispatch_continue(wid, conv, render_protocol(wid))
+            if ok:
+                write_state(wid, "BUSY claim")
+                fixed += 1
+                ledger("体检补发", "-", wid, f"{why} → 已点回原对话补发（{ev}）")
+                log(f"[体检] {wid} 已点回旧对话补发协议 ✓")
+            else:
+                ledger("体检补发失败", "-", wid, f"{why}；{ev}")
+                log(f"[FAIL] [体检] {wid} 补发失败：{ev}（交守护循环继续跟进）")
+            time.sleep(1.5)
+            continue
+        # 本次新建的对话没跑起来 → 归档旧会话 + 新建对话完成
+        if conv:
+            arch = archive_dead_worker(wid, conv, state, settle_min,
+                                       f"发车体检：{why}")
+            log(f"[体检] {wid} 旧会话已归档 → {arch.name}")
+        else:
+            release_worker_tasks(wid)   # 防看不见的孤儿已领单
+            write_state(wid, "")
+        conv2, ev2 = rebuild_worker(wid)
+        if conv2 or "发送成功" in ev2:
+            fixed += 1
+            ledger("体检重建", "-", wid, f"{why} → 新建对话重发协议（{ev2}）")
+            log(f"[体检] {wid} 新建对话完成 ✓ {ev2}")
+        else:
+            ledger("体检重建失败", "-", wid, f"{why}；{ev2}")
+            log(f"[FAIL] [体检] {wid} 新建失败：{ev2}（交守护循环继续跟进）")
+        time.sleep(2.5)
+    log(f"发车体检完成：健康 {ok_cnt} / 修复 {fixed} / 共 {started} 路")
+    ledger("发车体检", "-", "领单塔",
+           f"{settle_min:g}min 静置后：健康 {ok_cnt}，修复 {fixed}，共 {started}")
 
 
 def switch_account_flow(reason: str, workers: int) -> str:
@@ -944,6 +1025,10 @@ def main() -> int:
                          "dead-min 生效时先到先触发）")
     ap.add_argument("--stale-min", type=int, default=90,
                     help="BUSY 超时多少分钟记 STALE 警告（默认 90）")
+    ap.add_argument("--settle-min", type=float, default=5.0,
+                    help="发车后静置多少分钟再体检：状态仍是塔占位/为空/会话"
+                         "缺失（工人没自己领单或报到）的 → 新建对话完成"
+                         "（默认 5，0=关；找回的既有对话只补发不重建）")
     ap.add_argument("--remain-min", type=int, default=REMAIN_MIN,
                     help="切号目标账号最低余量门槛（默认 30 积分）")
     ap.add_argument("--no-account-pool", action="store_true",
@@ -1056,6 +1141,7 @@ def main() -> int:
     if a.start:
         known = snapshot_conv_ids()
         created = 0
+        reused: set[str] = set()   # 找回的既有对话（体检异常时点回原对话补发）
         for i in range(1, a.start + 1):
             wid = f"W{i:03d}"
             conv = read_conv(wid)
@@ -1065,6 +1151,7 @@ def main() -> int:
                     ledger("发车找回", "-", wid, f"既有会话 {conv[:16]}，跳过新建")
             if conv:
                 known.add(conv)
+                reused.add(wid)
                 log(f"{wid} 已有会话 {conv[:12]}…，继续用它（不另开新对话）")
                 continue
             prompt_fn = lambda missing: render_protocol(wid, missing)  # noqa: E731
@@ -1090,6 +1177,10 @@ def main() -> int:
                 log(f"[FAIL] {wid} 新建失败：{ev}")
                 time.sleep(5)
         log(f"发车完成：新建 {created} 路")
+        # ── 发车后静置体检（Variable 2026-10-06 指定）：先零干预跑 5 分钟，
+        #    再逐路核对有没有没正常运行的 → 新建对话完成（0 = 关闭）──
+        if a.settle_min > 0:
+            post_start_check(a.start, a.settle_min, reused)
 
     # ── 守护：READY 补发 / 卡死归档重建 / 积分切号 / 收口判定 ──
     if a.watch:
