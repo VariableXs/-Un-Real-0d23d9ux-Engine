@@ -108,71 +108,42 @@ fn now_hms() -> String {
 /// 本机是 UTC+8，显示会比真实时间差 8 小时。
 /// 这种"看起来能用但内容是错的"最糟：用户不会怀疑时间戳，只会以为程序算错了。
 ///
-/// 做法：问 Windows 要本地时间与 UTC 的差。
-/// `FileTimeToSystemTime` 把 FILETIME 转成 SYSTEMTIME（UTC），
-/// 再与 `GetLocalTime` 的结果相比，差值就是偏移。
-/// 借用 `windows` crate 不划算（多一个依赖），这里直接 FFI 三个 Win32 函数。
+/// ★ 第二版为什么也不行（2026-10-06 单元测试抓到的）★
+/// 思路是"GetLocalTime 的墙钟 − SystemTimeToFileTime 往返解回的墙钟 = 偏移"。
+/// 但 Win32 的 SYSTEMTIME / FILETIME **都是 UTC 语义**：
+/// SystemTimeToFileTime 只做结构转换、不做时区换算，往返墙钟不变，
+/// a − b **恒等于 0**——探针实测 `GetLocalTime=14:55`，往返解回仍是 `14:55`。
+///
+/// 正解：直接问 `GetTimeZoneInformation` 要 bias。
+/// 文档语义：UTC = 本地墙钟 + bias（分钟），故 本地 − UTC = −bias；
+/// 返回 TIME_ZONE_ID_DAYLIGHT(2) 时再叠加 daylight_bias（夏令时）。
 #[cfg(windows)]
 fn local_offset_seconds(_utc: i64) -> i64 {
     #[repr(C)]
-    struct SystemTime {
-        year: u16,
-        month: u16,
-        day_of_week: u16,
-        day: u16,
-        hour: u16,
-        minute: u16,
-        second: u16,
-        milliseconds: u16,
+    struct Tzi {
+        bias: i32,
+        standard_name: [u16; 32],
+        standard_date: [u16; 8],
+        standard_bias: i32,
+        daylight_name: [u16; 32],
+        daylight_date: [u16; 8],
+        daylight_bias: i32,
     }
-
     extern "system" {
-        fn GetLocalTime(st: *mut SystemTime);
-        fn SystemTimeToFileTime(st: *mut SystemTime, ft: *mut u64) -> i32;
-        fn FileTimeToSystemTime(ft: *const u64, st: *mut SystemTime) -> i32;
+        fn GetTimeZoneInformation(tzi: *mut Tzi) -> u32;
     }
-
     unsafe {
-        let mut local = std::mem::zeroed::<SystemTime>();
-        GetLocalTime(&mut local);
-        // 把本地时间当作 UTC 折成 FILETIME，再解回 UTC 墙上时间。
-        // 两者之差就是时区偏移。
-        let mut ft = 0u64;
-        if SystemTimeToFileTime(&mut local, &mut ft) == 0 {
-            return 0;
+        let mut tzi: Tzi = std::mem::zeroed();
+        let r = GetTimeZoneInformation(&mut tzi);
+        if r == 0xFFFFFFFF {
+            return 0; // 调用失败：回退 UTC（单元测试会用系统对账把异常环境暴露出来）
         }
-        let mut utc = std::mem::zeroed::<SystemTime>();
-        if FileTimeToSystemTime(&ft, &mut utc) == 0 {
-            return 0;
+        let mut off = -(tzi.bias as i64) * 60;
+        if r == 2 {
+            off += tzi.daylight_bias as i64 * 60;
         }
-        let a = wall_seconds(
-            local.year as i64, local.month as u32, local.day as u32,
-            local.hour as u32, local.minute as u32, local.second as u32,
-        );
-        let b = wall_seconds(
-            utc.year as i64, utc.month as u32, utc.day as u32,
-            utc.hour as u32, utc.minute as u32, utc.second as u32,
-        );
-        a - b
+        off
     }
-}
-
-#[cfg(windows)]
-fn wall_seconds(y: i64, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> i64 {
-    // 以"年1月1日 00:00:00"为基准折算（简化：按 365.2425 天/年）
-    let days = days_from_civil(y, mo, d);
-    days * 86400 + h as i64 * 3600 + mi as i64 * 60 + s as i64
-}
-
-#[cfg(windows)]
-fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as u64;
-    let mp = if m > 2 { m - 3 } else { m + 9 } as u64;
-    let doy = (153 * mp + 2) / 5 + d as u64 - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146097 + doe as i64 - 719468
 }
 
 #[cfg(not(windows))]
@@ -200,4 +171,57 @@ fn civil_from_unix(secs: i64) -> (i64, u32, u32, u32, u32, u32) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d, h, mi, s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 时区偏移必须等于系统真实偏移（本机 UTC+8 → 28800）。
+    /// 之前"return 0"的缺陷就是在这里断的——提示词时间戳变 UTC。
+    #[test]
+    fn offset_matches_system() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let off = local_offset_seconds(now);
+        // 与 Win32 GetTimeZoneInformation 对账（独立来源，不循环论证）
+        #[repr(C)]
+        struct TZI {
+            bias: i32,
+            standard_name: [u16; 32],
+            standard_date: [u16; 8],
+            standard_bias: i32,
+            daylight_name: [u16; 32],
+            daylight_date: [u16; 8],
+            daylight_bias: i32,
+        }
+        extern "system" {
+            fn GetTimeZoneInformation(tzi: *mut TZI) -> u32;
+        }
+        let mut tzi: TZI = unsafe { std::mem::zeroed() };
+        let r = unsafe { GetTimeZoneInformation(&mut tzi) };
+        assert_ne!(r, 0xFFFFFFFF, "GetTimeZoneInformation 失败");
+        // UTC = local + bias（分钟）；所以本地-UTC = -bias
+        let expect = -(tzi.bias as i64) * 60
+            + if r == 2 { tzi.daylight_bias as i64 * 60 } else { 0 };
+        assert_eq!(off, expect, "偏移与系统不符：off={off}s expect={expect}s");
+    }
+
+    /// now_hms 的日期与本地系统日期一致（抓"偏移没生效"回归）。
+    #[test]
+    fn now_hms_is_local() {
+        #[repr(C)]
+        struct SystemTime {
+            year: u16, month: u16, day_of_week: u16, day: u16,
+            hour: u16, minute: u16, second: u16, milliseconds: u16,
+        }
+        extern "system" { fn GetLocalTime(st: *mut SystemTime); }
+        let mut st: SystemTime = unsafe { std::mem::zeroed() };
+        unsafe { GetLocalTime(&mut st) };
+        let out = now_hms();
+        let today = format!("{:04}-{:02}-{:02}", st.year, st.month, st.day);
+        assert!(out.starts_with(&today), "now_hms={out} 但本地日期={today}");
+    }
 }

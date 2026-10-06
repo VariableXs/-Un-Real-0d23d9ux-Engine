@@ -4,6 +4,7 @@
 
 | 时间 | 事件 | WP | 工人 | 结果/原因 |
 |---|---|---|---|---|
+| 10-06 15:08 | **重新打包 + D12 时区修复** | - | 调度塔 | 打包走查抓到「源预览 {{时间}} 显示 06:43（UTC），实际 14:43」。单元测试实测 `local_offset_seconds` 返回 0（系统真实 28800）：旧实现假设 SystemTimeToFileTime 做时区换算，实际 SYSTEMTIME/FILETIME 均为 UTC 语义、往返墙钟不变、a−b 恒 0。正解 `GetTimeZoneInformation` bias（含夏令时）。修复 + 2 个永久回归测试（offset 系统对账 / now_hms 本地日期）全 PASS。新 exe（md5 fa1d1fa2）已替换并实启动验证：源预览显示 `15:08:42` 本地时间 ✓ |
 | 10-06 14:2x | **根因修复 D11 + 端到端实弹 PASS** | - | 调度塔 | 14:12 发车 5 连败的根因不是限流——execCommand 填充只写 DOM 不进 Slate 状态，React 认为编辑器为空 → 发送键黑、点击被静默吞掉（用户截图实证）。修复：`fill_cdp`（CDP Input.insertText，trusted 输入管线）+ `send_text` 证据重写（E1 停止态/E2 tag 入流/E3 charsReal 归零）+ `clear_editor_cdp`（trusted 按键清理）。**端到端实弹 PASS**：消息入流 + AI 生成回复「好」+ 新会话 `ee4447bf` 创建。限流已于 03:17 重置解除 |
 | 10-06 14:13 | 发车失败 | WP-00001 | W04 | 首条发送失败：15s 内三重证据均未成立（D11 填充失效所致，非限流） |
 | 10-06 14:12 | 发车失败 | WP-00001 | W03 | 发送成功但没捕捉到新会话 id |
@@ -42,6 +43,7 @@
 | D9 | 从空白新会话切回原会话时首次点击偶发被吞 | `tools/dispatch_tower.py::switch_conv` | 🟡 | 点一轮不成就再点一轮（外层 `for attempt in range(2)`） | ✅ 已修+实测 |
 | D10 | 被限流时客户端**静默吞掉发送**：输入框清空、无 toast/banner/alert，用户点了发送后什么也没发生 | 宿主产品行为（WorkBuddy 5.6.2） | 🔴 | 塔侧够不到根因；靠三重证据全不成立间接判定"后端未受理"并在日志显式提示限流 | ⚠️ 已记录（非本仓库可修） |
 | D11 | **填充不进 Slate 状态**：`execCommand('insertText')` 写的文字只存在于 DOM，Slate 内部 model 不认 → React 判定编辑器为空 → 发送键呈黑色视觉、点击被空内容逻辑吞掉。**「编辑器有字但发不出」的唯一根因**（手动粘贴不受影响，自动化填充全中招；14:12 发车 5 连败同因） | `tools/send_selftest.py::fill_js`（已删） | 🔴 | 改 `fill_cdp`：CDP `Input.insertText`（模拟真实 IME，trusted 事件走完整输入管线）+ `charsReal` 验证；`restore` 升级为 `clear_editor_cdp`（trusted Ctrl+A+Backspace）。端到端实弹 PASS | ✅ 已修+实弹验证 |
+| D12 | **提示词时间戳是 UTC**：源预览/发送的 `{{时间}}` 比真实时间差 8 小时。旧 `local_offset_seconds` 用「GetLocalTime 墙钟 − SystemTimeToFileTime 往返墙钟」算偏移，但 SYSTEMTIME/FILETIME 都是 UTC 语义、SystemTimeToFileTime 不做时区换算 → 往返恒等、a−b **恒 0** | `src-tauri/src/template.rs::local_offset_seconds` | 🔴 | 改 `GetTimeZoneInformation` 取 bias（`本地−UTC = −bias`，夏令时叠加 daylight_bias）；补 2 个永久回归测试（与系统 TZI 对账 / now_hms 本地日期）。测试驱动：先实测复现 off=0 → 修复 → 2/2 PASS | ✅ 已修+测试验证+实机截图 |
 
 ## 阻塞台账
 
