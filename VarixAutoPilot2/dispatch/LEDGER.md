@@ -5,6 +5,7 @@
 | 时间 | 事件 | WP | 工人 | 结果/原因 |
 |---|---|---|---|---|
 | 10-06 15:2x | **D13 修复（打断发送断线）+ D14 修复（切会话裸 click）** | - | 调度塔 | 用户实测「打断发送失败 api.forceSend is not a function」「队列等空闲」。日志实证：worker 活着、217 次重试、三判据判定**正确**（页面真忙——队列目标会话正是与助手对话的会话，助手在生成长回复）。真缺陷 2 处：D13 `api.forceSend` 只加了 SNAKE 映射、漏了 IS_TAURI 装配块（15 个 api 方法审计仅缺此 1 个）；D14 Rust `switch_conversation` 用裸 `e.click()`（D3/D9 同源，React 不响应）——18 工人场景切不动会话会把消息填进错误会话。均修复：装配一行 + `_card_` MouseEvent 序列与选中态确认轮询 |
+| 10-06 15:5x | **D15 修复（空闲判定三重假阳性 → worker 恒忙不发）** | - | 调度塔 | 用户再报「还是卡死没发送」。日志 15:48~15:52 连续 **569 次「0/3 全忙」** vs 同屏顶部徽章「空闲」自相矛盾（用户截图实证），且上轮助手回复 15:47 前已结束——空闲态被系统性误判。三处修复（见 D15）+ verdict 附带 dbg 原始明细进日志，重新打包上线 |
 | 10-06 15:08 | **重新打包 + D12 时区修复** | - | 调度塔 | 打包走查抓到「源预览 {{时间}} 显示 06:43（UTC），实际 14:43」。单元测试实测 `local_offset_seconds` 返回 0（系统真实 28800）：旧实现假设 SystemTimeToFileTime 做时区换算，实际 SYSTEMTIME/FILETIME 均为 UTC 语义、往返墙钟不变、a−b 恒 0。正解 `GetTimeZoneInformation` bias（含夏令时）。修复 + 2 个永久回归测试（offset 系统对账 / now_hms 本地日期）全 PASS。新 exe（md5 fa1d1fa2）已替换并实启动验证：源预览显示 `15:08:42` 本地时间 ✓ |
 | 10-06 14:2x | **根因修复 D11 + 端到端实弹 PASS** | - | 调度塔 | 14:12 发车 5 连败的根因不是限流——execCommand 填充只写 DOM 不进 Slate 状态，React 认为编辑器为空 → 发送键黑、点击被静默吞掉（用户截图实证）。修复：`fill_cdp`（CDP Input.insertText，trusted 输入管线）+ `send_text` 证据重写（E1 停止态/E2 tag 入流/E3 charsReal 归零）+ `clear_editor_cdp`（trusted 按键清理）。**端到端实弹 PASS**：消息入流 + AI 生成回复「好」+ 新会话 `ee4447bf` 创建。限流已于 03:17 重置解除 |
 | 10-06 14:13 | 发车失败 | WP-00001 | W04 | 首条发送失败：15s 内三重证据均未成立（D11 填充失效所致，非限流） |
@@ -47,6 +48,7 @@
 | D12 | **提示词时间戳是 UTC**：源预览/发送的 `{{时间}}` 比真实时间差 8 小时。旧 `local_offset_seconds` 用「GetLocalTime 墙钟 − SystemTimeToFileTime 往返墙钟」算偏移，但 SYSTEMTIME/FILETIME 都是 UTC 语义、SystemTimeToFileTime 不做时区换算 → 往返恒等、a−b **恒 0** | `src-tauri/src/template.rs::local_offset_seconds` | 🔴 | 改 `GetTimeZoneInformation` 取 bias（`本地−UTC = −bias`，夏令时叠加 daylight_bias）；补 2 个永久回归测试（与系统 TZI 对账 / now_hms 本地日期）。测试驱动：先实测复现 off=0 → 修复 → 2/2 PASS | ✅ 已修+测试验证+实机截图 |
 | D13 | **「打断发送」报 `api.forceSend is not a function`**：SNAKE 映射表加了 `forceSend: 'force_send'`，但 IS_TAURI 装配块漏了 `api.forceSend = ...` ⇒ 方法 undefined。后端 force_send 完好却永远收不到调用 | `src/app.js`（IS_TAURI 块） | 🔴 | 补装配一行 `api.forceSend = (text) => getCore().invoke('forceSend', { text })`；并全量审计 15 个 api 方法确认无其他漏配 | ✅ 已修+审计 |
 | D14 | **Rust `switch_conversation` 用裸 `e.click()`**（D3/D9 同源）：React 不响应脚本派发的裸 click ⇒ 队列项指向**别的会话**时切不动视图，fill_prompt 会把内容填进当前打开的错误会话。现在队列目标=当前会话所以未触发，18 工人场景必炸 | `src-tauri/src/engine.rs::switch_conversation` | 🟡 | 改 `_card_` 内层 + 完整 MouseEvent 序列 + 选中态（后代 `_selected_` 类）确认轮询 3s，未确认即放弃（防填错会话） | ✅ 已修 |
+| D15 | **空闲判定三重假阳性 → worker 恒忙、队列永不发送**（用户连报「卡死没发送」，日志 569 次 0/3 全忙 vs 徽章「空闲」矛盾）：① `idle_verdict.by_btn` 把「发送键不存在」判忙——空编辑器时按钮条件渲染整个消失（fill_methods 实验实锤），而「空闲+空编辑器」恰是最标准空闲态；② `by_stop_btn` 选择器过宽（`[title*="停止"]` 无标签限定）且不过滤不可见残留元素；③ `busy_state` 单票否决含 `anims>0`——消息区存在未知常驻大块 loading/typing 类元素（569 次「动画忙」实证），worker 判闲后会在发送入口自锁。连带 force_send 在页面空闲时误点「停止」 | `src-tauri/src/engine.rs::idle_verdict` / `busy_state` | 🔴 | ① by_btn：按钮不存在 ⇒ 空闲（生成中按钮必以 `--stop` 存在，安全）② stopEls 限定 button + rect 可见性过滤 ③ anims 退出 busy_state 否决、降级日志字段（发送键 `--stop` 单票已足够）④ verdict 返回 `dbg` 原始明细（btn/cls/stop 元素列表/anim 元素列表）进日志——再出恒忙一眼定位捣乱元素 | ✅ 已修+上线 |
 
 ## 阻塞台账
 

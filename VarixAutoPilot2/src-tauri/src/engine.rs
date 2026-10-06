@@ -143,15 +143,34 @@ pub async fn stop_generation(cdp: &Cdp) -> Result<bool> {
 }
 
 /// 空闲判定（三判据多数一致）。
+///
+/// ★ 2026-10-06 15:53 重写两处假阳性（worker 连续 569 次「0/3 全忙」的根因）★
+///
+/// 假阳性 1 —— 发送键消失被判忙：
+///   实测（fill_methods 实验）编辑器为空时 `button.cr-send-button` **整个不渲染**
+///   （条件渲染）。而「空闲 + 空编辑器」恰恰是最标准的空闲态——旧代码
+///   `btn ? (...) : false` 把按钮消失当成忙，白白丢掉最关键的一票。
+///   生成中发送键必然存在（变成 --stop 停止态），所以「按钮不存在 ⇒ 空闲」是安全的。
+///
+/// 假阳性 2 —— 停止键选择器过宽且不管可见性：
+///   旧选择器 `[title*="停止"]` 连标签都没限定，任何隐藏残留元素都会投出恒忙票。
+///   修复：限定 button + 可见性过滤（rect 面积 > 0）。
 pub async fn idle_verdict(cdp: &Cdp) -> Result<IdleVerdict> {
     let v = cdp
         .eval(
             r#"(() => {
+              // 可见性：display:none / 脱离布局的残留元素不投票
+              const vis = (e) => {
+                const r = e.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+              };
               const btn = document.querySelector('button.cr-send-button');
               const cls = btn ? String(btn.className || '') : '';
-              const stopBtns = document.querySelectorAll(
-                'button[class*="stop"],button[aria-label*="停止"],[title*="停止"]'
-              ).length;
+              // 停止键：只数「可见」的 button；发送键自己的 --stop 态也算
+              //（生成中它就是停止键，与 by_btn 的判定互为印证）
+              const stopEls = Array.from(document.querySelectorAll(
+                'button[class*="stop"],button[aria-label*="停止"],button[title*="停止"]'
+              )).filter(vis);
               // ★★★ 动画判据必须排除假阳性 ★★★
               //
               // 实测踩到：对面上常驻一个
@@ -169,13 +188,13 @@ pub async fn idle_verdict(cdp: &Cdp) -> Result<IdleVerdict> {
                 '[class*="streaming"]', '[class*="generating"]',
                 '[class*="typing"]', '[class*="loading-"]',
               ].join(',');
-              const anims = Array.from(document.querySelectorAll(animSel)).filter((e) => {
+              const animEls = Array.from(document.querySelectorAll(animSel)).filter((e) => {
                 // ① 区域：必须在消息列表或主内容区里
                 const inRegion = e.closest(
                   '[class*="message-list"],[class*="message_list"],main,[role="main"]'
                 ) !== null;
                 if (!inRegion) return false;
-                // ② 尺寸：真正的流式输出是大块文本容器
+                // ② 尺寸：真正的流式输出是大块文本容器（隐藏残留 rect=0 一并滤掉）
                 const r = e.getBoundingClientRect();
                 if (r.width < 200 || r.height < 24) return false;
                 // ③ 黑名单：列表顶部的加载指示器
@@ -183,14 +202,21 @@ pub async fn idle_verdict(cdp: &Cdp) -> Result<IdleVerdict> {
                   return false;
                 }
                 return true;
-              }).length;
+              });
               return {
-                by_btn: btn ? !/--sending|--stop/.test(cls) : false,
-                by_stop_btn: stopBtns === 0,
-                by_anim: anims === 0,
+                // ★ 按钮消失 = 编辑器空 = 标准空闲态（生成中按钮必以 --stop 存在）
+                by_btn: btn ? !/--sending|--stop/.test(cls) : true,
+                by_stop_btn: stopEls.length === 0,
+                by_anim: animEls.length === 0,
                 label: btn ? (btn.getAttribute('aria-label') || '') : '(无发送键)',
-                stopBtns: stopBtns,
-                anims: anims,
+                stopBtns: stopEls.length,
+                anims: animEls.length,
+                // 原始明细进日志：下次再出「恒忙」，一眼定位是哪个元素在捣乱
+                dbg: 'btn=' + (btn ? '有(' + cls.slice(-24) + ')' : '无')
+                   + ' stop=[' + stopEls.map((e) =>
+                       String(e.className || e.title || '').slice(0, 28)).join(' | ') + ']'
+                   + ' anim=[' + animEls.map((e) =>
+                       String(e.className || '').slice(0, 28)).join(' | ') + ']',
               };
             })"#,
         )
@@ -198,16 +224,18 @@ pub async fn idle_verdict(cdp: &Cdp) -> Result<IdleVerdict> {
     let by_btn = v.get("by_btn").and_then(|x| x.as_bool()).unwrap_or(false);
     let by_stop_btn = v.get("by_stop_btn").and_then(|x| x.as_bool()).unwrap_or(false);
     let by_anim = v.get("by_anim").and_then(|x| x.as_bool()).unwrap_or(false);
+    let dbg = v.get("dbg").and_then(|x| x.as_str()).unwrap_or("").to_string();
     // 多数一致（2/3 即空闲）；全否视为忙
     let votes = [by_btn, by_stop_btn, by_anim];
     let idle_count = votes.iter().filter(|x| **x).count();
     let idle = idle_count >= 2;
     let reason = format!(
-        "发送键{}·停止键{}·动画{}（{}/3 判空闲）",
+        "发送键{}·停止键{}·动画{}（{}/3 判空闲）{}",
         if by_btn { "闲" } else { "忙" },
         if by_stop_btn { "闲" } else { "忙" },
         if by_anim { "闲" } else { "忙" },
-        idle_count
+        idle_count,
+        dbg,
     );
     Ok(IdleVerdict {
         idle,
@@ -381,7 +409,13 @@ pub async fn busy_state(cdp: &Cdp) -> Result<Busy> {
                 }
                 return true;
               }).length;
-              return { sending: /--sending|--stop/.test(cls) || anims > 0,
+              // ★ 2026-10-06：anims 退出单票否决，降级为日志参考字段 ★
+              // 实测（worker 569 次恒忙日志）：消息区存在未知的常驻大块
+              // loading/typing 类元素，anims>0 恒成立 ⇒ 旧「正则||anims」恒忙
+              // ⇒ worker 判闲后在这里自锁。生成中发送键必然 --stop（历史 probe
+              // 反复证实），发送键单票已足够可靠，anims 假阳性不该否决发送。
+              return { sending: /--sending|--stop/.test(cls),
+                       anims: anims,
                        label: b ? (b.getAttribute('aria-label')||'') : '(无发送键)' };
             })()"#,
         )
