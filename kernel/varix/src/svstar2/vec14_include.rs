@@ -47,8 +47,10 @@
 //!   与 `PreproStreams`；F0413 `SkipRegion`（条件编译关掉的段落不参与展开，
 //!   只按字节跨度快扫掠过）。下游 F0415 源码编码处理接续展开产物的字节流。
 
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
+use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
