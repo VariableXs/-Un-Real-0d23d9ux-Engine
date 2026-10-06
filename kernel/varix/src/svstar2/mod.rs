@@ -59,6 +59,8 @@
 //! | [`ver03_arch`] | F3602 创作生态总架构（三层五段+开放格式P0+激励双单源+沙箱复述+收敛两段线） | VE 册 #VE-F3602 |
 //! | [`ver04_arch`] | F3603 创作资产模型（七要素+七类两轴+许可三态+兼容四级+schema两级复用） | VE 册 #VE-F3603 |
 //! | [`vep01_arch`] | F3001 P 域开工与动效库总架构（三组接口+十项映射+单源分工+三底线+第一红线） | VE 册 #VE-F3001 |
+//! | [`vep02_lang`] | F3002 动效设计语言总纲（四原则+四级时长+语义化缓动+内建 reduce+单源取值） | VE 册 #VE-F3002 |
+//! | [`vep02_checks`] | F3002 域自检（判据逐条映射，171项分两批落集） | VE 册 #VE-F3002 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
 //! | [`vee01_arch`] | F0801 文字渲染域总架构（四段单向流+ 三向兑现 + 1.5ms 预算） | VE 册 #VE-F0801 |
@@ -221,6 +223,8 @@ pub mod veo01_arch;
 pub mod veo01_checks;
 pub mod vep01_arch;
 pub mod vep01_checks;
+pub mod vep02_checks;
+pub mod vep02_lang;
 pub mod veq01_checks;
 pub mod veq01_pipeline;
 pub mod veq02_checks;
@@ -263,7 +267,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 75] = [
+    let blocks: [(&'static str, CheckSet); 77] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -333,6 +337,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
         ("VE-F3001", vep01_checks::run_vep01_checks()),
+        ("VE-F3002-a", vep02_checks::run_vep02_checks_a()),
+        ("VE-F3002-b", vep02_checks::run_vep02_checks_b()),
         ("VE-F4002", vei02_checks::run_vei02_checks()),
         ("VE-F4003", vei03_checks::run_vei03_checks()),
         ("VE-F4004", vei04_checks::run_vei04_checks()),
