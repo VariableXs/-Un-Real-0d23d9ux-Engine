@@ -6,8 +6,10 @@
                    塔只负责「保持 18 路工人永远有活干」。
 
 塔的四件事：
-  1. 发车（--start N）：点「新建任务」建 N 个全新对话，把「领单工人协议」
-     以【正文全文 + MD 文件路径】双通道发给每个新对话（AI 零上下文也能开工）。
+  1. 发车（--start N）：点「新建任务」建 N 个全新对话，先跑引导三件套
+     （选工作空间 + 拖拽挂 4 文件 + 「/」面板挂 10 技能），再把
+     「Variable 指令原文 + 操作要点」（CLAIM_WORKER_PROMPT.md 模板，
+     首条即塔主原话）发给每个新对话（AI 零上下文也能开工）。
   2. 守护（--watch）：每 --interval 秒（默认 10s）轮询工人状态文件总线
      （dispatch/workers/Wxx.state）：
        READY            → 切到该会话 → 发续跑指令 → 工人去领下一单；
@@ -383,7 +385,7 @@ def state_mtime(wid: str) -> float:
 # ══════════════════════ 提示词渲染 ══════════════════════
 
 def render_protocol(wid: str, skills_fallback: list | None = None) -> str:
-    """首条提示词：协议全文内联（新对话零上下文也能开工）+ VARIX 标记。
+    """首条提示词：Variable 指令原文 + 操作要点（模板=CLAIM_WORKER_PROMPT.md）。
 
     skills_fallback=None          → 全部技能内联 @skill:（dry-run/补发场景）；
     skills_fallback=非空 list     → 仅把 / 面板没挂上的技能内联为兜底；
