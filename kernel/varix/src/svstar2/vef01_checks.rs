@@ -731,7 +731,7 @@ pub fn run_vef01_checks() -> CheckSet {
         set.add("C01-RGBA-15种组合尺寸推导一致", combos_shape_ok, "");
         // 输出缓冲不足 → BufferShort（五元组带需求/实得）
         let short = {
-            let head = Ihdr { width: 4, height: 2, depth: 8, color: ColorType::Rgba, compression: 0, filter_method: 0, interlace: 0 };
+            // 故意只给 4 字节缓冲，远小于 2×2 RGBA8 所需——验证拒绝路径而非解出图
             let mut small = alloc::vec![0u8; 4];
             let mut probe = Probe { rows: 0, first: Vec::new(), stop_after: None };
             decode_to_rows(&png_rgba_ramp(), &mut small, &mut probe)
