@@ -61,6 +61,9 @@
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
+//! | [`ven02_tree`] | F2602 控件树模型（四要素/三不变量/三操作原子事务/M04 绑定路径解析；自 F2603 迁入的 Rust 权威实现） | VE 册 #VE-F2602 |
+//! | [`ven03_ctype`] | F2603 控件类型体系（六类最小集/扩展三件套/类型注册制/内核-上层分层边界） | VE 册 #VE-F2603 |
+//! | [`ven03_checks`] | F2602/F2603 域自检（判据逐条映射，55 项分三批落集） | VE 册 #VE-F2603 |
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
 //! | [`ver01b_parser`] | F3402 令牌解析器（JSON/TOML 双格式 + 引用 DAG + 迭代 DFS 环检测 + 断链三要素） | VE 册 #VE-F3402 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
@@ -279,10 +282,15 @@ pub mod vem03_checks;
 pub mod vem03_interp;
 pub mod vem04_batch;
 pub mod vem04_checks;
+pub mod ven02_tree;
+pub mod ven03_ctype;
+pub mod ven03_checks;
 pub mod vel03_checks;
 pub mod vel03_emitter;
 pub mod vel04_checks;
 pub mod vel04_mode;
+pub mod vel05_checks;
+pub mod vel05_lifetime;
 pub mod veo01_arch;
 pub mod veo01_checks;
 pub mod vep01_arch;
@@ -333,7 +341,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 98] = [
+    let blocks: [(&'static str, CheckSet); 115] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -424,6 +432,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2404", vem04_checks::run_vem04_checks()),
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
+        ("VE-F2205", vel05_checks::run_vel05_all_checks()),
         ("VE-F3401", ver01_arch::run_ver01_checks()),
 ("VE-F3402", ver01b_checks::run_ver01b_checks()),
         ("VE-F3601", ver02_arch::run_ver02_checks()),
@@ -450,6 +459,9 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1002", vef02_checks::run_vef02_checks()),
         ("VE-F1003", vef03_checks::run_vef03_checks()),
         ("VE-F1203", veg03_checks::run_veg03_checks()),
+        ("VE-F2602", ven03_checks::run_ven02_checks()),
+        ("VE-F2603-a", ven03_checks::run_ven03_checks_a()),
+        ("VE-F2603-b", ven03_checks::run_ven03_checks_b()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
