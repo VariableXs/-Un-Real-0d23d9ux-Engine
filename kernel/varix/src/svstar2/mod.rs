@@ -53,6 +53,7 @@
 //! | [`vew01_sdk_arch`] | F4601 W 域开工与插件 SDK 总架构（四层/双承诺/承接/层冻结） | VE 册 #VE-F4601 |
 //! | [`ved14_traverse`] | F0614 图层渲染遍历器 | VE 册 #VE-F0614 |
 //! | [`ved15_cache`] | F0615 图层缓存策略 | VE 册 #VE-F0615 |
+//! | [`ved16_scale`] | F0616 大层数性能（虚拟化与扁平化） | VE 册 #VE-F0616 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -187,6 +188,7 @@ pub mod ved07_visibility;
 pub mod ved13_dirty;
 pub mod ved14_traverse;
 pub mod ved15_cache;
+pub mod ved16_scale;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veh03_checks;
@@ -205,6 +207,8 @@ pub mod vee02_checks;
 pub mod vee02_utf8;
 pub mod vee03_checks;
 pub mod vee03_outline;
+pub mod vee04_checks;
+pub mod vee04_raster;
 pub mod vef01_checks;
 pub mod vef01_pngdec;
 pub mod vef02_checks;
@@ -345,6 +349,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4605", vew05_trust::run_vew05_checks()),
         ("VE-F0614", ved14_traverse::run_ved14_checks()),
         ("VE-F0615", ved15_cache::run_ved15_checks()),
+        ("VE-F0616", ved16_scale::run_ved16_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
@@ -365,6 +370,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0801", vee01_checks::run_vee01_checks()),
         ("VE-F0802", vee02_checks::run_vee02_checks()),
         ("VE-F0803", vee03_checks::run_vee03_checks()),
+        ("VE-F0804", vee04_checks::run_vee04_checks()),
         ("VE-F2004", vek04_checks::run_vek04_checks()),
         ("VE-F2005", vek05_checks::run_vek05_checks()),
         ("VE-F2006", vek06_checks::run_vek06_checks()),
