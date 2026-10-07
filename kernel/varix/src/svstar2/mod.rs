@@ -38,8 +38,13 @@
 //!
 //! | 模块 | 功能 | 判据锚 |
 //! | --- | --- | --- |
+//! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
 //! | [`veb13_heads`] | F0213 virtio 多头与 EDID（逐输出独立使能与模式/EDID 三级注入优先级与非法拒载保默认/热增删幂等重算以最新 cfg 为准/布局表 O(输出数) 应用与版本化持久化/位置语义播报名） | VE 册 #VE-F0213 |
 //! | [`veb14_perf`] | F0214 virtio 性能与诊断接口（按帧统计命令数/传输字节/队列深度与提交到完成延迟的对数分桶草图在线更新分位/诊断快照按需拉取不常驻无请求零开销/计数溢出饱和不回绕且可区分恰好等于上限与已饱和/打点缺失标记缺测不入分位不补零/快照请求并发串行化排队有界满则拒收不覆盖/计数入遥测总线受 F0096 预算治理按提交序确定性抽样） | VE 册 #VE-F0214 |
+//! | [`veb15_suite`] | F0215 virtio 一致性测试套件（三层用例：协议层状态机序与特性协商矩阵/功能层资源创建导出与 2D 更新与多头切换回归/恢复层注入错误验 F0212 处置矩阵；命令流编码走黄金流比对且对齐 F0206 版本戳，版本不匹配判阻断而非降级、重建黄金流须显式人工确认；宿主侧 fast 档与 QEMU 批队列 full 档为**同一份清单的两个投影**、full 是全集 fast 是子集；缺特性用例判 N/A 三值枚举单列统计且不算失败不计入通过数、N/A 早退路径零建销不污染清理对账；清理断言为独立收尾步、创建数须恰等于本档真跑用例数且过度销毁判失败；失败输出含复现最小命令序列） | VE 册 #VE-F0215 |
+//! | [`vea02`] | F0002 图形上下文生命周期管理器 | VE 册 #VE-F0002 |
+//! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
+//! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
 //! | [`vea18_sampler`] | F0018 采样器状态库 | VE 册 #VE-F0018 |
 //! | [`vea19_blend`] | F0019 混合状态机（四维+独立alpha/预置库/漂移失效缓存/实时预览） | VE 册 #VE-F0019 |
 //! | [`vea11_hotplug`] | F0011 适配器热插拔与路径重选 | VE 册 #VE-F0011 |
@@ -78,9 +83,12 @@
 //! | [`ven04_checks`] | F2604 域自检（判据逐条映射，56 项分两批落集） | VE 册 #VE-F2604 |
 //! | [`ven05_dual`] | F2605 逻辑-可视双树与模板展开（双树分离/模板展开时机/单向数据流/三遍历/D-N 边界/同步断言/降级矩阵） | VE 册 #VE-F2605 |
 //! | [`ven05_checks`] | F2605 域自检（判据逐条映射，56 项分两批落集） | VE 册 #VE-F2605 |
+//! | [`ven06_incr`] | F2606 控件树增量更新（精确失效/帧边界批处理/三分发/双树增量同步；溢出强制提交+错路逐条审计） | VE 册 #VE-F2606 |
+//! | [`ven06_checks`] | F2606 域自检（判据逐条映射，50 项分两批落集） | VE 册 #VE-F2606 |
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
 //! | [`ver01b_parser`] | F3402 令牌解析器（JSON/TOML 双格式 + 引用 DAG + 迭代 DFS 环检测 + 断链三要素） | VE 册 #VE-F3402 |
 //! | [`ver01c_cascade`] | F3403 令牌依赖图与级联（依赖图可视化 + 批量合并级联 + 双深度闸 + 耗时画像） | VE 册 #VE-F3403 |
+//! | [`ver01d_switch`] | F3404 主题切换事务（原子换肤：双缓冲单指针翻转 + 预演干跑 + 快照回滚 + 悬空兜底 + 截图一致性断言） | VE 册 #VE-F3404 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
 //! | [`ver03_arch`] | F3602 创作生态总架构（三层五段+开放格式P0+激励双单源+沙箱复述+收敛两段线） | VE 册 #VE-F3602 |
 //! | [`ver04_arch`] | F3603 创作资产模型（七要素+七类两轴+许可三态+兼容四级+schema两级复用） | VE 册 #VE-F3603 |
@@ -110,6 +118,7 @@
 //! | [`vef03_adam7`] | F1003 PNG 交错模式（七遍常量表唯一来源/解码重排/编码拆分/每遍独立滤波/空遍合法/截断渐进语义） | VE 册 #VE-F1003 |
 //! | [`veg03_webm_mkv`] | F1203 WebM/MKV 容器解封装（VINT 八宽度/未知长度重同步边界/Segment-Track-Cluster/Block lacing 三模式/编解码器承接/Attachment/Cues 索引/与 MP4 三维差异/ffprobe 对拍） | VE 册 #VE-F1203 |
 //! | [`veg04_h264`] | F1204 H.264 解码器（NAL 头与起始码/防竞争剥离/位流读取器 ue-se/SPS-PPS 反序列化与热更新/切片头变长解码/帧内九模式/六抽头分像素插值/反量化与整数 IDCT/去块 bS/CAVLC-CABAC 双引擎/DPB 滑动窗口与溢出防护/畸形拦截） | VE 册 #VE-F1204 |
+//! | [`veg04_checks`] | F1204 域自检（判据逐条映射，按码流层与像素层分两批共 169 项；去块 bS 双路径与三张规范表、整数 IDCT 两趟对称、六抽头与色度单次四点、CAVLC renorm 次数、16 类畸形分桶全覆盖与两条记账恒等式） | VE 册 #VE-F1204 |
 //! | [`vef03_checks`] | F1003 域自检（判据逐条映射，24 项） | VE 册 #VE-F1003 |
 //! | [`vef04_color`] | F1004 PNG 色彩管理（iCCP/sRGB/gAMA/cHRM 四块解析/优先级表唯一裁决/统一标注单一出口/线性化 F0159 联动） | VE 册 #VE-F1004 |
 //! | [`vef04_checks`] | F1004 域自检（判据逐条映射，21 项） | VE 册 #VE-F1004 |
@@ -119,6 +128,8 @@
 //! | [`veu04_engine`] | F4204 一致性规则引擎（三段式可执行化/四路单源引用不复制/三元裁决含僵局升级与全平票非冲突/无豁免红线处置仅两向/全量增量显式覆盖范围/引用断阻断执行） | VE 册 #VE-F4204 |
 //! | [`veu08_density`] | F4008 排版密度与语言（按书写系统族适配密度档复用 F3442 三档语义/+35% 膨胀红线断言/折行优先省略最后且策略留痕/单源复用可机检） | VE 册 #VE-F4008 |
 //! | [`veu08_checks`] | F4008 域自检（六族判据：膨胀/密度/折行/策略/单源/错误路径） | VE 册 #VE-F4008 |
+//! | [`veu09_ime`] | F4009 输入法协同（IME×i18n：组合期不改内容不变量/组合期命令键禁令/候选窗三轴跟随夹取/方向×插入点契约前向声明/语言→输入法切换联动台账） | VE 册 #VE-F4009 |
+//! | [`veu09_checks`] | F4009 域自检（六组判据：组合期单源/候选跟随/方向联动/切换断言/IME 协同/判据自检） | VE 册 #VE-F4009 |
 //! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
 //! | [`vec15_encoding`] | F0415 源码编码处理（BOM 最长匹配优先 + UTF-8 假定显式留痕 + 非法字节五类分立报错 + 单遍转换到位） | VE 册 #VE-F0415 |
 //! | [`vec16_report`] | F0416 词法错误报告（四族查表归类 + 三要素带规则引用 + 双侧定位 + 三级分级） | VE 册 #VE-F0416 |
@@ -127,7 +138,7 @@
 //! | [`vec19_fuzz`] | F0419 词法 fuzz 测试（自持 LCG 三层语料 + 四不变量 + 🔴即时修发现账 + 种子三元组可复现 + 语料退化/未修🔴 阻断门禁） | VE 册 #VE-F0419 |
 //! | [`vec19_checks`] | F0419 域自检（判据逐条映射，54 项） | VE 册 #VE-F0419 |
 //! | [`vec20_closure`] | F0420 词法组收口（十八件证据集合差齐备 + 🔴清零/🟡闭环/🟢登记三档总账 + 双签主体相异 + 三条经验可机检下游动作 + 上游基准退化原样上抛） | VE 册 #VE-F0420 |
-//! | [`vec20_checks`] | F0420 域自检（判据逐条映射，67 项） | VE 册 #VE-F0420 |
+//! | [`vec20_checks`] | F0420 域自检（判据逐条映射，56 项） | VE 册 #VE-F0420 |
 //! | [`ves04_flow`] | F3604 创作工作流引擎（DAG 契约复用 F3005+ 三预置流 + 断点续作 + 沙箱 + 驱动协议） | VE 册 #VE-F3604 |
 //! | [`ves04_checks`] | F3604 域自检（判据逐条映射，55 项分两批落集） | VE 册 #VE-F3604 |
 
@@ -265,6 +276,8 @@ pub mod veb13_checks;
 pub mod veb13_heads;
 pub mod veb14_checks;
 pub mod veb14_perf;
+pub mod veb15_checks;
+pub mod veb15_suite;
 pub mod veh03_checks;
 pub mod veh03_mixgraph;
 pub mod veh04_checks;
@@ -277,6 +290,8 @@ pub mod veh07_checks;
 pub mod veh07_fade;
 pub mod veh09_checks;
 pub mod veh09_spatial;
+pub mod veh10_checks;
+pub mod veh10_occlusion;
 pub mod vee01_arch;
 pub mod vee01_checks;
 pub mod vee02_checks;
@@ -297,6 +312,7 @@ pub mod vef04_checks;
 pub mod vef04_color;
 pub mod veg03_checks;
 pub mod veg03_webm_mkv;
+pub mod veg04_checks;
 pub mod veg04_h264;
 pub mod veh01_boundary;
 pub mod vei02_checks;
@@ -356,12 +372,16 @@ pub mod ven04_checks;
 pub mod ven04_prop;
 pub mod ven05_checks;
 pub mod ven05_dual;
+pub mod ven06_checks;
+pub mod ven06_incr;
 pub mod vel03_checks;
 pub mod vel03_emitter;
 pub mod vel04_checks;
 pub mod vel04_mode;
 pub mod vel05_checks;
 pub mod vel05_lifetime;
+pub mod vel06_checks;
+pub mod vel06_render;
 pub mod veo01_arch;
 pub mod veo01_checks;
 pub mod veo02_vendor;
@@ -386,6 +406,8 @@ pub mod ver01b_checks;
 pub mod ver01b_parser;
 pub mod ver01c_cascade;
 pub mod ver01c_checks;
+pub mod ver01d_checks;
+pub mod ver01d_switch;
 pub mod ver02_arch;
 pub mod ver02_checks;
 pub mod ver03_arch;
@@ -405,6 +427,8 @@ pub mod veu04_checks;
 pub mod veu04_engine;
 pub mod veu08_checks;
 pub mod veu08_density;
+pub mod veu09_checks;
+pub mod veu09_ime;
 pub mod vev01_arch;
 pub mod vev01_checks;
 pub mod vew01_sdk_arch;
@@ -499,6 +523,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
 ("VE-F0214", veb14_perf::run_veb14_checks()),
+("VE-F0215", veb15_suite::run_veb15_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
 ("VE-F0413", vec13_checks::run_vec13_checks()),
@@ -514,6 +539,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F1407", veh07_checks::run_veh07_checks()),
 ("VE-F1406", veh06_checks::run_veh06_checks()),
 ("VE-F1409", veh09_checks::run_veh09_checks()),
+("VE-F1410", veh10_checks::run_veh10_checks()),
 ("VE-F1804", vej04_checks::run_vej04_checks()),
         ("VE-F1805", vej05_spotlight::run_vej05_checks()),
         ("VE-F1806", vej06_area::run_vej06_checks()),
@@ -543,9 +569,12 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F2205", vel05_checks::run_vel05_all_checks()),
+        ("VE-F2206", vel06_checks::run_vel06_all_checks()),
         ("VE-F3401", ver01_arch::run_ver01_checks()),
 ("VE-F3402", ver01b_checks::run_ver01b_checks()),
         ("VE-F3403", ver01c_checks::run_ver01c_checks()),
+        ("VE-F3404", ver01d_checks::run_ver01d_checks()),
+        ("VE-F3404-deep", ver01d_checks::run_ver01d_deep_checks()),
         ("VE-F3601", ver02_arch::run_ver02_checks()),
         ("VE-F3602", ver03_arch::run_ver03_checks()),
         ("VE-F3603", ver04_arch::run_ver04_checks()),
@@ -557,6 +586,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4203", veu03_checks::run_veu03_checks()),
         ("VE-F4204", veu04_checks::run_veu04_checks()),
         ("VE-F4008", veu08_checks::run_veu08_checks()),
+        ("VE-F4009", veu09_checks::run_veu09_checks()),
         ("VE-F4401", vev01_checks::run_vev01_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
