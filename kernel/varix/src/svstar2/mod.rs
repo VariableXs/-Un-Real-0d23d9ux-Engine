@@ -67,6 +67,8 @@
 //! | [`ven02_tree`] | F2602 控件树模型（四要素/三不变量/三操作原子事务/M04 绑定路径解析；自 F2603 迁入的 Rust 权威实现） | VE 册 #VE-F2602 |
 //! | [`ven03_ctype`] | F2603 控件类型体系（六类最小集/扩展三件套/类型注册制/内核-上层分层边界） | VE 册 #VE-F2603 |
 //! | [`ven03_checks`] | F2602/F2603 域自检（判据逐条映射，55 项分三批落集） | VE 册 #VE-F2603 |
+//! | [`ven04_prop`] | F2604 控件属性系统（四段管线/依赖属性继承+绑定/M04 属性侧兑现/零风暴纪律） | VE 册 #VE-F2604 |
+//! | [`ven04_checks`] | F2604 域自检（判据逐条映射，56 项分两批落集） | VE 册 #VE-F2604 |
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
 //! | [`ver01b_parser`] | F3402 令牌解析器（JSON/TOML 双格式 + 引用 DAG + 迭代 DFS 环检测 + 断链三要素） | VE 册 #VE-F3402 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
@@ -295,6 +297,8 @@ pub mod vem04_checks;
 pub mod ven02_tree;
 pub mod ven03_ctype;
 pub mod ven03_checks;
+pub mod ven04_checks;
+pub mod ven04_prop;
 pub mod vel03_checks;
 pub mod vel03_emitter;
 pub mod vel04_checks;
@@ -351,7 +355,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 122] = [
+    let blocks: [(&'static str, CheckSet); 124] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -475,6 +479,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2602", ven03_checks::run_ven02_checks()),
         ("VE-F2603-a", ven03_checks::run_ven03_checks_a()),
         ("VE-F2603-b", ven03_checks::run_ven03_checks_b()),
+        ("VE-F2604-a", ven04_checks::run_ven04_checks_a()),
+        ("VE-F2604-b", ven04_checks::run_ven04_checks_b()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
