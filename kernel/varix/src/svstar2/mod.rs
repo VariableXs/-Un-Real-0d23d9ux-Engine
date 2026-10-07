@@ -126,6 +126,8 @@
 //! | [`vec18_perf`] | F0418 词法性能工程（单遍零回溯断言 + 缓冲区复用池化 + 记号流arena 紧凑存储 + 流式内存上界 + 吞吐基准版本化退化门） | VE 册 #VE-F0418 |
 //! | [`vec19_fuzz`] | F0419 词法 fuzz 测试（自持 LCG 三层语料 + 四不变量 + 🔴即时修发现账 + 种子三元组可复现 + 语料退化/未修🔴 阻断门禁） | VE 册 #VE-F0419 |
 //! | [`vec19_checks`] | F0419 域自检（判据逐条映射，54 项） | VE 册 #VE-F0419 |
+//! | [`vec20_closure`] | F0420 词法组收口（十八件证据集合差齐备 + 🔴清零/🟡闭环/🟢登记三档总账 + 双签主体相异 + 三条经验可机检下游动作 + 上游基准退化原样上抛） | VE 册 #VE-F0420 |
+//! | [`vec20_checks`] | F0420 域自检（判据逐条映射，67 项） | VE 册 #VE-F0420 |
 //! | [`ves04_flow`] | F3604 创作工作流引擎（DAG 契约复用 F3005+ 三预置流 + 断点续作 + 沙箱 + 驱动协议） | VE 册 #VE-F3604 |
 //! | [`ves04_checks`] | F3604 域自检（判据逐条映射，55 项分两批落集） | VE 册 #VE-F3604 |
 
@@ -220,6 +222,8 @@ pub mod vec18_checks;
 pub mod vec18_perf;
 pub mod vec19_checks;
 pub mod vec19_fuzz;
+pub mod vec20_checks;
+pub mod vec20_closure;
 pub mod ved01_checks;
 pub mod ved01_tree;
 pub mod ved02_checks;
@@ -466,6 +470,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0417", vec17_checks::run_vec17_checks()),
         ("VE-F0418", vec18_checks::run_vec18_checks()),
         ("VE-F0419", vec19_checks::run_vec19_checks()),
+("VE-F0420", vec20_checks::run_vec20_checks()),
         ("VE-F0601", ved01_checks::run_ved01_checks()),
         ("VE-F0602", ved02_checks::run_ved02_checks()),
         ("VE-F0603", ved03_checks::run_ved03_checks()),
