@@ -22,6 +22,13 @@ pub mod meshrepair;
 pub mod meshdecimate;
 pub mod meshbatch;
 pub mod normtangent;
+/// VE-I · I01 网格格式与几何基础组 · 骨骼权重数据容器（VE-F1610）
+///
+/// 判据一 权重容器（骨骼索引 + 权重对，上限 4 骨骼/顶点，**上限可配**的配额纪律）、
+/// 判据二 权重规范化（权重和 = 1 校验与自动归一，偏差容忍 1e-4，闭区间）、
+/// 判据三 骨骼层级容器（骨骼树父子层级 + 逆绑定矩阵 IBM）、
+/// 判据四 容器与动画域 M 的对接预留（骨骼命名约定契约）。
+pub mod skinweight;
 pub mod ime;
 pub mod surface;
 pub mod text;
