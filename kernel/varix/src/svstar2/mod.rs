@@ -56,6 +56,7 @@
 //! | [`ved16_scale`] | F0616 大层数性能（虚拟化与扁平化） | VE 册 #VE-F0616 |
 //! | [`ved17_consistency`] | F0617 图层树一致性校验 | VE 册 #VE-F0617 |
 //! | [`vea20_stencil`] | F0020 深度模板状态机 | VE 册 #VE-F0020 |
+//! | [`vea21_raster`] | F0021 光栅化状态机 | VE 册 #VE-F0021 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -200,6 +201,7 @@ pub mod ved15_cache;
 pub mod ved16_scale;
 pub mod ved17_consistency;
 pub mod vea20_stencil;
+pub mod vea21_raster;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veh03_checks;
@@ -370,6 +372,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0616", ved16_scale::run_ved16_checks()),
         ("VE-F0617", ved17_consistency::run_ved17_checks()),
         ("VE-F0020", vea20_stencil::run_vea20_checks()),
+        ("VE-F0021", vea21_raster::run_vea21_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
