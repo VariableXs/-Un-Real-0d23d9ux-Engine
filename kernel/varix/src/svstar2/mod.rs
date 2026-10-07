@@ -56,9 +56,7 @@
 //! | [`ved16_scale`] | F0616 大层数性能（虚拟化与扁平化） | VE 册 #VE-F0616 |
 //! | [`ved17_consistency`] | F0617 图层树一致性校验 | VE 册 #VE-F0617 |
 //! | [`ved18_debugview`] | F0618 图层树调试可视化（四开关覆盖/独立调试通道/只读面板接口/懒加载展开预算/树文本转储省略契约/结构级隐私边界） | VE 册 #VE-F0618 |
-
 //! | [`vea20_stencil`] | F0020 深度模板状态机 | VE 册 #VE-F0020 |
-//! | [`vea21_raster`] | F0021 光栅化状态机 | VE 册 #VE-F0021 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -87,7 +85,7 @@
 //! | [`vef02_pngenc`] | F1002 PNG 编码器核心（五滤波两策略/zlib 与九档权衡/IDAT 分块/CRC/颜色降档/场景建议表） | VE 册 #VE-F1002 |
 //! | [`vef03_adam7`] | F1003 PNG 交错模式（七遍常量表唯一来源/解码重排/编码拆分/每遍独立滤波/空遍合法/截断渐进语义） | VE 册 #VE-F1003 |
 //! | [`veg03_webm_mkv`] | F1203 WebM/MKV 容器解封装（VINT 八宽度/未知长度重同步边界/Segment-Track-Cluster/Block lacing 三模式/编解码器承接/Attachment/Cues 索引/与 MP4 三维差异/ffprobe 对拍） | VE 册 #VE-F1203 |
-//! | [`vef03_checks`] | F1003 域自检（判据逐条映射，21 项） | VE 册 #VE-F1003 |
+//! | [`vef03_checks`] | F1003 域自检（判据逐条映射，24 项） | VE 册 #VE-F1003 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
 //! | [`veu03_registry`] | F4203 契约注册中心（四能力+五字段冻结+唯一性+引用计数+生命周期） | VE 册 #VE-F4203 |
@@ -206,9 +204,10 @@ pub mod ved18_checks;
 pub mod ved18_debugview;
 
 pub mod vea20_stencil;
-pub mod vea21_raster;
 pub mod veb11_checks;
 pub mod veb11_irq;
+pub mod veb12_checks;
+pub mod veb12_recovery;
 pub mod veh03_checks;
 pub mod veh03_mixgraph;
 pub mod veh04_checks;
@@ -219,6 +218,8 @@ pub mod veh06_audiotoken;
 pub mod veh06_checks;
 pub mod veh07_checks;
 pub mod veh07_fade;
+pub mod veh09_checks;
+pub mod veh09_spatial;
 pub mod vee01_arch;
 pub mod vee01_checks;
 pub mod vee02_checks;
@@ -266,6 +267,8 @@ pub mod vek06_tonemap;
 pub mod vek06_checks;
 pub mod vek07_checks;
 pub mod vek07_exposure;
+pub mod vek08_colorspace;
+pub mod vek08_checks;
 pub mod vem02_checks;
 pub mod vem02_track;
 pub mod vem03_checks;
@@ -381,8 +384,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0618", ved18_checks::run_ved18_checks()),
 
         ("VE-F0020", vea20_stencil::run_vea20_checks()),
-        ("VE-F0021", vea21_raster::run_vea21_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
+("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
 ("VE-F0413", vec13_checks::run_vec13_checks()),
@@ -397,6 +400,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F1405", veh05_checks::run_veh05_checks()),
 ("VE-F1407", veh07_checks::run_veh07_checks()),
 ("VE-F1406", veh06_checks::run_veh06_checks()),
+("VE-F1409", veh09_checks::run_veh09_checks()),
 ("VE-F1804", vej04_checks::run_vej04_checks()),
         ("VE-F1805", vej05_spotlight::run_vej05_checks()),
 ("VE-F2801", veo01_checks::run_veo01_checks()),
@@ -408,6 +412,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2005", vek05_checks::run_vek05_checks()),
         ("VE-F2006", vek06_checks::run_vek06_checks()),
         ("VE-F2007", vek07_checks::run_vek07_checks()),
+        ("VE-F2008", vek08_checks::run_vek08_checks()),
         ("VE-F2402", vem02_checks::run_vem02_checks()),
         ("VE-F2403", vem03_checks::run_vem03_checks()),
         ("VE-F2404", vem04_checks::run_vem04_checks()),
