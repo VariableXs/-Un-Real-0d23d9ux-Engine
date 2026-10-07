@@ -18,6 +18,7 @@
 use super::veb12_recovery::*;
 use crate::checks::CheckSet;
 use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
