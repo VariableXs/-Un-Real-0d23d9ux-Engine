@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 use super::veh07_fade::FadeCurve;
 use super::vel03_emitter::{DiagBag, DiagCode, Outcome, RandomSource};
 use super::vel05_lifetime::*;
-use crate::checks::CheckSet;
+use crate::checks::{CheckSet, MAX_CHECKS};
 
 /// 自检内部的取值助手：`Outcome` 失败即 panic 并带上原始诊断。
 ///
@@ -265,7 +265,17 @@ pub fn run_vel05_all_checks() -> CheckSet {
             ),
             "SCurve 曲线集",
         );
-        let bound = sc.alpha.declared_max_error();
+        // 上界必须**独立于被测物**算出，不能读 `declared_max_error()`——
+        // 那是本判据要监督的函数：若判据直接采信它，把上界乘以 1000 的变异
+        // 会让 `max_dev <= bound` 恒真（自证式断言= 空断言）。
+        // 此处按解析式 M/(8N²) 在判据侧独立重算，M 与 N 均取自判据自己的
+        // 常量与被测集的段数，不问被测函数要答案。
+        //
+        // 同时保留「声明值 == 独立算出的值」的**双向**对账：上界被夸大或
+        // 缩小（隐藏近似）都会让这一条转红，而非只抓夸大一侧。
+        let independent_bound =
+            lut_error_bound(curvature_bound(&FadeCurve::SCurve), LIFELINE_LUT_STEPS);
+        let declared_bound = sc.alpha.declared_max_error();
         let mut max_dev = 0.0f32;
         for i in 0..=256 {
             let t = i as f32 / 256.0;
@@ -278,7 +288,32 @@ pub fn run_vel05_all_checks() -> CheckSet {
         }
         set.add(
             "E02-单源-实测误差不超过解析上界",
-            max_dev <= bound + 1e-6,
+            max_dev <= independent_bound + 1e-6
+                && (declared_bound - independent_bound).abs() <= independent_bound * 1e-5,
+            "",
+        );
+    }
+
+    // 反向对账：声明上界被夸大（隐藏近似）时必须转红。
+    // 与上一条同源但方向相反——上界是**承诺**，夸大承诺会让真实误差永远
+    // 「合法」，属隐藏近似。单条判据只查实测侧时抓不到夸大侧，故独立成条。
+    {
+        let sc = must(
+            CurveSet::build(
+                &FadeCurve::SCurve,
+                &FadeCurve::SCurve,
+                &FadeCurve::SCurve,
+                ColorRamp::new(Rgba::new(1.0, 1.0, 1.0, 1.0), Rgba::TRANSPARENT),
+                LIFELINE_LUT_STEPS,
+            ),
+            "SCurve 曲线集（误差承诺对账）",
+        );
+        let independent_bound =
+            lut_error_bound(curvature_bound(&FadeCurve::SCurve), LIFELINE_LUT_STEPS);
+        set.add(
+            "E02-单源-误差承诺不夸大不缩小",
+            (sc.alpha.declared_max_error() - independent_bound).abs()
+                <= independent_bound * 1e-5,
             "",
         );
     }
@@ -546,7 +581,7 @@ pub fn run_vel05_all_checks() -> CheckSet {
                 "",
             );
         } else {
-            set.add("E03-四态-推进驱动三段迁移", false, "建器意外失败");
+            set.add("E03-四态-推进驱动三段迁移-退化", false, "建器意外失败");
         }
     }
 
@@ -566,7 +601,7 @@ pub fn run_vel05_all_checks() -> CheckSet {
             }
             set.add("E03-四态-死亡帧alpha归零", last_alpha == 0.0, "");
         } else {
-            set.add("E03-四态-死亡帧alpha归零", false, "建器意外失败");
+            set.add("E03-四态-死亡帧alpha归零-退化", false, "建器意外失败");
         }
     }
 
@@ -584,7 +619,7 @@ pub fn run_vel05_all_checks() -> CheckSet {
             }
             set.add("E03-四态-回收标志只报一次", recycle_count == 1, "");
         } else {
-            set.add("E03-四态-回收标志只报一次", false, "建器意外失败");
+            set.add("E03-四态-回收标志只报一次-退化", false, "建器意外失败");
         }
     }
 
@@ -617,7 +652,7 @@ pub fn run_vel05_all_checks() -> CheckSet {
                 "",
             );
         } else {
-            set.add("E03-四态-推进到死亡收敛", false, "建器意外失败");
+            set.add("E03-四态-推进到死亡收敛-退化", false, "建器意外失败");
         }
     }
 
@@ -908,6 +943,27 @@ pub fn run_vel05_all_checks() -> CheckSet {
         );
     }
 
+    // NaN 淡出起点在**谓词内**自守：`LifeState::at` 不得依赖调用方先钳制。
+    //
+    // 为什么单独一条：构造路径确实先过 `FadeConfig::clamped()`，但 `at()` 是
+    // pub 纯函数、可被外部直接调用。NaN 参与比较恒为 false，会让 NaN 淡出
+    // 起点静默落进 `Alive` 段（该淡出却不淡出、无诊断）。只钉 `clamped()`
+    // 的判据看不到这条逃逸面——两个不同的函数。
+    {
+        let mut same_as_zero = true;
+        for i in 1..64u32 {
+            let t = i as f32 / 64.0;
+            if LifeState::at(t, f32::NAN) != LifeState::at(t, 0.0) {
+                same_as_zero = false;
+            }
+        }
+        set.add(
+            "E05-降级-NaN淡出起点谓词内自守",
+            same_as_zero && LifeState::at(0.5, f32::NAN) == LifeState::Fading,
+            "",
+        );
+    }
+
     // 非有限 fade_start → 钳制到 0 并产诊断（钳制而非静默）。
     {
         let mut bag = DiagBag::new();
@@ -954,7 +1010,7 @@ pub fn run_vel05_all_checks() -> CheckSet {
                 "",
             );
         } else {
-            set.add("E05-降级-非法dt不计龄", false, "建器意外失败");
+            set.add("E05-降级-非法dt不计龄-退化", false, "建器意外失败");
         }
     }
 
@@ -1150,7 +1206,7 @@ pub fn run_vel05_all_checks() -> CheckSet {
                 "",
             );
         } else {
-            set.add("E05-降级-步数上限显性诊断", false, "建器意外失败");
+            set.add("E05-降级-步数上限显性诊断-退化", false, "建器意外失败");
         }
     }
 
@@ -1187,7 +1243,7 @@ pub fn run_vel05_all_checks() -> CheckSet {
             }
             set.add("E06-性能-推进不重建曲线集", curves == before, "");
         } else {
-            set.add("E06-性能-推进不重建曲线集", false, "建器意外失败");
+            set.add("E06-性能-推进不重建曲线集-退化", false, "建器意外失败");
         }
     }
 
@@ -1258,6 +1314,57 @@ pub fn run_vel05_all_checks() -> CheckSet {
             && cfg.death == DeathBehavior::Vanish
             && cfg.fade == FadeConfig::WHOLE_LIFE;
         set.add("E06-性能-默认配置自洽", ok, "");
+    }
+
+    // =======================================================================
+    // 七、判据表自身卫生（判据七，须置于最后：它要读全表）
+    // =======================================================================
+    //
+    // `CheckSet` 按序号存条目，**同名不合并**，故重名不会丢判据、也不会
+    // 让 `tally()` 少算——但会让红项定位失效：红项以名称回报，两条同名
+    // 判据里坏的是哪一条无从分辨，等于把「点名」纪律悄悄降级。
+    //
+    // 真实发生过：本文件一度有 7 组同名，全部是 `if let Some(..) { 真判据 }
+    // else { 同名, false, "建器意外失败" }` 这一对互斥分支写的。已改名
+    // 加 `-退化` 后缀，此判据把该纪律钉死，防复发。
+    //
+    // 反假变体测试的取证教训：验证本判据时，第一版变异把 `-退化` 改回
+    // 原名，结果**全绿**——一度误判本判据无牙齿。真相是那条退化分支挂在
+    // `else` 上，正常路径根本不执行，改它等于测一条永不运行的路径。
+    // 「变异必须落在**必然执行**的路径上」是门禁设计的第五则：变体读起来
+    // 像在破坏什么，不代表它真进入了被测路径。
+    //
+    // 另钉两条相邻纪律：
+    // · 容量未溢出——`MAX_CHECKS` 是全仓共享上限，抬高会放大94 个域的
+    //   聚合数组，故本域判据数必须留在上限内且 `truncated()` 为假。
+    // · 无恒真空洞——每条判据名非空且非纯空白。
+    {
+        let (table, count) = set.red_items();
+        let mut unique = true;
+        let mut named = true;
+        for i in 0..count {
+            if let Some(c) = table.get(i).copied().flatten() {
+                let nm = c.name.trim();
+                if nm.is_empty() {
+                    named = false;
+                }
+                // O(n^2) 成对比较：判据数远小于 MAX_CHECKS，且这不是热路径。
+                for j in (i + 1)..count {
+                    if let Some(prev) = table.get(j).copied().flatten() {
+                        if prev.name == c.name {
+                            unique = false;
+                        }
+                    }
+                }
+            }
+        }
+        set.add("E07-判据表-判据名唯一可定位红项", unique, "存在同名判据，红项无法定位");
+        set.add("E07-判据表-判据名非空", named, "存在空白判据名");
+        set.add(
+            "E07-判据表-容量未溢出",
+            !set.truncated() && set.len() < MAX_CHECKS,
+            "判据数触及全仓共享上限，条目被丢弃",
+        );
     }
 
     set

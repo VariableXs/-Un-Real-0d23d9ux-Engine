@@ -886,6 +886,16 @@ impl LifeState {
         if t >= 1.0 {
             return LifeState::Dead;
         }
+        // NaN 淡出起点**在此自行兜底**为0（全程淡出），与
+        // [`FadeConfig::clamped`] 的 NaN→0 口径一致。
+        //
+        // 为什么不能只靠调用方：构造路径 [`create_particle_life`] 确实先过
+        // `clamped()`，但 `at()` 是**pub纯函数**，外部可直接调用。NaN 参与
+        // 比较恒为 false，会让「NaN 淡出起点」静默落进 `Alive` 段——
+        // 表现为粒子该淡出却不淡出，且无任何诊断。语义在谓词内自守，
+        // 才不依赖调用顺序（这与解析不可信输入时边界算术走 `checked_add`
+        // 是同一条纪律：约束落在被调用方，不靠调用方守规矩）。
+        let fade_start = if fade_start.is_nan() { 0.0 } else { fade_start };
         if t >= fade_start {
             LifeState::Fading
         } else {
