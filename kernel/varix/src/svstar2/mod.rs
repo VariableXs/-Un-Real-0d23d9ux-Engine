@@ -55,10 +55,12 @@
 //! | [`ved15_cache`] | F0615 图层缓存策略 | VE 册 #VE-F0615 |
 //! | [`ved16_scale`] | F0616 大层数性能（虚拟化与扁平化） | VE 册 #VE-F0616 |
 //! | [`ved17_consistency`] | F0617 图层树一致性校验 | VE 册 #VE-F0617 |
+//! | [`vea20_stencil`] | F0020 深度模板状态机 | VE 册 #VE-F0020 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
+//! | [`ver01b_parser`] | F3402 令牌解析器（JSON/TOML 双格式 + 引用 DAG + 迭代 DFS 环检测 + 断链三要素） | VE 册 #VE-F3402 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
 //! | [`ver03_arch`] | F3602 创作生态总架构（三层五段+开放格式P0+激励双单源+沙箱复述+收敛两段线） | VE 册 #VE-F3602 |
 //! | [`ver04_arch`] | F3603 创作资产模型（七要素+七类两轴+许可三态+兼容四级+schema两级复用） | VE 册 #VE-F3603 |
@@ -88,6 +90,7 @@
 //! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
 //! | [`vec15_encoding`] | F0415 源码编码处理（BOM 最长匹配优先 + UTF-8 假定显式留痕 + 非法字节五类分立报错 + 单遍转换到位） | VE 册 #VE-F0415 |
 //! | [`vec16_report`] | F0416 词法错误报告（四族查表归类 + 三要素带规则引用 + 双侧定位 + 三级分级） | VE 册 #VE-F0416 |
+//! | [`vec17_recover`] | F0417 词法错误恢复策略（三策略按类别查表选用 + 恢复显性计数 + 级联窗口反馈回退 + 预算兜底强制同步） | VE 册 #VE-F0417 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -174,6 +177,8 @@ pub mod vec15_checks;
 pub mod vec15_encoding;
 pub mod vec16_checks;
 pub mod vec16_report;
+pub mod vec17_checks;
+pub mod vec17_recover;
 pub mod ved01_checks;
 pub mod ved01_tree;
 pub mod ved02_checks;
@@ -193,6 +198,7 @@ pub mod ved14_traverse;
 pub mod ved15_cache;
 pub mod ved16_scale;
 pub mod ved17_consistency;
+pub mod vea20_stencil;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veh03_checks;
@@ -270,6 +276,8 @@ pub mod veq02_checks;
 pub mod veq02_graph;
 pub mod ver01_arch;
 pub mod ver01_checks;
+pub mod ver01b_checks;
+pub mod ver01b_parser;
 pub mod ver02_arch;
 pub mod ver02_checks;
 pub mod ver03_arch;
@@ -344,6 +352,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0414", vec14_include::run_vec14_checks()),
         ("VE-F0415", vec15_checks::run_vec15_checks()),
         ("VE-F0416", vec16_checks::run_vec16_checks()),
+        ("VE-F0417", vec17_checks::run_vec17_checks()),
         ("VE-F0601", ved01_checks::run_ved01_checks()),
         ("VE-F0602", ved02_checks::run_ved02_checks()),
         ("VE-F0603", ved03_checks::run_ved03_checks()),
@@ -357,6 +366,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0615", ved15_cache::run_ved15_checks()),
         ("VE-F0616", ved16_scale::run_ved16_checks()),
         ("VE-F0617", ved17_consistency::run_ved17_checks()),
+        ("VE-F0020", vea20_stencil::run_vea20_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
@@ -388,6 +398,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F3401", ver01_arch::run_ver01_checks()),
+("VE-F3402", ver01b_checks::run_ver01b_checks()),
         ("VE-F3601", ver02_arch::run_ver02_checks()),
         ("VE-F3602", ver03_arch::run_ver03_checks()),
         ("VE-F3603", ver04_arch::run_ver04_checks()),
