@@ -939,7 +939,13 @@ impl LightManager {
     pub fn add(&mut self, desc: LightDesc, warn: Vec<LightWarning>) -> LightResult<LightHandle> {
         self.total_ops += 1;
         let idx = match self.free.pop() {
-            None => 0u32,
+            None => {
+                return Err(ld(
+                    LightError::CapacityExhausted,
+                    "句柄表已满，无空闲槽",
+                    "all",
+                ))
+            }
             Some(i) => i,
         };
         let slot = &mut self.slots[idx as usize];
