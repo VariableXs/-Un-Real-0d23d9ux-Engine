@@ -66,8 +66,6 @@ pub enum BatchDiag {
     MaterialShapeMismatch,
     /// 顶点数组为空。
     EmptyMesh,
-    /// UV 数量与 3×面数不一致。
-    UvShapeMismatch,
     /// 重映射表长度与顶点数不一致。
     RemapShapeMismatch,
     /// 重映射表存在越界或重复目标。
@@ -82,7 +80,6 @@ impl BatchDiag {
             BatchDiag::FaceIndexOutOfRange => "面索引越界",
             BatchDiag::MaterialShapeMismatch => "材质数量与面数不一致",
             BatchDiag::EmptyMesh => "网格为空",
-            BatchDiag::UvShapeMismatch => "UV 数量与 3×面数不一致",
             BatchDiag::RemapShapeMismatch => "重映射表长度不符",
             BatchDiag::RemapNotPermutation => "重映射非合法置换",
             BatchDiag::CacheSizeInvalid => "缓存窗口尺寸非法",
@@ -94,7 +91,6 @@ impl BatchDiag {
             BatchDiag::FaceIndexOutOfRange => 40,
             BatchDiag::MaterialShapeMismatch => 41,
             BatchDiag::EmptyMesh => 42,
-            BatchDiag::UvShapeMismatch => 43,
             BatchDiag::RemapShapeMismatch => 44,
             BatchDiag::RemapNotPermutation => 45,
             BatchDiag::CacheSizeInvalid => 46,
@@ -106,7 +102,6 @@ impl BatchDiag {
             40 => Some(BatchDiag::FaceIndexOutOfRange),
             41 => Some(BatchDiag::MaterialShapeMismatch),
             42 => Some(BatchDiag::EmptyMesh),
-            43 => Some(BatchDiag::UvShapeMismatch),
             44 => Some(BatchDiag::RemapShapeMismatch),
             45 => Some(BatchDiag::RemapNotPermutation),
             46 => Some(BatchDiag::CacheSizeInvalid),
@@ -399,19 +394,36 @@ impl CacheStats {
 pub struct CacheSim {
     buf: Vec<u32>,
     cap: usize,
-    head: usize,
     len: usize,
 }
 
 impl CacheSim {
+    /// 构造窗口；`cap == 0` 一律兜底为 1（窗口至少装得下一个顶点）。
+    ///
+    /// 需要**区分「非法窗口」与「兜底」**的调用方请用 [`CacheSim::try_new`]——
+    /// 本函数对 0 静默兜底，不报 [`BatchDiag::CacheSizeInvalid`]。
     pub fn new(cap: usize) -> CacheSim {
         let c = if cap == 0 { 1 } else { cap };
         CacheSim {
             buf: vec![u32::MAX; c],
             cap: c,
-            head: 0,
             len: 0,
         }
+    }
+
+    /// 严格构造：`cap == 0` 返回 [`BatchDiag::CacheSizeInvalid`] 而非静默兜底。
+    ///
+    /// 窗口尺寸非法会让全部命中率恒为 0，收益量化随之全错；
+    /// 静默兜底会把「调用方传错了」变成「结果看着正常但没意义」。
+    pub fn try_new(cap: usize) -> Result<CacheSim, BatchDiag> {
+        if cap == 0 {
+            return Err(BatchDiag::CacheSizeInvalid);
+        }
+        Ok(CacheSim {
+            buf: vec![u32::MAX; cap],
+            cap,
+            len: 0,
+        })
     }
 
     pub fn capacity(&self) -> usize {
@@ -430,7 +442,7 @@ impl CacheSim {
     pub fn touch(&mut self, v: u32) -> bool {
         for i in 0..self.len {
             if self.buf[i] == v {
-                // 提到队头：把 i..head 之间的元素右移一位
+                // 提到队头：把下标 0..i 整体右移一位，空出的 0 号位放 v
                 let mut j = i;
                 while j > 0 {
                     self.buf[j] = self.buf[j - 1];
@@ -502,7 +514,6 @@ impl CacheSim {
 
     pub fn clear(&mut self) {
         self.len = 0;
-        self.head = 0;
     }
 }
 
@@ -968,7 +979,7 @@ pub fn reversed_winding_mesh(cols: usize, rows: usize) -> BatchMesh {
 // 八、自检
 // ---------------------------------------------------------------------------
 
-/// 判据族：材质分组 6、Forsyth 7、索引配合 6、收益量化 6、判据 5 = 30 项。
+/// 判据族：材质分组 9、Forsyth 7、索引配合 6、收益量化 6、判据 13 = 41 项。
 pub fn run_vei09_checks() -> CheckSet {
     let mut set = CheckSet::new("gfx-vei09");
 
@@ -1630,6 +1641,180 @@ pub fn run_vei09_checks() -> CheckSet {
             "I1609-判据-缓存后进先出",
             snap.len() == 3 && snap[0] == 3 && snap[2] == 1,
             "队头应是最新访问的 3，队尾是最早的 1",
+        );
+    }
+    // C6 命中必须把顶点**提到队头**（后进先出的定义性行为）
+    //
+    // 补这条的原因：C5 只验「三个互异顶点依次进窗口」的队头队尾顺序，
+    // 而这三个顶点**全是未命中**——未命中路径无论 LIFO 还是 FIFO 都往 0 号位放，
+    // 外部表现完全相同。把 `touch` 的命中分支改成 FIFO（命中不换位置）时，
+    // 原有 43 条判据全绿，而命中率模型已经不是 GPU 行为了。
+    // 必须造一个**真命中**再验位置变化，才钉得住模型本身。
+    {
+        let mut c = CacheSim::new(4);
+        c.touch(1);
+        c.touch(2);
+        c.touch(3);
+        // 此时队头=3、队尾=1；命中队尾的 1
+        let hit = c.touch(1);
+        let snap = c.snapshot();
+        // 后进先出：命中的 1 必须升到队头，原队尾位置由次新的 2 占据
+        set.add(
+            "I1609-判据-命中提到队头",
+            hit && snap.len() == 3 && snap[0] == 1 && snap[2] == 2,
+            "命中队尾顶点后它应升到队头，次新者退到队尾",
+        );
+    }
+    // C7 命中只换位置，不增删成员（与 C6 配套）
+    //
+    // C6 钉「位置」，这条钉「换位置不等于偷偷多插/少删一个」——
+    // 后者正是把「提到队头」误实现成「插入队头再删队尾」时会漏掉的缺陷。
+    {
+        let mut c = CacheSim::new(4);
+        c.touch(5);
+        c.touch(6);
+        c.touch(7);
+        c.touch(5);
+        let mut members = c.snapshot();
+        members.sort();
+        set.add(
+            "I1609-判据-命中成员集合不变",
+            c.len() == 3 && members == vec![5u32, 6, 7],
+            "命中只调整顺序，窗口长度与成员集合必须保持不变",
+        );
+    }
+    // C8 严格构造拒绝零窗口（不得静默兜底成 1）
+    //
+    // 零窗口会让全部访问恒未命中、收益量化恒为 0；静默兜底会把
+    // 「调用方传错尺寸」变成「结果看着正常却全错」。
+    {
+        let rejected = CacheSim::try_new(0);
+        let accepted = CacheSim::try_new(1);
+        set.add(
+            "I1609-判据-零窗口被拒",
+            rejected.is_err() && accepted.is_ok() && accepted.map(|c| c.capacity()) == Ok(1),
+            "try_new(0) 应报 CacheSizeInvalid，窗口 1 应正常构造",
+        );
+    }
+    // C9 每个诊断码可逆（code → of_code → code 往返一致）
+    //
+    // 码表是跨模块契约（F1629 上报按码取义）。某个变体只进不出或只出不进，
+    // 都会让上报侧解不出故障种类。
+    {
+        let all = [
+            BatchDiag::FaceIndexOutOfRange,
+            BatchDiag::MaterialShapeMismatch,
+            BatchDiag::EmptyMesh,
+            BatchDiag::RemapShapeMismatch,
+            BatchDiag::RemapNotPermutation,
+            BatchDiag::CacheSizeInvalid,
+        ];
+        let mut roundtrip = true;
+        for d in all.iter() {
+            if BatchDiag::of_code(d.code()) != Some(*d) {
+                roundtrip = false;
+            }
+            if d.label().is_empty() {
+                roundtrip = false;
+            }
+        }
+        // 43 号码已随死变体 UvShapeMismatch 一并移除，不得再被解析出
+        set.add(
+            "I1609-判据-诊断码往返一致",
+            roundtrip && BatchDiag::of_code(43).is_none() && !BatchDiag::of_code(200).is_some(),
+            "每个变体 code/of_code 往返一致，废弃码号不再解析",
+        );
+    }
+    // G7 分组按材质**严格升序**排列（draw call 顺序稳定可预期）
+    //
+    // 补这条的原因：原 G1~G6 只验「组数」「覆盖」「同材质连续」，
+    // 全都是**顺序无关**的谓词。把排序键从「材质升序 + 原面号」改成
+    // 「材质降序」后，各组依然连续、依然全覆盖、组数也不变——
+    // 原有判据全绿，而 draw call 的输出顺序已经静默翻转。
+    // 故必须有一条**直接断言组间材质序关系**的判据。
+    {
+        let mut m = grid_mesh(7, 7, 1);
+        for (i, mm) in m.materials.iter_mut().enumerate() {
+            *mm = (i % 4) as u32;
+        }
+        let r = group_by_material(&m);
+        let mut ascending = true;
+        for k in 1..r.groups.len() {
+            // 同材质只会聚成一段，故组间材质必须是**严格**递增
+            if r.groups[k - 1].material >= r.groups[k].material {
+                ascending = false;
+            }
+        }
+        set.add(
+            "I1609-分组-材质严格升序",
+            ascending && r.groups.len() == 4 && r.groups.last().map(|g| g.material) == Some(3),
+            "各组材质应严格递增（0→1→2→3），组序不得静默翻转",
+        );
+    }
+    // G8 重排后材质序列整体非降（序列级断言，独立于 groups 的索引视图）
+    {
+        let mut m = grid_mesh(6, 6, 1);
+        for (i, mm) in m.materials.iter_mut().enumerate() {
+            *mm = ((i * 5) % 7) as u32;
+        }
+        let r = group_by_material(&m);
+        let mut non_decreasing = true;
+        for k in 1..r.reordered_materials.len() {
+            if r.reordered_materials[k - 1] > r.reordered_materials[k] {
+                non_decreasing = false;
+            }
+        }
+        set.add(
+            "I1609-分组-材质序列非降",
+            non_decreasing && r.reordered_materials.len() == m.face_count(),
+            "reordered_materials 逐项比较应处处非降",
+        );
+    }
+    // G9 每种材质恰一段，且段面数等于判据侧**独立统计**的真实面数
+    //
+    // 参考值由判据侧自行数出来，不向 `group_by_material` 问答案
+    // （自证式判据会让分组算错时仍然全绿）。
+    {
+        let mut m = grid_mesh(7, 7, 1);
+        for (i, mm) in m.materials.iter_mut().enumerate() {
+            *mm = (i % 3) as u32;
+        }
+        let r = group_by_material(&m);
+        // 独立统计：mat -> 真实出现次数
+        let mut truth: Vec<(u32, u32)> = Vec::new();
+        for &mv in m.materials.iter() {
+            let mut hit_slot = false;
+            for t in truth.iter_mut() {
+                if t.0 == mv {
+                    t.1 += 1;
+                    hit_slot = true;
+                }
+            }
+            if !hit_slot {
+                truth.push((mv, 1u32));
+            }
+        }
+        let mut consistent = truth.len() == r.groups.len();
+        if consistent {
+            for g in r.groups.iter() {
+                let mut matched = false;
+                for t in truth.iter() {
+                    if t.0 == g.material {
+                        matched = t.1 == g.face_count;
+                        break;
+                    }
+                }
+                let end = g.first_face as usize + g.face_count as usize;
+                if !matched || end > r.reordered_faces.len() {
+                    consistent = false;
+                    break;
+                }
+            }
+        }
+        set.add(
+            "I1609-分组-段数与材质种类一致",
+            consistent,
+            "每种材质恰一段，且段面数等于判据侧独立统计的真实面数",
         );
     }
 
