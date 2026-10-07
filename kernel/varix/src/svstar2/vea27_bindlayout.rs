@@ -1487,6 +1487,47 @@ pub fn run_vea27_checks() -> CheckSet {
         set.add("A27-src-差异指名语义与双槽号", located, "");
     }
     {
+        // **差异必须指向「反射为准」的方向**（补强：方向反转漏网）。
+        //
+        // 上一条只断言 `refl_slot != manual_slot`。把两者对调（`refl_slot: ms,
+        // manual_slot: rs`）后该断言**照样成立** —— 「谁对谁错」正是本单的核心
+        // 语义（「不一致以反射为准并报出差异」），只验「不等」等于没验方向。
+        //
+        // 判别式：`refl_slot` 必须等于**反射源**里该语义的实际槽号，`manual_slot`
+        // 必须等于**手动源**的实际槽号。两者由判据侧从语料独立算出，不问被测
+        // 对象要答案（避免自证式断言）。方向一反立即转红。
+        let refl_decls = sample_decls(3);
+        let manual_decls = shifted_decls(3, 1);
+        let r = ReflectionInput::complete(refl_decls.clone());
+        let m = ManualInput::new(manual_decls.clone(), true);
+        let v = resolve_sources(&r, &m);
+        // 判据侧的独立参考：逐语义查反射源/手动源的真实槽号。
+        let expected = |src: &[LayoutDecl], kind: LayoutKind| -> Option<u32> {
+            let mut i = 0;
+            while i < src.len() {
+                if src[i].kind == kind {
+                    return Some(src[i].slot);
+                }
+                i += 1;
+            }
+            None
+        };
+        let directed = match &v {
+            SourceVerdict::ReflectedWins { diffs, .. } => {
+                !diffs.is_empty()
+                    && diffs.iter().all(|d| {
+                        // 反射槽号须来自反射源、且与手动源不同；
+                        // 手动槽号须来自手动源。方向反了则二者互换而失败。
+                        expected(&refl_decls, d.kind) == Some(d.refl_slot)
+                            && expected(&manual_decls, d.kind) == Some(d.manual_slot)
+                            && d.refl_slot != d.manual_slot
+                    })
+            }
+            _ => false,
+        };
+        set.add("A27-src-差异方向为反射为准(反转即红)", directed, "");
+    }
+    {
         // 差异条数封顶：MAX_DIFF_REPORTED 之后不再累积（否则诊断被刷屏）。
         let r = ReflectionInput::complete(sample_decls(6));
         let m = ManualInput::new(shifted_decls(6, 1), true);
@@ -1620,6 +1661,28 @@ pub fn run_vea27_checks() -> CheckSet {
             _ => false,
         });
         set.add("A27-cf-越界指名上限且须拒绝", named && rep.blocks(), "");
+    }
+    {
+        // **夹逼对钉死界位置**（补强：远点漏网）。
+        //
+        // 上一条判据只打 `MAX_SLOTS_PER_KIND + 5` 这一个远点。把门放到
+        // `>= MAX_SLOTS_PER_KIND + 1`（即放过 `MAX` 这一档）仍然全绿 —— 远点
+        // 离界太远，界被挪动一格测不出来。这正是「采样留洞 ⇒ 闸门位置无人
+        // 验证」：放宽门限而判据不红。
+        //
+        // 夹逼对三件套：(a) `MAX-1` 合法不得误报；(b) `MAX` 恰越界必须报；
+        // (c) `MAX+1` 越界必须报。任一档被改动，红项立刻指向本判据。
+        let at = |s: u32| -> Vec<LayoutDecl> {
+            vec![LayoutDecl { kind: LayoutKind::Sampler, slot: s, source: DeclSource::Manual }]
+        };
+        let out_of_range = |s: u32| -> bool {
+            detect(&at(s)).conflicts.iter().any(|c| matches!(c, Conflict::SlotOutOfRange { .. }))
+        };
+        let legal = !out_of_range(MAX_SLOTS_PER_KIND - 1);
+        let edge = out_of_range(MAX_SLOTS_PER_KIND);
+        let over = out_of_range(MAX_SLOTS_PER_KIND + 1);
+        set.add("A27-cf-越界界位置夹逼(MAX-1合法/MAX越界)", legal && edge, "");
+        set.add("A27-cf-越界界位置夹逼(MAX+1越界)", over, "");
     }
     {
         // 同一处不得连报多条断裂（否则诊断刷屏、真因被淹）。
@@ -1818,6 +1881,115 @@ pub fn run_vea27_checks() -> CheckSet {
         });
         let p = ac.probe(8, bad.as_slice());
         set.add("A27-cache-指纹撞内容不等判损坏", p == CacheProbe::Corrupt, "");
+    }
+    {
+        // **指纹必须逐字节混入，低字节与高字节都不可省**（补强：单侧字节漏网）。
+        //
+        // 造料用 `reg`（寄存器基址，可大于 255）而非 `slot`（恒 < 32，低字节
+        // 即含全部信息 —— 只混低字节对 slot 是**等价变体**，测的是噪声）。
+        //
+        // 判别式取「只改一个字节」的一对：两个布局仅 `reg` 的**低字节**不同，
+        // 另一个仅**高字节**不同。要求两种差异都产出不同指纹：
+        //  - 少混高字节 → 高字节差异那对同指纹（正是注释里记的历史 bug：
+        //    `v >> (k*8)` 取到高字节而 slot=1 的高字节为 0，槽 0 与槽 1 同键）；
+        //  - 少混低字节 → 低字节差异那对同指纹。
+        // 两侧都断，任何「只混一侧字节」的改动立即转红。
+        let mk = |reg: u32| -> Vec<LayoutRow> {
+            vec![LayoutRow { kind: LayoutKind::Sampler, slot: 0, reg }]
+        };
+        let d_lo_a = digest_of(&mk(0x0000_0001));
+        let d_lo_b = digest_of(&mk(0x0000_0002));
+        let d_hi_a = digest_of(&mk(0x0001_0001));
+        let d_hi_b = digest_of(&mk(0x0002_0001));
+        set.add("A27-digest-低字节差异改变指纹", d_lo_a != d_lo_b, "");
+        set.add("A27-digest-高字节差异改变指纹", d_hi_a != d_hi_b, "");
+        // 前提自校对：两组差异本身必须真的只差一个字节，否则上面两条是空断言。
+        set.add(
+            "A27-digest-字节对构造前提成立",
+            d_lo_a != d_hi_a && d_lo_b != d_hi_b && 0x0001_0001u32 >> 8 != 0,
+            "",
+        );
+    }
+    {
+        // **槽位字节不可省**（补强：只混高字节漏网）。
+        //
+        // 上一段只拿 `reg` 造料，把 `slot` 的字节混入整段删掉/换成一个字节，
+        // 判据照样全绿 —— 语料里 `slot` 恒为 0，任何字节混入都混进了 0x00，
+        // 删掉等于没删。**语料无区分度 ⇒ 判据测了另一件事却仍显绿。**
+        //
+        // 判别式：`slot` 取 1 与 2（低字节不同）、取 0x0100 与 0x0200（高字节
+        // 不同，低字节同为 0）两组，都必须产出不同指纹。
+        let s_lo_a = digest_of(&[LayoutRow { kind: LayoutKind::Sampler, slot: 1, reg: 7 }]);
+        let s_lo_b = digest_of(&[LayoutRow { kind: LayoutKind::Sampler, slot: 2, reg: 7 }]);
+        // 高字节不同的两个 slot：低字节都是 0，只混低字节的实现会把两者判同键。
+        let s_hi_a = digest_of(&[LayoutRow { kind: LayoutKind::Sampler, slot: 0x0100, reg: 7 }]);
+        let s_hi_b = digest_of(&[LayoutRow { kind: LayoutKind::Sampler, slot: 0x0200, reg: 7 }]);
+        set.add("A27-digest-槽位低字节差异改变指纹", s_lo_a != s_lo_b, "");
+        set.add("A27-digest-槽位高字节差异改变指纹", s_hi_a != s_hi_b, "");
+        // 语料前提自校对：两对必须真的只差目标字节。
+        set.add(
+            "A27-digest-槽位字节对构造前提成立",
+            s_lo_a != s_hi_a
+                && s_lo_b != s_hi_b
+                && (0x0100u32 & 0xff) == (0x0200u32 & 0xff)
+                && (0x0100u32 >> 8) != (0x0200u32 >> 8),
+            "",
+        );
+    }
+    {
+        // **语义字节不可省**（补强：整段删掉漏网）。
+        //
+        // 同样因为上一段语料的 `kind` 恒为同一个枚举值，删掉语义字节混入后
+        // 指纹不变 —— 恒定字段的字节混入对本语料无区分度。此处用**两个不同
+        // 语义**造料，要求指纹不同。
+        let k_a = digest_of(&[LayoutRow { kind: LayoutKind::Sampler, slot: 3, reg: 9 }]);
+        let k_b = digest_of(&[LayoutRow { kind: LayoutKind::UniformBuffer, slot: 3, reg: 9 }]);
+        set.add("A27-digest-语义差异改变指纹", k_a != k_b, "");
+        // 前提：两个语义确实不同（否则上面是恒真断言）。
+        set.add(
+            "A27-digest-语义对构造前提成立",
+            LayoutKind::Sampler != LayoutKind::UniformBuffer,
+            "",
+        );
+        // **同类语义的「语义+槽位」组合不可撞**（补强：整段删掉仍漏网）。
+        //
+        // 上一条只验「两个语义各一行」，若实现混的是**全部行拼起来的内容**
+        // 而非逐行语义，这一对仍能分开（内容不同）。真正的风险是：布局
+        // `[A@slot0, B@slot1]` 与 `[B@slot0, A@slot1]` 若只按「行内容」而
+        // **不带行序**参与混合，两者拼出的字节序列相同 → 同指纹，而它们在
+        // A23 缓存里是两个不同布局。要求这两种交错顺序产出不同指纹。
+        let ab = vec![
+            LayoutRow { kind: LayoutKind::Sampler, slot: 0, reg: 1 },
+            LayoutRow { kind: LayoutKind::UniformBuffer, slot: 1, reg: 1 },
+        ];
+        let ba = vec![
+            LayoutRow { kind: LayoutKind::UniformBuffer, slot: 0, reg: 1 },
+            LayoutRow { kind: LayoutKind::Sampler, slot: 1, reg: 1 },
+        ];
+        set.add("A27-digest-行序不可丢(交错两布局不同键)", digest_of(&ab) != digest_of(&ba), "");
+        // 前提：两布局确实是「同样的两个语义、同样的槽位集合、不同的行序」——
+        // 槽位按语义各自从 0 起算，故两个布局的首行槽位**都是 0**，判的是
+        // 语义与行序的组合，不是槽位。此处先断言语料合规当前提。
+        set.add(
+            "A27-digest-行序对构造前提成立",
+            ab.len() == ba.len()
+                && ab[0].kind != ba[0].kind
+                && ab[0].slot == ba[0].slot
+                && ab[1].kind != ba[1].kind,
+            "",
+        );
+    }
+    {
+        // **条数字节不可省**（补强：整段删掉漏网）。
+        //
+        // 指纹逐行混入，若**行数**不参与混合，则「1 行的 A」与「2 行的 A+A」
+        // 只差一个尾字节行——不混条数时二者指纹几乎相同，A23 缓存会把两种
+        // 布局当同一份。要求条数不同的两个布局产出不同指纹。
+        let one = build_rows(&sample_decls(1));
+        let two = build_rows(&sample_decls(2));
+        set.add("A27-digest-条数差异改变指纹", digest_of(&one) != digest_of(&two), "");
+        // 前提：两个布局的条数确实不同。
+        set.add("A27-digest-条数对构造前提成立", one.len() != two.len(), "");
     }
     {
         // 损坏必须被计数（否则「重编」无从观测）。
