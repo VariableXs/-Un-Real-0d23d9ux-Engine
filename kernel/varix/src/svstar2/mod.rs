@@ -93,6 +93,8 @@
 //! | [`vem06_checks`] | F2406 域自检（判据逐条映射，40 项） | VE 册 #VE-F2406 |
 //! | [`vem07_perf`] | F2407 动画求值性能（类型×时间轴指纹分批 + 零分配热路径 + 值/脏标记缓存 + LOD 先于精度降级次序） | VE 册 #VE-F2407 |
 //! | [`vem07_checks`] | F2407 域自检（判据逐条映射，126 项分 a/b/c 三族） | VE 册 #VE-F2407 |
+//! | [`veb18_compat`] | F0218 QEMU 版本兼容矩阵（版本行×特性×预期值；五登记行升序 + 尾部回退 O(1) 查表 + 探测记录入诊断快照；未知版本按回退行预期并标未认证、矩阵与实测冲突以实测为准并留档待修、探测失败走全行交集保守预期并告警；下游 F0215 按矩阵跳 N/A、F0216 宣告引用最低支持版本） | VE 册 #VE-F0218 |
+//! | [`veb18_checks`] | F0218 域自检（判据逐条映射，46 项分 a/b/c 三族；变异双向验证 23/23全捕获） | VE 册 #VE-F0218 |
 //! | [`ven02_tree`] | F2602 控件树模型（四要素/三不变量/三操作原子事务/M04 绑定路径解析；自 F2603 迁入的 Rust 权威实现） | VE 册 #VE-F2602 |
 //! | [`ven03_ctype`] | F2603 控件类型体系（六类最小集/扩展三件套/类型注册制/内核-上层分层边界） | VE 册 #VE-F2603 |
 //! | [`ven03_checks`] | F2602/F2603 域自检（判据逐条映射，55 项分三批落集） | VE 册 #VE-F2603 |
@@ -424,6 +426,8 @@ pub mod vem06_event;
 pub mod vem06_checks;
 pub mod vem07_perf;
 pub mod vem07_checks;
+pub mod veb18_compat;
+pub mod veb18_checks;
 pub mod ven02_tree;
 pub mod ven03_ctype;
 pub mod ven03_checks;
@@ -654,6 +658,9 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2407-a", vem07_checks::run_vem07_checks_a_standalone()),
         ("VE-F2407-b", vem07_checks::run_vem07_checks_b_standalone()),
         ("VE-F2407-c", vem07_checks::run_vem07_checks_c_standalone()),
+        ("VE-F0218-a", veb18_checks::run_veb18_checks_a_standalone()),
+        ("VE-F0218-b", veb18_checks::run_veb18_checks_b_standalone()),
+        ("VE-F0218-c", veb18_checks::run_veb18_checks_c_standalone()),
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F2205", vel05_checks::run_vel05_all_checks()),
