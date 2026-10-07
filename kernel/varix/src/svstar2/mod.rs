@@ -261,6 +261,8 @@ pub mod vej04_checks;
 pub mod vej04_pointlight;
 pub mod vej05_checks;
 pub mod vej05_spotlight;
+pub mod vej06_area;
+pub mod vej06_checks;
 pub mod vek04_bloom;
 pub mod vek04_checks;
 pub mod vek05_params;
@@ -406,6 +408,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F1409", veh09_checks::run_veh09_checks()),
 ("VE-F1804", vej04_checks::run_vej04_checks()),
         ("VE-F1805", vej05_spotlight::run_vej05_checks()),
+        ("VE-F1806", vej06_area::run_vej06_checks()),
 ("VE-F2801", veo01_checks::run_veo01_checks()),
         ("VE-F0801", vee01_checks::run_vee01_checks()),
         ("VE-F0802", vee02_checks::run_vee02_checks()),
