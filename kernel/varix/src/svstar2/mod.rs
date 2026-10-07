@@ -38,6 +38,7 @@
 //!
 //! | 模块 | 功能 | 判据锚 |
 //! | --- | --- | --- |
+//! | [`vek10_fxaa`] | F2010 抗锯齿四法之 FXAA（单 pass 全屏：亮度对比边缘检测→边缘方向→定向模糊，Console/FXAA 3.11 质量档；低/中/高三预设阈值+跨度+步数三轴皆不同，档位强度用 touched 集合包含关系 S(low)⊆S(mid)⊆S(high) 验证；输出取值集闭包 {中心,A,B} 逐位相等故闭包判据用 == 而非近似；序位守卫三违规带三要素；模糊代价以合成高频图案的高频能量比作可复算证据；双线性采样是正确性前提——最近邻会让 A/B 落回中心像素使 FXAA 退化为空操作而结构判据全绿；与 CAS 联动给警告而非静默关掉） | VE 册 #VE-F2010 |
 //! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
 //! | [`veb13_heads`] | F0213 virtio 多头与 EDID（逐输出独立使能与模式/EDID 三级注入优先级与非法拒载保默认/热增删幂等重算以最新 cfg 为准/布局表 O(输出数) 应用与版本化持久化/位置语义播报名） | VE 册 #VE-F0213 |
 //! | [`veb14_perf`] | F0214 virtio 性能与诊断接口（按帧统计命令数/传输字节/队列深度与提交到完成延迟的对数分桶草图在线更新分位/诊断快照按需拉取不常驻无请求零开销/计数溢出饱和不回绕且可区分恰好等于上限与已饱和/打点缺失标记缺测不入分位不补零/快照请求并发串行化排队有界满则拒收不覆盖/计数入遥测总线受 F0096 预算治理按提交序确定性抽样） | VE 册 #VE-F0214 |
@@ -62,6 +63,7 @@
 //! | [`ved19_surface`] | F0619 图层树与表面协议对接（表面帧协议/相位机半帧不落盘/damage 双向回流/提交点契约/缓冲引用世代与所有权显性） | VE 册 #VE-F0619 |
 //! | [`ved20_closeout`] | F0620 图层树组收口（十九件证据实探齐备核验/证据缺项阻断回补/台账指纹绑定的双签/移交授权独立于双签/一致性趋势劣化登记/回归回溯/经验包三契约机检谓词/无障碍核验行三态） | VE 册 #VE-F0620 |
 //! | [`ved21_blendreg`] | F0621 混合模式规范实现总纲（声称24vs条款18差额逐格登记含未归因项/三路同公式以FormulaId全等判定/条款段号与行号逐条对账/四条横切纪律按族绑定且反装饰/抽样覆盖面位图显性/条目级N/A必带理由/歧义裁决留痕拒空条款号） | VE 册 #VE-F0621 |
+//! | [`ved22_separable`] | F0622 可分离混合模式 12 种（公式单一来源IR三路物化：标量/SIMD宽通道/WGSL文本；dodge与burn除零取值方向相反分档携带无传参错配面；soft-light三段全实现含D分支与连续段夹逼探针；可分离性机器证明=通道置换等变+alpha签名分离；反假变体19/19捕获含4条初测漏网补强） | VE 册 #VE-F0622 |
 //! | [`vea20_stencil`] | F0020 深度模板状态机 | VE 册 #VE-F0020 |
 //! | [`vea21_raster`] | F0021 光栅化状态机 | VE 册 #VE-F0021 |
 //! | [`vea22_vlayout`] | F0022 顶点输入布局描述器（声明式偏移推导/编译期签名闸门/对齐修正/规范形去重/A27 位置空间） | VE 册 #VE-F0022 |
@@ -76,6 +78,8 @@
 //! | [`vem05_asset`] | F2405 动画曲线资产（m.anim. 开放容器/生态单点/F1948 签名三件/F1956 版本三件/往返逐位零损失） | VE 册 #VE-F2405 |
 //! | [`vem06_event`] | F2406 动画事件轨（事件总线第三生产者 M 域 + F2402 第七类离散轨 + 正播触发/倒播默认抑制语义表 + 同帧去抖取末值 + F1925/F2322 家族同构） | VE 册 #VE-F2406 |
 //! | [`vem06_checks`] | F2406 域自检（判据逐条映射，40 项） | VE 册 #VE-F2406 |
+//! | [`vem07_perf`] | F2407 动画求值性能（类型×时间轴指纹分批 + 零分配热路径 + 值/脏标记缓存 + LOD 先于精度降级次序） | VE 册 #VE-F2407 |
+//! | [`vem07_checks`] | F2407 域自检（判据逐条映射，126 项分 a/b/c 三族） | VE 册 #VE-F2407 |
 //! | [`ven02_tree`] | F2602 控件树模型（四要素/三不变量/三操作原子事务/M04 绑定路径解析；自 F2603 迁入的 Rust 权威实现） | VE 册 #VE-F2602 |
 //! | [`ven03_ctype`] | F2603 控件类型体系（六类最小集/扩展三件套/类型注册制/内核-上层分层边界） | VE 册 #VE-F2603 |
 //! | [`ven03_checks`] | F2602/F2603 域自检（判据逐条映射，55 项分三批落集） | VE 册 #VE-F2603 |
@@ -99,6 +103,8 @@
 //! | [`vep03_checks`] | F3003 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3003 |
 //! | [`vep04_stack`] | F3004 与 VE-M/O04 动画栈关系（三层分工+三选一决策表+控制接口 v2+对拍红线） | VE 册 #VE-F3004 |
 //! | [`vep04_checks`] | F3004 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3004 |
+//! | [`vep05_orch`] | F3005 转场编排器（DAG 三边型+四原语+打断三策略+嵌套上限 8+统一 reduce） | VE 册 #VE-F3005 |
+//! | [`vep05_checks`] | F3005 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3005 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
 //! | [`vee01_arch`] | F0801 文字渲染域总架构（四段单向流+ 三向兑现 + 1.5ms 预算） | VE 册 #VE-F0801 |
@@ -260,6 +266,7 @@ pub mod ved18_debugview;
 pub mod ved19_surface;
 pub mod ved20_closeout;
 pub mod ved21_blendreg;
+pub mod ved22_separable;
 
 pub mod vea20_stencil;
 pub mod vea21_raster;
@@ -345,6 +352,8 @@ pub mod vej07_checks;
 pub mod vej07_lightmgr;
 pub mod vej08_probe;
 pub mod vej08_checks;
+pub mod vej09_ibl;
+pub mod vej09_checks;
 pub mod vek04_bloom;
 pub mod vek04_checks;
 pub mod vek05_params;
@@ -357,6 +366,8 @@ pub mod vek08_colorspace;
 pub mod vek08_checks;
 pub mod vek09_msaa;
 pub mod vek09_checks;
+pub mod vek10_fxaa;
+pub mod vek10_checks;
 pub mod vem02_checks;
 pub mod vem02_track;
 pub mod vem03_checks;
@@ -367,6 +378,8 @@ pub mod vem05_asset;
 pub mod vem05_checks;
 pub mod vem06_event;
 pub mod vem06_checks;
+pub mod vem07_perf;
+pub mod vem07_checks;
 pub mod ven02_tree;
 pub mod ven03_ctype;
 pub mod ven03_checks;
@@ -398,6 +411,8 @@ pub mod vep03_checks;
 pub mod vep03_token;
 pub mod vep04_checks;
 pub mod vep04_stack;
+pub mod vep05_checks;
+pub mod vep05_orch;
 pub mod veq01_checks;
 pub mod veq01_pipeline;
 pub mod veq02_checks;
@@ -455,7 +470,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 155] = [
+    let blocks: [(&'static str, CheckSet); 175] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -512,6 +527,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0617", ved17_consistency::run_ved17_checks()),
         ("VE-F0618", ved18_checks::run_ved18_checks()),
         ("VE-F0621", ved21_blendreg::run_ved21_checks()),
+        ("VE-F0622", ved22_separable::run_ved22_checks()),
 
         ("VE-F0020", vea20_stencil::run_vea20_checks()),
         ("VE-F0021", vea21_raster::run_vea21_checks()),
@@ -525,7 +541,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
 ("VE-F0214", veb14_perf::run_veb14_checks()),
-("VE-F0215", veb15_suite::run_veb15_checks()),
+("VE-F0215", veb15_checks::run_veb15_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
 ("VE-F0413", vec13_checks::run_vec13_checks()),
@@ -547,6 +563,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1806", vej06_area::run_vej06_checks()),
         ("VE-J/F1807", vej07_checks::run_vej07_checks()),
 ("VE-J/F1808", vej08_checks::run_vej08_checks()),
+        ("VE-J/F1809-a", vej09_checks::run_vej09_checks_a()),
+        ("VE-J/F1809-b", vej09_checks::run_vej09_checks_b()),
 ("VE-F2801", veo01_checks::run_veo01_checks()),
         ("VE-F2802", veo02_vendor_checks::run_veo02_checks()),
         ("VE-F2803", veo03_subset_checks::run_veo03_checks()),
@@ -564,11 +582,15 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2008", vek08_checks::run_vek08_checks()),
         ("VE-F2009", vek09_checks::run_vek09_checks()),
         ("VE-F2009-deep", vek09_checks::run_vek09_deep_checks()),
+        ("VE-F2010", vek10_checks::run_vek10_checks()),
         ("VE-F2402", vem02_checks::run_vem02_checks()),
         ("VE-F2403", vem03_checks::run_vem03_checks()),
         ("VE-F2404", vem04_checks::run_vem04_checks()),
         ("VE-F2405", vem05_checks::run_vem05_checks()),
         ("VE-F2406", vem06_checks::run_vem06_checks()),
+        ("VE-F2407-a", vem07_checks::run_vem07_checks_a_standalone()),
+        ("VE-F2407-b", vem07_checks::run_vem07_checks_b_standalone()),
+        ("VE-F2407-c", vem07_checks::run_vem07_checks_c_standalone()),
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F2205", vel05_checks::run_vel05_all_checks()),
@@ -600,6 +622,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3003-b", vep03_checks::run_vep03_checks_b()),
         ("VE-F3004-a", vep04_checks::run_vep04_checks_a()),
         ("VE-F3004-b", vep04_checks::run_vep04_checks_b()),
+        ("VE-F3005-a", vep05_checks::run_vep05_checks_a()),
+        ("VE-F3005-b", vep05_checks::run_vep05_checks_b()),
         ("VE-F4002", vei02_checks::run_vei02_checks()),
         ("VE-F4003", vei03_checks::run_vei03_checks()),
         ("VE-F4004", vei04_checks::run_vei04_checks()),
