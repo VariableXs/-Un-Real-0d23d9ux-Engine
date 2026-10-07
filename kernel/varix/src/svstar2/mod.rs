@@ -38,7 +38,12 @@
 //!
 //! | 模块 | 功能 | 判据锚 |
 //! | --- | --- | --- |
+//! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
 //! | [`veb13_heads`] | F0213 virtio 多头与 EDID（逐输出独立使能与模式/EDID 三级注入优先级与非法拒载保默认/热增删幂等重算以最新 cfg 为准/布局表 O(输出数) 应用与版本化持久化/位置语义播报名） | VE 册 #VE-F0213 |
+//! | [`veb14_perf`] | F0214 virtio 性能与诊断接口（按帧统计命令数/传输字节/队列深度与提交到完成延迟的对数分桶草图在线更新分位/诊断快照按需拉取不常驻无请求零开销/计数溢出饱和不回绕且可区分恰好等于上限与已饱和/打点缺失标记缺测不入分位不补零/快照请求并发串行化排队有界满则拒收不覆盖/计数入遥测总线受 F0096 预算治理按提交序确定性抽样） | VE 册 #VE-F0214 |
+//! | [`vea02`] | F0002 图形上下文生命周期管理器 | VE 册 #VE-F0002 |
+//! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
+//! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
 //! | [`vea18_sampler`] | F0018 采样器状态库 | VE 册 #VE-F0018 |
 //! | [`vea19_blend`] | F0019 混合状态机（四维+独立alpha/预置库/漂移失效缓存/实时预览） | VE 册 #VE-F0019 |
 //! | [`vea11_hotplug`] | F0011 适配器热插拔与路径重选 | VE 册 #VE-F0011 |
@@ -252,6 +257,8 @@ pub mod veb12_checks;
 pub mod veb12_recovery;
 pub mod veb13_checks;
 pub mod veb13_heads;
+pub mod veb14_checks;
+pub mod veb14_perf;
 pub mod veh03_checks;
 pub mod veh03_mixgraph;
 pub mod veh04_checks;
@@ -353,6 +360,8 @@ pub mod veo01_arch;
 pub mod veo01_checks;
 pub mod veo02_vendor;
 pub mod veo02_vendor_checks;
+pub mod veo03_subset;
+pub mod veo03_subset_checks;
 pub mod vep01_arch;
 pub mod vep01_checks;
 pub mod vep02_checks;
@@ -409,7 +418,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 146] = [
+    let blocks: [(&'static str, CheckSet); 151] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -476,6 +485,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
+("VE-F0214", veb14_perf::run_veb14_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
 ("VE-F0413", vec13_checks::run_vec13_checks()),
@@ -498,6 +508,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-J/F1808", vej08_checks::run_vej08_checks()),
 ("VE-F2801", veo01_checks::run_veo01_checks()),
         ("VE-F2802", veo02_vendor_checks::run_veo02_checks()),
+        ("VE-F2803", veo03_subset_checks::run_veo03_checks()),
         ("VE-F0801", vee01_checks::run_vee01_checks()),
         ("VE-F0802", vee02_checks::run_vee02_checks()),
         ("VE-F0803", vee03_checks::run_vee03_checks()),
