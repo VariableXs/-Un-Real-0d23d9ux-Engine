@@ -251,6 +251,8 @@ pub mod veh02_checks;
 // 符号冲突，故不声明；文件保留待其作者自行清理。
 pub mod vej04_checks;
 pub mod vej04_pointlight;
+pub mod vej05_checks;
+pub mod vej05_spotlight;
 pub mod vek04_bloom;
 pub mod vek04_checks;
 pub mod vek05_params;
@@ -389,6 +391,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F1407", veh07_checks::run_veh07_checks()),
 ("VE-F1406", veh06_checks::run_veh06_checks()),
 ("VE-F1804", vej04_checks::run_vej04_checks()),
+        ("VE-F1805", vej05_spotlight::run_vej05_checks()),
 ("VE-F2801", veo01_checks::run_veo01_checks()),
         ("VE-F0801", vee01_checks::run_vee01_checks()),
         ("VE-F0802", vee02_checks::run_vee02_checks()),
