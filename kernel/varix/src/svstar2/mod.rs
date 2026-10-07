@@ -43,6 +43,7 @@
 //! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
 //! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
 //! | [`vea18_sampler`] | F0018 采样器状态库 | VE 册 #VE-F0018 |
+//! | [`vea19_blend`] | F0019 混合状态机（四维+独立alpha/预置库/漂移失效缓存/实时预览） | VE 册 #VE-F0019 |
 //! | [`vea11_hotplug`] | F0011 适配器热插拔与路径重选 | VE 册 #VE-F0011 |
 //! | [`vea12_probe`] | F0012 渲染探针与时间戳基础设施 | VE 册 #VE-F0012 |
 //! | [`vea13_softfall`] | F0013 软渲染回退路径 | VE 册 #VE-F0013 |
@@ -80,6 +81,7 @@
 //! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
 //! | [`veu03_registry`] | F4203 契约注册中心（四能力+五字段冻结+唯一性+引用计数+生命周期） | VE 册 #VE-F4203 |
 //! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
+//! | [`vec15_encoding`] | F0415 源码编码处理（BOM 最长匹配优先 + UTF-8 假定显式留痕 + 非法字节六类分立报错 + 单遍转换到位） | VE 册 #VE-F0415 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -115,6 +117,8 @@ pub mod vea15_checks;
 pub mod vea15_errclass;
 pub mod vea18_checks;
 pub mod vea18_sampler;
+pub mod vea19_blend;
+pub mod vea19_checks;
 pub mod veb01_checks;
 pub mod veb01_device;
 pub mod veb01_init;
@@ -132,6 +136,8 @@ pub mod veb06_checks;
 pub mod veb06_stream;
 pub mod veb10_checks;
 pub mod veb10_cursor;
+pub mod veb11_checks;
+pub mod veb11_irq;
 pub mod vec01_checks;
 pub mod vec01_constitution;
 pub mod vec02_checks;
@@ -160,6 +166,8 @@ pub mod vec13_checks;
 pub mod vec13_cond;
 pub mod vec14_checks;
 pub mod vec14_include;
+pub mod vec15_checks;
+pub mod vec15_encoding;
 pub mod ved01_checks;
 pub mod ved01_tree;
 pub mod ved02_checks;
@@ -202,6 +210,16 @@ pub mod vei07_plural;
 pub mod veh01_checks;
 pub mod veh02_audioarch;
 pub mod veh02_checks;
+pub mod veh03_checks;
+pub mod veh03_mixgraph;
+pub mod veh04_checks;
+pub mod veh04_sendsidechain;
+pub mod veh05_checks;
+pub mod veh05_submix;
+pub mod veh06_audiotoken;
+pub mod veh06_checks;
+pub mod veh07_checks;
+pub mod veh07_fade;
 // veh02_service.rs 为越权重复施工的孤儿文件（F1402 认领人 AI-ZCode-1，
 // 落位 veh02_audioarch/veh02_checks）——其 run_veh02_checks 与在册实现
 // 符号冲突，故不声明；文件保留待其作者自行清理。
@@ -273,7 +291,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 80] = [
+    let blocks: [(&'static str, CheckSet); 98] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -290,11 +308,13 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0014", vea14_snapshot::run_vea14_checks()),
         ("VE-F0015", vea15_errclass::run_vea15_checks()),
         ("VE-F0018", vea18_checks::run_vea18_checks()),
+        ("VE-F0019", vea19_checks::run_vea19_checks()),
         ("VE-F0201", veb01_checks::run_veb01_checks()),
         ("VE-F0202", veb02_checks::run_veb02_checks()),
         ("VE-F0203", veb03_checks::run_veb03_checks()),
         ("VE-F0204", veb04_checks::run_veb04_checks()),
         ("VE-F0210", veb10_cursor::run_veb10_checks()),
+        ("VE-F0211", veb11_irq::run_veb11_checks()),
         ("VE-F0401", vec01_checks::run_vec01_checks()),
         ("VE-F0402", vec02_spec::run_vec02_checks()),
         ("VE-F0403", vec03_lexer::run_vec03_checks()),
@@ -308,6 +328,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0411", vec11_prepro::run_vec11_checks()),
         ("VE-F0412", vec12_macro::run_vec12_checks()),
         ("VE-F0414", vec14_include::run_vec14_checks()),
+        ("VE-F0415", vec15_checks::run_vec15_checks()),
         ("VE-F0601", ved01_checks::run_ved01_checks()),
         ("VE-F0602", ved02_checks::run_ved02_checks()),
         ("VE-F0603", ved03_checks::run_ved03_checks()),
@@ -353,6 +374,23 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4007", vei07_checks::run_vei07_checks()),
         ("VE-F1001", vef01_checks::run_vef01_checks()),
         ("VE-F1002", vef02_checks::run_vef02_checks()),
+        // 补回被并发重写挤掉的 11 条注册（AI-ZCode-2，2026-10-07）：注册只增不减。
+        ("VE-F0205", veb05_checks::run_veb05_checks()),
+        ("VE-F0206", veb06_checks::run_veb06_checks()),
+        ("VE-F0413", vec13_checks::run_vec13_checks()),
+        ("VE-F0604", ved04_checks::run_ved04_checks()),
+        ("VE-F0605", ved05_checks::run_ved05_checks()),
+        ("VE-F0606", ved06_checks::run_ved06_checks()),
+        ("VE-F0607", ved07_checks::run_ved07_checks()),
+        ("VE-F1401", veh01_checks::run_veh01_checks()),
+        ("VE-F1402", veh02_checks::run_veh02_checks()),
+        ("VE-F1403", veh03_checks::run_veh03_checks()),
+        ("VE-F1404", veh04_checks::run_veh04_checks()),
+        ("VE-F1405", veh05_checks::run_veh05_checks()),
+        ("VE-F1407", veh07_checks::run_veh07_checks()),
+        ("VE-F1406", veh06_checks::run_veh06_checks()),
+        ("VE-F1804", vej04_checks::run_vej04_checks()),
+        ("VE-F2801", veo01_checks::run_veo01_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
