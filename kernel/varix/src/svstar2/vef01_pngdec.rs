@@ -505,6 +505,19 @@ impl Ihdr {
 /// 拒绝点：长度不足 13 / 颜色类型未定义 / 宽高为 0 或超上限 /
 /// 压缩或滤波方法非 0 / 隔行非 0（本模块）/ 位深×类型非法组合。
 pub fn parse_ihdr(data: &[u8]) -> Result<Ihdr, PngFault> {
+    parse_ihdr_ex(data, false)
+}
+
+/// [`parse_ihdr`] 的隔行放行变体（`allow_interlace = true` 时接受 `interlace = 1`）。
+///
+/// **加法而非改写**：`parse_ihdr` 保持「只做逐行」的既有行为不变（默认调用方
+/// 拿到的仍是隔行即拒），本变体只把隔行判定的闸门让开一格，且**只放行 1**
+/// ——`interlace = 2` 及以上仍属规范未定义，照旧拒绝。
+///
+/// 存在的理由：Adam7 隔行解码属F1003 专项，F1001 显式拒绝并指向它；若F1003
+/// 自带一份 IHDR 解析，同一套位深×颜色类型合法表就会有两处副本，日后改表必
+/// 漏一处。此处只让出闸门，**校验规则本体仍唯属本模块**。
+pub fn parse_ihdr_ex(data: &[u8], allow_interlace: bool) -> Result<Ihdr, PngFault> {
     if data.len() < 13 {
         return Err(PngFault::new(FaultKind::IhdrField).at_chunk(&CHUNK_IHDR).with(13, data.len() as u64));
     }
@@ -535,8 +548,9 @@ pub fn parse_ihdr(data: &[u8]) -> Result<Ihdr, PngFault> {
             PngFault::new(FaultKind::IhdrField).at_chunk(&CHUNK_IHDR).with(11, filter_method as u64)
         );
     }
-    // 隔行：显式拒绝并指向 F1003（不静默按逐行解——那会解出错图）
-    if interlace != 0 {
+    // 隔行：默认显式拒绝并指向 F1003（不静默按逐行解——那会解出错图）；
+    // allow_interlace 变体只放行规范定义的两个值 0/1，其余照旧拒绝。
+    if interlace > 1 || (interlace != 0 && !allow_interlace) {
         return Err(PngFault::new(FaultKind::InterlaceUnsupported).at_chunk(&CHUNK_IHDR).with(12, interlace as u64));
     }
     // 位深：先查单点定义域（1/2/4/8/16），再查与颜色类型的组合表
@@ -720,6 +734,17 @@ pub fn verify_signature(file: &[u8]) -> Result<(), PngFault> {
 /// - **IDAT**：可任意分片，顺序收集（zlib 流跨片连续）；无 IDAT → 拒绝。
 /// - **IEND**：其后数据忽略（规范允许尾部垃圾）。
 pub fn parse_container(file: &[u8]) -> Result<Parsed, PngFault> {
+    parse_container_ex(file, false)
+}
+
+/// [`parse_container`] 的隔行放行变体（`allow_interlace = true` 时 IHDR 可声明
+/// `interlace = 1`，由调用方承担七遍重排）。
+///
+/// **与 [`parse_container`] 的差异仅一处**：IHDR 走 [`parse_ihdr_ex`] 且让开
+/// 隔行闸门。块遍历、CRC 分级、ancillary/critical 处置、调色板与 tRNS 校验
+/// 全部共用同一份代码路径——**不存在两份容器解析**，故不会出现「一处改了
+/// 另一处没改」的分叉。
+pub fn parse_container_ex(file: &[u8], allow_interlace: bool) -> Result<Parsed, PngFault> {
     verify_signature(file)?;
     let mut stats = Stats::default();
     let mut pos = 8usize;
@@ -781,7 +806,7 @@ pub fn parse_container(file: &[u8]) -> Result<Parsed, PngFault> {
             if ihdr.is_some() {
                 return Err(PngFault::new(FaultKind::IhdrField).at_chunk(fourcc).with(0, 1));
             }
-            ihdr = Some(parse_ihdr(data)?);
+            ihdr = Some(parse_ihdr_ex(data, allow_interlace)?);
         } else if fourcc == CHUNK_PLTE.as_slice() {
             if !idat.is_empty() {
                 // 规范 §4.1.2：PLTE 必须在 IDAT 之前
