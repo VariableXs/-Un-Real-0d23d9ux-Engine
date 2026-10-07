@@ -38,10 +38,6 @@
 //!
 //! | 模块 | 功能 | 判据锚 |
 //! | --- | --- | --- |
-//! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
-//! | [`vea02`] | F0002 图形上下文生命周期管理器 | VE 册 #VE-F0002 |
-//! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
-//! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
 //! | [`vea18_sampler`] | F0018 采样器状态库 | VE 册 #VE-F0018 |
 //! | [`vea19_blend`] | F0019 混合状态机（四维+独立alpha/预置库/漂移失效缓存/实时预览） | VE 册 #VE-F0019 |
 //! | [`vea11_hotplug`] | F0011 适配器热插拔与路径重选 | VE 册 #VE-F0011 |
@@ -61,6 +57,7 @@
 //! | [`vea20_stencil`] | F0020 深度模板状态机 | VE 册 #VE-F0020 |
 //! | [`vea21_raster`] | F0021 光栅化状态机 | VE 册 #VE-F0021 |
 //! | [`vea22_vlayout`] | F0022 顶点输入布局描述器（声明式偏移推导/编译期签名闸门/对齐修正/规范形去重/A27 位置空间） | VE 册 #VE-F0022 |
+//! | [`vea23_psocache`] | F0023 渲染管线对象缓存（四段缓存：键构造/查表命中/异步编译/LRU 淘汰；哈希只查表、等价由描述符全等判定；编译失败降级带原因与上限；命中率四桶归因；预热把卡顿挪到加载期；持久化只存键与就绪事实） | VE 册 #VE-F0023 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -229,6 +226,7 @@ pub mod ved20_closeout;
 pub mod vea20_stencil;
 pub mod vea21_raster;
 pub mod vea22_vlayout;
+pub mod vea23_psocache;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
@@ -375,7 +373,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 129] = [
+    let blocks: [(&'static str, CheckSet); 132] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -434,6 +432,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0020", vea20_stencil::run_vea20_checks()),
         ("VE-F0021", vea21_raster::run_vea21_checks()),
 ("VE-F0022", vea22_vlayout::run_vea22_checks()),
+        ("VE-F0023", vea23_psocache::run_vea23_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
