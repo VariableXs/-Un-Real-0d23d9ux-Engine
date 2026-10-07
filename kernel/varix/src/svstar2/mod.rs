@@ -104,6 +104,7 @@
 //! | [`vee01_arch`] | F0801 文字渲染域总架构（四段单向流+ 三向兑现 + 1.5ms 预算） | VE 册 #VE-F0801 |
 //! | [`vee02_utf8`] | F0802 字符编码与 UTF-8 解码（四档处置 + 偏移表 + 200MB/s） | VE 册 #VE-F0802 |
 //! | [`vee03_outline`] | F0803 字形轮廓与贝塞尔（二次升三次 + 围向约定 + 1/64 量化） | VE 册 #VE-F0803 |
+//! | [`vee07_prims`] | F0807 文本图元渲染（合批 2000 + 绘制≤2 + 四效果定长 uniform + 变换） | VE 册 #VE-F0807 |
 //! | [`vet01_a11y_render_pipeline`] | F3802 无障碍渲染管线 | VE 册 #VE-F3802 |
 //! | [`vet02_highcontrast_engine`] | F3803 高对比渲染引擎（令牌段+后处理段+语义保持红线） | VE 册 #VE-F3803 |
 //! | [`ves01_sdomain_arch`] | F3801 S 域开工与无障碍渲染总架构 | VE 册 #VE-F3801 |
@@ -302,6 +303,7 @@ pub mod vee04_checks;
 pub mod vee04_raster;
 pub mod vee05_hinting;
 pub mod vee06_atlas;
+pub mod vee07_prims;
 pub mod vef01_checks;
 pub mod vef01_pngdec;
 pub mod vef02_checks;
@@ -554,6 +556,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0804", vee04_checks::run_vee04_checks()),
         ("VE-F0805", vee05_hinting::run_vee05_checks()),
         ("VE-F0806", vee06_atlas::run_vee06_checks()),
+        ("VE-F0807", vee07_prims::run_vee07_checks()),
         ("VE-F2004", vek04_checks::run_vek04_checks()),
         ("VE-F2005", vek05_checks::run_vek05_checks()),
         ("VE-F2006", vek06_checks::run_vek06_checks()),
