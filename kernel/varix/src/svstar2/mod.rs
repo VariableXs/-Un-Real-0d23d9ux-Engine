@@ -57,6 +57,7 @@
 //! | [`ved17_consistency`] | F0617 图层树一致性校验 | VE 册 #VE-F0617 |
 //! | [`ved18_debugview`] | F0618 图层树调试可视化（四开关覆盖/独立调试通道/只读面板接口/懒加载展开预算/树文本转储省略契约/结构级隐私边界） | VE 册 #VE-F0618 |
 //! | [`ved19_surface`] | F0619 图层树与表面协议对接（表面帧协议/相位机半帧不落盘/damage 双向回流/提交点契约/缓冲引用世代与所有权显性） | VE 册 #VE-F0619 |
+//! | [`ved20_closeout`] | F0620 图层树组收口（十九件证据实探齐备核验/证据缺项阻断回补/台账指纹绑定的双签/移交授权独立于双签/一致性趋势劣化登记/回归回溯/经验包三契约机检谓词/无障碍核验行三态） | VE 册 #VE-F0620 |
 //! | [`vea20_stencil`] | F0020 深度模板状态机 | VE 册 #VE-F0020 |
 //! | [`vea21_raster`] | F0021 光栅化状态机 | VE 册 #VE-F0021 |
 //! | [`vea22_vlayout`] | F0022 顶点输入布局描述器（声明式偏移推导/编译期签名闸门/对齐修正/规范形去重/A27 位置空间） | VE 册 #VE-F0022 |
@@ -212,6 +213,7 @@ pub mod ved17_consistency;
 pub mod ved18_checks;
 pub mod ved18_debugview;
 pub mod ved19_surface;
+pub mod ved20_closeout;
 
 pub mod vea20_stencil;
 pub mod vea21_raster;
