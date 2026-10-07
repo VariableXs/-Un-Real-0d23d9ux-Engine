@@ -76,7 +76,9 @@
 //! | [`ven03_ctype`] | F2603 控件类型体系（六类最小集/扩展三件套/类型注册制/内核-上层分层边界） | VE 册 #VE-F2603 |
 //! | [`ven03_checks`] | F2602/F2603 域自检（判据逐条映射，55 项分三批落集） | VE 册 #VE-F2603 |
 //! | [`ven04_prop`] | F2604 控件属性系统（四段管线/依赖属性继承+绑定/M04 属性侧兑现/零风暴纪律） | VE 册 #VE-F2604 |
-//! | [`ven04_checks`] | F2604 域自检（判据逐条映射，56 项分两批落集） | VE 册 #VE-F2604 |
+//! | [`ven04_checks`] | F2604 域自检（判据逐条映射，56 项分两批落集） | VE 册 #VE-F2604 |
+//! | [`ven05_dual`] | F2605 逻辑-可视双树与模板展开（双树分离/模板展开时机/单向数据流/三遍历/D-N 边界/同步断言/降级矩阵） | VE 册 #VE-F2605 |
+//! | [`ven05_checks`] | F2605 域自检（判据逐条映射，56 项分两批落集） | VE 册 #VE-F2605 |
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
 //! | [`ver01b_parser`] | F3402 令牌解析器（JSON/TOML 双格式 + 引用 DAG + 迭代 DFS 环检测 + 断链三要素） | VE 册 #VE-F3402 |
 //! | [`ver01c_cascade`] | F3403 令牌依赖图与级联（依赖图可视化 + 批量合并级联 + 双深度闸 + 耗时画像） | VE 册 #VE-F3403 |
@@ -340,7 +342,9 @@ pub mod ven02_tree;
 pub mod ven03_ctype;
 pub mod ven03_checks;
 pub mod ven04_checks;
-pub mod ven04_prop;
+pub mod ven04_prop;
+pub mod ven05_checks;
+pub mod ven05_dual;
 pub mod vel03_checks;
 pub mod vel03_emitter;
 pub mod vel04_checks;
@@ -552,7 +556,9 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2603-a", ven03_checks::run_ven03_checks_a()),
         ("VE-F2603-b", ven03_checks::run_ven03_checks_b()),
         ("VE-F2604-a", ven04_checks::run_ven04_checks_a()),
-        ("VE-F2604-b", ven04_checks::run_ven04_checks_b()),
+        ("VE-F2604-b", ven04_checks::run_ven04_checks_b()),
+        ("VE-F2605-a", ven05_checks::run_ven05_checks_a()),
+        ("VE-F2605-b", ven05_checks::run_ven05_checks_b()),
         ("VE-F3604-a", ves04_checks::run_ves04_checks_a()),
         ("VE-F3604-b", ves04_checks::run_ves04_checks_b()),
     ];
