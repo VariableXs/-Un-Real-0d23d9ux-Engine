@@ -112,6 +112,8 @@
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
 //! | [`veu03_registry`] | F4203 契约注册中心（四能力+五字段冻结+唯一性+引用计数+生命周期） | VE 册 #VE-F4203 |
+//! | [`veu08_density`] | F4008 排版密度与语言（按书写系统族适配密度档复用 F3442 三档语义/+35% 膨胀红线断言/折行优先省略最后且策略留痕/单源复用可机检） | VE 册 #VE-F4008 |
+//! | [`veu08_checks`] | F4008 域自检（六族判据：膨胀/密度/折行/策略/单源/错误路径） | VE 册 #VE-F4008 |
 //! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
 //! | [`vec15_encoding`] | F0415 源码编码处理（BOM 最长匹配优先 + UTF-8 假定显式留痕 + 非法字节五类分立报错 + 单遍转换到位） | VE 册 #VE-F0415 |
 //! | [`vec16_report`] | F0416 词法错误报告（四族查表归类 + 三要素带规则引用 + 双侧定位 + 三级分级） | VE 册 #VE-F0416 |
@@ -375,6 +377,8 @@ pub mod veu02_checks;
 pub mod veu02_model;
 pub mod veu03_checks;
 pub mod veu03_registry;
+pub mod veu08_checks;
+pub mod veu08_density;
 pub mod vev01_arch;
 pub mod vev01_checks;
 pub mod vew01_sdk_arch;
@@ -516,6 +520,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4201", veu01_checks::run_veu01_checks()),
         ("VE-F4202", veu02_checks::run_veu02_checks()),
         ("VE-F4203", veu03_checks::run_veu03_checks()),
+        ("VE-F4008", veu08_checks::run_veu08_checks()),
         ("VE-F4401", vev01_checks::run_vev01_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
