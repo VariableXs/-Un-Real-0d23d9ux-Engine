@@ -59,6 +59,7 @@
 //! | [`ved18_debugview`] | F0618 图层树调试可视化（四开关覆盖/独立调试通道/只读面板接口/懒加载展开预算/树文本转储省略契约/结构级隐私边界） | VE 册 #VE-F0618 |
 //! | [`ved19_surface`] | F0619 图层树与表面协议对接（表面帧协议/相位机半帧不落盘/damage 双向回流/提交点契约/缓冲引用世代与所有权显性） | VE 册 #VE-F0619 |
 //! | [`ved20_closeout`] | F0620 图层树组收口（十九件证据实探齐备核验/证据缺项阻断回补/台账指纹绑定的双签/移交授权独立于双签/一致性趋势劣化登记/回归回溯/经验包三契约机检谓词/无障碍核验行三态） | VE 册 #VE-F0620 |
+//! | [`ved21_blendreg`] | F0621 混合模式规范实现总纲（声称24vs条款18差额逐格登记含未归因项/三路同公式以FormulaId全等判定/条款段号与行号逐条对账/四条横切纪律按族绑定且反装饰/抽样覆盖面位图显性/条目级N/A必带理由/歧义裁决留痕拒空条款号） | VE 册 #VE-F0621 |
 //! | [`vea20_stencil`] | F0020 深度模板状态机 | VE 册 #VE-F0020 |
 //! | [`vea21_raster`] | F0021 光栅化状态机 | VE 册 #VE-F0021 |
 //! | [`vea22_vlayout`] | F0022 顶点输入布局描述器（声明式偏移推导/编译期签名闸门/对齐修正/规范形去重/A27 位置空间） | VE 册 #VE-F0022 |
@@ -227,11 +228,13 @@ pub mod ved18_checks;
 pub mod ved18_debugview;
 pub mod ved19_surface;
 pub mod ved20_closeout;
+pub mod ved21_blendreg;
 
 pub mod vea20_stencil;
 pub mod vea21_raster;
 pub mod vea22_vlayout;
 pub mod vea23_psocache;
+pub mod vea24_hotreload;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
@@ -381,7 +384,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 133] = [
+    let blocks: [(&'static str, CheckSet); 134] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -436,6 +439,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0616", ved16_scale::run_ved16_checks()),
         ("VE-F0617", ved17_consistency::run_ved17_checks()),
         ("VE-F0618", ved18_checks::run_ved18_checks()),
+        ("VE-F0621", ved21_blendreg::run_ved21_checks()),
 
         ("VE-F0020", vea20_stencil::run_vea20_checks()),
         ("VE-F0021", vea21_raster::run_vea21_checks()),
@@ -475,6 +479,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2006", vek06_checks::run_vek06_checks()),
         ("VE-F2007", vek07_checks::run_vek07_checks()),
         ("VE-F2008", vek08_checks::run_vek08_checks()),
+        ("VE-F2009", vek09_checks::run_vek09_checks()),
+        ("VE-F2009-deep", vek09_checks::run_vek09_deep_checks()),
         ("VE-F2402", vem02_checks::run_vem02_checks()),
         ("VE-F2403", vem03_checks::run_vem03_checks()),
         ("VE-F2404", vem04_checks::run_vem04_checks()),
