@@ -19,6 +19,7 @@ pub mod capture;
 /// 判据五 量化确定性（同输入同输出）。
 pub mod meshquant;
 pub mod meshrepair;
+pub mod meshdecimate;
 pub mod normtangent;
 pub mod ime;
 pub mod surface;
