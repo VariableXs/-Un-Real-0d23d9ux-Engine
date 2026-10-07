@@ -201,6 +201,22 @@ fn c215_tiers() -> Vec<(&'static str, bool)> {
             && Layer::Protocol.in_fast()
             && Layer::Functional.in_fast(),
     ));
+    // 声明常量不得与投影实算值脱节：`FAST_CASES` / `RECOVERY_CASES` 是
+    // 对外暴露的清单规模声明，若无人监督它们就会漂成与行为无关的死数字
+    // （改声明值而行为不变，全部判据仍绿）。此处由投影**独立重算**后
+    // 与声明值双向对账，不向被测常量索取答案。
+    v.push((
+        "C215-双档-fast声明数与投影实算一致",
+        FAST_CASES == tier_case_count(Tier::Fast),
+    ));
+    v.push((
+        "C215-双档-恢复声明数与投影实算一致",
+        RECOVERY_CASES == layer_case_count(Layer::Recovery),
+    ));
+    v.push((
+        "C215-双档-case_count与清单同源",
+        CASE_COUNT == CASES.len(),
+    ));
     v
 }
 
@@ -416,14 +432,24 @@ fn c215_golden() -> Vec<(&'static str, bool)> {
     let mut g4 = GoldenSet::new();
     g4.add("r", 7, alloc::vec![1u8]);
     let refused = g4.rebuild("r", 8, alloc::vec![2u8], false);
+    // 单次 `match` 绑定取版本戳：不走 `is_some() && unwrap()` 的两次独立
+    // 调用（两次调用若不一致则断言跟着漂，且 `unwrap` 是判据区的 panic 面）。
+    let v_after_refusal = match g4.find("r") {
+        Some(g) => g.version,
+        None => u32::MAX,
+    };
     v.push((
         "C215-黄金流-未确认拒绝重建",
-        !refused && g4.find("r").unwrap().version == 7,
+        !refused && v_after_refusal == 7,
     ));
     let ok = g4.rebuild("r", 8, alloc::vec![2u8], true);
+    let v_after_confirm = match g4.find("r") {
+        Some(g) => g.version,
+        None => u32::MAX,
+    };
     v.push((
         "C215-黄金流-确认后重建生效",
-        ok && g4.find("r").unwrap().version == 8 && g4.len() == 1,
+        ok && v_after_confirm == 8 && g4.len() == 1,
     ));
     // 重建不新增条目（避免每次版本变更都膨胀）
     v.push((
