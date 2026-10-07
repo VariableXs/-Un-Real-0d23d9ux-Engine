@@ -187,6 +187,18 @@ pub mod ved07_visibility;
 pub mod ved13_dirty;
 pub mod ved14_traverse;
 pub mod ved15_cache;
+pub mod veb11_checks;
+pub mod veb11_irq;
+pub mod veh03_checks;
+pub mod veh03_mixgraph;
+pub mod veh04_checks;
+pub mod veh04_sendsidechain;
+pub mod veh05_checks;
+pub mod veh05_submix;
+pub mod veh06_audiotoken;
+pub mod veh06_checks;
+pub mod veh07_checks;
+pub mod veh07_fade;
 pub mod vee01_arch;
 pub mod vee01_checks;
 pub mod vee02_checks;
@@ -284,7 +296,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 80] = [
+    let blocks: [(&'static str, CheckSet); 98] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -333,6 +345,23 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4605", vew05_trust::run_vew05_checks()),
         ("VE-F0614", ved14_traverse::run_ved14_checks()),
         ("VE-F0615", ved15_cache::run_ved15_checks()),
+("VE-F0211", veb11_irq::run_veb11_checks()),
+("VE-F0205", veb05_checks::run_veb05_checks()),
+("VE-F0206", veb06_checks::run_veb06_checks()),
+("VE-F0413", vec13_checks::run_vec13_checks()),
+("VE-F0604", ved04_checks::run_ved04_checks()),
+("VE-F0605", ved05_checks::run_ved05_checks()),
+("VE-F0606", ved06_checks::run_ved06_checks()),
+("VE-F0607", ved07_checks::run_ved07_checks()),
+("VE-F1401", veh01_checks::run_veh01_checks()),
+("VE-F1402", veh02_checks::run_veh02_checks()),
+("VE-F1403", veh03_checks::run_veh03_checks()),
+("VE-F1404", veh04_checks::run_veh04_checks()),
+("VE-F1405", veh05_checks::run_veh05_checks()),
+("VE-F1407", veh07_checks::run_veh07_checks()),
+("VE-F1406", veh06_checks::run_veh06_checks()),
+("VE-F1804", vej04_checks::run_vej04_checks()),
+("VE-F2801", veo01_checks::run_veo01_checks()),
         ("VE-F0801", vee01_checks::run_vee01_checks()),
         ("VE-F0802", vee02_checks::run_vee02_checks()),
         ("VE-F0803", vee03_checks::run_vee03_checks()),
