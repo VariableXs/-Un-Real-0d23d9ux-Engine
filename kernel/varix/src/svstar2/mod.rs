@@ -98,6 +98,7 @@
 //! | [`vee02_utf8`] | F0802 字符编码与 UTF-8 解码（四档处置 + 偏移表 + 200MB/s） | VE 册 #VE-F0802 |
 //! | [`vee03_outline`] | F0803 字形轮廓与贝塞尔（二次升三次 + 围向约定 + 1/64 量化） | VE 册 #VE-F0803 |
 //! | [`vet01_a11y_render_pipeline`] | F3802 无障碍渲染管线 | VE 册 #VE-F3802 |
+//! | [`vet02_highcontrast_engine`] | F3803 高对比渲染引擎（令牌段+后处理段+语义保持红线） | VE 册 #VE-F3803 |
 //! | [`ves01_sdomain_arch`] | F3801 S 域开工与无障碍渲染总架构 | VE 册 #VE-F3801 |
 //! | [`vei02_locale`] | F4002 语言标签与 Locale 模型（BCP47 四段+扩展/容错表/回退链/解析缓存/单源声明） | VE 册 #VE-F4002 |
 //! | [`vei03_text_direction`] | F4003 文字方向模型（三方向统一+三层优先级/isolate自动补齐/首强启发可覆写） | VE 册 #VE-F4003 |
@@ -116,6 +117,7 @@
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
 //! | [`veu03_registry`] | F4203 契约注册中心（四能力+五字段冻结+唯一性+引用计数+生命周期） | VE 册 #VE-F4203 |
+//! | [`veu04_engine`] | F4204 一致性规则引擎（三段式可执行化/四路单源引用不复制/三元裁决含僵局升级与全平票非冲突/无豁免红线处置仅两向/全量增量显式覆盖范围/引用断阻断执行） | VE 册 #VE-F4204 |
 //! | [`veu08_density`] | F4008 排版密度与语言（按书写系统族适配密度档复用 F3442 三档语义/+35% 膨胀红线断言/折行优先省略最后且策略留痕/单源复用可机检） | VE 册 #VE-F4008 |
 //! | [`veu08_checks`] | F4008 域自检（六族判据：膨胀/密度/折行/策略/单源/错误路径） | VE 册 #VE-F4008 |
 //! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
@@ -386,12 +388,15 @@ pub mod ver04_arch;
 pub mod ver04_checks;
 pub mod ves01_sdomain_arch;
 pub mod vet01_a11y_render_pipeline;
+pub mod vet02_highcontrast_engine;
 pub mod veu01_arch;
 pub mod veu01_checks;
 pub mod veu02_checks;
 pub mod veu02_model;
 pub mod veu03_checks;
 pub mod veu03_registry;
+pub mod veu04_checks;
+pub mod veu04_engine;
 pub mod veu08_checks;
 pub mod veu08_density;
 pub mod vev01_arch;
@@ -418,7 +423,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 151] = [
+    let blocks: [(&'static str, CheckSet); 153] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -538,9 +543,11 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3603", ver04_arch::run_ver04_checks()),
         ("VE-F3801", ves01_sdomain_arch::run_f3801_checks()),
         ("VE-F3802", vet01_a11y_render_pipeline::run_f3802_checks()),
+        ("VE-F3803", vet02_highcontrast_engine::run_f3803_checks()),
         ("VE-F4201", veu01_checks::run_veu01_checks()),
         ("VE-F4202", veu02_checks::run_veu02_checks()),
         ("VE-F4203", veu03_checks::run_veu03_checks()),
+        ("VE-F4204", veu04_checks::run_veu04_checks()),
         ("VE-F4008", veu08_checks::run_veu08_checks()),
         ("VE-F4401", vev01_checks::run_vev01_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
