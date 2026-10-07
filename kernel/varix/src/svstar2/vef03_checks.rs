@@ -1023,6 +1023,28 @@ pub fn run_vef03_checks() -> crate::checks::CheckSet {
             w: usize,
             got: Vec<(u32, Vec<u8>)>,
         }
+        impl Rows {
+            /// 被交付**超过一次**的行号个数（重复交付的直接证据）。
+            /// `w` 字段在此作「全图行数上界」用（见 `on_row` 的偏移算式）。
+            fn dup_rows(&self) -> usize {
+                let mut seen = vec![false; self.w];
+                let mut n = 0;
+                for &(y, _) in self.got.iter() {
+                    let yi = y as usize;
+                    if yi < self.w {
+                        if seen[yi] {
+                            n += 1;
+                        } else {
+                            seen[yi] = true;
+                        }
+                    } else {
+                        // 行号越界本身即错交付，计入
+                        n += 1;
+                    }
+                }
+                n
+            }
+        }
         impl dec::RowSink for Rows {
             fn on_row(&mut self, y: u32, rgba: &[u8]) -> bool {
                 let o = y as usize * self.w * 4;
@@ -1044,8 +1066,18 @@ pub fn run_vef03_checks() -> crate::checks::CheckSet {
         let ok = match outcome {
             Ok(o) => {
                 o.passes_done == 7 && !o.truncated && rows.data == src
-                    //每行恰好交付一次（重复交付同样是错）
+                    // 每行恰好交付一次。
+                    // **为何长度检查就够抓重复交付**：全图共 h 行，适配器对
+                    // 每行有 `delivered[y]` 一次性闩锁，正常路径下交付集合
+                    // 必为 {0..h}。若闩锁失效导致某行交付两次，则必有另一行
+                    // 一次未交付（h 行只由 h 个遍行组填充，少一行的凑齐就
+                    // 意味着某行被填了两次），总交付数仍可能是 h——
+                    // **故长度不足以单独定位**，真正的判别力来自下面两项：
+                    // ① `rows.data == src`：漏交付的那行会残留累加缓冲里的
+                    //    旧值（正确实现下为 0），与源不符；
+                    // ② 逐 `y` 去重计数（`dup_rows`）直接指名重复的那一行。
                     && rows.got.len() == h
+                    && rows.dup_rows() == 0
             }
             Err(_) => false,
         };
@@ -1445,10 +1477,21 @@ fn adler32(data: &[u8]) -> u32 {
 // | V3 | 编码侧遍首行参照改成 0xFF 行| 7  | C03-FILT-01 |
 // | V4 | 编码侧 bpp 退化成 1（误按遍宽算）| 7  | C03-ENC-03 |
 // | V5 | 适配器退回共享单行缓冲| **1** | C03-DEC-03（**精确命中**）|
+// | V6 | 适配器去掉 delivered 一次性闩锁 | **0** | 无——**不变体**，见下|
 //
 // **V5 的价值（它是本单最要紧的一条）**：V5 精确复现了 `PassSinkToRows`
 // 共享单缓冲的原始缺陷，且**只让 C03-DEC-03 一项变红**——既证明该判据
 // 不是恒真弱门禁，也反证其余 23 项与此缺陷无关（缺陷隔离得干净）。
+//
+// **V6 是不变体，如实说明为什么（如不说明就成了「我以为验证过了」）**：
+// 去掉 `delivered` 一次性闩锁后，24 项判据**一项都没变红**。原因不是
+// 判据漏了，是该注入**在现行遍历序下不可观测**：Adam7 按列划分像素，
+// 覆盖某全图行的**最后一个遍**走完该行时，行恰好被填满，此后不再有列
+// 进入该行，故「再次进入交付分支」根本不会发生。闩锁因此是**防御性冗余**
+// ——它防的是「将来若改动交付策略（如允许中途交付半行）才会出现的重投」，
+// 不是当前代码路径上的活缺陷。**保留闩锁**（删掉等于把安全性寄托在
+// 「遍历序永不变」这个隐含前提上），但**如实标注它当前无判据覆盖**，
+// 不假装已验。
 //
 // **V2（`pass_origin` 行映射改坏）本轮仍未执行**，理由如实登记：改它会
 // 连带改变 `pass_extent` 与 `gather_pass_row` 的口径，三者共用同一函数——
@@ -1465,10 +1508,11 @@ fn adler32(data: &[u8]) -> u32 {
 /// 变体登记（记录各变体的目标判据与实测变红数，供回归时按单执行）。
 ///
 /// `实测红` 为本机实际执行所得；`-` 表示尚未执行（理由见上）。
-pub const VARIANT_REGISTRY: [(&str, &str, &str); 5] = [
+pub const VARIANT_REGISTRY: [(&str, &str, &str); 6] = [
     ("V1-bad-pass6-colstep", "C03-TBL-01/C03-TBL-02", "11"),
     ("V2-bad-pass-origin-rowmap", "C03-DESC-03", "未执行-需先拆纯算式"),
     ("V3-encode-pass0-prev-not-zeroed", "C03-FILT-01", "7"),
     ("V4-encode-bpp-by-passwidth", "C03-ENC-03", "7"),
     ("V5-adapter-shared-rowbuf", "C03-DEC-03", "1"),
+    ("V6-adapter-no-latch", "无-不变体(遍历序下不可达)", "0"),
 ];
