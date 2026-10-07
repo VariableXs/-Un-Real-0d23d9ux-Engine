@@ -36,6 +36,11 @@
 //! 零墙钟、零 IO，回归可复现。
 
 use super::vek11_taa::*;
+// `Vec` 必须显式引入：本 crate 在内核镜像目标下是纯 `no_std`，`Vec` 不在
+//  prelude 里。宿主 std 侧（探针 / `cargo test`）由 prelude 供给，
+// **漏掉这一行在探针里全绿、在真仓 `cargo build --lib` 报 E0425/E0433**
+// ——这正是"探针是 std 环境会掩盖 no_std 问题"的实例（VE-F0622 同型）。
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 合成图边长。
