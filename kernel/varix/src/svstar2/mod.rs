@@ -43,6 +43,7 @@
 //! | [`veb13_heads`] | F0213 virtio 多头与 EDID（逐输出独立使能与模式/EDID 三级注入优先级与非法拒载保默认/热增删幂等重算以最新 cfg 为准/布局表 O(输出数) 应用与版本化持久化/位置语义播报名） | VE 册 #VE-F0213 |
 //! | [`veb14_perf`] | F0214 virtio 性能与诊断接口（按帧统计命令数/传输字节/队列深度与提交到完成延迟的对数分桶草图在线更新分位/诊断快照按需拉取不常驻无请求零开销/计数溢出饱和不回绕且可区分恰好等于上限与已饱和/打点缺失标记缺测不入分位不补零/快照请求并发串行化排队有界满则拒收不覆盖/计数入遥测总线受 F0096 预算治理按提交序确定性抽样） | VE 册 #VE-F0214 |
 //! | [`veb15_suite`] | F0215 virtio 一致性测试套件（三层用例：协议层状态机序与特性协商矩阵/功能层资源创建导出与 2D 更新与多头切换回归/恢复层注入错误验 F0212 处置矩阵；命令流编码走黄金流比对且对齐 F0206 版本戳，版本不匹配判阻断而非降级、重建黄金流须显式人工确认；宿主侧 fast 档与 QEMU 批队列 full 档为**同一份清单的两个投影**、full 是全集 fast 是子集；缺特性用例判 N/A 三值枚举单列统计且不算失败不计入通过数、N/A 早退路径零建销不污染清理对账；清理断言为独立收尾步、创建数须恰等于本档真跑用例数且过度销毁判失败；失败输出含复现最小命令序列） | VE 册 #VE-F0215 |
+//! | [`veb16_declaration`] | F0216 virtio 参考驱动宣告（本组实现即 virtio 家族参考实现，声明支持范围 QEMU 6.0 以上 + VIRTIO_F_VERSION_1 必需 + 2D/virgl/Venus 三通路与语义承诺，外部实现按本组语义对齐；变更走语义版本化且破坏性变更提前一版公告；宣告为可执行断言非文档——每条承诺带测试套件证据指针，缺证据即阻断发布；宣告与实现不符以测试结果为准修正；范围外请求明确拒绝并给具体越界项不模糊承诺；版本结构化三元组比对 O(1)，通路线编码显式映射且自洽） | VE 册 #VE-F0216 |
 //! | [`vea02`] | F0002 图形上下文生命周期管理器 | VE 册 #VE-F0002 |
 //! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
 //! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
@@ -298,6 +299,8 @@ pub mod veb14_checks;
 pub mod veb14_perf;
 pub mod veb15_checks;
 pub mod veb15_suite;
+pub mod veb16_checks;
+pub mod veb16_declaration;
 pub mod veh03_checks;
 pub mod veh03_mixgraph;
 pub mod veh04_checks;
@@ -559,6 +562,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0213", veb13_heads::run_veb13_checks()),
 ("VE-F0214", veb14_perf::run_veb14_checks()),
 ("VE-F0215", veb15_checks::run_veb15_checks()),
+("VE-F0216", veb16_checks::run_veb16_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
 ("VE-F0413", vec13_checks::run_vec13_checks()),
