@@ -84,6 +84,7 @@
 //! | [`vea30_batcher`] | F0030 多绘制合批器（同材质同管线的绘制合并为实例化/批渲染；批键含种类与管线状态与材质三维，缺一即错合，全零键构造期判无效；收益成式实算——省下的驱动调用数减每批状态绑定与实例缓冲更新开销，净收益为负即放弃合批；打断归因分材质切换/管线切换/拓扑不兼容三类专属码，容量类单列不污染内容打断率，材质与管线同时不同时归因材质（主序即直接原因）；动态实例照合不误——合批改的是驱动调用次数而非实例数据可变性，动态性不进批键也不构成打断原因；放弃的批不丢弃，其绘制逐条标原路输出且条数与被放弃批内绘制数绝对对账；高打断率才出资产建议且逐实际发生的原因一一对应，材质建议合并材质、管线建议拆分状态、拓扑建议重排绘制序；读屏面板六行双语只报聚合计数不泄漏单条绘制参数） | VE 册 #VE-F0030 |
 //! | [`vea31_framegraph`] | F0031 帧图资源屏障自动插入（按资源访问序列两两定关系自动推理屏障：写后读挡可见性、写后写挡顺序覆写、读后写挡读未取完被覆写，读后读唯一不需挡；屏障只跨节点插入——节点内先后访问由自身指令序保证，对自己插屏障是自环空转；手写屏障为结构性禁令，API 恒返回 ManualBarrierForbidden 不留口子，因帧图已从资源边推出屏障、人工再写一份必然随改动腐化；环检测用迭代三色 DFS（no_std 下不用递归），有环即拒绝且不返回半成品屏障清单——强行按加入顺序出屏障等于给一份看起来能用的帧图；屏障容量溢出与兜底均登记告警不静默截断；冗余消除只合并相邻且同资源同类的屏障，跨资源跨类别与非相邻一律不合并（合并会丢粒度掩盖真实依赖）；热图视图按资源给访问数屏障数与密度；读屏面板六行双语只报聚合计数与环状态不泄漏资源绑定细节） | VE 册 #VE-F0031 |
 //! | [`vea32_resstate`] | F0032 资源状态跟踪器（每资源三列状态：当前态/历史态环形缓冲/预期态，三列合成一个「当前」就丢掉了声明与事实的对照而那正是跟踪器的存在理由；状态机违例检测为阻断级且被拒不改进态——不存在的跳转意味着状态机已错，继续跑等于往错误状态上叠加操作；终态转出单独归因不与「不存在该边」混同；漂移与违例严格分离：预期态不符与外部路径改动走校准并留痕（校准即承认现实，预期对齐实际），零违例——混为一谈会让合法外部改动被当 bug 阻断或真 bug 被静默校准；跳转表显式建模为 allowed_next 函数，判据遍历 36 种组合证表与判定函数逐项一致；跟踪开销零帧预算声明：历史深度有硬上限，超预算即降采样并登记次数，降采样后已有历史立即裁剪否则内存没真降；孤儿检测按「已销毁且条目仍在」绝对值口径，destroy 只标终态不删条目否则把泄漏藏了；读屏面板六行双语只报聚合计数不泄漏资源句柄与尺寸） | VE 册 #VE-F0032 |
+//! | [`vea33_alias`] | F0033 别名与堆复用仲裁（显存别名安全域分析：活跃区间用**半开**区间 [begin,end)，端点相接不算重叠——闭区间会把逐帧连续绘制的相邻对全判重叠，别名功能整体失效；两资源同时活跃一律阻断且不降级（内容互相踩踏不是性能问题），不提供强制别名口子，阻断的对不进收益表不省显存；别名键必含对齐量——只看尺寸会漏对齐，把8字节对齐的资源别名到256字节对齐的块上逻辑跑得通但每次访问可能未对齐命中；安全先于收益判定，重叠对即便净收益很高也阻断；净收益=分开字节减共用块减别名开销，≤0即不别名（不为别名而别名）；共用块取两侧较大者；省下字节只累加正收益行，与净值合计口径分离；仲裁结论附两侧区间证据可复核（只给bool的结论无法复核，而仲裁失误即显存踩踏是最难查的一类）；候选对超预算登记非常规结论且不混入常规三类计数；读屏面板六行双语只报聚合计数不泄漏单对资源尺寸与内容哈希） | VE 册 #VE-F0033 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -105,6 +106,7 @@
 //! | [`ver01b_parser`] | F3402 令牌解析器（JSON/TOML 双格式 + 引用 DAG + 迭代 DFS 环检测 + 断链三要素） | VE 册 #VE-F3402 |
 //! | [`ver01c_cascade`] | F3403 令牌依赖图与级联（依赖图可视化 + 批量合并级联 + 双深度闸 + 耗时画像） | VE 册 #VE-F3403 |
 //! | [`ver01d_switch`] | F3404 主题切换事务（原子换肤：双缓冲单指针翻转 + 预演干跑 + 快照回滚 + 悬空兜底 + 截图一致性断言） | VE 册 #VE-F3404 |
+//! | [`ver01e_typetree`] | F3405 令牌类型系统（六类封闭全集 + 声明先行校验 + px/rem/ms 显式单位 + 三级降级矩阵 + E17 报告） | VE 册 #VE-F3405 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
 //! | [`ver03_arch`] | F3602 创作生态总架构（三层五段+开放格式P0+激励双单源+沙箱复述+收敛两段线） | VE 册 #VE-F3602 |
 //! | [`ver04_arch`] | F3603 创作资产模型（七要素+七类两轴+许可三态+兼容四级+schema两级复用） | VE 册 #VE-F3603 |
@@ -119,6 +121,7 @@
 //! | [`vep05_checks`] | F3005 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3005 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
+//! | [`veq03_handle`] | F3203 资源句柄与生命周期（类型化句柄+五态弧表+计数与图双源对账+分代GC与误收P1红线） | VE 册 #VE-F3203 |
 //! | [`vee01_arch`] | F0801 文字渲染域总架构（四段单向流+ 三向兑现 + 1.5ms 预算） | VE 册 #VE-F0801 |
 //! | [`vee02_utf8`] | F0802 字符编码与 UTF-8 解码（四档处置 + 偏移表 + 200MB/s） | VE 册 #VE-F0802 |
 //! | [`vee03_outline`] | F0803 字形轮廓与贝塞尔（二次升三次 + 围向约定 + 1/64 量化） | VE 册 #VE-F0803 |
@@ -304,6 +307,7 @@ pub mod vea29_indirect;
 pub mod vea30_batcher;
 pub mod vea31_framegraph;
 pub mod vea32_resstate;
+pub mod vea33_alias;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
@@ -459,6 +463,8 @@ pub mod veq01_checks;
 pub mod veq01_pipeline;
 pub mod veq02_checks;
 pub mod veq02_graph;
+pub mod veq03_checks;
+pub mod veq03_handle;
 pub mod ver01_arch;
 pub mod ver01_checks;
 pub mod ver01b_checks;
@@ -467,6 +473,8 @@ pub mod ver01c_cascade;
 pub mod ver01c_checks;
 pub mod ver01d_checks;
 pub mod ver01d_switch;
+pub mod ver01e_checks;
+pub mod ver01e_typetree;
 pub mod ver02_arch;
 pub mod ver02_checks;
 pub mod ver03_arch;
@@ -586,6 +594,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0030", vea30_batcher::run_vea30_checks()),
         ("VE-F0031", vea31_framegraph::run_vea31_checks()),
         ("VE-F0032", vea32_resstate::run_vea32_checks()),
+        ("VE-F0033", vea33_alias::run_vea33_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
@@ -654,6 +663,9 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3403", ver01c_checks::run_ver01c_checks()),
         ("VE-F3404", ver01d_checks::run_ver01d_checks()),
         ("VE-F3404-deep", ver01d_checks::run_ver01d_deep_checks()),
+        ("VE-F3405", ver01e_checks::run_ver01e_checks()),
+        ("VE-F3405-deep", ver01e_checks::run_ver01e_deep_checks()),
+        ("VE-F3405-equiv", ver01e_checks::run_ver01e_equivalence_checks()),
         ("VE-F3601", ver02_arch::run_ver02_checks()),
         ("VE-F3602", ver03_arch::run_ver03_checks()),
         ("VE-F3603", ver04_arch::run_ver04_checks()),
@@ -669,6 +681,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4401", vev01_checks::run_vev01_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
+        ("VE-F3203", veq03_handle::run_veq03_checks()),
         ("VE-F3001", vep01_checks::run_vep01_checks()),
         ("VE-F3002-a", vep02_checks::run_vep02_checks_a()),
         ("VE-F3002-b", vep02_checks::run_vep02_checks_b()),
