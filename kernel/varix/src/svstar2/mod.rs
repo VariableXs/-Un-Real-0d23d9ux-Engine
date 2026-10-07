@@ -83,6 +83,7 @@
 //! | [`vef01_pngdec`] | F1001 PNG 解码器核心（签名/IHDR七参数/PLTE/tRNS/反滤波/CRC 分级/输出 RGBA） | VE 册 #VE-F1001 |
 //! | [`vef02_pngenc`] | F1002 PNG 编码器核心（五滤波两策略/zlib 与九档权衡/IDAT 分块/CRC/颜色降档/场景建议表） | VE 册 #VE-F1002 |
 //! | [`vef03_adam7`] | F1003 PNG 交错模式（七遍常量表唯一来源/解码重排/编码拆分/每遍独立滤波/空遍合法/截断渐进语义） | VE 册 #VE-F1003 |
+//! | [`veg03_webm_mkv`] | F1203 WebM/MKV 容器解封装（VINT 八宽度/未知长度重同步边界/Segment-Track-Cluster/Block lacing 三模式/编解码器承接/Attachment/Cues 索引/与 MP4 三维差异/ffprobe 对拍） | VE 册 #VE-F1203 |
 //! | [`vef03_checks`] | F1003 域自检（判据逐条映射，21 项） | VE 册 #VE-F1003 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
@@ -225,6 +226,8 @@ pub mod vef02_checks;
 pub mod vef02_pngenc;
 pub mod vef03_adam7;
 pub mod vef03_checks;
+pub mod veg03_checks;
+pub mod veg03_webm_mkv;
 pub mod veh01_boundary;
 pub mod vei02_checks;
 pub mod vei02_locale;
@@ -422,6 +425,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1001", vef01_checks::run_vef01_checks()),
         ("VE-F1002", vef02_checks::run_vef02_checks()),
         ("VE-F1003", vef03_checks::run_vef03_checks()),
+        ("VE-F1203", veg03_checks::run_veg03_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
