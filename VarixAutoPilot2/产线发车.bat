@@ -29,6 +29,10 @@ REM  >=2/3 of the 18 conversations survived with real worker state they
 REM  are KEPT (nudged back to work + settle health check) instead of a
 REM  full 18-conversation rebuild.
 REM
+REM  24h guard: if the tower crashes (any exit code other than 0/2)
+REM  this bat restarts it after 60s. Exit 0 = graceful stop / wrap-up,
+REM  exit 2 = halted (no usable credit account) - no auto restart.
+REM
 REM  Requires: WorkBuddy running with CDP port 9222.
 REM  If probe fails, run open-port.bat first.
 REM
@@ -54,9 +58,23 @@ if errorlevel 1 (
 )
 
 echo.
-echo === [2/2] Launch 18-worker claim production line ===
+echo === [2/2] Launch 18-worker claim production line (24h auto-restart) ===
+:loop
 "%PY%" "%AP_DIR%\tools\claim_tower.py" --start 18 --watch --settle-min 5 %*
-
+set "EC=%errorlevel%"
+if "%EC%"=="0" (
+  echo.
+  echo Tower exited gracefully (wrap-up or manual Ctrl+C). Workers keep running.
+  pause
+  goto :eof
+)
+if "%EC%"=="2" (
+  echo.
+  echo Tower halted: no usable credit account. Manual attention required.
+  pause
+  goto :eof
+)
 echo.
-echo Tower stopped. Workers keep running; rerun this to resume.
-pause
+echo [24h guard] Tower crashed (exit code %EC%) - restarting in 60s...
+timeout /t 60 /nobreak >nul
+goto loop

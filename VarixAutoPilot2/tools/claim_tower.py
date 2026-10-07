@@ -53,6 +53,11 @@
      填充前后各校验一次活跃会话（续跑=必须等于目标 conv_id；新建=不得落进
      旧会话集合），漂移即拦截不发送；引导三件套每阶段之间同样校验；
      续跑/发车先在侧栏全列表（含滚动加载）里找回既有对话，新建只是最后手段。
+  7. 异常护栏 = 24h 无人值守（2026-10-07 实测教训）：页面主线程卡顿>20s
+     时 CDP recv 超时曾一路穿到 main 带崩塔。此后 call_js 传输异常不外抛
+     （返回 None，读不到状态=判忙，保守安全）；塔内 CDP 重动作全部经
+     guarded——单点异常记日志+账本后返回默认值继续跑；bat 对非 0/2 退出码
+     60s 自动重启（0=优雅停止/收口，2=无账号停机，均不重启）。
 
 用法（在 VarixAutoPilot2/ 下）：
   python tools/claim_tower.py --probe                # 只读体检（CDP/任务板/DOM）
@@ -128,6 +133,25 @@ def ledger(event: str, wp: str, worker: str, note: str):
         LEDGER.write_text(text, encoding="utf-8")
     except OSError as e:
         log(f"[WARN] LEDGER 写入失败：{e}")
+
+
+def guarded(label: str, fn, *a, default=None, **kw):
+    """单点动作装甲（2026-10-07，24h 无人值守铁律）：任何异常不许带崩塔。
+
+    实测教训：WorkBuddy 页面主线程卡顿 >20s 时 call_js recv 超时
+    TimeoutError 曾一路穿到 main 带崩整个塔。此后凡调 CDP/文件/网络
+    的重动作一律经本护栏：KeyboardInterrupt 照常穿透（人工停止不受
+    影响），其余 Exception 记日志+账本后返回 default，塔继续跑。
+    """
+    try:
+        return fn(*a, **kw)
+    except KeyboardInterrupt:
+        raise
+    except Exception as e:
+        log(f"[EXC] {label}：{type(e).__name__}: {e}（塔继续运行，"
+            f"下轮自动重试）")
+        ledger("异常护栏", "-", label, f"{type(e).__name__}: {e}")
+        return default
 
 
 # ══════════════════════ 任务板客户端 ══════════════════════
@@ -1279,7 +1303,9 @@ def main() -> int:
                 continue
             prompt_fn = lambda missing: render_protocol(wid, missing)  # noqa: E731
             log(f"{wid} 新建会话并派协议 …")
-            conv, ev = new_conversation(prompt_fn, known, f"VARIX-{wid}")
+            conv, ev = guarded(f"{wid} 新建会话", new_conversation,
+                               prompt_fn, known, f"VARIX-{wid}",
+                               default=("", "异常（见塔日志，下轮自愈）"))
             if conv:
                 known.add(conv)
                 write_conv(wid, conv)
@@ -1303,7 +1329,8 @@ def main() -> int:
         # ── 发车后静置体检（Variable 2026-10-06 指定）：先零干预跑 5 分钟，
         #    再逐路核对有没有没正常运行的 → 新建对话完成（0 = 关闭）──
         if a.settle_min > 0:
-            post_start_check(a.start, a.settle_min, reused)
+            guarded("发车体检", post_start_check,
+                    a.start, a.settle_min, reused)
 
     # ── 守护：READY 补发 / 卡死归档重建 / 积分切号 / 收口判定 ──
     if a.watch:
@@ -1364,7 +1391,8 @@ def main() -> int:
                             write_conv(wid, "")
                             release_worker_tasks(wid)   # 防名下有看不见的已领单
                             fail_until[wid] = time.time() + 120
-                            conv2, ev2 = rebuild_worker(wid)
+                            conv2, ev2 = guarded(f"{wid} 失链重建", rebuild_worker,
+                                                 wid, default=("", "异常（见塔日志）"))
                             if conv2 or "发送成功" in ev2:
                                 ledger("失链重建完成", "-", wid, ev2)
                                 log(f"{wid} 失链重建 ✓ {ev2}")
@@ -1383,15 +1411,20 @@ def main() -> int:
                         # → 归档 + 释放名下任务 + 重建同编号工人继续）
                         if (a.dead_min and age_min > a.dead_min
                                 and now >= fail_until.get(wid, 0)):
-                            arch = archive_dead_worker(
-                                wid, conv, state, age_min,
-                                f"BUSY {age_min:.0f}min 无动静")
+                            arch = guarded(f"{wid} 卡死归档", archive_dead_worker,
+                                           wid, conv, state, age_min,
+                                           f"BUSY {age_min:.0f}min 无动静",
+                                           default=None)
+                            if arch is None:
+                                fail_until[wid] = time.time() + 60
+                                continue   # 归档没成功：下轮重试（状态依旧会超时命中）
                             ledger("卡死归档", "-", wid,
                                    f"{state} {age_min:.0f}min → {arch.name}，重建中")
                             log(f"[卡死] {wid} {age_min:.0f}min 无动静 → "
                                 f"归档 {arch.name} → 重建")
                             fail_until[wid] = time.time() + 60
-                            conv2, ev2 = rebuild_worker(wid)
+                            conv2, ev2 = guarded(f"{wid} 卡死重建", rebuild_worker,
+                                                 wid, default=("", "异常（见塔日志）"))
                             if conv2 or "发送成功" in ev2:
                                 ledger("卡死重建", "-", wid, ev2)
                                 log(f"{wid} 重建 ✓ {ev2}")
@@ -1404,7 +1437,9 @@ def main() -> int:
                             log(f"[STALE] {wid} BUSY 超 {age_min:.0f}min（{state}）")
                         if (a.nudge_min and age_min > a.nudge_min
                                 and now >= fail_until.get(wid, 0)):
-                            ok, why = dispatch_continue(wid, conv, nudge_msg(wid))
+                            ok, why = guarded(f"{wid} 补发检查", dispatch_continue,
+                                              wid, conv, nudge_msg(wid),
+                                              default=(False, "异常（见塔日志）"))
                             if ok:
                                 write_state(wid, state)  # 原内容覆盖 = 刷新 mtime
                                 ledger("超时自愈", "-", wid, f"BUSY {age_min:.0f}min → 已补发检查")
@@ -1421,7 +1456,9 @@ def main() -> int:
                             continue  # 板上无单：让它待命，不发空指令
                         if now < fail_until.get(wid, 0):
                             continue
-                        ok, why = dispatch_continue(wid, conv, continue_msg(wid))
+                        ok, why = guarded(f"{wid} 续跑派工", dispatch_continue,
+                                          wid, conv, continue_msg(wid),
+                                          default=(False, "异常（见塔日志）"))
                         if ok:
                             write_state(wid, "BUSY claim")
                             ledger("补位派工", "-", wid, f"待领 {pend} → 续跑指令已发（{why}）")
@@ -1436,7 +1473,9 @@ def main() -> int:
                     elif not state:
                         # 有会话没状态：首条协议丢失/塔中途重启 → 重发协议全文
                         if board_ok and pend and now >= fail_until.get(wid, 0):
-                            ok, why = dispatch_continue(wid, conv, render_protocol(wid))
+                            ok, why = guarded(f"{wid} 补发协议", dispatch_continue,
+                                              wid, conv, render_protocol(wid),
+                                              default=(False, "异常（见塔日志）"))
                             if ok:
                                 write_state(wid, "BUSY claim")
                                 ledger("补发协议", "-", wid, why)
@@ -1461,7 +1500,8 @@ def main() -> int:
                 quota_due = time.time() - last_quota_check >= QUOTA_CHECK_EVERY
                 if USE_POOL and (round_fail >= 3 or quota_due):
                     last_quota_check = time.time()
-                    info = apool.probe_all(REMAIN_MIN)
+                    info = guarded("积分巡检", apool.probe_all, REMAIN_MIN,
+                                   default={"ok": False, "why": "异常（见塔日志）"})
                     if not info.get("ok"):
                         log(f"[积分] 账号池不可读：{info.get('why')}（下轮再试）")
                     else:
@@ -1477,9 +1517,10 @@ def main() -> int:
                                        f"发送连败 {round_fail} + 无可用积分账号"
                                        f"（门槛 {REMAIN_MIN}）：{info}")
                                 return 2
-                            r = switch_account_flow(
-                                f"单轮发送失败 {round_fail} 次", a.workers,
-                                settle_min=a.settle_min)
+                            r = guarded("切号流程", switch_account_flow,
+                                        f"单轮发送失败 {round_fail} 次", a.workers,
+                                        settle_min=a.settle_min,
+                                        default="fail:异常（见塔日志，下轮重试）")
                             if r == "no_account":
                                 log("★ 停机 ★ 无可用积分账号——产线终止")
                                 return 2

@@ -93,95 +93,123 @@ def probe_state():
 
 
 def call_js(expr: str):
-    """通过 CDP WebSocket 执行一段 JS。最小实现，只用标准库。"""
+    """通过 CDP WebSocket 执行一段 JS。最小实现，只用标准库。
+
+    ★ 韧性修订（2026-10-07）★ 传输异常一律不再外抛——外抛曾把塔带崩：
+    WorkBuddy 页面主线程卡顿 >20s 时 recv 超时 TimeoutError 一路穿到
+    main（实测 2026-10-07 崩溃栈）。分段策略：
+      连接/握手/发送段失败 → 尚未发出请求（零副作用）→ 关连接重试一次；
+      发送后等响应段失败   → evaluate 可能已执行，重发有副作用 → 不重试，
+                              返回 None。调用方按「读不到状态」处理：
+                              idle3 对 None 判忙（保守）、目标守卫拦截，
+                              塔 watch 循环下轮自然重试。
+    失败原因打一行到 stderr（塔日志可 grep）。
+    """
     import struct
     import socket
     import base64
     import os
 
-    # 1) 找 target
-    with urllib.request.urlopen(f"{URL}/json/list", timeout=5) as r:
-        lst = json.loads(r.read().decode("utf-8"))
-    pages = [t for t in lst if t.get("type") == "page"
-             and not t.get("url", "").startswith("devtools://")]
-    if not pages:
-        return None
-    pages.sort(key=lambda t: len(t.get("url", "")))
-    ws = pages[0]["webSocketDebuggerUrl"]
+    for attempt in (1, 2):
+        s = None
+        sent = False
+        try:
+            # 1) 找 target
+            with urllib.request.urlopen(f"{URL}/json/list", timeout=5) as r:
+                lst = json.loads(r.read().decode("utf-8"))
+            pages = [t for t in lst if t.get("type") == "page"
+                     and not t.get("url", "").startswith("devtools://")]
+            if not pages:
+                return None
+            pages.sort(key=lambda t: len(t.get("url", "")))
+            ws = pages[0]["webSocketDebuggerUrl"]
 
-    # 2) 极简 WebSocket 客户端（只要 text frame，够用）
-    m = re_ws(ws)
-    host, port, path = m.group(1), int(m.group(2)), m.group(3)
-    key = base64.b64encode(os.urandom(16)).decode()
-    s = socket.create_connection((host, port), timeout=20)
-    req = (
-        f"GET {path} HTTP/1.1\r\n"
-        f"Host: {host}:{port}\r\n"
-        "Upgrade: websocket\r\n"
-        "Connection: Upgrade\r\n"
-        f"Sec-WebSocket-Key: {key}\r\n"
-        "Sec-WebSocket-Version: 13\r\n\r\n"
-    )
-    s.sendall(req.encode())
-    buf = b""
-    while b"\r\n\r\n" not in buf:
-        d = s.recv(4096)
-        if not d:
-            raise RuntimeError("握手失败")
-        buf += d
-
-    def send_text(payload: bytes):
-        hdr = bytearray([0x81])
-        n = len(payload)
-        if n < 126:
-            hdr.append(0x80 | n)
-        elif n < 65536:
-            hdr.append(0x80 | 126)
-            hdr += struct.pack(">H", n)
-        else:
-            hdr.append(0x80 | 127)
-            hdr += struct.pack(">Q", n)
-        mask = os.urandom(4)
-        hdr += mask
-        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
-        s.sendall(bytes(hdr) + masked)
-
-    def recv_text():
-        def rd(n):
-            out = b""
-            while len(out) < n:
-                d = s.recv(n - len(out))
+            # 2) 极简 WebSocket 客户端（只要 text frame，够用）
+            m = re_ws(ws)
+            host, port, path = m.group(1), int(m.group(2)), m.group(3)
+            key = base64.b64encode(os.urandom(16)).decode()
+            s = socket.create_connection((host, port), timeout=20)
+            req = (
+                f"GET {path} HTTP/1.1\r\n"
+                f"Host: {host}:{port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n\r\n"
+            )
+            s.sendall(req.encode())
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                d = s.recv(4096)
                 if not d:
-                    raise RuntimeError("连接关闭")
-                out += d
-            return out
-        b0, b1 = rd(2)
-        op = b0 & 0x0F
-        ln = b1 & 0x7F
-        if ln == 126:
-            ln = struct.unpack(">H", rd(2))[0]
-        elif ln == 127:
-            ln = struct.unpack(">Q", rd(8))[0]
-        data = rd(ln) if ln else b""
-        return op, data
+                    raise RuntimeError("握手失败")
+                buf += d
 
-    msg = json.dumps({
-        "id": 1, "method": "Runtime.evaluate",
-        "params": {"expression": expr, "returnByValue": True, "awaitPromise": True},
-    })
-    send_text(msg.encode())
-    deadline = time.time() + 20
-    while time.time() < deadline:
-        op, data = recv_text()
-        if op == 1:
-            try:
-                obj = json.loads(data.decode("utf-8", "replace"))
-            except Exception:
-                continue
-            if obj.get("id") == 1:
-                s.close()
-                return obj.get("result", {}).get("result", {}).get("value")
-    s.close()
+            def send_text(payload: bytes):
+                hdr = bytearray([0x81])
+                n = len(payload)
+                if n < 126:
+                    hdr.append(0x80 | n)
+                elif n < 65536:
+                    hdr.append(0x80 | 126)
+                    hdr += struct.pack(">H", n)
+                else:
+                    hdr.append(0x80 | 127)
+                    hdr += struct.pack(">Q", n)
+                mask = os.urandom(4)
+                hdr += mask
+                masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+                s.sendall(bytes(hdr) + masked)
+
+            def recv_text():
+                def rd(n):
+                    out = b""
+                    while len(out) < n:
+                        d = s.recv(n - len(out))
+                        if not d:
+                            raise RuntimeError("连接关闭")
+                        out += d
+                    return out
+                b0, b1 = rd(2)
+                op = b0 & 0x0F
+                ln = b1 & 0x7F
+                if ln == 126:
+                    ln = struct.unpack(">H", rd(2))[0]
+                elif ln == 127:
+                    ln = struct.unpack(">Q", rd(8))[0]
+                data = rd(ln) if ln else b""
+                return op, data
+
+            msg = json.dumps({
+                "id": 1, "method": "Runtime.evaluate",
+                "params": {"expression": expr, "returnByValue": True, "awaitPromise": True},
+            })
+            send_text(msg.encode())
+            sent = True
+            deadline = time.time() + 20
+            while time.time() < deadline:
+                op, data = recv_text()
+                if op == 1:
+                    try:
+                        obj = json.loads(data.decode("utf-8", "replace"))
+                    except Exception:
+                        continue
+                    if obj.get("id") == 1:
+                        return obj.get("result", {}).get("result", {}).get("value")
+            return None        # 20s 无响应（与旧版语义一致）
+        except Exception as e:
+            why = f"{'响应等待' if sent else '连接/发送'}段 {type(e).__name__}: {e}"
+            print(f"[call_js#{attempt}] {why}", file=sys.stderr)
+            if not sent and attempt == 1:
+                time.sleep(1.5)
+                continue       # 请求没发出去 → 整段重试无副作用
+            return None
+        finally:
+            if s is not None:
+                try:
+                    s.close()
+                except Exception:
+                    pass
     return None
 
 
