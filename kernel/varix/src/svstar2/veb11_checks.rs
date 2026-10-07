@@ -1203,13 +1203,7 @@ mod tests {
     fn veb11_judgement_families_present() {
         let set = run_veb11_checks();
         let (passed, _) = set.tally();
-        let names: Vec<&str> = set
-            .red_items()
-            .0
-            .iter()
-            .flatten()
-            .map(|c| c.name)
-            .collect();
+        let names: Vec<&str> = set.red_items().0.iter().flatten().map(|c| c.name).collect();
         for family in ["解耦", "去重", "兜底", "未知"] {
             let n = names.iter().filter(|m| m.contains(family)).count();
             assert!(n >= 2, "判据族 {} 仅{} 项自检，不足两道门禁", family, n);

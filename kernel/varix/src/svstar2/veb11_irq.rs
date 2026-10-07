@@ -444,7 +444,7 @@ impl VirtGpuIrq {
             Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize,
         };
         const REC: usize = 12; // 每条事件线格式字节数
-        // 声明长度为 0 = 设备报「无事件」，是正常空读（不记畸形）。
+                               // 声明长度为 0 = 设备报「无事件」，是正常空读（不记畸形）。
         if declared == 0 {
             self.empty_reads += 1;
             batch.empty = 1;
@@ -559,7 +559,7 @@ impl VirtGpuIrq {
                 empty: 1,
             };
         }
-        if body.len() % 12 != 0 {
+        if !body.len().is_multiple_of(12) {
             self.malformed_batches += 1;
             return IngestBatch {
                 parsed: 0,
