@@ -20,6 +20,7 @@ pub mod capture;
 pub mod meshquant;
 pub mod meshrepair;
 pub mod meshdecimate;
+pub mod meshbatch;
 pub mod normtangent;
 pub mod ime;
 pub mod surface;

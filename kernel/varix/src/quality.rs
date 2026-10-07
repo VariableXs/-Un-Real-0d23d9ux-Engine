@@ -624,6 +624,7 @@ pub fn run_full_loop() -> FullLoop {
     lp.register(crate::gfx::meshquant::run_meshquant_checks());
     lp.register(crate::gfx::meshrepair::run_vei07_checks());
     lp.register(crate::gfx::meshdecimate::run_vei08_checks());
+    lp.register(crate::gfx::meshbatch::run_vei09_checks());
     lp.register(crate::gfx::normtangent::run_normtangent_checks());
     lp.register(crate::gfx::text::run_text_checks());
     lp.register(crate::ui::widgets::run_widget_checks());
