@@ -23,16 +23,20 @@
                           新建同编号工人会话继续）；--nudge-min 补发检查仍在
                           （dead_min=0 时作为唯一自愈手段）；
        会话 id 丢失      → 用首条提示词里的 VARIX-Wxx 标记在侧栏标题里重链。
-  3. 积分监控与自动切号（--no-account-pool 关闭）：单轮发送失败 ≥3 或
-     每 10 分钟预防性巡检 → 查 TreeCode 账号池（127.0.0.1:8792）；发送连败
-     且池里有 ≥门槛余量的号 → 自动切号（TreeCode 重启 WorkBuddy，塔等待
-     CDP 恢复并兜底带参重启）。切号异常自动换号（2026-10-06 Variable 指定）：
-     切号失败 / WorkBuddy 未恢复 / 切入后账号显示异常（疑似封号）→ 拉黑
-     该号换下一个，直到切到可用号；全池耗尽 → 判定「无可用积分账号」→
-     优雅停机。切号后先看 18 路对话存活情况（Variable 指定）：≥2/3 会话
-     还在且状态真实 → 保全续用（逐路点回旧对话唤醒 + 静置 --settle-min
-     分钟体检补活，不释放任务不整体重建）；不足 → 释放全部在途任务 +
-     重建 18 路。
+  3. 积分监控与自动切号（--no-account-pool 关闭）：三信号任一命中即切号——
+     ① 单轮发送失败 ≥3；② 页面积分提示连续 ≥2 次（toast/dialog 扫描，
+     排除聊天区）；③ 阻塞单原因含积分关键词 ≥2 例（积分耗尽时塔的发送
+     不耗积分、round_fail 恒 0，2026-10-07 实测只靠连败会漏掉整个场景，
+     任务板阻塞单堆积停摆）；另有每 10 分钟预防性巡检 → 查 TreeCode
+     账号池（127.0.0.1:8792）；池里有 ≥门槛余量的号 → 自动切号（TreeCode
+     重启 WorkBuddy，塔等待 CDP 恢复并兜底带参重启）。切号异常自动换号
+     （2026-10-06 Variable 指定）：切号失败 / WorkBuddy 未恢复 / 切入后
+     账号显示异常（疑似封号）→ 拉黑该号换下一个，直到切到可用号；
+     全池耗尽 → 判定「无可用积分账号」→ 优雅停机。切号成功后自动把
+     积分阻塞单逐个 /api/release 重排回待领（任务继续做下去）；切号后
+     先看 18 路对话存活情况（Variable 指定）：≥2/3 会话还在且状态真实 →
+     保全续用（逐路点回旧对话唤醒 + 静置 --settle-min 分钟体检补活，
+     不释放任务不整体重建）；不足 → 释放全部在途任务 + 重建 18 路。
   4. 收口：任务板「待领/已领/阻塞」全为 0 且塔内无 BUSY 工人 → 全部完成退出；
      否则永远运行，直到 ① 50000+ 任务全部完成 ② 无可用积分账号 ③ 人工 Ctrl+C。
 
@@ -78,6 +82,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -109,6 +114,12 @@ BOARD_EXE = Path(r"D:\2\14\-Un-Real-0d23d9ux-Engine-main\VarixTaskOps\VTaskBoard
 SKILLS_ARG = ",".join(vb.SKILLS_DEFAULT)
 REMAIN_MIN = 30            # 切号目标账号的最低余量门槛（积分）
 QUOTA_CHECK_EVERY = 600.0  # 预防性积分巡检间隔（秒）
+# 积分耗尽信号关键词（2026-10-07 实测教训：积分用完时工人 AI 失败会把任务标
+# 「阻塞」并写原因、页面弹「积分不足」类提示；而塔往输入框发字不耗积分，
+# round_fail 恒为 0——只靠发送连败触发切号会彻底漏掉这个场景，任务板
+# 阻塞单堆积、产线停摆。三信号任一命中即切号，切号成功后自动重排阻塞单）
+CREDIT_KW = ("积分不足", "积分不够", "积分用尽", "积分用完", "积分已用完",
+             "积分耗尽", "余额不足", "额度不足", "配额不足")
 
 
 def log(msg: str):
@@ -235,6 +246,26 @@ JS_IDLE = r"""(() => {
   return { idle: stopEls.length === 0,
            btnGone: !btn, btnSending: /--sending|--stop/.test(cls),
            stopN: stopEls.length, animN: animN };
+})()"""
+
+# 页面积分耗尽提示扫描（2026-10-07）：只扫 toast/dialog/modal 弹层容器且
+# 排除 .cr-message-list 聊天区——工人对话里可能转述「积分不足」，正文区
+# 一律不算，只有真实弹层命中才算信号（防误报触发无谓切号重启）。
+JS_CREDIT_PROMPT = r"""(() => {
+  const KW = /(积分不足|积分不够|积分用尽|积分用完|积分已用完|积分耗尽|余额不足|额度不足|配额不足)/;
+  const vis = (e) => { const r = e.getBoundingClientRect();
+    return r.width > 4 && r.height > 4; };
+  const ml = document.querySelector('.cr-message-list');
+  const sel = '[class*="toast"],[class*="Toast"],[class*="dialog"],[class*="Dialog"],' +
+              '[class*="modal"],[class*="Modal"],[class*="popover"],[class*="Popover"],' +
+              '[class*="message-box"],[class*="notice"],[class*="snackbar"]';
+  for (const e of document.querySelectorAll(sel)) {
+    if (!vis(e) || (ml && ml.contains(e))) continue;
+    const t = (e.innerText || '').trim();
+    if (t && t.length <= 80 && KW.test(t))
+      return { hit: true, where: 'overlay', text: t.slice(0, 50) };
+  }
+  return { hit: false };
 })()"""
 
 # 切会话：对内层 _card_ 派发完整 MouseEvent 序列（裸 click React 不吃，D3/D14）
@@ -886,6 +917,60 @@ def release_worker_tasks(wid: str = "") -> str:
         return f"释放失败：{e}（板上可能有孤儿已领单，需人工看板）"
 
 
+def blocked_credit_hits() -> dict:
+    """阻塞单里的积分耗尽信号统计（只读 /api/tasks?status=阻塞，最多 2000 单）。
+
+    返回 {"hits": 命中数, "blocked": 阻塞总数, "total": 板上总数, "samples": [...]}。
+    任务板不通时抛异常，由调用方 guarded/try 处理。
+    """
+    ts = board_api(f"/api/tasks?status={urllib.parse.quote('阻塞')}&limit=2000",
+                   timeout=8)
+    tasks = ts.get("tasks") or []
+    hits = [t for t in tasks
+            if t.get("状态") == "阻塞"
+            and any(k in (t.get("结果") or "") for k in CREDIT_KW)]
+    return {"hits": len(hits),
+            "blocked": sum(1 for t in tasks if t.get("状态") == "阻塞"),
+            "total": ts.get("total", len(tasks)),
+            "samples": [f"{t.get('id')}:{(t.get('结果') or '')[:24]}"
+                        for t in hits[:3]]}
+
+
+def requeue_credit_blocked(fuse: int = 500) -> str:
+    """把「因积分耗尽被卡住」的阻塞单逐个退回待领（POST /api/release，单任务
+    端点，服务端任意状态可退——2026-10-07 实读源码确认）。
+
+    只退原因含积分关键词的单：其他阻塞（前置缺失/真实障碍）退了也会被再次
+    阻塞，还污染验收口径。切号成功后调用（Variable 指定：任务要继续做下去，
+    不重排的话这些单永远躺在阻塞栏没人再领）。fuse=单轮重排上限（保险丝）。
+    返回 "重排 N 单"。
+    """
+    freed, off, page = [], 0, 2000
+    while len(freed) < fuse:
+        ts = board_api(f"/api/tasks?status={urllib.parse.quote('阻塞')}"
+                       f"&limit={page}&offset={off}", timeout=8)
+        tasks = ts.get("tasks") or []
+        if not tasks:
+            break
+        for t in tasks:
+            if len(freed) >= fuse:
+                break
+            if t.get("状态") == "阻塞" \
+                    and any(k in (t.get("结果") or "") for k in CREDIT_KW):
+                try:
+                    r = board_api("/api/release", {"id": t.get("id")}, timeout=8)
+                    if r.get("ok"):
+                        freed.append(str(t.get("id")))
+                except Exception:
+                    pass   # 单个失败不放弃整批（下轮切号/巡检再试）
+        off += len(tasks)
+        if len(tasks) < page:
+            break
+    if freed:
+        ledger("积分阻塞重排", "-", "领单塔", f"{len(freed)} 单退回待领")
+    return f"重排 {len(freed)} 单"
+
+
 def archive_dead_worker(wid: str, conv: str, state: str,
                         age_min: float, reason: str) -> Path:
     """卡死工人归档：写 dispatch/archive/日期/Wxx_HHMMSS.md + 释放名下任务 +
@@ -1083,6 +1168,15 @@ def switch_account_flow(reason: str, workers: int,
             log(f"[WARN] {label} 切入后账号体检失败（{e}）→ 不拉黑，交给运行期判据")
         log(f"[切号] {label} 可用（余 {remain_txt}）✓")
         break
+
+    # 积分耗尽卡死的阻塞单 → 新账号就绪后逐个退回待领（Variable 2026-10-07
+    # 指定「任务要继续做下去」：不重排的话这些单永远躺在阻塞栏没人再领）
+    try:
+        rq = requeue_credit_blocked()
+        if rq != "重排 0 单":
+            log(f"[切号] 积分阻塞单已重排：{rq}")
+    except Exception as e:
+        log(f"[WARN] 积分阻塞单重排失败：{e}（不影响切号，下轮再试）")
 
     # ── WorkBuddy 已恢复：先看 18 路对话还在不在、还跑不跑 ──
     mapped = {read_conv(f"W{i:03d}") for i in range(1, workers + 1)}
@@ -1343,6 +1437,9 @@ def main() -> int:
         last_hb = 0.0
         last_board_ok = True
         last_quota_check = time.time()
+        _credit_streak = 0        # 页面积分提示连续命中次数（两轮≥30s间隔才算成立）
+        _last_credit_scan = 0.0   # 页面扫描节流（30s）
+        _last_blocked_scan = 0.0  # 阻塞单积分信号扫描节流（60s，列表拉取较重）
         try:
             while True:
                 round_fail = 0      # 本轮发送失败次数（积分巡检触发器）
@@ -1494,11 +1591,44 @@ def main() -> int:
                     log(f"心跳：忙 {busy_cnt} / 待命 {ready_cnt} / 未链会话 {missing_conv}"
                         f" / 任务板[{board_txt}]")
 
-                # 3.5) 积分巡检与自动切号（Variable 2026-10-06 指定）：
-                #      单轮发送失败 ≥3（异常信号）或每 10 分钟预防性巡检。
-                #      连败且池里有号 → 切号重建；池里没号 → 停机。
+                # 3.5) 积分巡检与自动切号（Variable 2026-10-06/07 指定）。
+                #      触发信号（积分耗尽时塔的发送不耗积分，round_fail 恒 0，
+                #      只靠发送连败会彻底漏掉该场景 → 任务板阻塞单堆积停摆）：
+                #      ① 发送连败 ≥3（塔→工人指令发不出去）
+                #      ② 页面积分提示连续 ≥2 次（toast/dialog 扫描，30s 节流，
+                #        排除聊天区；连续两次防单次误报触发无谓重启）
+                #      ③ 阻塞单原因含积分关键词 ≥2 例（工人 AI 失败把任务标阻塞）
+                #      ④ 页面提示 1 次 + 阻塞积分单 ≥1 或阻塞堆积 ≥8（交叉印证）
+                #      切号成功后自动把积分阻塞单重排回待领（任务继续做下去）。
                 quota_due = time.time() - last_quota_check >= QUOTA_CHECK_EVERY
-                if USE_POOL and (round_fail >= 3 or quota_due):
+                page_credit = ""
+                if time.time() - _last_credit_scan >= 30:
+                    _last_credit_scan = time.time()
+                    pr = guarded("积分提示扫描", st.call_js, JS_CREDIT_PROMPT,
+                                 default=None)
+                    if isinstance(pr, dict) and pr.get("hit"):
+                        page_credit = str(pr.get("text") or "")[:40]
+                        _credit_streak += 1
+                        if _credit_streak == 1:
+                            log(f"[积分] 页面出现积分提示：{page_credit}")
+                    else:
+                        _credit_streak = 0
+                credit_hits, blocked_all = 0, 0
+                if board_ok and blocked:
+                    if time.time() - _last_blocked_scan >= 60:
+                        _last_blocked_scan = time.time()
+                        binfo = guarded("阻塞积分信号", blocked_credit_hits,
+                                        default={"hits": 0, "blocked": 0})
+                        credit_hits = binfo.get("hits") or 0
+                        blocked_all = binfo.get("blocked") or 0
+                        if credit_hits:
+                            log(f"[积分] 阻塞单积分信号 {credit_hits} 例"
+                                f"（{'；'.join(binfo.get('samples') or [])}）")
+                if USE_POOL and (round_fail >= 3 or _credit_streak >= 2
+                                 or credit_hits >= 2
+                                 or (page_credit and credit_hits >= 1)
+                                 or (page_credit and blocked_all >= 8)
+                                 or quota_due):
                     last_quota_check = time.time()
                     info = guarded("积分巡检", apool.probe_all, REMAIN_MIN,
                                    default={"ok": False, "why": "异常（见塔日志）"})
@@ -1508,23 +1638,34 @@ def main() -> int:
                         log(f"[积分巡检] 池 {info['accounts']} 号 总余 "
                             f"{info['pool_remain']} 最高 {info['richest']}"
                             f"({info['richest_remain']}) 可切 {info['switchable']}"
-                            f" / 本轮发送失败 {round_fail}")
-                        if round_fail >= 3:
+                            f" / 发送连败 {round_fail} / 页面提示×{_credit_streak}"
+                            f" / 阻塞积分单 {credit_hits}")
+                        need_switch = (round_fail >= 3 or _credit_streak >= 2
+                                       or credit_hits >= 2
+                                       or (page_credit and credit_hits >= 1)
+                                       or (page_credit and blocked_all >= 8))
+                        if need_switch:
+                            why_sw = (f"单轮发送失败 {round_fail} 次"
+                                      if round_fail >= 3 else
+                                      f"页面积分提示×{_credit_streak}"
+                                      if _credit_streak >= 2 else
+                                      f"阻塞单积分信号 {credit_hits} 例")
                             if info.get("switchable", 0) <= 0:
-                                log("★ 停机 ★ 发送连败且账号池无可用积分账号"
-                                    "——产线终止（50000 任务未完，需人工补充账号）")
+                                log("★ 停机 ★ 积分耗尽信号成立但账号池无可用"
+                                    "积分账号——产线终止（需人工补充账号）")
                                 ledger("停机", "-", "领单塔",
-                                       f"发送连败 {round_fail} + 无可用积分账号"
+                                       f"{why_sw} + 无可用积分账号"
                                        f"（门槛 {REMAIN_MIN}）：{info}")
                                 return 2
                             r = guarded("切号流程", switch_account_flow,
-                                        f"单轮发送失败 {round_fail} 次", a.workers,
+                                        why_sw, a.workers,
                                         settle_min=a.settle_min,
                                         default="fail:异常（见塔日志，下轮重试）")
                             if r == "no_account":
                                 log("★ 停机 ★ 无可用积分账号——产线终止")
                                 return 2
                             if r == "ok":
+                                _credit_streak = 0   # 新号就绪：页面信号清零重计
                                 log("[切号] 工人已重建/保全续用，产线继续")
                             else:
                                 log(f"[FAIL] 切号失败：{r}（下轮重试）")

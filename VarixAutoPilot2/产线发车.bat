@@ -29,6 +29,12 @@ REM  >=2/3 of the 18 conversations survived with real worker state they
 REM  are KEPT (nudged back to work + settle health check) instead of a
 REM  full 18-conversation rebuild.
 REM
+REM  Credit exhaustion (2026-10-07): three signals trigger the switch -
+REM  on-page "not enough credits" prompt (x2 consecutive), >=2 blocked
+REM  tasks whose reason mentions credits, or 3 send failures in a round.
+REM  After a successful switch, credit-blocked tasks are automatically
+REM  requeued (released back to pending) so work continues.
+REM
 REM  24h guard: if the tower crashes (any exit code other than 0/2)
 REM  this bat restarts it after 60s. Exit 0 = graceful stop / wrap-up,
 REM  exit 2 = halted (no usable credit account) - no auto restart.
