@@ -932,14 +932,24 @@ mod red_fuzz {
     #[test]
     fn fuzz_red_items() {
         let set = run_vec19_checks();
-        for name in set.red_items() {
-            println!("[红] {}", name);
+        // `red_items()` 返回 `([Option<Check>; MAX_CHECKS], usize)` 元组，
+        // **不是迭代器** —— 直接 `for x in set.red_items()` 编译不过。
+        // 且它返回全部项（含绿项），不是只返红项，所以还要按 `passed` 过滤。
+        let (_items, count) = set.red_items();
+        let mut i = 0usize;
+        while i < count {
+            if let Some(c) = set.get(i) {
+                if !c.passed {
+                    println!("[红] {}", c.name);
+                }
+            }
+            i += 1;
         }
-        println!(
-            "total={} passed={} dropped={}",
-            set.len(),
-            set.passed_count(),
-            set.dropped()
-        );
+        // 通过数取 `tally()` 的第一项：`CheckSet` 没有 `passed_count()` 方法，
+        // 写错方法名会让整个 `cargo test` 在本模块编译阶段就挂掉。
+        let (passed, red) = set.tally();
+        println!("total={} passed={} red={} dropped={}", set.len(), passed, red, set.dropped());
+        assert_eq!(passed + red, set.len(), "tally 与len 必须自洽");
+        assert!(red == 0, "域自检不该有红项");
     }
 }
