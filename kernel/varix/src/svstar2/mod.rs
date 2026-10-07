@@ -146,6 +146,8 @@
 //! | [`vec19_checks`] | F0419 域自检（判据逐条映射，54 项） | VE 册 #VE-F0419 |
 //! | [`vec20_closure`] | F0420 词法组收口（十八件证据集合差齐备 + 🔴清零/🟡闭环/🟢登记三档总账 + 双签主体相异 + 三条经验可机检下游动作 + 上游基准退化原样上抛） | VE 册 #VE-F0420 |
 //! | [`vec20_checks`] | F0420 域自检（判据逐条映射，56 项） | VE 册 #VE-F0420 |
+//! | [`vec21_parser`] | F0421 语法分析器架构（递归下降手写分析器选型留痕含被拒策略逐条理由 / 记号流前瞻窗口 k=2 不回扫由消费水位结构性保证 / 解析只产生动作 AST 构建降为可替换消费者且回调拒绝被隔离不影响状态机 / 解析深度上限超限报嵌套源头而非当前位置 / 文法派生表 FIRST-FOLLOW 规范期拦截歧义且可前缀分解不误拦 / 诊断码锚点引用 F0420 移交两条可机检下游动作兑现） | VE 册 #VE-F0421 |
+//! | [`vec21_checks`] | F0421 域自检（判据逐条映射，78 项：选型决策 14 / 前瞻窗口 10 / 动作分离 11 / 深度防护 13 / 锚点引用 8 / 文法冲突 10 / 性能 6 / 进度保底 6） | VE 册 #VE-F0421 |
 //! | [`ves04_flow`] | F3604 创作工作流引擎（DAG 契约复用 F3005+ 三预置流 + 断点续作 + 沙箱 + 驱动协议） | VE 册 #VE-F3604 |
 //! | [`ves04_checks`] | F3604 域自检（判据逐条映射，55 项分两批落集） | VE 册 #VE-F3604 |
 
@@ -242,6 +244,8 @@ pub mod vec19_checks;
 pub mod vec19_fuzz;
 pub mod vec20_checks;
 pub mod vec20_closure;
+pub mod vec21_checks;
+pub mod vec21_parser;
 pub mod ved01_checks;
 pub mod ved01_tree;
 pub mod ved02_checks;
@@ -494,6 +498,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0204", veb04_checks::run_veb04_checks()),
         ("VE-F0210", veb10_cursor::run_veb10_checks()),
         ("VE-F0401", vec01_checks::run_vec01_checks()),
+        ("VE-F0421", vec21_checks::run_vec21_checks()),
         ("VE-F0402", vec02_spec::run_vec02_checks()),
         ("VE-F0403", vec03_lexer::run_vec03_checks()),
         ("VE-F0404", vec04_keywords::run_vec04_checks()),
