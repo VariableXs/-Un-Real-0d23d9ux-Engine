@@ -131,6 +131,7 @@
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
 //! | [`veq03_handle`] | F3203 资源句柄与生命周期（类型化句柄+五态弧表+计数与图双源对账+分代GC与误收P1红线） | VE 册 #VE-F3203 |
+//! | [`veq04_type`] | F3204 资源类型系统（十类闭集×四要素登记+开放封闭扩展点+跨类型双拦截+两级语义+命名空间） | VE 册 #VE-F3204 |
 //! | [`vee01_arch`] | F0801 文字渲染域总架构（四段单向流+ 三向兑现 + 1.5ms 预算） | VE 册 #VE-F0801 |
 //! | [`vee02_utf8`] | F0802 字符编码与 UTF-8 解码（四档处置 + 偏移表 + 200MB/s） | VE 册 #VE-F0802 |
 //! | [`vee03_outline`] | F0803 字形轮廓与贝塞尔（二次升三次 + 围向约定 + 1/64 量化） | VE 册 #VE-F0803 |
@@ -495,6 +496,8 @@ pub mod veq01_pipeline;
 pub mod veq02_checks;
 pub mod veq02_graph;
 pub mod veq03_checks;
+pub mod veq04_checks;
+pub mod veq04_type;
 pub mod veq03_handle;
 pub mod ver01_arch;
 pub mod ver01_checks;
@@ -750,6 +753,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
         ("VE-F3203", veq03_handle::run_veq03_checks()),
+        ("VE-F3204", veq04_type::run_veq04_checks()),
         ("VE-F3001", vep01_checks::run_vep01_checks()),
         ("VE-F3002-a", vep02_checks::run_vep02_checks_a()),
         ("VE-F3002-b", vep02_checks::run_vep02_checks_b()),
