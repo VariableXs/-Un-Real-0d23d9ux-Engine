@@ -61,6 +61,7 @@
 //! | [`vea22_vlayout`] | F0022 顶点输入布局描述器（声明式偏移推导/编译期签名闸门/对齐修正/规范形去重/A27 位置空间） | VE 册 #VE-F0022 |
 //! | [`vea23_psocache`] | F0023 渲染管线对象缓存（四段缓存：键构造/查表命中/异步编译/LRU 淘汰；哈希只查表、等价由描述符全等判定；编译失败降级带原因与上限；命中率四桶归因；预热把卡顿挪到加载期；持久化只存键与就绪事实） | VE 册 #VE-F0023 |
 //! | [`vea24_hotreload`] | F0024 着色器热重载协调器（四段流水：请求合并/重编译/管线重建/场景验证；坏码不落地靠 active+staged 双份槽位、验证通过才提升；回滚真有快照可退；冻结是状态位非线程锁；断点期间排队保最新） | VE 册 #VE-F0024 |
+//! | [`vea25_cbuf`] | F0025 常量缓冲更新策略器（四档策略按作用域与时机两轴分；成本模型=字节×每帧次数且不摊一次性切换成本；脏标记精确到槽位；漂移双向校准且假净优先并记动作序；失配建议落到具体档位附代价对比） | VE 册 #VE-F0025 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -232,6 +233,7 @@ pub mod vea21_raster;
 pub mod vea22_vlayout;
 pub mod vea23_psocache;
 pub mod vea24_hotreload;
+pub mod vea25_cbuf;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
@@ -381,7 +383,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 134] = [
+    let blocks: [(&'static str, CheckSet); 140] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -443,6 +445,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0022", vea22_vlayout::run_vea22_checks()),
         ("VE-F0023", vea23_psocache::run_vea23_checks()),
         ("VE-F0024", vea24_hotreload::run_vea24_checks()),
+        ("VE-F0025", vea25_cbuf::run_vea25_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
@@ -503,6 +506,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3001", vep01_checks::run_vep01_checks()),
         ("VE-F3002-a", vep02_checks::run_vep02_checks_a()),
         ("VE-F3002-b", vep02_checks::run_vep02_checks_b()),
+        ("VE-F3003-a", vep03_checks::run_vep03_checks_a()),
+        ("VE-F3003-b", vep03_checks::run_vep03_checks_b()),
         ("VE-F4002", vei02_checks::run_vei02_checks()),
         ("VE-F4003", vei03_checks::run_vei03_checks()),
         ("VE-F4004", vei04_checks::run_vei04_checks()),
