@@ -21,6 +21,18 @@ pub mod meshquant;
 pub mod meshrepair;
 pub mod meshdecimate;
 pub mod meshbatch;
+/// VE-I · I01 网格格式与几何基础组 · 几何校验器（VE-F1612）
+///
+/// 判据一 schema 校验（vmesh 全字段：类型/必填/范围，未知字段按声明策略处置）、
+/// 判据二 三查（索引越界/NaN 几何/超大属性值——恶意网格攻击面，三类互不遮蔽）、
+/// 判据三 容错策略（三查全可修：丢面/置零/钳制；schema 全不可修：拒绝 + 三要素告知）、
+/// 判据四 同标准对接（F1121 四层漏斗顺序不可跳+ F1607 缺陷族映射，不可映射者如实登记）。
+pub mod meshvalidate;
+/// VE-I · I01 网格格式与几何基础组 · 几何校验器域自检（VE-F1612）
+///
+/// 判据侧独立重算三查期望与schema 违规数，不复用被测判定逻辑；
+/// 范围与上限一律用夹逼对（闭区间两侧都验）。
+pub mod meshvalidate_checks;
 pub mod normtangent;
 /// VE-I · I01 网格格式与几何基础组 · 骨骼权重数据容器（VE-F1610）
 ///
