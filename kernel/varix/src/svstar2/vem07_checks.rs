@@ -336,6 +336,31 @@ fn check_batching(set: &mut CheckSet) {
     let fp_same = times_fingerprint(&t4());
     set.add("C07-分批-指纹对时间轴内容敏感", fp_a != fp_b && fp_a == fp_same, "");
 
+    // **指纹必须对顺序敏感**（补的是真缺口，不是凑数）。
+    // 上面那条只测了「改末元素值」这一个维度；把 FNV 的乘区整行删掉
+    // （`h ^= x` 不再 `h = h*prime`）后，指纹退化成**前缀异或和**：
+    //   - 改末元素 → 异或和确实变了 ⇒ 上面那条照样绿；
+    //   - 但**打乱顺序不换指纹**（异或可交换）⇒ 分批键第二分量失效。
+    // 而分批键的第二分量正是「同批共享一张时间轴」的凭据：两条时间轴
+    // 内容集合相同、顺序不同的轨被错误合批 → 共享二分拿到错区间 → 静默错值。
+    // 判据用**同集合换序**这一维度（正确实现必变、异或实现不变）。
+    let fp_ord_a = times_fingerprint(&vec![0, 100, 200, 400]);
+    let fp_ord_b = times_fingerprint(&vec![400, 200, 100, 0]);
+    let fp_ord_c = times_fingerprint(&vec![0, 200, 100, 400]);
+    set.add(
+        "C07-分批-指纹对顺序敏感",
+        fp_ord_a != fp_ord_b && fp_ord_a != fp_ord_c && fp_ord_b != fp_ord_c,
+        "同集合换序必换指纹（异或型退化实现会全等→ 分批键第二分量失效）",
+    );
+    // 反向对账：长度不同必须换指纹（防「只混值不混长度」的截断型退化）。
+    let fp_len_a = times_fingerprint(&vec![1, 2, 3]);
+    let fp_len_b = times_fingerprint(&vec![1, 2]);
+    set.add(
+        "C07-分批-指纹对长度敏感",
+        fp_len_a != fp_len_b,
+        "前缀相同长度不同须换指纹（前缀异或型退化会让两者相等）",
+    );
+
     // 二分语义真值（表外形态：越界 / 端点 / 中间）。
     // t=150 落在 [100,200) 区间 ⇒ index=1（不是 0，写错就把区间语义搞反了）。
     let h_low = bisect(&t4(), 0);
@@ -354,6 +379,93 @@ fn check_batching(set: &mut CheckSet) {
     set.add("C07-分批-单帧轨二分不越界", bisect(&vec![42u32], 42).index == 0, "");
     set.add("C07-分批-单帧轨越界标钳制", bisect(&vec![42u32], 99).clamped, "");
     set.add("C07-分批-空时间轴二分不panic", bisect(&[], 5).clamped, "");
+
+    // **二分必须是对数级而非线性级**（本条治M01 类变异）。
+    // 小语料（n=4）下二分与线性步**实测同值**，所以「二分端点中点越界语义正确」
+    // 那条判据对「把 `mid = lo + (hi-lo)/2` 换成 `mid = lo + 1`」完全无感——
+    // 结果下标相同，只是步数不同。而步数正是摊薄收益的来源，必须被钉住。
+    //
+    // 判据取 n=1000的深时间轴：二分步数应 ≤ ceil(log2(n))+1 = 11；
+    // 线性扫描会是 500~999 量级。两侧差两个数量级，任何退化立刻分叉。
+    let deep: Vec<u32> = {
+        let mut v: Vec<u32> = Vec::with_capacity(1000);
+        let mut k = 0u32;
+        while v.len() < 1000 {
+            v.push(k.wrapping_mul(10));
+            k = k.wrapping_add(1);
+        }
+        v
+    };
+    let deep_hit = bisect(&deep, 4321);
+    set.add(
+        "C07-分批-深时间轴二分步数对数级",
+        deep_hit.steps > 0 && deep_hit.steps <= 11,
+        "n=1000 二分步数须≤11（ceil(log2 n)+1）；线性扫描会是数百步\
+         （本语料下二分与线性结果下标同值，只有步数能区分）",
+    );
+    // 步数须随规模**次线性**增长：n 翻四倍，步数至多 +2（不是 ×4）。
+    let shallow: Vec<u32> = deep[..250].to_vec();
+    let s250 = bisect(&shallow, 1234).steps;
+    let s1000 = bisect(&deep, 1234).steps;
+    set.add(
+        "C07-分批-二分步数随规模次线性",
+        s1000 <= s250 + 2,
+        "n:250→1000（4×）步数至多 +2；线性实现会是 ~4×",
+    );
+
+    // **逐端点夹逼判据**（十诫第 5 条：断言两侧必须在测试点上取不同值）。
+    // 上面那条 `h_mid(150)` 用的是区间内部点，`h_end(400)` 用的是末元素——
+    // **一个内部端点都没打**。于是把 `times[mid] <= t` 写成 `times[mid] < t`
+    // （末元素钳制分支把它救回同一个index）在上面那条判据上完全同值、全绿，
+    // 而区间语义在端点处静默地偏了一格（t=100 应落在 index=1，却给出 0）。
+    //
+    // 本条把 4 个关键帧端点**逐个**打进去，并各配一个「端点前一个时刻」
+    // 作夹逼对：语义是「最后一个 `times[i] <= t` 的下标」，故
+    //   t = times[i]-1 ⇒ index = i-1（钳制到前一段）
+    //   t = times[i]   ⇒ index = i（**恰好落该端点所在区间**，不是前一段）
+    // 任一侧写反（`<` 写成 `<=`、或 `<=` 写成 `<`）两侧夹逼对立刻分叉。
+    let e = t4(); // [0, 100, 200, 400]
+    // **末元素单独走钳制分支**：语义是「最后一个 `times[i] <= t` 的下标」，
+    // 但末元素 `t == times[n-1]` 命中的是 `t >= times[n-1]` 早退分支，
+    // 返回的是 **n-2**（末段左端）而不是 n-1（越界）。所以夹逼对只覆盖
+    // **内部端点** i∈[1, n-2]，末元素由上面 `h_end` 那条单独覆盖。
+    let mut endpoint_ok = true;
+    let mut i = 1usize;
+    while i + 1 < e.len() {
+        // 恰好命中端点⇒ 落在以该端点为左端的那一段。
+        if bisect(&e, e[i]).index != i {
+            endpoint_ok = false;
+        }
+        // 端点前一毫秒 ⇒ 落在前一段（i>=1 故不会越界成 -1）。
+        if bisect(&e, e[i] - 1).index != i - 1 {
+            endpoint_ok = false;
+        }
+        i += 1;
+    }
+    set.add(
+        "C07-分批-二分内部端点夹逼对",
+        endpoint_ok,
+        "逐个内部关键帧端点：恰好命中端点取该端点所在区间、前一毫秒取前一段（\
+         捕获 <= 与 < 混写导致的端点偏格；末元素走钳制分支不参与本对）",
+    );
+    // 端点处插值系数必须是 0（alpha 起点），而不是上一段的终点 1.0——
+    // 区间语义写错时这里会跟着变成 1.0，与 index 判据形成第二条独立证据。
+    let mut endpoint_alpha_ok = true;
+    let mut j = 0usize;
+    while j + 1 < e.len() {
+        if lerp_alpha(&e, j, e[j]) != 0.0 {
+            endpoint_alpha_ok = false;
+        }
+        if lerp_alpha(&e, j, e[j + 1] - 1) >= 1.0 {
+            endpoint_alpha_ok = false;
+        }
+        j += 1;
+    }
+    set.add(
+        "C07-分批-端点插值系数起止正确",
+        endpoint_alpha_ok,
+        "区间左端点 alpha=0、下一端点前一毫秒 alpha<1（端点偏格会让 alpha 变成 1.0）",
+    );
 
     // 插值系数：含除零防护。
     set.add(
@@ -1159,6 +1271,30 @@ fn check_cost(set: &mut CheckSet) {
         "C07-成本-总加速比不超过理论上限",
         ws as f64 / wb as f64 <= tracks.len() as f64,
         "理论上限 = 批内轨数（插值段不可摊薄），超过就是模型算错了",
+    );
+
+    // **成本公式本身必须被独立重算**（十诫第 7 条：判据不许向被测函数
+    // 问答案）。上面 `wb < ws` 与 `ws/wb <= n` 都是**两条同一公式的输出相比**，
+    // 属同源比较：把 `work_units` 的插值段整项抹掉（只剩 `bisect_steps`），
+    // 这两条**照样绿**——因为批路径的二分步数确实更少，插值段加不加都更少。
+    // 后果是成本模型开始虚报收益（插值段是真实开销，抹掉就少算了一半）。
+    //
+    // 本条在**判据侧独立重算** `bisect_steps + interp_calls` 并要求与
+    // `work_units` 的返回值**恰等于**——公式被改动立即分叉。
+    let wb_expect = ob.bisect_steps.saturating_add(ob.interp_calls);
+    let ws_expect = os_.bisect_steps.saturating_add(os_.interp_calls);
+    set.add(
+        "C07-成本-成本公式与二分加插值逐位对账",
+        wb == wb_expect && ws == ws_expect,
+        "work_units 必须恰等于「二分步数+插值次数」：判据侧独立重算双向对账，\
+         抹掉任一项即红（否则插值段可被静默漏算、虚报收益）",
+    );
+    // 反向对账：插值段**确实非零**且与二分步数同量级——若work_units
+    // 恰好只算二分，这条在正常语料下会因 interp_calls>0 而 wb != wb_expect。
+    set.add(
+        "C07-成本-插值段计入且非零",
+        ob.interp_calls > 0 && os_.interp_calls > 0,
+        "两条路径的插值次数都必须非零，否则成本模型没有可比基线",
     );
 
     // 两条路径结果逐位一致（成本优化的前提是结果不变）。
