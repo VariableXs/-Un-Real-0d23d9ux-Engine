@@ -23,12 +23,10 @@
 //!
 //! 分两批落集（`MAX_CHECKS` 是全仓共享的定长上限，单域不得独占）。
 
-#![cfg_attr(not(test), no_std)]
-
 extern crate alloc;
 
-use alloc::format;
-use alloc::string::{String, ToString};
+use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
@@ -167,7 +165,7 @@ pub fn run_ves04_checks_a() -> CheckSet {
     );
 
     // 并行边不构成先后：把 a→b 改并行后，b 不再等 a，拓扑序里两者可紧邻。
-    let mut par = FlowEdgesParallel();
+    let par = parallel_edges_graph();
     let topo = fl::build_graph(par).unwrap();
     let pos_a = topo.iter().position(|&x| x == 0);
     let pos_b = topo.iter().position(|&x| x == 1);
@@ -277,6 +275,69 @@ pub fn run_ves04_checks_a() -> CheckSet {
     set.add("F3604-诊断-处置指引非空", no_hint.is_empty(), "");
 
     // —— 判据二：三条预置流（锚点「新建主题/导入资产/发布流程三条预置流」）——
+
+    // 按名字取流：工具层菜单与断点恢复都按名字工作，故这条入口是真实路径。
+    let by_name_ok = match fl::preset_flow_by_name("发布流程") {
+        Ok(g) => g.nodes.len() == 5,
+        Err(_) => false,
+    };
+    set.add("F3604-预置-按名取流与枚举同形", by_name_ok, "");
+
+    // 未知名字必须显式失败且列出可选名——静默回落到默认流会让用户
+    // 以为在发布、实际建了个主题。
+    match fl::preset_flow_by_name("不存在的流") {
+        Ok(_) => set.add("F3604-预置-未知名拒绝并列可选", false, "未知名被放行"),
+        Err(d) => set.add(
+            "F3604-预置-未知名拒绝并列可选",
+            d.code == fl::FlowDiagCode::UnknownPreset
+                && d.message.contains("不存在的流")
+                && d.hint.contains("发布流程"),
+            "",
+        ),
+    }
+
+    // 已终结的工作流不可再推进：「返回 false 但无错」与「无可推进」同形，
+    // 调用方无法区分，故须显式报错。
+    let mut fin = fl::WorkflowRunner::new(linear(&["a", "b"])).unwrap();
+    fin.run_to_end().unwrap();
+    let after = fin.advance();
+    set.add(
+        "F3604-驱动-终结后推进拒绝",
+        fin.is_finished()
+            && after
+                .err()
+                .map(|d| d.code == fl::FlowDiagCode::AlreadyFinished)
+                .unwrap_or(false),
+        "",
+    );
+
+    // 孤立步骤对账：**只删 a→b 这一条**，保留 b→c。
+    // 早前一版把 b 的所有边都删了，结果 a、b、c 三者全部孤立——
+    // 判据以为只有 b，实际是 3 个，恒红。这是用例设计错，不是被测物错。
+    // 正确形态：删掉 a→b 后，a 既无入边也无出边（成孤立点，下标 0），
+    // 而 b→c 仍在，b、c 不孤立。故孤立者是 a 不是 b。
+    let mut orph = linear(&["a", "b", "c"]);
+    orph.edges.retain(|e| e.to != 1); // 删 a->b，保留 b->c
+    let or = fl::WorkflowRunner::new(orph.clone()).unwrap();
+    let found = or.audit_orphans();
+    set.add(
+        "F3604-驱动-孤立步骤可对账",
+        orph.nodes.len() == 3
+            && orph.edges.len() == 1
+            && found.len() == 1
+            && found[0] == 0,
+        "",
+    );
+
+    // 单步图不应误报孤立
+    let single = fl::WorkflowRunner::new(linear(&["solo"])).unwrap();
+    set.add(
+        "F3604-驱动-单步图不误报孤立",
+        single.audit_orphans().is_empty(),
+        "",
+    );
+
+
 
     set.add(
         "F3604-预置-三条齐备",
@@ -753,7 +814,7 @@ fn linear(ids: &[&str]) -> fl::FlowGraph {
 }
 
 /// a→b 但边为并行：b 不再等 a。
-fn FlowEdgesParallel() -> fl::FlowGraph {
+fn parallel_edges_graph() -> fl::FlowGraph {
     let mut g = fl::FlowGraph::new();
     g.nodes.push(fl::StepNode::new("a", 32));
     g.nodes.push(fl::StepNode::new("b", 32));

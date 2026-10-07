@@ -120,16 +120,12 @@
 //!
 //! 分工登记见 [`DOWNSTREAM_OWNERSHIP`]。
 
-#![cfg_attr(not(test), no_std)]
-
 extern crate alloc;
 
 use alloc::format;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-
-use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
 // 一、DAG 模式契约（F3005 复用单源）
@@ -287,7 +283,11 @@ impl StepState {
         )
     }
 
-    /// 状态名（诊断用，稳定线缆名）。
+    /// 状态名（诊断与日志用，稳定线缆名）。
+    ///
+    /// 看似只在自检里被调用，但它是**对外诊断契约的一部分**：工具层与
+    /// 台账按名字记录步骤状态，改名即破坏历史可读性。故保留并在此说明用途，
+    /// 避免后来者当未用代码删掉。
     pub fn wire(self) -> &'static str {
         match self {
             StepState::Pending => "Pending",
@@ -494,7 +494,7 @@ impl FlowGraph {
 /// 图校验 + 构建：查重 id、零预算、边下标越界，最后**构建期**做环检测。
 ///
 /// 返回拓扑序（Kahn 算法，O(V+E)）。环存在时 `Err(CycleDetected)` 且指名节点。
-pub fn build_graph(mut graph: FlowGraph) -> FlowResult<Vec<usize>> {
+pub fn build_graph(graph: FlowGraph) -> FlowResult<Vec<usize>> {
     // ——— 节点侧校验 ———
     let n = graph.nodes.len();
     let mut i = 0usize;
@@ -563,9 +563,10 @@ pub fn build_graph(mut graph: FlowGraph) -> FlowResult<Vec<usize>> {
         k += 1;
     }
 
-    let topo = topological_order(&graph)?;
-    graph.edges = graph.edges; // 图所有权回到调用方（构建不改内容）
-    Ok(topo)
+    // 构建期只做校验与环检测，**不改图内容**；故graph 不需 mut。
+    // 早前这里有一行 `graph.edges = graph.edges` 自赋值，纯属噪声——
+    // 自赋值会让人误以为构建过程改过图，而它其实没改。
+    Ok(topological_order(&graph)?)
 }
 
 /// Kahn 拓扑排序，O(V+E)。有环时指名**残留节点**（那些永远入度不为 0 的）。
@@ -1016,7 +1017,6 @@ impl WorkflowRunner {
     /// 从断点恢复。
     pub fn resume(graph: FlowGraph, cp: &Checkpoint) -> FlowResult<WorkflowRunner> {
         let states = restore(&graph, cp)?;
-        let n = graph.nodes.len();
         Ok(WorkflowRunner {
             graph,
             states,
@@ -1032,6 +1032,25 @@ impl WorkflowRunner {
     /// 返回 `Ok(false)` 表示"此刻无可推进的步骤"（尚有前置未成），
     /// `Ok(true)` 表示推进了一步。状态转移非法时 `Err`。
     pub fn advance(&mut self) -> FlowResult<bool> {
+        // 已终结的工作流不可再推进。拦在这里而不是让 advance 自然返回 false，
+        // 因为「返回 false 但无错」与「无可推进」同形——调用方无法区分
+        // 「跑完了」与「这活已经结束了别再碰」，故须显式报错。
+        if self.is_finished() {
+            return ffail_owned(
+                FlowDiagCode::AlreadyFinished,
+                String::from("工作流已终结，不可再推进"),
+                "如需重跑请新建运行体，不要在已终结的实例上继续",
+                usize::MAX,
+            );
+        }
+        self.advance_unchecked()
+    }
+
+    /// 无终结闸的推进。**只供 [`WorkflowRunner::run_to_end`] 内部循环使用**——
+    /// 该循环的最后一步完成后还会再调一次 advance 以确认无可推进，
+    /// 若走带闸的公开版就会把自己刚跑完的状态判成「已终结」而报错。
+    /// 对外一律走 [`WorkflowRunner::advance`]。
+    fn advance_unchecked(&mut self) -> FlowResult<bool> {
         let n = self.graph.nodes.len();
         let mut i = 0usize;
         while i < n {
@@ -1113,14 +1132,14 @@ impl WorkflowRunner {
 
     /// 全流程推到底（无外部依赖的纯状态机演练）。返回终结态。
     pub fn run_to_end(&mut self) -> FlowResult<StepState> {
-        let n = self.graph.nodes.len();
+        let steps = self.graph.nodes.len();
         let mut guard = 0usize;
         loop {
             guard += 1;
-            if guard > n + 2 {
+            if guard > steps + 2 {
                 break;
             }
-            let moved = self.advance()?;
+            let moved = self.advance_unchecked()?;
             if moved {
                 let idx = self
                     .states
@@ -1134,7 +1153,7 @@ impl WorkflowRunner {
         }
         // 剩余 Pending 步骤：前置失败/未成 → Blocked，不留悬空 Pending。
         let mut i = 0usize;
-        while i < n {
+        while i < steps {
             if self.states[i] == StepState::Pending {
                 self.states[i] = StepState::Blocked;
             }
@@ -1172,6 +1191,34 @@ impl WorkflowRunner {
         self.ledger.delivered += n;
         self.ledger.undelivered.clear();
         n
+    }
+
+    /// 全流程是否已终结（无任何Pending / Running 步骤）。
+    pub fn is_finished(&self) -> bool {
+        !self
+            .states
+            .iter()
+            .any(|s| *s == StepState::Pending || *s == StepState::Running)
+    }
+
+    /// 工作流对账：返回**孤立步骤**（既无入边也无出边的非首步骤）与游离步骤下标。
+    ///
+    /// 孤立步骤多半是编排时的手误——接不上任何前置也接不到任何后续，
+    /// 跑起来「自己跑完了」但结果没人消费。这类问题不会导致报错，
+    /// 只会让流程产出一个没人用的产物，故须显式对账出来。
+    pub fn audit_orphans(&self) -> Vec<usize> {
+        let n = self.graph.nodes.len();
+        let mut out: Vec<usize> = Vec::new();
+        let mut i = 0usize;
+        while i < n {
+            let ins = self.graph.incoming(i);
+            let outs = self.graph.outgoing(i);
+            if ins.is_empty() && outs.is_empty() && n > 1 {
+                out.push(i);
+            }
+            i += 1;
+        }
+        out
     }
 
     /// 生成断点。
@@ -1309,6 +1356,32 @@ pub fn preset_flow(p: Preset) -> FlowResult<FlowGraph> {
         }
     }
     Ok(g)
+}
+
+/// 按名字取预置流。工具层菜单与断点恢复都按名字工作，故必须有这条入口。
+///
+/// 未知名字不是「回落到默认流」而是显式失败：默默用新建主题顶替用户要的
+/// 发布流程，会让用户以为在发布，实际建了个主题——静默改语义比报错坏得多。
+pub fn preset_flow_by_name(name: &str) -> FlowResult<FlowGraph> {
+    let mut i = 0usize;
+    while i < PRESETS.len() {
+        if PRESETS[i].wire() == name {
+            return preset_flow(PRESETS[i]);
+        }
+        i += 1;
+    }
+    let mut avail: Vec<&str> = Vec::new();
+    let mut j = 0usize;
+    while j < PRESETS.len() {
+        avail.push(PRESETS[j].wire());
+        j += 1;
+    }
+    ffail_owned(
+        FlowDiagCode::UnknownPreset,
+        format!("未知预置流「{}」", name),
+        &format!("可选预置流：{}", avail.join(" / ")),
+        usize::MAX,
+    )
 }
 
 /// 三条预置流全集（判据用，也供工具层列菜单）。
