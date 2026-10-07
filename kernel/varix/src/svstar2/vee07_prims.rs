@@ -70,6 +70,7 @@
 
 extern crate alloc;
 
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use super::vee01_arch::ReuseDeclaration;
@@ -1551,6 +1552,8 @@ pub fn run_vee07_checks() -> CheckSet {
     check_variant_limit(&mut set);
     check_contrast_redline(&mut set);
     check_transform(&mut set);
+    check_batch_key_dimensions(&mut set);
+    check_draw_call_warning(&mut set);
     set
 }
 
@@ -2187,4 +2190,163 @@ fn check_transform(set: &mut CheckSet) {
         "变换：局部 {local_depth_ok} 世界 {world_depth_ok} 退化 {degen} det不溢出 {det_ok} 退化检出 {degen_det} 容量 {overflow_ok}"
     );
     set.add("E07-10-局部世界空间与退化防护", ok, "");
+}
+
+/// E07-11 批次键三要素各自都参与归组（变异验证补强，W005）。
+///
+/// **为什么必须单列**：此前十一族判据里，所有合批用例都用
+/// `MaterialVariant(0)` + `BlendMode::Alpha` 这一组常量去构造语料，
+/// 于是「归组键退化成只比 page」的错误实现与正确实现在**外部表现完全相同**
+/// ——把 `BatchKey::new(page, variant, blend)` 改成 `BatchKey::new(page, 0, Alpha)`
+/// 全域仍然全绿。此处用**互异的三元组**做夹逼：变体不同必须分批、
+/// 混合不同必须分批、而三者相同必须合批。
+fn check_batch_key_dimensions(set: &mut CheckSet) {
+    let n = 600u32;
+    // (a) 变体互异 ⇒ 每个变体各自成批（不得因变体被忽略而并成一批）
+    //取 3 个互异变体（3 > 2 是绘制上限，越界量足够大，判据不会贴在阈值上）
+    let variants = [MaterialVariant(0), MaterialVariant(1), MaterialVariant(2)];
+    let mut b = Batcher::new(BG_DARK);
+    let qs = make_quads(n, 1, &variants, &[BlendMode::Alpha], 0, EffectParams::color_only(FG_LIGHT));
+    for q in qs.iter() {
+        b.submit(*q);
+    }
+    let st = b.build();
+    let variant_splits = st.batches == 3;
+    let variant_conserved = st.submitted == n && st.batched == n;
+
+    // (b) 混合模式互异 ⇒ 同样必须分批
+    let blends = [BlendMode::Alpha, BlendMode::Additive];
+    let mut b2 = Batcher::new(BG_DARK);
+    let qs2 = make_quads(n, 1, &[MaterialVariant(0)], &blends, 0, EffectParams::color_only(FG_LIGHT));
+    for q in qs2.iter() {
+        b2.submit(*q);
+    }
+    let st2 = b2.build();
+    let blend_splits = st2.batches == 2;
+    let blend_conserved = st2.submitted == n && st2.batched == n;
+
+    // (c) 反向夹逼：三元组全同 ⇒ 必须**合批**（否则上两条会被
+    // 「一律分批」的退化实现骗过——那是另一个方向的错误）
+    let mut b3 = Batcher::new(BG_DARK);
+    let qs3 = make_quads(n, 1, &[MaterialVariant(0)], &[BlendMode::Alpha], 0, EffectParams::color_only(FG_LIGHT));
+    for q in qs3.iter() {
+        b3.submit(*q);
+    }
+    let st3 = b3.build();
+    let same_merges = st3.batches == 1;
+
+    // (d) 批键内容自洽：每批的 key 必须真的等于其成员 quad 的三元组，
+    // 而不是一个被折叠过的常量。
+    let mut b4 = Batcher::new(BG_DARK);
+    let qs4 = make_quads(n, 1, &variants, &[BlendMode::Alpha], 0, EffectParams::color_only(FG_LIGHT));
+    for q in qs4.iter() {
+        b4.submit(*q);
+    }
+    b4.build();
+    let keys_distinct = distinct_keys(&b4.batches) == 3;
+
+    let ok = variant_splits && variant_conserved && blend_splits && blend_conserved && same_merges && keys_distinct;
+    assert!(
+        ok,
+        "批次键三要素：变体分批 {variant_splits} 变体守恒 {variant_conserved} 混合分批 {blend_splits} 混合守恒 {blend_conserved} 同键合批 {same_merges} 键互异 {keys_distinct}"
+    );
+    set.add("E07-11-批次键三要素各自参与归组", ok, "");
+}
+
+/// 统计批键三元组的不同取值个数（判据辅助，独立于被测归组过程重算）。
+fn distinct_keys(batches: &[QuadBatch]) -> usize {
+    let mut seen: Vec<(u16, u16, u8)> = Vec::new();
+    for b in batches.iter() {
+        let t = (b.key.page, b.key.variant.0, b.key.blend as u8);
+        if !seen.contains(&t) {
+            seen.push(t);
+        }
+    }
+    seen.len()
+}
+
+/// E07-12 绘制调用超限时**必产告警**（变异验证补强，W005）。
+///
+/// **为什么必须单列**：`build()` 里绘制超限会push 一条
+/// `WarnKind::DrawCallBudget` 告警，但此前十一族判据**没有任何一条断言它的存在**
+/// —— 只断言 `draw_calls <= MAX_DRAW_CALLS_PER_FRAME`（不超过就不该有告警）。
+/// 于是把「超限告警」整段改成 `if false &&` 时，全域判据依然全绿：
+/// 告警路径成了**没人验证的死代码**。此处构造一个**必然超限**的语料
+/// （页号每 quad 一换 ⇒ 每页自成一���⇒ 绘制调用远超上限），
+/// 断言该告警确实被产出，且给出的提示可actionable。
+fn check_draw_call_warning(set: &mut CheckSet) {
+    // 构造**必然超限**的语料。注意绘制调用只在 (变体,混合) **连续**时才合并，
+    // 而 `build()` 收尾会按管线指纹给批次排序 ⇒ 变体数就等于绘制调用数。
+    // 故取**4 个互异变体**：2 个变体只会得到 2 次绘制（恰好等于上限，判据红不了），
+    // 3 个以上才必然越界。这是「上界类判据必须让越界量真的越界」——
+    // 贴着阈值造语料，判据就成了恒真。
+    let n = 512u32;
+    let variants = [
+        MaterialVariant(0),
+        MaterialVariant(1),
+        MaterialVariant(2),
+        MaterialVariant(3),
+    ];
+    let mut b = Batcher::new(BG_DARK);
+    let qs = make_quads(
+        n,
+        0, // 页号 0（`pages==0` 归 0）⇒ 碎化只由变体驱动，变量单一
+        &variants,
+        &[BlendMode::Alpha],
+        0,
+        EffectParams::color_only(FG_LIGHT),
+    );
+    for q in qs.iter() {
+        b.submit(*q);
+    }
+    let st = b.build();
+    let exceeded = st.draw_calls > MAX_DRAW_CALLS_PER_FRAME;
+
+    // 该场景下确有超限告警，且不是碎片化告警冒充的。
+    let mut budget_warnings = 0usize;
+    let mut actionable = false;
+    let mut i = 0usize;
+    while i < b.warnings.len() {
+        let w = &b.warnings[i];
+        if w.kind == WarnKind::DrawCallBudget {
+            budget_warnings += 1;
+            if !w.hint.is_empty() {
+                actionable = true;
+            }
+        }
+        i += 1;
+    }
+    let warned_once = exceeded && budget_warnings == 1 && actionable;
+
+    // 反向：单批场景（绘制调用 == 1）**不得**产这条告警，
+    // 否则「见告警就以为超限」 becomes 噪声，零静默的反面是噪声告警。
+    let mut b2 = Batcher::new(BG_DARK);
+    let qs2 = make_quads(
+        BATCH_TARGET_QUADS,
+        1,
+        &[MaterialVariant(0)],
+        &[BlendMode::Alpha],
+        0,
+        EffectParams::color_only(FG_LIGHT),
+    );
+    for q in qs2.iter() {
+        b2.submit(*q);
+    }
+    let st2 = b2.build();
+    let mut quiet = 0usize;
+    let mut j = 0usize;
+    while j < b2.warnings.len() {
+        if b2.warnings[j].kind == WarnKind::DrawCallBudget {
+            quiet += 1;
+        }
+        j += 1;
+    }
+    let no_false_alarm = st2.draw_calls <= MAX_DRAW_CALLS_PER_FRAME && quiet == 0;
+
+    let ok = warned_once && no_false_alarm;
+    assert!(
+        ok,
+        "绘制超限告警：超限 {exceeded} 恰一条 {budget_warnings} 可行动 {actionable} 单批不误报 {no_false_alarm}"
+    );
+    set.add("E07-12-绘制超限必产告警且不误报", ok, "");
 }
