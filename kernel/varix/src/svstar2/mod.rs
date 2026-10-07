@@ -38,7 +38,11 @@
 //!
 //! | 模块 | 功能 | 判据锚 |
 //! | --- | --- | --- |
+//! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
 //! | [`veb13_heads`] | F0213 virtio 多头与 EDID（逐输出独立使能与模式/EDID 三级注入优先级与非法拒载保默认/热增删幂等重算以最新 cfg 为准/布局表 O(输出数) 应用与版本化持久化/位置语义播报名） | VE 册 #VE-F0213 |
+//! | [`vea02`] | F0002 图形上下文生命周期管理器 | VE 册 #VE-F0002 |
+//! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
+//! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
 //! | [`vea18_sampler`] | F0018 采样器状态库 | VE 册 #VE-F0018 |
 //! | [`vea19_blend`] | F0019 混合状态机（四维+独立alpha/预置库/漂移失效缓存/实时预览） | VE 册 #VE-F0019 |
 //! | [`vea11_hotplug`] | F0011 适配器热插拔与路径重选 | VE 册 #VE-F0011 |
@@ -66,6 +70,8 @@
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
 //! | [`vem05_asset`] | F2405 动画曲线资产（m.anim. 开放容器/生态单点/F1948 签名三件/F1956 版本三件/往返逐位零损失） | VE 册 #VE-F2405 |
+//! | [`vem06_event`] | F2406 动画事件轨（事件总线第三生产者 M 域 + F2402 第七类离散轨 + 正播触发/倒播默认抑制语义表 + 同帧去抖取末值 + F1925/F2322 家族同构） | VE 册 #VE-F2406 |
+//! | [`vem06_checks`] | F2406 域自检（判据逐条映射，40 项） | VE 册 #VE-F2406 |
 //! | [`ven02_tree`] | F2602 控件树模型（四要素/三不变量/三操作原子事务/M04 绑定路径解析；自 F2603 迁入的 Rust 权威实现） | VE 册 #VE-F2602 |
 //! | [`ven03_ctype`] | F2603 控件类型体系（六类最小集/扩展三件套/类型注册制/内核-上层分层边界） | VE 册 #VE-F2603 |
 //! | [`ven03_checks`] | F2602/F2603 域自检（判据逐条映射，55 项分三批落集） | VE 册 #VE-F2603 |
@@ -80,6 +86,8 @@
 //! | [`vep01_arch`] | F3001 P 域开工与动效库总架构（三组接口+十项映射+单源分工+三底线+第一红线） | VE 册 #VE-F3001 |
 //! | [`vep02_lang`] | F3002 动效设计语言总纲（四原则+四级时长+语义化缓动+内建 reduce+单源取值） | VE 册 #VE-F3002 |
 //! | [`vep02_checks`] | F3002 域自检（判据逐条映射，171项分两批落集） | VE 册 #VE-F3002 |
+//! | [`vep03_token`] | F3003 动效令牌体系（时长/缓动/位移三族+跨主题恒定+单源注入+reduce 令牌层+硬编码 lint） | VE 册 #VE-F3003 |
+//! | [`vep03_checks`] | F3003 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3003 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
 //! | [`vee01_arch`] | F0801 文字渲染域总架构（四段单向流+ 三向兑现 + 1.5ms 预算） | VE 册 #VE-F0801 |
@@ -320,6 +328,8 @@ pub mod vem04_batch;
 pub mod vem04_checks;
 pub mod vem05_asset;
 pub mod vem05_checks;
+pub mod vem06_event;
+pub mod vem06_checks;
 pub mod ven02_tree;
 pub mod ven03_ctype;
 pub mod ven03_checks;
@@ -333,10 +343,14 @@ pub mod vel05_checks;
 pub mod vel05_lifetime;
 pub mod veo01_arch;
 pub mod veo01_checks;
+pub mod veo02_vendor;
+pub mod veo02_vendor_checks;
 pub mod vep01_arch;
 pub mod vep01_checks;
 pub mod vep02_checks;
 pub mod vep02_lang;
+pub mod vep03_checks;
+pub mod vep03_token;
 pub mod veq01_checks;
 pub mod veq01_pipeline;
 pub mod veq02_checks;
@@ -383,7 +397,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 140] = [
+    let blocks: [(&'static str, CheckSet); 142] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -469,6 +483,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1806", vej06_area::run_vej06_checks()),
         ("VE-J/F1807", vej07_checks::run_vej07_checks()),
 ("VE-F2801", veo01_checks::run_veo01_checks()),
+        ("VE-F2802", veo02_vendor_checks::run_veo02_checks()),
         ("VE-F0801", vee01_checks::run_vee01_checks()),
         ("VE-F0802", vee02_checks::run_vee02_checks()),
         ("VE-F0803", vee03_checks::run_vee03_checks()),
@@ -486,6 +501,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2403", vem03_checks::run_vem03_checks()),
         ("VE-F2404", vem04_checks::run_vem04_checks()),
         ("VE-F2405", vem05_checks::run_vem05_checks()),
+        ("VE-F2406", vem06_checks::run_vem06_checks()),
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F2205", vel05_checks::run_vel05_all_checks()),

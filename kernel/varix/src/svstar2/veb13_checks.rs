@@ -190,6 +190,40 @@ pub fn run_veb13_checks() -> CheckSet {
         let e = EdidBlock::empty();
         set.add("C213-EDID-全零块判非法", !verify_edid(&e).is_valid(), "");
     }
+    // 读取面越界必须收口返0，**不得 panic**（反假变体实测补的缺口）。
+    //
+    // 为什么必须单列：`byte_at` 在本域处处被用（判据自己就拿它 poke 字节），
+    // 但此前**全部只读合法下标**——把它的越界分支改成 `bytes[index % EDID_LEN]`
+    // 或直接 panic，18 个反假变体**全绿**：判据层从未验证「越界时收口」。
+    //
+    // 判据设计要点（这里踩了两次坑，务必留意）：
+    //  ① `EDID_LEN` 是 **1024**（协议定长：EDID 基础块 128 + 最多 7 个扩展块
+    //     各 128 = 1024），不是 128。拿 128 当「数组长度」会得出「读 129 就越界」
+    //     的错误前提。
+    //  ② 越界索引必须**真的超出 EDID_LEN**，否则 `bytes[index % EDID_LEN]` 与
+    //     正确实现在该点**同值**（0..EDID_LEN 内取模是恒等），判据与被测物
+    //     在测试点上不可区分 —— 补了判据仍全绿（第一版就死在这里）。
+    //  ③ 越界点要选回绕后落在**非零字节**上的：EDID 固定头 byte1..6 是 0xFF，
+    //     故 `EDID_LEN + 1` 回绕到 byte1，变体下会读到 0xFF 而正确实现返 0。
+    //
+    // 这条不是防御性冗余：EDID 走 `CMD_GET_EDID` 的设备载荷，长度由**对端**给。
+    // 对端给超长/畸形长度时，任何走 `byte_at` 的解析路径若越界 panic，会把
+    // 「一个坏显示器」升级成「整条解码流程崩」——读取面不 panic 是内核态硬要求。
+    {
+        let b = real_edid();
+        // 语料合规前提：固定头 byte1 必须是 0xFF（否则下面的判别点失效）
+        let legal_ff = b.byte_at(1) == 0xFF;
+        // 真越界点：超出 EDID_LEN(1024)，回绕后落在 byte1 / byte2（皆0xFF）
+        let past1 = b.byte_at(EDID_LEN + 1);
+        let past2 = b.byte_at(EDID_LEN + 2);
+        // 远越界：多圈回绕仍必须收口
+        let far = b.byte_at(EDID_LEN * 3 + 1);
+        set.add(
+            "C213-EDID-读取面越界收口不panic",
+            legal_ff && past1 == 0 && past2 == 0 && far == 0,
+            "",
+        );
+    }
     // 校验和被破坏 → 判非法（表外真实形态：改一个数据字节）
     {
         let mut b = real_edid();
