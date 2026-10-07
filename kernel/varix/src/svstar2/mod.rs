@@ -59,6 +59,7 @@
 //! | [`ved19_surface`] | F0619 图层树与表面协议对接（表面帧协议/相位机半帧不落盘/damage 双向回流/提交点契约/缓冲引用世代与所有权显性） | VE 册 #VE-F0619 |
 //! | [`vea20_stencil`] | F0020 深度模板状态机 | VE 册 #VE-F0020 |
 //! | [`vea21_raster`] | F0021 光栅化状态机 | VE 册 #VE-F0021 |
+//! | [`vea22_vlayout`] | F0022 顶点输入布局描述器（声明式偏移推导/编译期签名闸门/对齐修正/规范形去重/A27 位置空间） | VE 册 #VE-F0022 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -98,6 +99,7 @@
 //! | [`vec15_encoding`] | F0415 源码编码处理（BOM 最长匹配优先 + UTF-8 假定显式留痕 + 非法字节五类分立报错 + 单遍转换到位） | VE 册 #VE-F0415 |
 //! | [`vec16_report`] | F0416 词法错误报告（四族查表归类 + 三要素带规则引用 + 双侧定位 + 三级分级） | VE 册 #VE-F0416 |
 //! | [`vec17_recover`] | F0417 词法错误恢复策略（三策略按类别查表选用 + 恢复显性计数 + 级联窗口反馈回退 + 预算兜底强制同步） | VE 册 #VE-F0417 |
+//! | [`vec18_perf`] | F0418 词法性能工程（单遍零回溯断言 + 缓冲区复用池化 + 记号流arena 紧凑存储 + 流式内存上界 + 吞吐基准版本化退化门） | VE 册 #VE-F0418 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -186,6 +188,8 @@ pub mod vec16_checks;
 pub mod vec16_report;
 pub mod vec17_checks;
 pub mod vec17_recover;
+pub mod vec18_checks;
+pub mod vec18_perf;
 pub mod ved01_checks;
 pub mod ved01_tree;
 pub mod ved02_checks;
@@ -211,6 +215,7 @@ pub mod ved19_surface;
 
 pub mod vea20_stencil;
 pub mod vea21_raster;
+pub mod vea22_vlayout;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
@@ -235,6 +240,7 @@ pub mod vee03_checks;
 pub mod vee03_outline;
 pub mod vee04_checks;
 pub mod vee04_raster;
+pub mod vee05_hinting;
 pub mod vef01_checks;
 pub mod vef01_pngdec;
 pub mod vef02_checks;
@@ -343,7 +349,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 115] = [
+    let blocks: [(&'static str, CheckSet); 122] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -382,6 +388,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0415", vec15_checks::run_vec15_checks()),
         ("VE-F0416", vec16_checks::run_vec16_checks()),
         ("VE-F0417", vec17_checks::run_vec17_checks()),
+        ("VE-F0418", vec18_checks::run_vec18_checks()),
         ("VE-F0601", ved01_checks::run_ved01_checks()),
         ("VE-F0602", ved02_checks::run_ved02_checks()),
         ("VE-F0603", ved03_checks::run_ved03_checks()),
@@ -399,6 +406,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 
         ("VE-F0020", vea20_stencil::run_vea20_checks()),
         ("VE-F0021", vea21_raster::run_vea21_checks()),
+("VE-F0022", vea22_vlayout::run_vea22_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
@@ -424,6 +432,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0802", vee02_checks::run_vee02_checks()),
         ("VE-F0803", vee03_checks::run_vee03_checks()),
         ("VE-F0804", vee04_checks::run_vee04_checks()),
+        ("VE-F0805", vee05_hinting::run_vee05_checks()),
         ("VE-F2004", vek04_checks::run_vek04_checks()),
         ("VE-F2005", vek05_checks::run_vek05_checks()),
         ("VE-F2006", vek06_checks::run_vek06_checks()),
