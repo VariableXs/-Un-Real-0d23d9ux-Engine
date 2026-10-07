@@ -39,11 +39,13 @@
 //! | 模块 | 功能 | 判据锚 |
 //! | --- | --- | --- |
 //! | [`vek10_fxaa`] | F2010 抗锯齿四法之 FXAA（单 pass 全屏：亮度对比边缘检测→边缘方向→定向模糊，Console/FXAA 3.11 质量档；低/中/高三预设阈值+跨度+步数三轴皆不同，档位强度用 touched 集合包含关系 S(low)⊆S(mid)⊆S(high) 验证；输出取值集闭包 {中心,A,B} 逐位相等故闭包判据用 == 而非近似；序位守卫三违规带三要素；模糊代价以合成高频图案的高频能量比作可复算证据；双线性采样是正确性前提——最近邻会让 A/B 落回中心像素使 FXAA 退化为空操作而结构判据全绿；与 CAS 联动给警告而非静默关掉） | VE 册 #VE-F2010 |
+//! | [`vek11_taa`] | F2011 抗锯齿四法之 TAA（历史帧累积+子像素抖动：Halton(2,3) 8 相位，两底数分别进位；原始包围盒约 0.8125×0.7778 像素，由 normalize_scale() 按实测反推归一系数使 x 方向恰好铺满 1.0 像素，系数不写死常数；校验管线 velocity reject + 深度/法线相似度 + 场景切换强制失效，失效一律**权重精确归零**而非打折——打折会让鬼影残留，故用 enum HistoryUse 两态表达让『打折后仍在用』无法书写；clipping 用 3×3 邻域 min/max AABB 且**先 clip 后混合**（顺序交换即色偏），方差 clipping 由邻域矩导出；降级显性：速度缓冲缺失退化为几何启发校验并产 DegradeRecord 告警，静默降级时记录为空、判据立刻转红；历史显存 16 字节/像素含深度（只算颜色会低估 1/3），超配额拒绝 TAA 并回退 FXAA 建议；与 F2009 MSAA 互斥且被丢弃方具名；闪烁证据可复算——权重跳变的亮度台阶实测为单步的 3.6 倍） | VE 册 #VE-F2011 |
 //! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
 //! | [`veb13_heads`] | F0213 virtio 多头与 EDID（逐输出独立使能与模式/EDID 三级注入优先级与非法拒载保默认/热增删幂等重算以最新 cfg 为准/布局表 O(输出数) 应用与版本化持久化/位置语义播报名） | VE 册 #VE-F0213 |
 //! | [`veb14_perf`] | F0214 virtio 性能与诊断接口（按帧统计命令数/传输字节/队列深度与提交到完成延迟的对数分桶草图在线更新分位/诊断快照按需拉取不常驻无请求零开销/计数溢出饱和不回绕且可区分恰好等于上限与已饱和/打点缺失标记缺测不入分位不补零/快照请求并发串行化排队有界满则拒收不覆盖/计数入遥测总线受 F0096 预算治理按提交序确定性抽样） | VE 册 #VE-F0214 |
 //! | [`veb15_suite`] | F0215 virtio 一致性测试套件（三层用例：协议层状态机序与特性协商矩阵/功能层资源创建导出与 2D 更新与多头切换回归/恢复层注入错误验 F0212 处置矩阵；命令流编码走黄金流比对且对齐 F0206 版本戳，版本不匹配判阻断而非降级、重建黄金流须显式人工确认；宿主侧 fast 档与 QEMU 批队列 full 档为**同一份清单的两个投影**、full 是全集 fast 是子集；缺特性用例判 N/A 三值枚举单列统计且不算失败不计入通过数、N/A 早退路径零建销不污染清理对账；清理断言为独立收尾步、创建数须恰等于本档真跑用例数且过度销毁判失败；失败输出含复现最小命令序列） | VE 册 #VE-F0215 |
 //! | [`veb16_declaration`] | F0216 virtio 参考驱动宣告（本组实现即 virtio 家族参考实现，声明支持范围 QEMU 6.0 以上 + VIRTIO_F_VERSION_1 必需 + 2D/virgl/Venus 三通路与语义承诺，外部实现按本组语义对齐；变更走语义版本化且破坏性变更提前一版公告；宣告为可执行断言非文档——每条承诺带测试套件证据指针，缺证据即阻断发布；宣告与实现不符以测试结果为准修正；范围外请求明确拒绝并给具体越界项不模糊承诺；版本结构化三元组比对 O(1)，通路线编码显式映射且自洽） | VE 册 #VE-F0216 |
+//! | [`veb17_suspend`] | F0216 virtio 热重置与 suspend/resume（suspend 冻结队列并保存设备态 cfg×队列×资源表，resume 按快照重建并重协商特性；快照带独立重算摘要，损坏即走全量重初始化而非先试着重建；重协商丢失必需特性判不可重建，资源表超容量走降级重建并通知；热重置走 F0212 reset 序但保留资源表语义，与快照重建走不同字段不可混用；重置超预算即兜底中断且兜底状态可观测；建销账本饱和不回绕、漏销与过度销毁均可检出；恢复过程用户可见提示可关闭） | VE 册 #VE-F0217 |
 //! | [`vea02`] | F0002 图形上下文生命周期管理器 | VE 册 #VE-F0002 |
 //! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
 //! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
@@ -92,8 +94,8 @@
 //! | [`ven04_checks`] | F2604 域自检（判据逐条映射，56 项分两批落集） | VE 册 #VE-F2604 |
 //! | [`ven05_dual`] | F2605 逻辑-可视双树与模板展开（双树分离/模板展开时机/单向数据流/三遍历/D-N 边界/同步断言/降级矩阵） | VE 册 #VE-F2605 |
 //! | [`ven05_checks`] | F2605 域自检（判据逐条映射，56 项分两批落集） | VE 册 #VE-F2605 |
-//! | [`ven06_incr`] | F2606 控件树增量更新（精确失效/帧边界批处理/三分发/双树增量同步；溢出强制提交+错路逐条审计） | VE 册 #VE-F2606 |
-//! | [`ven06_checks`] | F2606 域自检（判据逐条映射，50 项分两批落集） | VE 册 #VE-F2606 |
+//! | [`ven06_incr`] | F2606 控件树增量更新（精确失效/帧边界批处理/三分发/双树增量同步；溢出强制提交+错路逐条审计；缺失目标绝不退化全树） | VE 册 #VE-F2606 |
+//! | [`ven06_checks`] | F2606 域自检（判据逐条映射，69 项分两批落集；三位全占拆分与脏掩码整条丢弃各钉到位） | VE 册 #VE-F2606 |
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
 //! | [`ver01b_parser`] | F3402 令牌解析器（JSON/TOML 双格式 + 引用 DAG + 迭代 DFS 环检测 + 断链三要素） | VE 册 #VE-F3402 |
 //! | [`ver01c_cascade`] | F3403 令牌依赖图与级联（依赖图可视化 + 批量合并级联 + 双深度闸 + 耗时画像） | VE 册 #VE-F3403 |
@@ -134,6 +136,8 @@
 //! | [`vef03_checks`] | F1003 域自检（判据逐条映射，24 项） | VE 册 #VE-F1003 |
 //! | [`vef04_color`] | F1004 PNG 色彩管理（iCCP/sRGB/gAMA/cHRM 四块解析/优先级表唯一裁决/统一标注单一出口/线性化 F0159 联动） | VE 册 #VE-F1004 |
 //! | [`vef04_checks`] | F1004 域自检（判据逐条映射，22 项） | VE 册 #VE-F1004 |
+//! | [`vef05_text`] | F1005 PNG 文本块族（tEXt Latin-1 单 NUL 分隔 / iTXt UTF-8 四段结构含压缩 / zTXt 压缩 Latin-1；元数据条目四元组 + 列表语义共存不覆盖 + 展示层转义非剥离 + 单条 2MB 与条数 500 双闸；iTXt 压缩体长度靠试探解压定界——因 zlib 流内部允许 NUL 字节，扫 NUL 定界法已实证失效） | VE 册 #VE-F1005 |
+//! | [`vef05_checks`] | F1005 域自检（判据逐条映射，36 项；11 变体实测全部转红） | VE 册 #VE-F1005 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
 //! | [`veu03_registry`] | F4203 契约注册中心（四能力+五字段冻结+唯一性+引用计数+生命周期） | VE 册 #VE-F4203 |
@@ -301,6 +305,8 @@ pub mod veb15_checks;
 pub mod veb15_suite;
 pub mod veb16_checks;
 pub mod veb16_declaration;
+pub mod veb17_checks;
+pub mod veb17_suspend;
 pub mod veh03_checks;
 pub mod veh03_mixgraph;
 pub mod veh04_checks;
@@ -334,6 +340,8 @@ pub mod vef03_adam7;
 pub mod vef03_checks;
 pub mod vef04_checks;
 pub mod vef04_color;
+pub mod vef05_checks;
+pub mod vef05_text;
 pub mod veg03_checks;
 pub mod veg03_webm_mkv;
 pub mod veg04_checks;
@@ -383,6 +391,8 @@ pub mod vek09_msaa;
 pub mod vek09_checks;
 pub mod vek10_fxaa;
 pub mod vek10_checks;
+pub mod vek11_taa;
+pub mod vek11_checks;
 pub mod vem02_checks;
 pub mod vem02_track;
 pub mod vem03_checks;
@@ -487,7 +497,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 179] = [
+    let blocks: [(&'static str, CheckSet); 180] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -563,6 +573,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0214", veb14_perf::run_veb14_checks()),
 ("VE-F0215", veb15_checks::run_veb15_checks()),
 ("VE-F0216", veb16_checks::run_veb16_checks()),
+("VE-F0217", veb17_checks::run_veb17_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
 ("VE-F0413", vec13_checks::run_vec13_checks()),
@@ -605,6 +616,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2009", vek09_checks::run_vek09_checks()),
         ("VE-F2009-deep", vek09_checks::run_vek09_deep_checks()),
         ("VE-F2010", vek10_checks::run_vek10_checks()),
+        ("VE-F2011", vek11_checks::run_vek11_checks()),
         ("VE-F2402", vem02_checks::run_vem02_checks()),
         ("VE-F2403", vem03_checks::run_vem03_checks()),
         ("VE-F2404", vem04_checks::run_vem04_checks()),
@@ -656,6 +668,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1002", vef02_checks::run_vef02_checks()),
         ("VE-F1003", vef03_checks::run_vef03_checks()),
         ("VE-F1004", vef04_checks::run_vef04_checks()),
+        ("VE-F1005", vef05_checks::run_vef05_checks()),
         ("VE-F1203", veg03_checks::run_veg03_checks()),
         ("VE-F1204-a", veg04_checks::run_veg04_checks_a()),
         ("VE-F1204-b", veg04_checks::run_veg04_checks_b()),
