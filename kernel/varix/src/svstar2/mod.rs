@@ -136,6 +136,7 @@
 //! | [`vee02_utf8`] | F0802 字符编码与 UTF-8 解码（四档处置 + 偏移表 + 200MB/s） | VE 册 #VE-F0802 |
 //! | [`vee03_outline`] | F0803 字形轮廓与贝塞尔（二次升三次 + 围向约定 + 1/64 量化） | VE 册 #VE-F0803 |
 //! | [`vee07_prims`] | F0807 文本图元渲染（合批 2000 + 绘制≤2 + 四效果定长 uniform + 变换 + 批次键三要素各自参与归组 + 绘制超限必产告警且单批不误报；域自检 13 项） | VE 册 #VE-F0807 |
+//! | [`vee08_fontmetric`] | F0808 字体度量（ascent/descent/行高取 **hhea 与 OS/2 双来源**并逐字段显性声明来源——只给最终值不给来源，「为什么这行比那行高」就不可查，而渲染与命中测试对不上正是这类 bug 最难查的表现；冲突超阈值一律**以 OS/2 为准并告警**，静默选来源会让同一字体在不同代码路径算出不同行高；冲突判定用**相对比例**（5%）而非绝对差——同一绝对差在小字体是巨变、大字体可忽略，绝对阈值会让小字体频繁误报、大字体漏报真冲突；度量表缺失（畸形字体）**退化为 em 推导并计数**，计数让「多少字体走了降级」可查，否则静默降级让排版悄悄变形无人知；行高三模式（字体默认推荐值 / 紧凑 1.0em / 宽松 1.3em）互不相同且 UI 可全局指定；度量按字体实例缓存，缓存键含字体 ID+字号+字重+字形档位四段各 32 位（**单射**，漏一个参数就会用错度量导致文本重叠或行距跳变），实例化参数变更即失效重算；缓存满时登记超限且**仍返回度量**（正确性优先，缓存满不能不让排版），且不挤掉已有条目；字距查询区分「无该字对(None)」与「调整恰为 0(Some(0))」——排版上二者不同；应用字距的 advance 双向夹取不溢出不回绕；**基线就是 ascent** 而非行高的一半（后者是常见错误近似）；查询命中均耗 0（锚点 ≤0.001ms）、全量快照 ≤0.5ms；读屏面板七行双语只报聚合计数不泄漏单字体度量值） | VE 册 #VE-F0808 |
 //! | [`vet01_a11y_render_pipeline`] | F3802 无障碍渲染管线 | VE 册 #VE-F3802 |
 //! | [`vet02_highcontrast_engine`] | F3803 高对比渲染引擎（令牌段+后处理段+语义保持红线） | VE 册 #VE-F3803 |
 //! | [`ves01_sdomain_arch`] | F3801 S 域开工与无障碍渲染总架构 | VE 册 #VE-F3801 |
@@ -372,6 +373,7 @@ pub mod vee04_raster;
 pub mod vee05_hinting;
 pub mod vee06_atlas;
 pub mod vee07_prims;
+pub mod vee08_fontmetric;
 pub mod vef01_checks;
 pub mod vef01_pngdec;
 pub mod vef02_checks;
@@ -694,6 +696,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0805", vee05_hinting::run_vee05_checks()),
         ("VE-F0806", vee06_atlas::run_vee06_checks()),
         ("VE-F0807", vee07_prims::run_vee07_checks()),
+        ("VE-F0808", vee08_fontmetric::run_vee08_checks()),
         ("VE-F2004", vek04_checks::run_vek04_checks()),
         ("VE-F2005", vek05_checks::run_vek05_checks()),
         ("VE-F2006", vek06_checks::run_vek06_checks()),
