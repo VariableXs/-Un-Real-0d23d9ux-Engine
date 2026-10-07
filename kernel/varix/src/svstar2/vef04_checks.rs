@@ -8,6 +8,8 @@
 //! - 冲突优先级（iCCP > sRGB > gAMA+cHRM）→ `C04-CONF-*`
 //! - 统一标注单一出口 → `C04-ANNO-*`
 //! - 错误路径与默认策略 → `C04-ERR-*`
+//! - 块长度字段全域扫描（长度闸夹逼对；checked 溢出面在 64 位**不可观测**，
+//!   如实登记于 `C04-ERR-06` 头部与 `VARIANT_REGISTRY`）→ `C04-ERR-06`
 //!
 //! **对拍基准的独立性（如实登记）**：本文件自建 PNG 容器（**自写 CRC 与
 //! zlib stored 封装**，不复用被测模块的任何函数），故「块扫描 → 解析 → 标注」
@@ -58,6 +60,26 @@ fn crc32(bytes: &[u8]) -> u32 {
 fn zlib_stored(data: &[u8]) -> Vec<u8> {
     let mut z = vec![0x78u8, 0x01];
     let mut off = 0usize;
+    // **空输入必须产出一个合法的「空 stored 块」，不能只补adler**。
+    //
+    // 旧写法靠 `while off < data.len()` 短路，空输入时 DEFLATE 段是空的、
+    // 紧跟着 4 字节 adler。而 `zlib_inflate_slices` 剥掉 2 字节 zlib 头后
+    // 会把**adler 字节当成 DEFLATE 位流**去解析块头：读到的首字节是
+    // adler 的高字节（0x00），被判成「BFINAL=0 的 stored 块」，接着要求
+    // `NLEN == !LEN`——必然不符 → 报 `BadZlib`。
+    //
+    // 后果是判据陷阱：`iccp_payload(&[])` 造出的「空profile」语料**根本走不到**
+    // `parse_iccp` 里的 `n == 0` 那道闸，而是在更早的 `Err(_)` 分支就返回了。
+    // 于是 `C04-ICCP-04` 名义上验「空 ICC 配置降级告警」，实测验的却是
+    // 「解压失败降级告警」——**两道闸外部表现完全相同**，删掉`n == 0`
+    // 判据照样全绿（变体 W19 实测证否，已登记）。
+    //
+    // 这属弱门禁十诫 #3「重合行为掩盖缺失分支」：给该分支**专属**可达路径，
+    // 判据才真正承重。
+    if data.is_empty() {
+        // BFINAL=1 + BTYPE=00（stored），LEN=0，NLEN=!0=0xFFFF
+        z.extend_from_slice(&[0x01u8, 0x00, 0x00, 0xFF, 0xFF]);
+    }
     while off < data.len() {
         let n = (data.len() - off).min(65535);
         let last = if off + n >= data.len() { 1u8 } else { 0u8 };
@@ -302,7 +324,133 @@ pub fn run_vef04_checks() -> crate::checks::CheckSet {
             }
             Ok(_) => ok = false,
         }
-        cs.add("C04-GAMA-02 边界闭区间夹逼+越界拒块走默认+长度错阻断", ok, "");
+        // **长度守卫的全域扫描：0..=8 逐个长度，一个不跳**。
+        //
+        // 为什么要补这一腿：既有语料的 gAMA 载荷清一色 4 字节，边界之外的
+        // 长度**无人验证**——把 `parse_gama` 的守卫从 `!= 4` 放宽成 `< 3`
+        // 后，21 项判据实测**照样全绿**（变体 W13c，见文件末登记表）。
+        // 这是典型的**采样留洞**：语料只覆盖正确长度，闸门位置无人问津。
+        //
+        // **一段被实测推翻的旧说法的更正（留档以免重犯）**。
+        //
+        // 本处原先只扫 0/1/2 字节，注释理由是「3 字节在守卫写成 `< 3` 时会
+        // 流入 `parse_gama` 内部并越界（实测 panic），故跳过它，避免判据
+        // 自身跟着崩掉」。
+        //
+        // **该理由不成立，已推翻**：在**真实现**上实测（隔离探针
+        // `catch_unwind`逐长度扫 0..=8），3 字节载荷干净返回
+        // `GamaLength(a=3, b=4)`，**根本不 panic**——因为真守卫是 `!= 4`，
+        // 3 != 4 直接被拒。「panic」只在守卫被放宽的**变体**里出现。
+        //
+        // 于是原做法有两处错：
+        //  1. 把**变体的失败形态**当成了**基线的约束**。判据的可靠性不该
+        //     建立在被测物不出错上——恰恰相反，正因为真实现稳过，才敢把
+        //     3 字节摆进语料：真实现绿，变体红，这才是一道承重的闸。
+        //  2. 少扫一个长度就少一格覆盖，而缺的正是**最危险的那一格**
+        //     （3 是 `< 3` 守卫下第一个漏进来的长度）。
+        //
+        // 现在扫 0..=8 全域。若日后有人再把守卫放宽，3 字节会当场转红
+        // （或 panic 暴露），而不是继续静默全绿。
+        let mut len_guard_ok = true;
+        // 长度维度：0..=8 中**除4 以外**的每个长度都必须报 GamaLength 阻断。
+        // 逐个断言**具体长度值**（`e.a == n`），而不只断 `kind`——
+        // 只断 kind 的话，把 `a` 恒填 0 的实现也能蒙对（弱门禁十诫 #7：
+        // 判据侧须独立重算参考值，不向被测函数问答案）。
+        //
+        // **为什么 4 不在阻断期望内**：4 是gAMA 的**合法长度**，本腿只管
+        // 「长度维度的闸位」，语义（该值是否越界）由上面的夹逼对与下一条
+        // 正向腿管。把 4 也期望成 `Err(GamaLength)` 是**判据写错数**——
+        // 实测（`vec![0u8; 4]` 全零载荷）会得到 `Ok { gamma: None,
+        // gama_rejected: Some(0) }`，即「长度合法但值越界→ 拒块走默认」，
+        // 这是**正确行为**。混判会把正确实现判红（教训：判据写错数比没判据
+        // 更坏，它训练团队忽略红灯）。
+        for n in 0usize..=8 {
+            if n == 4 {
+                continue; // 合法长度，语义另判
+            }
+            let png = png_with(&[(b"gAMA", vec![0u8; n])]);
+            match c4::parse_color_annotation(&png) {
+                Err(e) => {
+                    if e.kind != c4::ColorFaultKind::GamaLength {
+                        len_guard_ok = false;
+                    }
+                    // 五元组须带出实际长度与期望长度（判据侧独立算出的参考值）
+                    if e.a != n as u64 || e.b != 4 {
+                        len_guard_ok = false;
+                    }
+                }
+                // 长度非 4 却 Ok = 长度闸失守
+                Ok(_) => len_guard_ok = false,
+            }
+        }
+        // **语义腿：4 字节但值越界**（全零= gamma 0.0< 0.01）必须
+        // 「拒块走默认」而非「按合法 gamma 收下」——证明 4 字节这条腿
+        // 没被当成「长度对就放行」的橡皮章。
+        {
+            let png = png_with(&[(b"gAMA", vec![0u8; 4])]);
+            match c4::parse_color_annotation(&png) {
+                Ok(a) => {
+                    if a.gamma.is_some() {
+                        len_guard_ok = false;
+                    }
+                    if a.gama_rejected != Some(0) {
+                        len_guard_ok = false;
+                    }
+                    if a.source.is_some() || a.warnings == 0 {
+                        len_guard_ok = false;
+                    }
+                }
+                // 越界值不应阻断（锚点：只拒该块）
+                Err(_) => len_guard_ok = false,
+            }
+        }
+        // 正向腿：恰好 4 字节的**合法**值必须被接受（证明闸不误伤）。
+        // 夹逼对 1000/100000/499999/500000 四点，判据侧独立算出期望 gamma
+        // （线值 / 100000.0）并与实测比对——不向被测函数要答案。
+        // 手算复核：100000 = 0x0001_86A0（gamma 1.0）。
+        // （早先误用 0x000F4240 = 1_000_000 → gamma 10.0，越界，
+        //  把**正确实现判红**了。参考值必须与被测对象无关地独立算出。）
+        for (raw, want_g) in [
+            (1_000u32, 0.01f32),
+            (100_000, 1.0),
+            (499_999, 4.999_99),
+            (500_000, 5.0),
+        ] {
+            let png = png_with(&[(b"gAMA", raw.to_be_bytes().to_vec())]);
+            match c4::parse_color_annotation(&png) {
+                Ok(a) => {
+                    let g = match a.gamma {
+                        Some(g) => g,
+                        None => {
+                            len_guard_ok = false;
+                            continue;
+                        }
+                    };
+                    // 判据侧独立重算的参考值：线值 / 100000（规范定义）
+                    let reference = raw as f32 / 100_000.0;
+                    // 参考值先自校对拍：写错数会把正确实现判红
+                    if (reference - want_g).abs() > 1e-6 {
+                        len_guard_ok = false;
+                    }
+                    // 实测与独立参考值的偏差：闭区间端点须**精确**相等，
+                    // 内部点允许 1 ULP 级相对误差。
+                    let tol = if raw == 500_000 || raw == 1_000 { 0.0 } else { 1e-6 };
+                    if (g - reference).abs() > tol {
+                        len_guard_ok = false;
+                    }
+                    if a.gama_rejected.is_some() {
+                        len_guard_ok = false;
+                    }
+                }
+                // 4 字节合法值被拒= 闸误伤
+                Err(_) => len_guard_ok = false,
+            }
+        }
+        cs.add(
+            "C04-GAMA-02 边界闭区间夹逼+越界拒块走默认+长度错阻断+长度守卫0..8全域扫描+4字节合法值独立参考对拍",
+            ok && len_guard_ok,
+            "",
+        );
     }
 
     // -- C04-GAMA-03 线性化（F0159 联动） --------------------------
@@ -426,7 +574,86 @@ pub fn run_vef04_checks() -> crate::checks::CheckSet {
             Err(e) => e.kind == c4::ColorFaultKind::ChrmLength,
             Ok(_) => false,
         };
-        cs.add("C04-CHRM-01 D65八坐标解析+白点提取+长度31阻断", ok && len_blocked, "");
+        // **长度守卫的全域扫描（0..=40 逐个长度）**。
+        //
+        // **长度守卫的全域扫描：0..=40 逐个长度，一个不跳**。
+        //
+        // 为什么要补这一腿：既有语料的 cHRM 载荷清一色 32 字节，边界之外的
+        // 长度**无人验证**——把`parse_chrm` 的守卫从 `!= 32` 放宽成
+        // `< 31` 后判据未获可读的失败结论（变体 W14，见文件末登记表）。
+        // 这是典型的**采样留洞**：语料只覆盖正确长度，闸门位置无人问津。
+        //
+        // **一段被实测推翻的旧说法的更正（留档以免重犯）**。
+        //
+        // 本处原先扫 `0..=30` 与 `33..=40`，**刻意跳过 31**，注释理由是
+        // 「31 恰好是守卫被放宽到 `< 31` 时第一个越界的长度，跳过它本判据
+        // 才能在被测物有该缺陷时仍可读地转红，而不是跟着崩掉」。
+        //
+        // **该理由不成立，已推翻**：在**真实现**上实测（隔离探针
+        // `catch_unwind` 逐长度扫 0..=40），31 字节载荷干净返回
+        // `ChrmLength(a=31, b=32)`，**根本不 panic**——因为真守卫是
+        // `!= 32`，31 != 32 直接被拒。「panic」只在守卫被放宽的**变体**里
+        // 出现。
+        //
+        // 于是原做法把**变体的失败形态**当成了**基线的约束**：恰恰因为
+        // 真实现稳过，才敢把 31摆进语料——真实现绿、变体红，这才是一道
+        // 承重的闸。少扫一格就少一格覆盖，而缺的正是**最危险的那一格**。
+        let mut len_guard_ok = true;
+        for n in 0usize..=40 {
+            //32 是 cHRM 的**合法长度**，本腿只管「长度维度的闸位」，
+            // 语义（八坐标是否合法）由正向腿与 C04-CHRM-02 管。
+            // 把 32 也期望成 `Err(ChrmLength)` 是**判据写错数**：实测
+            // `vec![0u8; 32]`（全零坐标）返回 `Ok`，因为八个 0.0 都
+            // 落在合法闭区间 [0,1] 内——那是**正确行为**。
+            // （教训同上：判据写错数会把正确实现判红。）
+            if n == 32 {
+                continue;
+            }
+            let png = png_with(&[(b"cHRM", vec![0u8; n])]);
+            match c4::parse_color_annotation(&png) {
+                Ok(_) => len_guard_ok = false,
+                Err(e) => {
+                    if e.kind != c4::ColorFaultKind::ChrmLength {
+                        len_guard_ok = false;
+                    }
+                    // 五元组须带出实际长度与期望长度（判据侧独立算出的参考值）。
+                    // 只断 kind 的话，把 `a` 恒填 0 的实现也能蒙对。
+                    if e.a != n as u64 || e.b != 32 {
+                        len_guard_ok = false;
+                    }
+                }
+            }
+        }
+        // 正向腿：恰好 32 字节合法载荷必须被接受（证明闸不误伤）。
+        // 同时对白点做**独立参考值对拍**：判据侧从 `good_chrm()` 前两个
+        // 坐标自行算出期望白点，与实测比对——不向被测函数问答案。
+        {
+            let g = good_chrm();
+            let png = png_with(&[(b"cHRM", chrm_payload(g))]);
+            match c4::parse_color_annotation(&png) {
+                Ok(a) => {
+                    if a.chrm_rejected.is_some() {
+                        len_guard_ok = false;
+                    }
+                    match a.white_point {
+                        None => len_guard_ok = false,
+                        Some(wp) => {
+                            // 判据侧独立重算：白点 = cHRM 的前两个坐标
+                            let (ref_x, ref_y) = (g[0], g[1]);
+                            if (wp.0 - ref_x).abs() > 1e-6 || (wp.1 - ref_y).abs() > 1e-6 {
+                                len_guard_ok = false;
+                            }
+                        }
+                    }
+                }
+                Err(_) => len_guard_ok = false,
+            }
+        }
+        cs.add(
+            "C04-CHRM-01 D65八坐标解析+白点提取+长度31阻断+长度守卫0..40全域扫描+白点独立参考对拍",
+            ok && len_blocked && len_guard_ok,
+            "",
+        );
     }
 
     // -- C04-CHRM-02 越界坐标拒块（八坐标逐个位置） ----------------
@@ -499,6 +726,34 @@ pub fn run_vef04_checks() -> crate::checks::CheckSet {
     {
         let mut ok = true;
         // (a) 0 字节 profile：解压成功但内容为空 → 不可用 → 降级 + 告警
+        //
+        // **前置断言（新增，防旁路）**：本腿必须走`parse_iccp` 里 `n == 0`
+        // 那条**专属**分支，而不是更早的 `Err(_)` 解压失败分支——两者外部
+        // 表现相同（都清空 out 并报`IccpInflate`），故只断最终标注无法区分。
+        //
+        // 钉死办法：**直接调`parse_iccp` 看它返回什么**。真实现下空 stored
+        // 流解压成功产出 0 字节，返回的仍是 `Err(IccpInflate)`——
+        // 与解压失败同码，故码本身仍不足以分辨；真正的分辨点在
+        // 「解码器是否成功地产出了 0 字节」。
+        //
+        // 这里改用**语料侧自证**：`zlib_stored(&[])` 现在产出的流必须能被
+        // 同一个 `zlib_inflate_slices` 成功解出0 字节。若哪天语料又退回
+        // 「adler 字节当 DEFLATE」的错误形态，下面的自证会当场失败，
+        // 而不会让本判据悄悄退化成验「解压失败」。
+        {
+            let flow = zlib_stored(&[]);
+            // 5 字节 = zlib 头 2 + 空 stored 块 5（块头 1 + LEN 2 + NLEN 2）
+            // 加 adler 4。断言其结构自洽：末 5 字节须是 01 00 00 FF FF。
+            let tail = &flow[flow.len() - 9..flow.len() - 4];
+            if tail != [0x01u8, 0x00, 0x00, 0xFF, 0xFF] {
+                ok = false;
+            }
+            // 且流长须恰为 2 + 5 + 4 = 11（不多不少）——多一个字节就说明
+            // 又混进了 adler 之类的杂质。
+            if flow.len() != 11 {
+                ok = false;
+            }
+        }
         let empty = png_with(&[(b"iCCP", iccp_payload(&[]))]);
         match c4::parse_color_annotation(&empty) {
             Ok(a) => {
@@ -570,6 +825,77 @@ pub fn run_vef04_checks() -> crate::checks::CheckSet {
                 }
             }
             Ok(_) => ok = false,
+        }
+        // **keyword 长度上下界语料（反假变体 W15 实测补入）**。
+        //
+        // 初版只用「含控制字符的 keyword」这一种坏形态。变体把
+        // `nul == 0 || nul > ICCP_KEYWORD_MAX` 这条**长度校验整条摘掉**后，
+        // 21 项判据全绿——因为既有语料的 keyword 恒为 `"icc"`（长度 3，
+        // 合法），长度校验从未被触发；那条分支成了不承重的注脚。
+        //
+        // 补两条**表外真实形态**：
+        //   - 空keyword（NUL 在位置 0）→ 规范要求长度 1..=79，必须拒；
+        //   - 超长keyword（80 字节）→ 越过 79 上限，必须拒。
+        // 两者都报IccpKeyword，且都**不得**误报成别的类别。
+        //
+        // 注意：摘掉长度校验后，空 keyword 会让`method = data[1]` 取到
+        // 关键字之后的字节，整条载荷错位——但对**合法的 5 字节最短载荷**
+        // 而言它恰好还能通过，故必须靠上面两条语料才照得出来。
+        {
+            // (b1) 空 keyword：载荷 = NUL + 方法 0 + zlib("x")
+            let mut empty_kw = Vec::new();
+            empty_kw.push(0u8); // 空 keyword（长度 0，非法）
+            empty_kw.push(0); // 压缩方法
+            empty_kw.extend_from_slice(&zlib_stored(b"x"));
+            let png = png_with(&[(b"iCCP", empty_kw)]);
+            match c4::parse_color_annotation(&png) {
+                Err(e) => {
+                    if e.kind != c4::ColorFaultKind::IccpKeyword {
+                        ok = false;
+                    }
+                }
+                Ok(_) => ok = false,
+            }
+            // (b2) 超长keyword：80 个可打印字符（越过 79 上限）
+            let mut long_kw = Vec::new();
+            for i in 0..80u8 {
+                // 全用可打印字符，确保被拒的原因是**长度**而非字符集
+                long_kw.push(b'a' + (i % 26));
+            }
+            long_kw.push(0u8); // NUL
+            long_kw.push(0); // 压缩方法
+            long_kw.extend_from_slice(&zlib_stored(b"x"));
+            let png = png_with(&[(b"iCCP", long_kw)]);
+            match c4::parse_color_annotation(&png) {
+                Err(e) => {
+                    if e.kind != c4::ColorFaultKind::IccpKeyword {
+                        ok = false;
+                    }
+                    // 五元组应带出实际长度与上限，便于定位
+                    if e.a != 80 || e.b != 79 {
+                        ok = false;
+                    }
+                }
+                Ok(_) => ok = false,
+            }
+            // (b3) 反向对照：恰好 79 字节 keyword **必须被接受**——
+            // 证明这不是「只会拒不会放」的弱门禁。
+            let mut edge_kw = Vec::new();
+            for i in 0..79u8 {
+                edge_kw.push(b'a' + (i % 26));
+            }
+            edge_kw.push(0u8);
+            edge_kw.push(0);
+            edge_kw.extend_from_slice(&zlib_stored(b"x"));
+            let png = png_with(&[(b"iCCP", edge_kw)]);
+            match c4::parse_color_annotation(&png) {
+                Ok(a) => {
+                    if a.icc.as_ref().map(|v| v.as_slice()) != Some(&b"x"[..]) {
+                        ok = false;
+                    }
+                }
+                Err(_) => ok = false,
+            }
         }
         // (c) zlib 载荷损坏 → **降级 + 告警，不阻断**（锚点明文）
         let mut bad_z = iccp_payload(b"hello");
@@ -1018,6 +1344,132 @@ pub fn run_vef04_checks() -> crate::checks::CheckSet {
         );
     }
 
+    // -- C04-ERR-06 块长度字段全域扫描（长度闸 + 32 位溢出面） ----------
+    //
+    // 判据要点：`scan_color_chunks` 里 `len` 来自 **4 字节不可信字段**，
+    // 它参与三处边界算术（总长校验 / 载荷切片 / 游标推进）。这三处若写裸
+    // 加法，在 32 位目标（usize=32bit）上 `pos + 12 + len` 可溢出绕回成
+    // 小值 —— 于是**通过**校验后越界切片 panic；若绕回发生在推进式，则
+    // `pos` 倒退成小值 → 下一轮从文件中部重扫 → **死循环**。
+    //
+    //## 诚实的可观测性边界（这一段是本判据最重要的部分）
+    //
+    // 变异实测（5 个变体，见 `VARIANT_REGISTRY` 的 W20~W24）结论：
+    //
+    //   · **可观测**：删掉长度守卫（`total > file.len()`）→ 本判据**转红**。
+    //     这是长度闸的承重腿，真承重。
+    //   · **不可观测**：把 `checked_add` 换回裸加法（总长 / 载荷终点 /
+    //     游标推进三处）→ 本判据在 64 位开发机上**照样全绿**。
+    //
+    // 原因不是判据写错，而是**该风险面在 64 位上不可观测**：`len` 是 u32
+    // 字段故 `len <= 2^32-1`，而 `pos <= file.len()`。64 位下二者之和最大
+    // 约 `2^33`，远小于 `usize::MAX = 2^64` —— 裸加法**恒不溢出**，
+    // 因此**任何语料都无法区分它与 `checked_add`**。
+    //
+    // 那能不能造语料硬逼出来？不能。`len` 的值域被 u32 字段**钉死**在
+    // 2^32-1，`pos` 的值域被文件实际长度**钉死**在内存量级，两者在 64 位
+    // 上永不相遇于回绕区。**语料无法注入一个不存在的状态**。
+    //
+    // 故此处不假装能验它：判据只断言**可观测的长度闸**，而把checked 算术
+    // 如实登记为「防御性加固，由 32 位目标构建负责验证」。若日后有人编
+    // 32 位目标，本判据**不会**替他们抓出这三处 —— 这正是本段写下来的
+    // 理由，避免后人误以为「21 项全绿 ⇒ 溢出面已被覆盖」。
+    //
+    // （对照弱门禁十诫#7「判据向被测函数问答案 = 自证式」的同源教训：
+    // **判据证明不了的事，要写出来，而不是让绿项冒充覆盖。）**
+    //
+    // 为何断言「返回 Err」而不是「不崩」：本函数对块截断的处置是
+    // `ChunkTruncated` **阻断**（`Err`），故正确实现的外部表现就是 `Err`。
+    // 删掉长度守卫后实现会在 64 位上正常返回 `Ok`，故本判据转红。
+    {
+        let mut all_ok = true;
+        let mut probed = 0usize;
+
+        // 三类 len 窗口（名称即语义，值位不用故占 0）：
+        //  · near_max        ：len 字段取 u32::MAX，32 位下 `pos+12+len` 必溢出
+        //  · truncated_payload：声称 8 字节载荷而文件只给 8-delta 字节
+        //                       （夹逼对的**越界侧**，靠砍文件制造）
+        //  · exact_at_tail：总长恰好放满（夹逼对的**合法侧**，必须**被接受**
+        //                     —— 只会拒不会放是弱门禁）
+        let windows: [(&str, u32); 3] = [
+            ("near_max", u32::MAX),
+            ("exact_at_tail", 0),
+            ("truncated_payload", 0),
+        ];
+        for (name, _) in windows.iter() {
+            for delta in 0..3u32 {
+                // 构造：`sig | len(4) | type(4) | 载荷 | CRC(4)`
+                //
+                // **「越界侧」必须真的越界**（这是本判据第一版写错的地方，
+                // 如实留档）：初版把越界侧写成「declared = 载荷实际长度 + 1」，
+                // 而文件仍按`12 + 载荷 + 4` 铺满——于是 declared+9 的总长
+                // 仍**小于**文件长度，块在文件内**合法**，实现返回 `Ok`
+                // 是正确的，判据却要求 `Err` → **判据自己写错了**。
+                //
+                // 教训与本仓库既有判据同源（见 `C04-GAMA-02` 的更正）：
+                // 「越界侧」要靠**文件长度**制造，不能靠 declared 字段制造——
+                // 后者只改长度字段、不改文件布局，根本没触及截断。
+                //
+                // 正确做法：declared 保持不变，**把文件在载荷中途砍断**，
+                // 使 `pos + 12 + len > file.len()` 真正成立。
+                let declared_len: u32 = match *name {
+                    // len 字段取 u32::MAX：32 位目标上 `pos + 12 + len` 必溢出
+                    "near_max" => u32::MAX,
+                    // 总长恰好放满（合法侧的夹逼点）
+                    "exact_at_tail" => 8u32.saturating_sub(delta),
+                    // 声称 8 字节载荷，但文件只给 8-delta 字节 → 必然截断
+                    _ => 8u32.saturating_sub(delta),
+                };
+                // 实际写入文件的载荷字节数
+                let present_len: usize = match *name {
+                    "near_max" => 0,
+                    "exact_at_tail" => declared_len as usize, // 放满
+                    _ => declared_len as usize - delta as usize, // 砍掉 delta 字节
+                };
+                let mut f = dec::PNG_SIG.to_vec();
+                f.extend_from_slice(&declared_len.to_be_bytes());
+                f.extend_from_slice(b"gAMA");
+                f.extend_from_slice(&vec![0x80u8; present_len]);
+                // 合法侧才补足 CRC（凑满 12+len）；截断侧**不补**——
+                // 补了就又变回合法块了。CRC 内容一律写错：本判据只关心
+                // **长度闸**，CRC 失败走告警分支（不阻断）。
+                if *name == "exact_at_tail" {
+                    f.extend_from_slice(&[0u8; 4]);
+                } else if *name == "near_max" {
+                    f.extend_from_slice(&[0u8; 4]);
+                }
+                probed += 1;
+
+                match c4::scan_color_chunks(&f) {
+                    // 越界侧 → 必须阻断，且故障种类是 ChunkTruncated
+                    Err(ref e)
+                        if *name != "exact_at_tail"
+                            && e.kind == c4::ColorFaultKind::ChunkTruncated => {}
+                    // 合法侧（总长恰好放满）→ 必须被接受（闸门不误伤）
+                    Ok(ref r) if *name == "exact_at_tail" && r.gama.is_none() => {}
+                    _ => all_ok = false,
+                }
+            }
+        }
+
+        // 附加：**合法侧不能被误伤**的独立对照—— 造一个真正完整的
+        // 「gAMA(4 字节载荷) + IEND」文件，必须扫出gAMA 且无截断。
+        let mut good = dec::PNG_SIG.to_vec();
+        let gp = gama_payload(2.2);
+        good.extend_from_slice(&(gp.len() as u32).to_be_bytes());
+        good.extend_from_slice(b"gAMA");
+        good.extend_from_slice(&gp);
+        let crc = crc32(&good[good.len() - gp.len() - 4..]);
+        good.extend_from_slice(&crc.to_be_bytes());
+        let good_ok = matches!(c4::scan_color_chunks(&good), Ok(ref r) if r.gama.is_some());
+
+        cs.add(
+            "C04-ERR-06 块长度字段全域扫描：三窗口×偏移钉死长度闸（checked溢出面不可观测，如实登记）",
+            all_ok && probed >= 9 && good_ok,
+            "",
+        );
+    }
+
     cs
 }
 
@@ -1025,24 +1477,85 @@ pub fn run_vef04_checks() -> crate::checks::CheckSet {
 // 反假变体登记（门禁有效性证明）
 // ---------------------------------------------------------------------------
 //
-// 实测执行（2026-10-07 W015，隔离探针）：
-// | 变体 | 注入 | 实测变红 |
+// **判据不证明自己有效，除非能把被测物改坏并看到它变红。**
+//
+// 实测执行（2026-10-07，隔离探针：`#[path]` 直挂真文件 + 镜像
+// `svstar2` 层级 + 真实 `checks.rs`/`perfstar` 底盘，`catch_unwind` 兜底）：
+//
+// | 变体 | 注入 | 实测结果 |
 // |---|---|---|
-// | W1 | 优先级表把Iccp/Srgb 秩对调 | C04-CONF-01/02/ANNO-01 |
-// | W2 | gAMA 越界改为「钳到边界」而非拒块 | C04-GAMA-02 |
-// | W3 | iCCP 解压失败改为返回 Err（不降级） | C04-ICCP-02 |
-// | W4 | cHRM 只校验首坐标 | C04-CHRM-02 |
-// | W5 | 缺失块时不走 sRGB 假定（凭空造来源） | C04-ERR-01 |
-// | W6 | CRC 错改为阻断而非告警 | C04-ERR-03 |
+// | W1 | 优先级表把 Iccp/Srgb 秩对调 | C04-CONF-01/02/ANNO-01 转红 |
+// | W2 | gAMA 越界改为「钳到边界」而非拒块 | C04-GAMA-02 转红 |
+// | W3 | iCCP 解压失败改为返回 Err（不降级） | C04-ICCP-02 转红 |
+// | W4 | cHRM 只校验首坐标 | C04-CHRM-02 转红 |
+// | W5 | 缺失块时不走 sRGB 假定（凭空造来源） | C04-ERR-01 转红 |
+// | W6 | CRC 错改为阻断而非告警 | C04-ERR-03 转红 |
+// | W13 |摘掉 iCCP keyword 长度上下界校验 | C04-ICCP-02 转红 |
+// | W14 | 放宽 `parse_chrm` 长度守卫 `!= 32` → `< 31` | 31 字节语料当场撞越界（暴露） |
+// | W13c | 放宽 `parse_gama` 长度守卫 `!= 4` → `< 3` | 3 字节语料当场撞越界（暴露） |
+// | W16 | `ChrmLength` 五元组 `a` 恒填 0 | C04-CHRM-01 转红 |
+// | W17 | `GamaLength` 五元组 `a` 恒填 0 | C04-GAMA-02 转红 |
+// | W13b | 调用方回退裸读 `d[0..4]` | **全绿——等价变异**（见下） |
+//
+// **W14 / W13c 为什么记「暴露」而不是「转红」。**
+//
+// 这两条放宽的是**被测物自身的长度守卫**，越界发生在被测函数**内部**，
+// 判据来不及断言——内核 no_std 无 `catch_unwind`，所以我们拿到的是一个
+// panic 栈而不是「C04-GAMA-02 转红」。这**不是判据的缺口**：语料已经
+// 把那个长度摆进去了（正是它撞出来的），是**被测物自己有缺陷**。
+// 记「暴露」而非「转红」，是为了不谎报门禁强度。
+//
+// **反过来，正是因为真实现稳过，语料才敢摆进去。** 早期版本为了「不让
+// 判据跟着崩」而**跳过** 3 / 31 这两个长度——那等于把变体的失败形态当成
+// 了基线的约束，少扫的又恰好是最危险的两格。实测（`catch_unwind`逐长度
+// 扫 0..=8 与 0..=40）证明真实现对 3 / 31 干净返回 `GamaLength` /
+// `ChrmLength`，**根本不 panic**。跳过它们是错的，已改回全域扫描。
+//
+// **W13b 是等价变异，如实登记。**
+//
+// 把调用方的 `ann.gama_rejected = Some(e.a as u32)` 改回裸读 `d[0..4]`，
+// 21 项判据**照样全绿**。根因：真实现下 `parse_gama` 必先拒非 4 字节载荷，
+// 「非长度错」分支**只可能**在长度恰为 4 时到达，此时裸读与读 `e.a`
+// 结果完全相同。故该改动是**防御性加固**（对守卫被放宽的鲁棒性），
+// **不是**修了一个可观测的缺陷。真正承重的长度闸是 `C04-GAMA-02`
+// 的 0..=8 全域扫描（变体 W13c 实测有效）。
+//
+// **W16 / W17 验的是什么**：判据若只断 `e.kind`，把五元组 `a` 恒填 0 的
+// 实现也能蒙对（弱门禁：向被测函数问答案）。现判据逐长度断言
+// `e.a == n`（判据侧独立重算的参考值），两条变体均实测转红——闸门承重。
 //
 // 变体不改坏判据本身，故不入册为常规判据，由回归时按单执行。
 
 /// 变体登记（名称、目标判据）。
-pub const VARIANT_REGISTRY: [(&str, &str); 6] = [
+///
+/// `C04-GAMA-02 转红` 一类为目标判据；`暴露` 表示变体把**被测物自身**
+/// 改出越界panic，语料已覆盖该长度但判据无法断言（no_std 无
+/// `catch_unwind`）；`等价变异` 表示该改动在真实现下与原实现行为完全一致，
+/// 属防御性加固而非缺陷修复。
+pub const VARIANT_REGISTRY: [(&str, &str); 17] = [
     ("W1-swap-iccp-srgb-rank", "C04-CONF-01/C04-CONF-02/C04-ANNO-01"),
     ("W2-gama-clamp-instead-of-reject", "C04-GAMA-02"),
     ("W3-iccp-inflate-hard-fail", "C04-ICCP-02"),
     ("W4-chrm-validate-first-only", "C04-CHRM-02"),
     ("W5-missing-blocks-invent-source", "C04-ERR-01"),
     ("W6-crc-hard-fail", "C04-ERR-03"),
+    ("W13-iccp-keyword-len-check-removed", "C04-ICCP-02"),
+    ("W14-chrm-len-guard-loosened-to-lt-31", "暴露(31 字节语料撞越界)"),
+    ("W13c-gama-len-guard-loosened-to-lt-3", "暴露(3 字节语料撞越界)"),
+    ("W16-chrm-length-fault-a-zero-filled", "C04-CHRM-01"),
+    ("W17-gama-length-fault-a-zero-filled", "C04-GAMA-02"),
+    ("W13b-caller-raw-read-d0-4", "等价变异(防御性加固,非缺陷)"),
+    // -- C04-ERR-06 的变异实测结论（2026-10-08 W014）--------------------
+    // W20 **转红**：长度闸真承重。删掉 `total > file.len()` 守卫后本判据
+    // 转红 → 守卫不可摘。
+    ("W20-drop-total-guard", "C04-ERR-06 转红(长度闸真承重)"),
+    // W21~W24 **全绿**：把 checked_add 换回裸加法，在 64 位开发机上判据
+    // 无法察觉。原因是**可观测性边界**而非判据缺陷：`len` 受u32 字段
+    // 限制、pos 受实际文件长度限制，64 位下二者之和永不回绕，语料无法
+    // 注入不存在的状态。故如实登记为「不可观测，由 32 位目标构建负责」。
+    // **不是判据写错，也不是实现有洞**——是这条风险面在 64 位上不可测。
+    ("W21-total-checked-to-bare-add", "不可观测(64位下len+pos不溢出)"),
+    ("W22-payload-checked-to-bare-add", "不可观测(同上)"),
+    ("W23-cursor-checked-to-bare-add", "不可观测(同上)"),
+    ("W24-while-cond-bare-add", "不可观测(同上)"),
 ];

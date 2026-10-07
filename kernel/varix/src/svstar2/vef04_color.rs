@@ -488,22 +488,65 @@ pub fn scan_color_chunks(file: &[u8]) -> Result<RawColorChunks, ColorFault> {
     }
     let mut out = RawColorChunks::default();
     let mut pos = 8usize;
-    while pos + 8 <= file.len() {
+    // 循环条件写成 `file.len() - pos >= 8`（而非 `pos + 8 <= file.len()`）：
+    // 后者的 `pos + 8` 在32 位目标上可能溢出绕回小值，使**已到尾部的 pos**
+    // 反而满足条件，随后`file[pos..pos+8]` 直接越界panic。
+    //
+    // 减法形式无此问题：`pos` 恒`<= file.len()`（由下方推进逻辑保证），
+    // 故`file.len() - pos` 永不回绕。该写法与「先算后比」的区别不是
+    // 风格问题——它消掉了「读4 个字节取长度」这条不可信输入路径上的
+    // **第一处**溢出点。
+    while file.len() - pos >= 8 {
         let len = u32::from_be_bytes([file[pos], file[pos + 1], file[pos + 2], file[pos + 3]]) as usize;
         let ty = [file[pos + 4], file[pos + 5], file[pos + 6], file[pos + 7]];
-        // 块总长 = 4(长度) + 4(类型) + len + 4(CRC)，整体须落在文件内
-        if len > file.len() || pos + 12 + len > file.len() {
+        // 块总长 = 4(长度) + 4(类型) + len + 4(CRC)，整体须落在文件内。
+        //
+        // **三处边界算术全走 `checked_add`**（`len` 来自 4 字节字段 = 不可信
+        // 输入，在 32 位目标上可取到 `usize::MAX - 11`，与 `pos` 相加即溢出）：
+        //   · `pos + 12 + len`      —— 总长校验，溢出会**绕回成小值而通过校验**
+        //   · `pos + 8 + len`       —— 载荷切片起点，溢出则切片错位
+        //   · `pos + 12 + len`（推进）—— 游标推进，溢出会让 `pos` 倒退成
+        //     小值 → 下一轮从头重扫，**死循环**（最坏结果，不是崩溃）
+        //
+        // 裸写法在 64 位开发机上恒不溢出（usize 64 位），故这类缺陷能一路
+        // 通过 CI 直到有人编 32 位目标才炸——正因如此才必须在源头拦住。
+        //
+        // 溢出按**既有错误码** `ChunkTruncated` 拒，不新造码位：溢出的语义
+        // 就是「这个块的长度字段无法在文件内寻址」，与长度越界同属一类。
+        let total = match pos.checked_add(12).and_then(|v| v.checked_add(len)) {
+            Some(v) => v,
+            None => {
+                return Err(ColorFault::with(
+                    ColorFaultKind::ChunkTruncated,
+                    len as u64,
+                    file.len() as u64,
+                ))
+            }
+        };
+        if len > file.len() || total > file.len() {
             return Err(ColorFault::with(ColorFaultKind::ChunkTruncated, len as u64, file.len() as u64));
         }
-        let data = &file[pos + 8..pos + 8 + len];
+        // 载荷与CRC 字段的起点同样经checked 定位（`total >= pos+12` 已由
+        // 上面的成功路径保证，故此处 `payload_end <= total <= file.len()`）。
+        let payload_end = match pos.checked_add(8).and_then(|v| v.checked_add(len)) {
+            Some(v) => v,
+            None => {
+                return Err(ColorFault::with(
+                    ColorFaultKind::ChunkTruncated,
+                    len as u64,
+                    file.len() as u64,
+                ))
+            }
+        };
+        let data = &file[pos + 8..payload_end];
         let crc_stored = u32::from_be_bytes([
-            file[pos + 8 + len],
-            file[pos + 8 + len + 1],
-            file[pos + 8 + len + 2],
-            file[pos + 8 + len + 3],
+            file[payload_end],
+            file[payload_end + 1],
+            file[payload_end + 2],
+            file[payload_end + 3],
         ]);
         // CRC 覆盖「类型 + 载荷」两段（规范 §5.1）
-        let crc_calc = frameledger_ext::crc32(&file[pos + 4..pos + 8 + len]);
+        let crc_calc = frameledger_ext::crc32(&file[pos + 4..payload_end]);
         if crc_stored != crc_calc {
             out.crc_warnings += 1;
         } else {
@@ -527,7 +570,14 @@ pub fn scan_color_chunks(file: &[u8]) -> Result<RawColorChunks, ColorFault> {
                 }
             }
         }
-        pos += 12 + len;
+        // 游标推进复用上面已算好的 `total`（= `pos + 12 + len`，checked）。
+        //
+        // 不写 `pos += 12 + len`：那一式的中间和会溢出绕回，而 `pos` 自身
+        // 也可能溢出成小值 → **游标倒退**，下一轮从文件中部重新扫描，
+        // 表现为「同一文件被反复重扫」的**死循环**（比panic 更难定位，
+        // 因为它不崩，只是永远不返回）。`total` 已在 checked 路径上得出，
+        // 且 `total > pos`（因 `len + 12 >= 12`），故推进严格单调前进。
+        pos = total;
         if ty == chunk::IEND {
             break;
         }
@@ -811,8 +861,27 @@ pub fn parse_color_annotation(file: &[u8]) -> Result<ColorAnnotation, ColorFault
                 if e.kind == ColorFaultKind::GamaLength {
                     return Err(e); // 长度错= 结构错，阻断
                 }
-                let rawv = u32::from_be_bytes([d[0], d[1], d[2], d[3]]);
-                ann.gama_rejected = Some(rawv);
+                // **不得在此裸读 `d[0..4]`**。
+                //
+                // 走到这个分支只说明 `parse_gama` 报的不是长度错，即它已经
+                // 完成了 4 字节解析。原写法在此重新读一遍 `d[0..4]`，把
+                // 「载荷至少 4 字节」这个前提**重复表达了一遍**——而这个
+                // 前提的唯一担保在 `parse_gama` 的长度守卫里。
+                //
+                // 守卫一旦被放宽（`!= 4` 改成 `< 3`），短载荷会流到这里，
+                // 裸读 4 字节即越界。改读 `e.a`：它来自 `parse_gama` 已
+                // 完成的 4 字节解析，与 `d` 的实际长度无关，故本行在任何
+                // 守卫写法下都不越界。
+                //
+                // **实测补记（本行为等价变异，不是一道能转红的闸）**：
+                // 把本行改回裸读 `d[0..4]`（变体 W13b），21 项判据
+                // **照样全绿**。原因是真实现下 `parse_gama` 必先拒短载荷，
+                // 非长度错分支**只可能**在长度恰为 4 时到达——此时裸读与
+                // 读 `e.a` 结果完全相同。故这是**防御性加固**（对守卫
+                // 放宽的鲁棒性），**不是**修了一个可观测的缺陷。
+                // 真正承重的长度闸在 `C04-GAMA-02`：它扫 0..=8 全域长度，
+                // 守卫一放宽即转红（变体 W13c 实测）。
+                ann.gama_rejected = Some(e.a as u32);
                 ann.warnings += 1;
             }
         }
