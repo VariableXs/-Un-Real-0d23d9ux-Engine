@@ -38,12 +38,8 @@
 //!
 //! | 模块 | 功能 | 判据锚 |
 //! | --- | --- | --- |
-//! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
 //! | [`veb13_heads`] | F0213 virtio 多头与 EDID（逐输出独立使能与模式/EDID 三级注入优先级与非法拒载保默认/热增删幂等重算以最新 cfg 为准/布局表 O(输出数) 应用与版本化持久化/位置语义播报名） | VE 册 #VE-F0213 |
 //! | [`veb14_perf`] | F0214 virtio 性能与诊断接口（按帧统计命令数/传输字节/队列深度与提交到完成延迟的对数分桶草图在线更新分位/诊断快照按需拉取不常驻无请求零开销/计数溢出饱和不回绕且可区分恰好等于上限与已饱和/打点缺失标记缺测不入分位不补零/快照请求并发串行化排队有界满则拒收不覆盖/计数入遥测总线受 F0096 预算治理按提交序确定性抽样） | VE 册 #VE-F0214 |
-//! | [`vea02`] | F0002 图形上下文生命周期管理器 | VE 册 #VE-F0002 |
-//! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
-//! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
 //! | [`vea18_sampler`] | F0018 采样器状态库 | VE 册 #VE-F0018 |
 //! | [`vea19_blend`] | F0019 混合状态机（四维+独立alpha/预置库/漂移失效缓存/实时预览） | VE 册 #VE-F0019 |
 //! | [`vea11_hotplug`] | F0011 适配器热插拔与路径重选 | VE 册 #VE-F0011 |
@@ -68,6 +64,7 @@
 //! | [`vea24_hotreload`] | F0024 着色器热重载协调器（四段流水：请求合并/重编译/管线重建/场景验证；坏码不落地靠 active+staged 双份槽位、验证通过才提升；回滚真有快照可退；冻结是状态位非线程锁；断点期间排队保最新） | VE 册 #VE-F0024 |
 //! | [`vea25_cbuf`] | F0025 常量缓冲更新策略器（四档策略按作用域与时机两轴分；成本模型=字节×每帧次数且不摊一次性切换成本；脏标记精确到槽位；漂移双向校准且假净优先并记动作序；失配建议落到具体档位附代价对比） | VE 册 #VE-F0025 |
 //! | [`vea26_desc_heap`] | F0026 描述符堆与绑定模型（堆三段：分配/分片/复用；跨 D3D12/Vulkan/Metal 抽象，差异只在绑定类别数/槽位编号规则/一帧绑定次数三处，绑定语义三家共用同一来源；耗尽防护给可行动原因；分帧回收有预算且在飞描述符一律不收） | VE 册 #VE-F0026 |
+//! | [`vea27_bindlayout`] | F0027 绑定布局编译器（离线编译：反射自动生成+手写布局双源交叉校验，不一致以反射为准并报差异；槽位重复/越界/断裂三类冲突，重复指名两处下标；产物缓存供A23 PSO 缓存键使用，指纹只查表、等价靠全等复核、撞而内容不等判损坏重编；反射部分失败阻断不退手动；超编译预算不阻断产出只报并归因最慢一步） | VE 册 #VE-F0027 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -255,6 +252,7 @@ pub mod vea23_psocache;
 pub mod vea24_hotreload;
 pub mod vea25_cbuf;
 pub mod vea26_desc_heap;
+pub mod vea27_bindlayout;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
@@ -491,6 +489,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0024", vea24_hotreload::run_vea24_checks()),
         ("VE-F0025", vea25_cbuf::run_vea25_checks()),
         ("VE-F0026", vea26_desc_heap::run_vea26_checks()),
+        ("VE-F0027", vea27_bindlayout::run_vea27_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
@@ -574,7 +573,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1003", vef03_checks::run_vef03_checks()),
         ("VE-F1004", vef04_checks::run_vef04_checks()),
         ("VE-F1203", veg03_checks::run_veg03_checks()),
-        ("VE-F1204", veg04_h264::run_veg04_checks()),
+        ("VE-F1204-a", veg04_checks::run_veg04_checks_a()),
+        ("VE-F1204-b", veg04_checks::run_veg04_checks_b()),
         ("VE-F2602", ven03_checks::run_ven02_checks()),
         ("VE-F2603-a", ven03_checks::run_ven03_checks_a()),
         ("VE-F2603-b", ven03_checks::run_ven03_checks_b()),
@@ -582,6 +582,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2604-b", ven04_checks::run_ven04_checks_b()),
         ("VE-F2605-a", ven05_checks::run_ven05_checks_a()),
         ("VE-F2605-b", ven05_checks::run_ven05_checks_b()),
+        ("VE-F2606-a", ven06_checks::run_ven06_checks_a()),
+        ("VE-F2606-b", ven06_checks::run_ven06_checks_b()),
         ("VE-F3604-a", ves04_checks::run_ves04_checks_a()),
         ("VE-F3604-b", ves04_checks::run_ves04_checks_b()),
     ];
