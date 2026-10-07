@@ -92,6 +92,8 @@
 //! | [`vep02_checks`] | F3002 域自检（判据逐条映射，171项分两批落集） | VE 册 #VE-F3002 |
 //! | [`vep03_token`] | F3003 动效令牌体系（时长/缓动/位移三族+跨主题恒定+单源注入+reduce 令牌层+硬编码 lint） | VE 册 #VE-F3003 |
 //! | [`vep03_checks`] | F3003 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3003 |
+//! | [`vep04_stack`] | F3004 与 VE-M/O04 动画栈关系（三层分工+三选一决策表+控制接口 v2+对拍红线） | VE 册 #VE-F3004 |
+//! | [`vep04_checks`] | F3004 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3004 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
 //! | [`vee01_arch`] | F0801 文字渲染域总架构（四段单向流+ 三向兑现 + 1.5ms 预算） | VE 册 #VE-F0801 |
@@ -370,6 +372,8 @@ pub mod vep02_checks;
 pub mod vep02_lang;
 pub mod vep03_checks;
 pub mod vep03_token;
+pub mod vep04_checks;
+pub mod vep04_stack;
 pub mod veq01_checks;
 pub mod veq01_pipeline;
 pub mod veq02_checks;
@@ -423,7 +427,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 153] = [
+    let blocks: [(&'static str, CheckSet); 155] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -557,6 +561,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3002-b", vep02_checks::run_vep02_checks_b()),
         ("VE-F3003-a", vep03_checks::run_vep03_checks_a()),
         ("VE-F3003-b", vep03_checks::run_vep03_checks_b()),
+        ("VE-F3004-a", vep04_checks::run_vep04_checks_a()),
+        ("VE-F3004-b", vep04_checks::run_vep04_checks_b()),
         ("VE-F4002", vei02_checks::run_vei02_checks()),
         ("VE-F4003", vei03_checks::run_vei03_checks()),
         ("VE-F4004", vei04_checks::run_vei04_checks()),
