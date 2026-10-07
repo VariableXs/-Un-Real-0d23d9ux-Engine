@@ -38,6 +38,11 @@
 //!
 //! | 模块 | 功能 | 判据锚 |
 //! | --- | --- | --- |
+//! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
+//! | [`veb13_heads`] | F0213 virtio 多头与 EDID（逐输出独立使能与模式/EDID 三级注入优先级与非法拒载保默认/热增删幂等重算以最新 cfg 为准/布局表 O(输出数) 应用与版本化持久化/位置语义播报名） | VE 册 #VE-F0213 |
+//! | [`vea02`] | F0002 图形上下文生命周期管理器 | VE 册 #VE-F0002 |
+//! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
+//! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
 //! | [`vea18_sampler`] | F0018 采样器状态库 | VE 册 #VE-F0018 |
 //! | [`vea19_blend`] | F0019 混合状态机（四维+独立alpha/预置库/漂移失效缓存/实时预览） | VE 册 #VE-F0019 |
 //! | [`vea11_hotplug`] | F0011 适配器热插拔与路径重选 | VE 册 #VE-F0011 |
@@ -231,6 +236,8 @@ pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
 pub mod veb12_recovery;
+pub mod veb13_checks;
+pub mod veb13_heads;
 pub mod veh03_checks;
 pub mod veh03_mixgraph;
 pub mod veh04_checks;
@@ -252,6 +259,7 @@ pub mod vee03_outline;
 pub mod vee04_checks;
 pub mod vee04_raster;
 pub mod vee05_hinting;
+pub mod vee06_atlas;
 pub mod vef01_checks;
 pub mod vef01_pngdec;
 pub mod vef02_checks;
@@ -435,6 +443,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0023", vea23_psocache::run_vea23_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
+("VE-F0213", veb13_heads::run_veb13_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
 ("VE-F0413", vec13_checks::run_vec13_checks()),
@@ -460,6 +469,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0803", vee03_checks::run_vee03_checks()),
         ("VE-F0804", vee04_checks::run_vee04_checks()),
         ("VE-F0805", vee05_hinting::run_vee05_checks()),
+        ("VE-F0806", vee06_atlas::run_vee06_checks()),
         ("VE-F2004", vek04_checks::run_vek04_checks()),
         ("VE-F2005", vek05_checks::run_vek05_checks()),
         ("VE-F2006", vek06_checks::run_vek06_checks()),
