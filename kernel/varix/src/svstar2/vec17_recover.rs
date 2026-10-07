@@ -17,9 +17,9 @@
 //! 1. **三策略按类别选用**（判据一）。单记号删除 / 记号替换 / 同步记号再同步，
 //!    三者不是「三种都能用，看哪个方便」，而是**各有各的适用类别**：删一个记号会
 //!    抹掉作者写下的信息，替换会把非法字符变成合法字符从而**改变语义**，再同步
-//!!    跳得太远会丢掉整段。所以策略**必须查表**（`RECOVERY_TABLE`，类别×策略），
+//!    跳得太远会丢掉整段。所以策略**必须查表**（`RECOVERY_TABLE`，类别×策略），
 //!    不得由调用方随手指定，也不得靠错误码字符串 `contains("semicolon")` 猜类别
-//!!    ——猜错类别就会用错策略，而用错策略的表现是「作者明明写对了却报他写错」。
+//!    ——猜错类别就会用错策略，而用错策略的表现是「作者明明写对了却报他写错」。
 //!    表里查不到 → 锚点错误路径第三条：**保守单记号删除**，并如实出注记说明
 //!    「策略缺配，按保守删除处置」，不静默。
 //!
@@ -28,13 +28,18 @@
 //!    是本条的硬不变量——若某条恢复路径能悄悄挪动而不记账，它就是在替作者
 //!    掩盖「编译器替你改了你的代码」。计数分策略（三种各一把）与分性质（兜底 /
 //!    回退）分开，因为**兜底次数**是调优该看的那个数：兜底越多说明策略表越不够用。
+//!    **停滞例外**：游标已在上界时一个记号都没丢，不计入策略计数（否则
+//!    `token_delete` 被停滞灌水，「哪条路用得多」这个调优信号就废了），但照样
+//!    出一条通知并单独计入 `stalled`——可见性不少，只是账记在对的栏里。
 //!
 //! 3. **级联反馈**（判据三）。恢复质量指标 = 恢复之后紧随其后的窗口里**又冒
 //!    出了几条阻断级错误**。只看「恢复次数」是自欺欺人（恢复次数多可能说明词法
 //!    器很勤勉），只有看**恢复是否引入了新的错误**才知道策略选对没有。窗口取
 //!    `CASCADE_WINDOW` 条观测、阈值 `CASCADE_BURST_THRESHOLD` 条阻断级即判
 //!    **级联爆发**。爆发则**回退到上一个稳定点**重恢复——而不是继续在错误的
-//!    位置上加错误。
+//!    位置上加错误。**回退落点必须严格在出错点之前**：回退到出错处或其后，
+//!    重试就落在原地，那正是级联爆发的成因本身，等于没退，故
+//!    `rollback_to_stable` 显式拒绝这样的稳定点。
 //!
 //! 4. **死循环兜底**（判据四）。恢复本身可能不前进：反复删同一个记号、或再同步
 //!    找不到同步点却在原地重试。故每次恢复计入 `attempts`，超出 `budget` 即
@@ -60,6 +65,7 @@
 
 use alloc::format;
 use alloc::string::{String, ToString};
+use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vec16_report::{classify, ErrorFamily, Severity};
@@ -100,15 +106,6 @@ impl RecoveryStrategy {
             RecoveryStrategy::TokenReplace => "跳过一个不可识别字符，该字符不参与后续解析",
             RecoveryStrategy::SyncResync => "丢弃本记号至下一个语句边界之间的全部记号",
         }
-    }
-
-    /// 是否为强制兜底才允许使用的策略。
-    ///
-    /// 三策略都是正规策略；本方法区分的是「按类别选用」与「死循环兜底」两条
-    /// 路径——兜底路径**不查类别**（此时类别已不可信），故此判定供自检核对
-    /// 两条路径确实走了不同的判定来源。
-    pub const fn is_regular(self) -> bool {
-        true
     }
 }
 
@@ -244,7 +241,11 @@ pub fn strategy_for(code: &str) -> (RecoveryClass, RecoveryStrategy, bool) {
             return (r.class, r.strategy, true);
         }
     }
-    (RecoveryClass::Unclassified, RecoveryStrategy::TokenDelete, false)
+    (
+        RecoveryClass::Unclassified,
+        RecoveryStrategy::TokenDelete,
+        false,
+    )
 }
 
 /// 类别对应的族（供上游 F0416 四族对齐核对：本域不重新定义族，只做映射）。
@@ -326,7 +327,11 @@ pub struct SyncPoint {
 impl SyncPoint {
     /// 构造同步点。
     pub const fn new(kind: SyncKind, token_index: usize, byte_offset: usize) -> SyncPoint {
-        SyncPoint { kind, token_index, byte_offset }
+        SyncPoint {
+            kind,
+            token_index,
+            byte_offset,
+        }
     }
 }
 
@@ -342,18 +347,27 @@ pub struct Cursor {
 impl Cursor {
     /// 构造游标。
     pub const fn new(token_index: usize, byte_offset: usize) -> Cursor {
-        Cursor { token_index, byte_offset }
+        Cursor {
+            token_index,
+            byte_offset,
+        }
     }
 }
 
-/// 前进一步（饱和加法——`input_len == usize::MAX` 时不得回绕成 0，那会让
-/// 「已到上界」的判定失效并把死循环兜底变成真死循环）。
+/// 前进一步（饱和加法）。
+///
+/// **只有记号下标受 `input_len` 钳制，字节偏移不受。** 两者单位不同：上界
+/// `input_len` 是**记号数**，拿它去钳**字节偏移**会把 `byte_offset=300` 的
+/// 同步点压成 100，于是报给作者的恢复点字节偏移是错的（位置三元式说谎，
+/// 作者按偏移去跳转会跳到别处）。字节偏移的上界是**输入字节长度**，会话手里
+/// 没有这个值，故此处只做饱和加法防溢出，越界由上游负责——宁可偏移偏大如实
+/// 可见，也不给出一个看着像真的错数字。
 pub fn advance(c: Cursor, by: usize, input_len: usize) -> Cursor {
     let ti = c.token_index.saturating_add(by);
     let bo = c.byte_offset.saturating_add(by);
     Cursor {
         token_index: if ti > input_len { input_len } else { ti },
-        byte_offset: if bo > input_len { input_len } else { bo },
+        byte_offset: bo,
     }
 }
 
@@ -377,6 +391,13 @@ pub fn next_sync_after(syncs: &[SyncPoint], cur: Cursor) -> Option<SyncPoint> {
 }
 
 /// 优先跳硬边界：同强度取靠前者，有更硬的边界则取之（保守再同步）。
+///
+/// **本函数不在默认恢复路径上**，供调用方在「宁可多丢也不能停在错误结构里」
+/// 的场合显式选用（例如已知当前段落整体失效时）。默认路径走
+/// `next_sync_after`（就近）——因为默认路径要的是「尽快回到可解析的语句」，
+/// 而非「跳到最硬的边界」；两者差得很远（实测游标 0 处：就近取分号记号 4，
+/// 硬边界取文件尾记号 30）。若把本函数接进默认路径，一次括号失配就会把
+/// 后面整个文件丢掉——那不是保守，是破坏。
 pub fn prefer_strict_sync(syncs: &[SyncPoint], cur: Cursor) -> Option<SyncPoint> {
     let mut best: Option<SyncPoint> = None;
     let mut i = 0usize;
@@ -432,7 +453,7 @@ impl RecoveryNotice {
         let mut s = String::new();
         s.push_str("警告[词法恢复] ");
         s.push_str(self.code);
-        s.push_str("（");
+        s.push('（');
         s.push_str(self.class.label());
         s.push_str("）→ ");
         s.push_str(self.strategy.label());
@@ -511,14 +532,21 @@ impl RecoveryCounters {
     /// 按策略累加一笔。
     pub fn count_strategy(&mut self, s: RecoveryStrategy) {
         match s {
-            RecoveryStrategy::TokenDelete => self.token_delete = self.token_delete.saturating_add(1),
-            RecoveryStrategy::TokenReplace => self.token_replace = self.token_replace.saturating_add(1),
+            RecoveryStrategy::TokenDelete => {
+                self.token_delete = self.token_delete.saturating_add(1)
+            }
+            RecoveryStrategy::TokenReplace => {
+                self.token_replace = self.token_replace.saturating_add(1)
+            }
             RecoveryStrategy::SyncResync => self.sync_resync = self.sync_resync.saturating_add(1),
         }
         self.total = self.total.saturating_add(1);
     }
 
     /// 三策略之和是否等于总数（内部自洽核验）。
+    ///
+    /// 停滞路径一个记号都没丢，故不计入 `total` 与三策略计数——本式因此
+    /// 恒成立，是记账自洽的交叉核验。
     pub fn strategy_sum_matches(&self) -> bool {
         let s = self
             .token_delete
@@ -527,9 +555,14 @@ impl RecoveryCounters {
         s == self.total
     }
 
-    /// 通知数是否等于动作数（判据二硬不变量：无静默恢复）。
+    /// 通知数是否等于「挪动次数」（判据二硬不变量：无静默恢复）。
+    ///
+    /// 挪动次数 = 策略恢复数（`total`）+ 停滞数（`stalled`）。停滞也出一条
+    /// 通知（作者有权知道「此处没再往下走」），但它没丢弃任何记号，故不进
+    /// `total`——所以这条不变量必须把 `stalled` 也算进来，写成
+    /// `notices == total` 会在出现停滞时误报。
     pub fn notice_covers_all(&self) -> bool {
-        self.notices == self.total
+        self.notices == self.total.saturating_add(self.stalled)
     }
 
     /// 人话呈现（调优指标面板）。
@@ -581,9 +614,21 @@ impl CascadeVerdict {
 /// 与恢复质量无关）。计数必须按**严重度**筛：警告与注记不算级联，注记往往正是
 /// 上一次恢复自己产出的。
 pub fn evaluate_cascade(observed: &[Severity]) -> CascadeVerdict {
-    let taken = if observed.len() < CASCADE_WINDOW { observed.len() } else { CASCADE_WINDOW };
-    let blocking = observed.iter().take(CASCADE_WINDOW).filter(|s| s.is_blocking()).count();
-    CascadeVerdict { observed: taken, blocking, burst: blocking >= CASCADE_BURST_THRESHOLD }
+    let taken = if observed.len() < CASCADE_WINDOW {
+        observed.len()
+    } else {
+        CASCADE_WINDOW
+    };
+    let blocking = observed
+        .iter()
+        .take(CASCADE_WINDOW)
+        .filter(|s| s.is_blocking())
+        .count();
+    CascadeVerdict {
+        observed: taken,
+        blocking,
+        burst: blocking >= CASCADE_BURST_THRESHOLD,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -670,6 +715,10 @@ impl RecoverySession {
     /// 与通知 → 尝试次数累加。**兜底判定排在查表之前**是有意的：走到兜底时
     /// 「是哪个类别」已经不可信（正是同一位置的错误反复出现才耗尽预算），此时
     /// 再按类别选策略等于用一个不可信输入做决策。
+    ///
+    /// `as_rollback` 标记本次动作是否为**级联回退后的重试**——回退重试与首次
+    /// 恢复走的是同一段代码，不标记的话下游 F0421 无法区分二者，而回退重试的
+    /// 动作恰恰是「同一处被反复恢复」最该被看见的那些。
     pub fn recover(
         &mut self,
         code: &'static str,
@@ -677,27 +726,49 @@ impl RecoverySession {
         at_line: usize,
         syncs: &[SyncPoint],
     ) -> RecoveryAction {
+        self.recover_marked(code, at, at_line, syncs, false)
+    }
+
+    /// 同 `recover`，但显式标记是否为回退重试。
+    pub fn recover_marked(
+        &mut self,
+        code: &'static str,
+        at: Cursor,
+        at_line: usize,
+        syncs: &[SyncPoint],
+        as_rollback: bool,
+    ) -> RecoveryAction {
         let mut notes: Vec<String> = Vec::new();
 
         // ---- 停滞判定：游标已在输入上界，无处可进 ----
         if at.token_index >= self.input_len {
             self.counters.stalled = self.counters.stalled.saturating_add(1);
             notes.push("游标已在输入上界，恢复无处可进——如实停滞，不自增".to_string());
-            return self.finish(
-                code,
-                RecoveryClass::Unclassified,
-                RecoveryStrategy::TokenDelete,
-                at,
-                at,
-                at_line,
-                "游标已到输入上界，无策略可选；如实停滞待调用方处置".to_string(),
-                None,
-                None,
-                false,
-                false,
-                true,
-                notes,
-            );
+            // 停滞**不计入策略计数**：此处一个记号都没丢，把它记成「单记号
+            // 删除」会让 `token_delete` 虚高——而这个数正是调优时要看的「哪条
+            // 路用得多」，被停滞灌水后策略表该怎么补就再也说不清了。停滞自带
+            // `stalled` 计数与一条注记，可见性不缺。
+            self.counters.notices = self.counters.notices.saturating_add(1);
+            return RecoveryAction {
+                strategy: RecoveryStrategy::TokenDelete,
+                before: at,
+                after: at,
+                touched_token: None,
+                sync_point: None,
+                forced: false,
+                rollback: as_rollback,
+                notice: RecoveryNotice {
+                    code,
+                    class: RecoveryClass::Unclassified,
+                    strategy: RecoveryStrategy::TokenDelete,
+                    at_offset: at.byte_offset,
+                    at_line: if at_line == 0 { 1 } else { at_line },
+                    cost: "未丢弃任何记号：游标已到输入上界，无处可进".to_string(),
+                    rationale: "游标已到输入上界，无策略可选；如实停滞待调用方处置".to_string(),
+                    notes,
+                },
+                stalled: true,
+            };
         }
 
         // ---- 死循环兜底判定（判据四）：预算耗尽即强制同步 ----
@@ -787,7 +858,7 @@ impl RecoverySession {
             touched,
             landed,
             forced,
-            false,
+            as_rollback,
             stalled,
             notes,
         )
@@ -803,7 +874,10 @@ impl RecoverySession {
         self.blocking_seen = self.blocking_seen.saturating_add(verdict.blocking as u32);
         if verdict.is_healthy() {
             self.attempts = 0;
-            self.stable = Some(StablePoint { cursor: after, blocking_seen: self.blocking_seen });
+            self.stable = Some(StablePoint {
+                cursor: after,
+                blocking_seen: self.blocking_seen,
+            });
         }
         verdict
     }
@@ -813,21 +887,50 @@ impl RecoverySession {
     ///
     /// 返回 `None` 表示**无稳定点可退**——此时不得原地重试（那正是级联爆发的
     /// 成因），应改走强制兜底。锚点错误路径第二条由此落地。
-    pub fn rollback_to_stable(&mut self) -> Option<Cursor> {
-        match self.stable {
-            None => None,
-            Some(sp) => {
-                self.counters.rollback = self.counters.rollback.saturating_add(1);
-                self.attempts = self.attempts.saturating_add(1);
-                Some(sp.cursor)
+    ///
+    /// **稳定点必须严格位于出错点之前**，否则「回退」会把游标推到出错处乃至其
+    /// 之后，重试等于原地重跑——这正是级联爆发的成因本身。故此处显式拒绝
+    /// 不在出错点之前的稳定点（返回 `None`，由调用方转强制兜底）。判据
+    /// `C17-级联-回退不落到出错点及其后` 盯这一条。
+    pub fn rollback_to_stable(&mut self, error_at: Option<Cursor>) -> Option<Cursor> {
+        let sp = self.stable?;
+        // 稳定点不在出错点之前 → 拒绝回退（否则是假回退）。
+        if let Some(at) = error_at {
+            if sp.cursor.token_index >= at.token_index {
+                return None;
             }
         }
+        self.counters.rollback = self.counters.rollback.saturating_add(1);
+        self.attempts = self.attempts.saturating_add(1);
+        Some(sp.cursor)
     }
 
-    /// 无稳定点时的强制兜底游标（单步前进；上界保证其终止）。
-    pub fn forced_fallback_cursor(&mut self, from: Cursor) -> Cursor {
-        self.counters.forced = self.counters.forced.saturating_add(1);
-        advance(from, 1, self.input_len)
+    /// 无稳定点时的强制兜底（单步前进；上界保证其终止）。
+    ///
+    /// 返回那条兜底动作（含通知），调用方**必须**把它并入恢复流——兜底确实
+    /// 挪动了游标，挪动就必须记账（判据二）。原实现只加 `forced` 计数就返回
+    /// 游标，而调用方又把它丢掉：于是「挪了但没说」，作者看不到「此处是被
+    /// 强制兜底往前推的」，流里也查无此事。返回动作让兜底与常规恢复一样在
+    /// 通知与流里可见。
+    pub fn forced_fallback_cursor(&mut self, from: Cursor) -> RecoveryAction {
+        let after = advance(from, 1, self.input_len);
+        let notes: Vec<String> =
+            vec!["级联爆发且无稳定点可退，按锚点错误路径第二条强制兜底前进".to_string()];
+        self.finish(
+            "VE-F0417-FORCED-FALLBACK",
+            RecoveryClass::Unclassified,
+            RecoveryStrategy::TokenDelete,
+            from,
+            after,
+            1,
+            "级联爆发且无可退稳定点，按锚点错误路径第二条强制兜底前进一记号".to_string(),
+            Some(from.token_index),
+            None,
+            true,
+            false,
+            after.token_index >= self.input_len,
+            notes,
+        )
     }
 
     /// 统一收尾：计数 + 组装通知（判据二：每个动作恰好一条通知）。
@@ -966,8 +1069,10 @@ pub fn recover_stream(
         // 级联回退重试：同一处错误最多因回退再试两轮，仍爆发则强制兜底前进，
         // 避免「回退—恢复—又级联」的乒乓把预算耗在原地。
         let mut retry = 0u8;
+        // 本轮内是否已发生过回退——决定后续动作要不要打 `rollback` 标记。
+        let mut rolled = false;
         loop {
-            let act = sess.recover(inp.code, cur, inp.line, syncs);
+            let act = sess.recover_marked(inp.code, cur, inp.line, syncs, rolled);
             let obs: &[Severity] = match observed_after.get(i) {
                 Some(o) => o,
                 None => &[],
@@ -978,25 +1083,40 @@ pub fn recover_stream(
                 break;
             }
             bursts = bursts.saturating_add(1);
-            match sess.rollback_to_stable() {
+            // 回退落点必须严格在**本次出错位置之前**——回退到出错处或其后，
+            // 重试就落在原地，那正是级联爆发的成因本身，等于没退。
+            match sess.rollback_to_stable(Some(inp.at)) {
                 Some(sp) => {
                     cur = sp;
+                    rolled = true;
                     retry = retry.saturating_add(1);
                     if retry >= 2 {
-                        // 乒乓两轮仍级联 → 强制兜底离场：只取其计数副作用
-                        // （`forced` 累加），游标随即由下一处错误重置，故此处
-                        // 的返回值不落 `cur`（落进去也是死值）。
-                        let _ = sess.forced_fallback_cursor(cur);
+                        // 乒乓两轮仍级联 → 强制兜底离场。
+                        //
+                        // 兜底动作**必须并入流**：它确实挪了游标，不并入就是
+                        // 一次静默挪动（判据二）——计数里虽有 `forced`，流里却查
+                        // 无此事，作者看不到「此处是被强制兜底往前推的」。
+                        //
+                        // `cur` **不**承接兜底后的游标：下一处错误用的是它自己的
+                        // `inp.at`（位置来自上游 F0416 的报告），与此处无关，
+                        // 赋了也是死值。「兜底确实前进」这一事实由流中那条动作
+                        // 的 `after > before` 承载，不靠局部变量证明。
+                        actions.push(sess.forced_fallback_cursor(cur));
                         break;
                     }
                 }
                 None => {
-                    let _ = sess.forced_fallback_cursor(cur);
+                    // 无稳定点可退 → 锚点错误路径第二条：强制兜底并前进。
+                    actions.push(sess.forced_fallback_cursor(cur));
                     break;
                 }
             }
         }
         i += 1;
     }
-    RecoveryStream { actions, counters: *sess.counters(), bursts }
+    RecoveryStream {
+        actions,
+        counters: *sess.counters(),
+        bursts,
+    }
 }
