@@ -54,6 +54,7 @@
 //! | [`ved14_traverse`] | F0614 图层渲染遍历器 | VE 册 #VE-F0614 |
 //! | [`ved15_cache`] | F0615 图层缓存策略 | VE 册 #VE-F0615 |
 //! | [`ved16_scale`] | F0616 大层数性能（虚拟化与扁平化） | VE 册 #VE-F0616 |
+//! | [`ved17_consistency`] | F0617 图层树一致性校验 | VE 册 #VE-F0617 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -79,6 +80,8 @@
 //! | [`vei07_plural`] | F4007 复数与性别规则（CLDR 六类复数/规则族函数表/语法性别模板/联合选择器/双向覆盖红线/缓存键七段） | VE 册 #VE-F4007 |
 //! | [`vef01_pngdec`] | F1001 PNG 解码器核心（签名/IHDR七参数/PLTE/tRNS/反滤波/CRC 分级/输出 RGBA） | VE 册 #VE-F1001 |
 //! | [`vef02_pngenc`] | F1002 PNG 编码器核心（五滤波两策略/zlib 与九档权衡/IDAT 分块/CRC/颜色降档/场景建议表） | VE 册 #VE-F1002 |
+//! | [`vef03_adam7`] | F1003 PNG 交错模式（七遍常量表唯一来源/解码重排/编码拆分/每遍独立滤波/空遍合法/截断渐进语义） | VE 册 #VE-F1003 |
+//! | [`vef03_checks`] | F1003 域自检（判据逐条映射，21 项） | VE 册 #VE-F1003 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
 //! | [`veu03_registry`] | F4203 契约注册中心（四能力+五字段冻结+唯一性+引用计数+生命周期） | VE 册 #VE-F4203 |
@@ -189,6 +192,7 @@ pub mod ved13_dirty;
 pub mod ved14_traverse;
 pub mod ved15_cache;
 pub mod ved16_scale;
+pub mod ved17_consistency;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veh03_checks;
@@ -213,6 +217,8 @@ pub mod vef01_checks;
 pub mod vef01_pngdec;
 pub mod vef02_checks;
 pub mod vef02_pngenc;
+pub mod vef03_adam7;
+pub mod vef03_checks;
 pub mod veh01_boundary;
 pub mod vei02_checks;
 pub mod vei02_locale;
@@ -350,6 +356,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0614", ved14_traverse::run_ved14_checks()),
         ("VE-F0615", ved15_cache::run_ved15_checks()),
         ("VE-F0616", ved16_scale::run_ved16_checks()),
+        ("VE-F0617", ved17_consistency::run_ved17_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0205", veb05_checks::run_veb05_checks()),
 ("VE-F0206", veb06_checks::run_veb06_checks()),
@@ -403,6 +410,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4007", vei07_checks::run_vei07_checks()),
         ("VE-F1001", vef01_checks::run_vef01_checks()),
         ("VE-F1002", vef02_checks::run_vef02_checks()),
+        ("VE-F1003", vef03_checks::run_vef03_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
