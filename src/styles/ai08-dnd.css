@@ -1,0 +1,187 @@
+/* ============================================================
+   U-17 全局拖放总线视觉层（DndLayer）
+   类名前缀 dnd-；悬浮幽灵 / 目标命中态 / 收藏托盘。
+   设计取舍：目标高亮直接打在目标元素上（dnd-hit / dnd-hit-no），
+   目标组件自身零 CSS 成本。
+   ============================================================ */
+
+/* ---------- 拖拽幽灵（fixed 跟随指针，位置走 transform 直改） ---------- */
+.dnd-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1501; /* 高于模态（1000）低于帘幕/锁屏（2400+） */
+  display: flex;
+  align-items: stretch;
+  max-width: 264px;
+  pointer-events: none;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.3); /* elev-1 */
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  will-change: transform;
+  touch-action: none;
+}
+
+.dnd-ghost-show {
+  opacity: 1;
+}
+
+/* 来源色条 */
+.dnd-ghost-bar {
+  flex: none;
+  width: 4px;
+  background: var(--accent);
+}
+
+.dnd-ghost-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  min-width: 0;
+}
+
+.dnd-ghost-ic {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.dnd-ghost-label {
+  font-size: 12.5px;
+  color: var(--text);
+  max-width: 176px;
+}
+
+.dnd-ghost-badge {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0a1020;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 「禁止」态：不兼容目标上幽灵变红 + 显示禁止图标 */
+.dnd-ghost-ban {
+  flex: none;
+  color: var(--danger);
+  display: none;
+}
+
+.dnd-ghost-no {
+  border-color: var(--danger);
+}
+
+.dnd-ghost-no .dnd-ghost-ban {
+  display: inline-flex;
+}
+
+.dnd-ghost-no .dnd-ghost-badge {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* 拖拽会话期间的指针形状（含不兼容「禁止」态） */
+body.dnd-dragging,
+body.dnd-dragging * {
+  cursor: grabbing !important;
+}
+
+body.dnd-forbidden,
+body.dnd-forbidden * {
+  cursor: not-allowed !important;
+}
+
+/* ---------- 目标命中态（elev-1 + 虚线框；打到目标元素上） ---------- */
+.dnd-hit {
+  outline: 2px dashed var(--accent) !important;
+  outline-offset: -2px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45) !important;
+}
+
+.dnd-hit-no {
+  outline: 2px dashed var(--danger) !important;
+  outline-offset: -2px;
+  border-radius: 8px;
+  background: rgba(224, 127, 127, 0.1);
+}
+
+/* ---------- 收藏托盘（屏幕左缘常驻小槽，有寄存物时显示） ---------- */
+.dnd-tray {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1502;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 180px;
+  padding: 8px 12px 8px 10px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 12px 12px 0;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  animation: dnd-tray-in 0.18s ease;
+}
+
+.dnd-tray:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+@keyframes dnd-tray-in {
+  from {
+    transform: translateY(-50%) translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(-50%) translateX(0);
+    opacity: 1;
+  }
+}
+
+.dnd-tray-bar {
+  flex: none;
+  width: 3px;
+  align-self: stretch;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.dnd-tray-ic {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.dnd-tray-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dnd-tray-badge {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #0a1020;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-variant-numeric: tabular-nums;
+}

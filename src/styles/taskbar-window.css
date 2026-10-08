@@ -1,0 +1,30 @@
+/* ===========================================================================
+ * M4-B 任务栏独立原生窗宿主样式（仅 taskbar.html / taskbar 窗生效）
+ * - 窗体全屏透明：html/body 必须盖掉 global.css 的 body 背景（否则整窗不透明）
+ * - 收起/呼出动画：后端 SW_HIDE 前 240ms 先广播 taskbar://state=collapsed，
+ *   根容器 translate 滑出；呼出时反向滑入（与 Windows 11 自动隐藏任务栏手感一致）
+ * =========================================================================== */
+
+html,
+body {
+  background: transparent !important;
+}
+
+.taskbar-window-root {
+  position: fixed;
+  inset: 0;
+  translate: 0 0;
+  transition: translate 200ms ease;
+  will-change: translate;
+  /* 命中/穿透由后端 set_ignore_cursor_events + hitmap 控制，
+     此处绝不可设 pointer-events:none（会吞掉任务栏自身交互） */
+}
+
+.taskbar-window-root.tbw-hidden {
+  translate: 0 118%;
+}
+
+/* 减弱动效偏好：直接隐显，不做滑移 */
+.taskbar-window-root[data-reduce-motion="1"] {
+  transition: none;
+}

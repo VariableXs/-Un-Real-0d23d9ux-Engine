@@ -1,0 +1,174 @@
+/* ============================================================
+ * AI-20 质量门禁与收官组 — 组件样式（ai20-quality.css）
+ * 覆盖：V-92 关机倒计时遮罩 / M-80 IPC 追踪面板 / M-79 看板 /
+ * V-99 依赖诚实声明 / V-100 毕业页 / V-91 演示模式按钮态。
+ * 全部引用 tokens（M-88 令牌纪律：零裸色值）。
+ * ============================================================ */
+
+/* ---- V-92 关机倒计时：全屏轻遮罩（不吓人但不可忽视） ---- */
+.power-gate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-2);
+  backdrop-filter: blur(2px);
+}
+.power-gate-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 40px;
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+  box-shadow: var(--elev-4);
+  text-align: center;
+}
+.power-gate-ring .power-gate-track {
+  fill: none;
+  stroke: var(--stroke);
+  stroke-width: 8;
+}
+.power-gate-ring .power-gate-arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+.power-gate-num {
+  fill: var(--text-primary);
+  font-size: 40px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+.power-gate-cancel {
+  min-width: var(--ctl-btn-minw);
+  height: var(--ctl-input);
+  font-size: var(--fs-15);
+  margin-top: 6px;
+}
+
+/* ---- M-80 IPC 追踪面板（仅 dev 挂载） ---- */
+.ipctrace-overlay {
+  position: fixed;
+  inset: auto 12px 12px auto;
+  z-index: 9600;
+}
+.ipctrace-card {
+  width: 560px;
+  max-height: 46vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+  box-shadow: var(--elev-4);
+  padding: 10px 12px;
+}
+.ipctrace-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--fs-12);
+}
+.ipctrace-row {
+  display: grid;
+  grid-template-columns: 150px 1fr 64px;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+}
+.ipctrace-row .ipctrace-err {
+  grid-column: 1 / -1;
+  color: var(--danger);
+}
+.ipctrace-cmd {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ipctrace-bar-wrap {
+  position: relative;
+  height: 8px;
+  background: var(--bg-canvas);
+  border-radius: var(--r-chip);
+  overflow: hidden;
+}
+.ipctrace-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--r-chip);
+  background: var(--accent);
+}
+.ipctrace-row.slow .ipctrace-bar {
+  background: var(--danger);
+}
+.ipctrace-row.fail .ipctrace-bar {
+  background: var(--danger);
+}
+.ipctrace-row.fail .ipctrace-ms {
+  color: var(--danger);
+}
+.ipctrace-ms {
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+/* ---- M-79 错误看板 ---- */
+.quality-tab .err-count {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  min-width: 36px;
+  text-align: center;
+}
+
+/* ---- V-99 依赖诚实声明 ---- */
+.dep-honesty .dep-status.ok {
+  background: var(--accent-soft);
+  color: var(--ok);
+}
+.dep-honesty .dep-status.warn {
+  background: var(--accent-soft);
+  color: var(--warn);
+}
+
+/* ---- V-100 毕业页 ---- */
+.graduation-wall {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+  padding-right: 4px;
+}
+.graduation-domain .graduation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.g-task.done {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+.g-task.todo {
+  background: transparent;
+  color: var(--text-secondary);
+  opacity: 0.55;
+  border: 1px dashed var(--stroke);
+}
+.graduation-usage {
+  margin: 4px 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

@@ -1,0 +1,2615 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>VTaskBoard</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+:root{
+  --bg:#191a20;--bg2:#20222a;--panel:#232630;--panel2:#282b36;
+  --line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.18);
+  --fg:#f2f0ea;--dim:#9b9890;--faint:#6a675f;
+  --gold:#d6b572;--gold-dim:rgba(214,181,114,.4);
+  --ok:#8fbf8a;--warn:#c98a55;--lock:#7d7a72;
+  --serif:'Georgia','STZhongsong','SimSun',serif;
+  --sans:'Segoe UI','Microsoft YaHei',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);overflow:hidden}
+::selection{background:var(--gold-dim)}
+
+/* ---------- AI 施工边框 ---------- */
+.aiborder{position:fixed;inset:0;pointer-events:none;z-index:60;opacity:0;transition:opacity .5s}
+body.ai-on .aiborder{opacity:1;box-shadow:inset 0 0 0 3px var(--gold),inset 0 0 42px rgba(214,181,114,.25);animation:aipulse 2.2s ease-in-out infinite}
+@keyframes aipulse{50%{box-shadow:inset 0 0 0 3px var(--gold),inset 0 0 90px rgba(214,181,114,.42)}}
+.aichip{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:61;display:none;gap:10px;align-items:center;
+  background:rgba(25,26,32,.92);border:1px solid var(--gold-dim);border-radius:999px;padding:7px 18px;backdrop-filter:blur(8px);font-size:13px}
+body.ai-on .aichip{display:flex}
+.aichip .dot{width:8px;height:8px;border-radius:50%;background:var(--gold);animation:aipulse2 1.2s infinite}
+@keyframes aipulse2{50%{opacity:.25}}
+.aichip b{color:var(--gold);font-weight:500}
+
+/* ---------- header ---------- */
+header{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;gap:26px;
+  padding:14px 30px;background:linear-gradient(180deg,rgba(25,26,32,.94),rgba(25,26,32,.78) 70%,transparent);
+  border-bottom:1px solid var(--line)}
+.logo{font-family:var(--serif);font-style:italic;font-size:19px;letter-spacing:.35em;color:var(--gold)}
+.views{display:flex;gap:4px;border:1px solid var(--line2);border-radius:999px;padding:3px}
+.views span{padding:5px 20px;border-radius:999px;cursor:pointer;font-size:13px;letter-spacing:.14em;color:var(--dim);transition:color .25s ease-out,background-color .25s ease-out}
+.views span.on{background:var(--gold);color:#141310}
+.views span:not(.on):hover{color:var(--fg)}
+#clock{margin-left:auto;font-variant-numeric:tabular-nums;font-size:13px;color:var(--dim);letter-spacing:.2em}
+#stotal{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--dim)}
+#stotal b{color:var(--gold);font-weight:400}
+
+main{position:absolute;inset:0}
+.view{position:absolute;inset:0;display:none;overflow:auto}
+.view.on{display:block}
+#hud{overflow:auto}
+body.wallon #hud{background:transparent}
+body.wallon header{background:linear-gradient(180deg,rgba(25,26,32,.5),rgba(25,26,32,.28) 70%,transparent);border-bottom-color:transparent}
+body.wallon .hero,body.wallon .boardtop,body.wallon .boardtop .ledger-nav{background:transparent}
+body.wallon .hero{border-bottom-color:transparent}
+#hudcv{position:absolute;inset:0;width:100%;height:100%}
+.hudwrap{position:absolute;inset:0;padding:66px 24px 18px;display:flex;overflow:auto}
+.hudgrid{flex:1;display:grid;grid-template-columns:minmax(340px,420px) 1fr;grid-template-rows:auto auto 1fr;gap:14px;
+  grid-template-areas:"ring heat" "pipe heat" "books workers";min-height:0}
+/* ---- 氛围主题：每套主题整套重排布（grid areas 互不重叠）+ 自适应色板光影 ---- */
+#hud{background:var(--hbg,radial-gradient(ellipse at 50% 30%,rgba(212,178,112,.05),transparent 60%))}
+body.t-dusk{--hgold:#d4b270;--hfg:#e8e6e1;--hdim:#8a8d99;
+  --hbg:radial-gradient(ellipse at 50% 20%,rgba(212,178,112,.06),transparent 62%)}
+body.t-noir{--hgold:#9db8d9;--hfg:#dfe4ec;--hdim:#7d8698;
+  --hbg:radial-gradient(ellipse at 50% 0%,rgba(90,130,190,.10),transparent 60%),
+        linear-gradient(180deg,#11151d 0%,#0d1017 100%);
+  --bg:#0f131b;--bg2:#141a24;--panel:#1a2230;--panel2:#202a3a;
+  --line:rgba(140,170,220,.11);--line2:rgba(140,170,220,.22);
+  --gold:#9db8d9;--gold-dim:rgba(157,184,217,.4)}
+body.t-noir .hpanel{background:linear-gradient(180deg,rgba(26,32,44,.78),rgba(20,25,34,.6));
+  border-color:rgba(120,150,200,.16);box-shadow:0 1px 2px rgba(0,0,0,.5),0 14px 40px rgba(0,0,0,.45)}
+body.t-noir .hudgrid{grid-template-areas:"heat ring" "heat pipe" "workers books"}
+body.t-dawn{--hgold:#c98f4e;--hfg:#2e2a24;--hdim:#6d6558;
+  --hbg:radial-gradient(ellipse at 50% 0%,rgba(214,154,78,.10),transparent 60%),linear-gradient(180deg,#1e170f 0%,#191309 100%);
+  --bg:#1e170f;--bg2:#261d12;--panel:#2c2214;--panel2:#352a19;
+  --line:rgba(210,160,90,.12);--line2:rgba(210,160,90,.24);
+  --gold:#d69a4e;--gold-dim:rgba(214,154,78,.4);
+  --fg:#efe6d6;--dim:#a89a82;--faint:#7a6f5c}
+body.t-dawn .hpanel{background:linear-gradient(180deg,rgba(48,37,22,.8),rgba(40,31,18,.62));
+  border-color:rgba(210,160,90,.22);box-shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(60,40,10,.3)}
+body.t-dawn .hudgrid{grid-template-areas:"ring books" "heat heat" "pipe workers"}
+body.t-frost{--hgold:#a8c8e8;--hfg:#eef3f9;--hdim:#8795a8;
+  --hbg:linear-gradient(180deg,#141a26 0%,#1a2334 60%,#18202f 100%);
+  --bg:#111722;--bg2:#161e2c;--panel:#1b2536;--panel2:#222e42;
+  --line:rgba(150,190,235,.11);--line2:rgba(150,190,235,.22);
+  --gold:#a8c8e8;--gold-dim:rgba(168,200,232,.4)}
+body.t-frost .hpanel{background:linear-gradient(180deg,rgba(32,44,64,.72),rgba(26,36,54,.56));
+  border-color:rgba(150,190,235,.16);box-shadow:0 1px 2px rgba(0,0,0,.4),0 14px 40px rgba(20,40,80,.35)}
+body.t-frost .hudgrid{grid-template-areas:"books ring" "workers ring" "heat heat"}
+body.t-aurora{--hgold:#7fd9b8;--hfg:#e4f2ec;--hdim:#7a9a90;
+  --hbg:linear-gradient(200deg,#0c1512 0%,#101c18 55%,#0d1a16 100%);
+  --bg:#0c1411;--bg2:#101b16;--panel:#14201b;--panel2:#1a2822;
+  --line:rgba(110,210,175,.11);--line2:rgba(110,210,175,.22);
+  --gold:#7fd9b8;--gold-dim:rgba(127,217,184,.4)}
+body.t-aurora .hpanel{background:linear-gradient(180deg,rgba(20,38,32,.74),rgba(15,30,26,.58));
+  border-color:rgba(110,210,175,.18);box-shadow:0 1px 2px rgba(0,0,0,.5),0 14px 40px rgba(0,40,30,.4)}
+body.t-aurora .hudgrid{grid-template-areas:"heat ring" "heat pipe" "books workers"}
+/* 主题化的金色部件（环/进度条/光晕全跟随 --hgold） */
+.rfg{stroke:var(--hgold,#d4b270)}
+.rorb{stroke:color-mix(in srgb,var(--hgold,#d4b270) 34%,transparent)}
+.rorb2{stroke:color-mix(in srgb,var(--hgold,#d4b270) 55%,transparent)}
+.rfg{filter:drop-shadow(0 0 6px color-mix(in srgb,var(--hgold,#d4b270) 50%,transparent))}
+.brow .bfill{background:linear-gradient(90deg,color-mix(in srgb,var(--hgold,#d4b270) 55%,transparent),var(--hgold,#d4b270))}
+.wchip{border-color:color-mix(in srgb,var(--hgold,#d4b270) 45%,transparent)}
+.wchip i{background:var(--hgold,#d4b270)}
+.h4 i{background:var(--c,var(--hgold,#d4b270))}
+/* ---- 壁纸层（4K 静态图 / 循环视频）+ 氛围控制条 ---- */
+#hudwall{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+#hudwall img,#hudwall video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* --wb/--ws/--wbl 为恒等值时不挂 filter：CSS filter 会强制元素脱离普通栅格化路径，
+   走独立合成层重采样，导致本该 1:1 映射的壁纸被二次插值（清晰度下降 + 边缘发虚）。
+   JS 侧 _wallFilter() 仅在用户真的调节光影时才写入 filter。*/
+#hudwall img.fx,#hudwall video.fx{filter:brightness(var(--wb,1)) saturate(var(--ws,1)) blur(var(--wbl,0px))}
+#hudwall::after{content:none}
+#hudfx{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
+.ambbar{display:flex;flex-direction:column;gap:10px;animation:hudin .5s cubic-bezier(.2,.7,.2,1) backwards}
+.ambrow{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:46vw}
+.ambchip{cursor:pointer;user-select:none;border:1px solid var(--line2);border-radius:999px;padding:6px 14px;
+  font-size:11px;letter-spacing:.14em;color:var(--dim);background:rgba(20,22,28,.6);backdrop-filter:blur(10px);
+  transition:border-color .25s ease-out,color .25s ease-out,transform .15s ease-out}
+.ambchip:hover{transform:translateY(-1px);color:var(--fg)}
+.ambchip.on{border-color:var(--hgold,#d4b270);color:var(--hgold,#d4b270);box-shadow:0 0 12px color-mix(in srgb,var(--hgold,#d4b270) 30%,transparent)}
+.ambchip.sys{font-size:10.5px;opacity:.85}
+/* 画质标注：原生分辨率=金色徽标（可信高清）；需放大=灰色斜体（素材受限预警） */
+.ambchip .qh{margin-left:6px;font-size:9px;font-weight:700;letter-spacing:.04em;
+  color:var(--hgold,#d4b270);opacity:.9;vertical-align:1px}
+.ambchip .qu{margin-left:6px;font-size:9px;font-style:italic;letter-spacing:.02em;
+  color:var(--dim);opacity:.72;vertical-align:1px}
+.ambchip.on .qu{color:var(--fg);opacity:.9}
+.rotpos{font-size:9.5px;letter-spacing:.1em;color:var(--dim);opacity:.8;align-self:center;
+  font-variant-numeric:tabular-nums}
+.wslider{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.16em;color:var(--faint);
+  background:rgba(20,22,28,.6);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+.wslider input{width:84px;accent-color:var(--hgold,#d4b270);cursor:pointer}
+#gwall{position:fixed;inset:0;z-index:0;display:none;pointer-events:none;overflow:hidden}
+/* ══ 壁纸渲染链：零重采样规格 ═══════════════════════════════════════
+   浏览器把壁纸元素栅格化到 devicePixelRatio 倍的物理像素。本机 1920x1080@125%
+   即 CSS 1536x864 -> 物理 1920x1080。壁纸元素宽高恒等于视口，浏览器按cover
+   把整幅母版映射上去；若母版比例与视口不同，必然发生一次重采样。
+   故由 JS 按视口实际物理像素比向服务端索取对应比例的母版（?r=WxH），
+   服务端 cover 预裁到同比例 —— 浏览器端就退化为 1:1 映射，不再二次插值。
+
+   image-rendering 必须显式写 auto：默认继承下部分主题会把它带到
+   pixelated/nearest（MC 皮肤为像素贴图专门设了 pixelated，若被壁纸继承
+   会让 4K 母版出现严重马赛克）。这里显式钉死 auto 覆盖继承。
+   will-change:transform 提示浏览器该层会被合成，避免走「先降级再放大」路径。*/
+#gwall img,#gwall video{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;image-rendering:auto;will-change:transform;backface-visibility:hidden}
+/* 同上：默认不挂 filter，保住壁纸原生缩放质量；仅在调节光影时启用（见 .fx） */
+#gwall img.fx,#gwall video.fx{filter:brightness(var(--wb,1)) saturate(var(--ws,1)) blur(var(--wbl,0px))}
+/* WE scene 壁纸的实况流层：盖在 4K 静帧底之上。
+   默认 opacity:0 —— 长连接建立到首帧到达之间不能露出半张图；
+   首帧 load 事件到达后加 .on 淡入（180ms），下层静帧始终保留作兜底。 */
+#gwall .wecap{position:absolute;inset:0;z-index:1}
+#gwall .wecap .welive{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;image-rendering:auto;opacity:0;
+  transition:opacity .18s ease-out;will-change:transform;backface-visibility:hidden}
+#gwall .wecap .welive.on{opacity:1}
+/* 实况层同样跟随光影调节，否则拖亮度时底图变了、上层不变，出现"两层不同调" */
+#gwall .wecap .welive.fx{filter:brightness(var(--wb,1)) saturate(var(--ws,1)) blur(var(--wbl,0px))}
+@media (prefers-reduced-motion:reduce){#gwall .wecap .welive{transition:none}}
+body.wallon{background:transparent}
+/* 首屏骨架：4K 母版有2~7MB，首屏加载实测 4~7s。这段时间若只留空白，
+   用户会以为软件卡死。用壁纸主色的低频呼吸渐变占位，明确"正在加载"。
+   一旦真壁纸元素挂上即由 JS 移除（见 setWall），不残留、不遮挡。 */
+#gwall-skel{position:absolute;inset:0;z-index:-1;
+  background:
+    radial-gradient(120% 90% at 30% 20%,rgba(212,178,112,.10),transparent 60%),
+    radial-gradient(100% 80% at 75% 80%,rgba(90,130,190,.10),transparent 62%),
+    linear-gradient(160deg,#0d1014,#141a22 55%,#0b0e12);
+  animation:gwallbreathe 2.6s ease-in-out infinite}
+@keyframes gwallbreathe{0%,100%{opacity:.72}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){#gwall-skel{animation:none}}
+#gfx{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
+body.fx-off #gfx{display:none}
+.hpanel{position:relative;background:linear-gradient(180deg,rgba(35,38,48,.72),rgba(32,34,42,.55));
+  border:1px solid var(--line2);border-radius:18px;padding:18px 20px;min-height:0;
+  box-shadow:0 1px 2px rgba(0,0,0,.35),0 10px 30px rgba(0,0,0,.25);
+  animation:hudin .7s cubic-bezier(.2,.7,.2,1) backwards}
+.hpanel:nth-child(2){animation-delay:.12s}.hpanel:nth-child(3){animation-delay:.22s}
+.hpanel:nth-child(4){animation-delay:.3s}.hpanel:nth-child(5){animation-delay:.38s}
+@keyframes hudin{from{opacity:0;transform:translateY(14px);filter:blur(6px)}}
+.hring{grid-area:ring}.hheat{grid-area:heat}.hpipe{grid-area:pipe}.hbooks{grid-area:books;overflow:auto}.hworkers{grid-area:workers;overflow:auto}
+.hp-k{font-size:11px;letter-spacing:.3em;color:var(--dim);display:flex;align-items:baseline;gap:12px}
+.hp-k span{font-size:9.5px;letter-spacing:.22em;color:rgba(232,230,225,.28)}
+.hp-k em{margin-left:auto;font-style:normal;font-size:11px;letter-spacing:.06em;color:var(--gold);
+  font-variant-numeric:tabular-nums;text-wrap:balance;transition:color .25s ease-out}
+/* ---- 完成度环 ---- */
+.hring{display:flex;flex-direction:column;gap:14px}
+.ringbox{position:relative;width:min(240px,32vh);align-self:center}
+.ringbox svg{width:100%;height:auto;display:block}
+.ringbox circle{fill:none}
+.rbg{stroke:rgba(255,255,255,.07);stroke-width:11;stroke-linecap:round}
+.rfg{stroke:#d4b270;stroke-width:11;stroke-linecap:round;stroke-dasharray:527.79;stroke-dashoffset:527.79;
+  transition:stroke-dashoffset 1.2s cubic-bezier(.2,.7,.2,1);filter:drop-shadow(0 0 6px rgba(212,178,112,.45))}
+.rorb{stroke:rgba(212,178,112,.30);stroke-width:1.6;stroke-dasharray:3 9;transform-origin:100px 100px;animation:orb 14s linear infinite}
+.rorb2{stroke-dasharray:1 22;stroke:rgba(212,178,112,.5);animation:orb 26s linear infinite reverse}
+@keyframes orb{to{transform:rotate(360deg)}}
+.ringc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.ringc b{font-family:var(--serif);font-style:italic;font-weight:300;font-size:clamp(34px,4.6vh,52px);color:var(--fg);font-variant-numeric:tabular-nums;line-height:1}
+.ringc b small{font-size:.45em;color:var(--gold);margin-left:2px}
+.ringc span{font-size:11px;letter-spacing:.14em;color:var(--faint);font-variant-numeric:tabular-nums}
+.hstats4{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:auto}
+.h4{position:relative;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:10px 12px 9px 14px}
+.h4 i{position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--c,#d4b270)}
+.h4 b{display:block;font-family:var(--serif);font-style:italic;font-weight:300;font-size:clamp(20px,2.8vh,30px);color:var(--fg);font-variant-numeric:tabular-nums;line-height:1.1}
+.h4 span{font-size:9.5px;letter-spacing:.2em;color:var(--faint)}
+/* ---- 域热力矩阵 ---- */
+.hheat{display:flex;flex-direction:column;gap:12px}
+#heatcv{flex:1;min-height:0;width:100%;border-radius:10px;outline:1px solid rgba(255,255,255,.05);outline-offset:-1px;cursor:crosshair}
+.hlegend{display:flex;align-items:center;gap:10px;font-size:10.5px;letter-spacing:.12em;color:var(--faint)}
+.hlegend i{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--c,#d4b270);margin-right:4px;vertical-align:-1px}
+/* ---- 任务管线 ---- */
+.hpipe .pipe{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}
+.pn{min-width:76px;flex:1;text-align:center;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:8px 10px 7px}
+.pn b{display:block;font-family:var(--serif);font-style:italic;font-weight:300;font-size:clamp(20px,2.8vh,30px);color:var(--fg);font-variant-numeric:tabular-nums;line-height:1.1}
+.pn span{font-size:9.5px;letter-spacing:.2em;color:var(--faint)}
+.pn2{border-color:rgba(200,135,74,.4)}.pn2 b{color:#d9a06a}
+.pn3{border-color:rgba(125,168,123,.4)}.pn3 b{color:#93b891}
+.pn4{border-color:rgba(176,74,74,.4)}.pn4 b{color:#c46a6a}
+.pl{flex:1 1 18px;height:2px;min-width:18px;margin:0 6px;border-radius:2px;
+  background:repeating-linear-gradient(90deg,rgba(212,178,112,.55) 0 7px,transparent 7px 15px);
+  animation:dashflowbg 1.1s linear infinite}
+.pl.pb{background:repeating-linear-gradient(90deg,rgba(176,74,74,.55) 0 7px,transparent 7px 15px)}
+@keyframes dashflowbg{to{background-position:15px 0}}
+/* ---- 三册进度 ---- */
+.hbooks #bookbars{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.brow{display:grid;grid-template-columns:88px 1fr auto;align-items:center;gap:14px}
+.brow .bn{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--fg)}
+.brow .btrack{height:9px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden}
+.brow .bfill{height:100%;border-radius:5px;background:linear-gradient(90deg,rgba(212,178,112,.55),#d4b270);
+  width:0%;transition:width 1.1s cubic-bezier(.2,.7,.2,1);position:relative}
+.brow .bfill::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(100deg,transparent 30%,rgba(255,248,230,.5) 50%,transparent 70%);
+  animation:shimmer 2.6s ease-in-out infinite}
+@keyframes shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.brow .bc{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;letter-spacing:.06em}
+/* ---- AI 施工 ---- */
+.hworkers #wchips{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px;align-content:flex-start}
+#wchips .widle{font-size:12px;color:var(--faint);letter-spacing:.1em;font-style:italic}
+.wchip{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(212,178,112,.4);border-radius:999px;
+  padding:7px 16px;font-size:12px;color:var(--fg);letter-spacing:.06em;font-variant-numeric:tabular-nums;
+  animation:hudin .5s cubic-bezier(.2,.7,.2,1) backwards}
+.wchip i{width:8px;height:8px;border-radius:50%;background:#d4b270;animation:wpulse 1.4s ease-in-out infinite}
+@keyframes wpulse{0%,100%{box-shadow:0 0 0 0 rgba(212,178,112,.5)}50%{box-shadow:0 0 0 6px rgba(212,178,112,0)}}
+
+/* ---------- BOARD ---------- */
+#board{padding:96px 40px 60px}
+.hero{position:relative;z-index:2;background:var(--bg);padding:26px 6px 20px;border-bottom:1px solid var(--line);display:flex;align-items:flex-end;gap:6vw;flex-wrap:wrap}
+.ledger-nav{position:relative;z-index:2}
+.nums{display:flex;gap:6vw;align-items:baseline;flex-wrap:wrap}
+.nums .n .v{font-family:var(--serif);font-style:italic;font-weight:300;font-size:clamp(52px,7.5vw,110px);line-height:1;color:var(--fg);font-variant-numeric:tabular-nums}
+.nums .n:first-child .v{color:var(--gold);font-size:clamp(72px,11vw,168px)}
+.nums .n:not(:first-child) .k{margin-left:6px}
+.nums .k{font-size:13px;letter-spacing:.3em;color:var(--dim);margin-top:8px}
+.nums .u{font-size:15px;color:var(--faint);font-family:var(--serif);font-style:italic}
+#domain{font-family:var(--serif);font-style:italic;color:var(--dim);font-size:16px;line-height:1.6;max-width:280px;padding-bottom:14px}
+.boardtop{position:fixed;top:0;left:0;right:0;z-index:49;background:var(--bg);padding-top:57px}
+.ledger-nav{position:relative;display:flex;align-items:baseline;gap:36px;margin:0;padding:12px 6px 12px;flex-wrap:wrap;background:var(--bg);z-index:2;border-top:1px solid var(--line)}
+.ledger-nav .tab{font-family:var(--serif);font-style:italic;font-size:21px;color:var(--dim);cursor:pointer;position:relative;padding-bottom:6px;transition:color .25s}
+.ledger-nav .tab .cnt{font-size:12px;color:var(--faint);margin-left:6px;font-variant-numeric:tabular-nums}
+.ledger-nav .tab:hover{color:var(--fg)}
+.ledger-nav .tab.on{color:var(--gold)}
+.ledger-nav .tab.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--gold)}
+.boardwrap{display:grid;grid-template-columns:repeat(4,1fr);gap:26px;margin-top:20px}
+.col{border-top:1px solid var(--line2);padding-top:12px;min-height:280px}
+.col .ck{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;letter-spacing:.3em;color:var(--dim)}
+.col .ck .c{font-family:var(--serif);font-style:italic;font-size:22px;color:var(--faint);letter-spacing:0;font-variant-numeric:tabular-nums}
+.col [data-body]{margin-top:14px;display:flex;flex-direction:column;gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--faint);border-radius:10px;
+  padding:12px 14px;cursor:pointer;transition:transform .25s,border-color .25s,background .25s;opacity:0;transform:translateY(14px)}
+.card.in{opacity:1;transform:none}
+.card:hover{background:var(--panel2);border-left-color:var(--gold);transform:translateX(3px)}
+.card.lk{opacity:.45;cursor:default}
+.card.lk:hover{transform:none;border-left-color:var(--faint);background:var(--panel)}
+.card .id{font-size:10.5px;letter-spacing:.16em;color:var(--faint);margin-bottom:5px;display:flex;justify-content:space-between;align-items:center}
+.card .id .doss{background:none;border:1px solid var(--line);color:var(--faint);border-radius:6px;cursor:pointer;
+  font-size:10px;padding:1px 6px;transition:color .18s ease-out,border-color .18s ease-out}
+.card .id .doss:hover{color:var(--gold);border-color:var(--gold-dim)}
+.card .lgrow{margin-top:8px}
+.card .id .pre{color:var(--lock)}
+.card.lk .id .pre{color:var(--warn)}
+.card .ti{font-size:13.5px;line-height:1.55;color:var(--fg);max-width:96%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.more{font-family:var(--serif);font-style:italic;color:var(--dim);font-size:14px;padding:6px 2px;cursor:pointer}
+.more:hover{color:var(--gold)}
+
+/* ---------- MAP / CHAIN ---------- */
+#map{overflow:hidden;cursor:grab}
+#chain{overflow:hidden;cursor:grab}
+#ccanvas{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+#map.drag,#chain.drag{cursor:grabbing}
+#canvas{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+.node{position:absolute;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:10px 16px;cursor:pointer;
+  box-shadow:0 1px 2px rgba(0,0,0,.35),0 6px 18px rgba(0,0,0,.22);
+  transition:background .18s ease-out,border-color .18s ease-out,box-shadow .18s ease-out;user-select:none}
+.node:hover{background:var(--panel2);border-color:var(--gold);box-shadow:0 2px 4px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.3)}
+.node .t{font-size:13px;color:var(--fg);white-space:normal;line-height:1.5;max-width:300px;word-break:break-word;text-wrap:pretty}
+.node .s{font-size:10.5px;color:var(--faint);letter-spacing:.12em;margin-top:3px;display:flex;gap:10px;font-variant-numeric:tabular-nums}
+.node .s .gd{color:var(--gold)}
+.node.root{background:transparent;border-color:transparent;box-shadow:none;backdrop-filter:none}
+.node.root .t,.node.root .s{color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.85),0 0 6px rgba(0,0,0,.6)}
+.node.root .s .gd{color:var(--gold);text-shadow:0 0 12px rgba(0,0,0,.7)}
+.node.book{border-color:var(--gold-dim);background:var(--panel2)}
+.node.book .t{color:var(--gold);font-family:var(--serif);font-style:italic;font-size:16px}
+.node .exp{position:absolute;top:50%;transform:translateY(-50%);font-size:11px;color:var(--dim)}
+.node.dm .exp{left:-16px}
+.node.dm{padding-left:22px}
+.node.dm.open{border-color:var(--gold-dim)}
+.node.task{border-radius:9px;padding:8px 12px}
+.node.task.st-已领{border-left:3px solid var(--warn)}
+.node.task.st-已完成{border-left:3px solid var(--ok);opacity:.8}
+.node.task.st-阻塞{border-left:3px solid #b05a5a}
+.node.task.lk{opacity:.42}
+.node.task.lk .s .pre{color:var(--warn)}
+.node.task.hl{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-dim),0 0 34px rgba(214,181,114,.4);z-index:5}
+.aichip{cursor:pointer}
+.aichip:hover{border-color:var(--gold)}
+.edge{position:absolute;background:var(--line2);transform-origin:0 0;pointer-events:none}
+.edge.h{height:1px}
+.edge.v{width:1px}
+/* SVG 连线：柔和曲线 + 流动虚线 + 箭头（non-scaling-stroke：任意缩放下保持 1.4px 锐利） */
+.flowsvg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none;z-index:1}
+.coarse .flowsvg path{animation:none!important}
+.flowsvg path{stroke:rgba(232,227,216,.36);stroke-width:1.4;fill:none;stroke-dasharray:6 8;animation:dashflow 1.1s linear infinite;marker-end:url(#varr);vector-effect:non-scaling-stroke}
+.flowsvg path.vline{stroke:rgba(214,181,114,.42);animation-duration:1.6s}
+@keyframes dashflow{to{stroke-dashoffset:-14}}
+/* 缩小到阈值以下：整体只可平移，节点不再可交互 */
+#canvas.coarse .node,#ccanvas.coarse .node{pointer-events:none!important}
+#bcvs.coarse .node,#bcvs.coarse .lanehd{pointer-events:none!important}
+#bcvs.coarse{cursor:grab}
+.laneframe{position:absolute;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.015);pointer-events:none}
+.lanehd{position:absolute;width:264px;background:var(--panel);border:1px solid var(--line2);border-left:3px solid var(--gold);border-radius:12px;padding:12px 16px;user-select:none;cursor:default;
+  box-shadow:0 1px 2px rgba(0,0,0,.35),0 6px 18px rgba(0,0,0,.22)}
+.lanehd .bn{font-size:10.5px;color:var(--faint);letter-spacing:.14em}
+.lanehd .dn{font-size:15px;color:var(--fg);margin-top:4px;font-weight:600;word-break:break-word;line-height:1.4}
+.lanehd .cn{font-size:11px;color:var(--dim);margin-top:6px;letter-spacing:.12em;font-variant-numeric:tabular-nums}
+#canvas.coarse,#ccanvas.coarse{cursor:grab}
+#canvas.coarse .node{box-shadow:none}
+#map,#chain,#board{user-select:none}
+#maplegend{position:fixed;bottom:18px;right:24px;z-index:55;display:flex;gap:16px;font-size:11.5px;color:var(--dim)}
+#maplegend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px}
+.maptools{position:fixed;top:76px;right:24px;z-index:55;display:flex;flex-direction:column;gap:8px}
+.maptools button{background:rgba(35,38,48,.92);border:1px solid var(--line2);color:var(--dim);border-radius:999px;
+  padding:8px 18px;font-size:12px;letter-spacing:.16em;cursor:pointer;transition:color .25s ease-out,border-color .25s ease-out;font-family:var(--sans)}
+.maptools button:hover{color:var(--gold);border-color:var(--gold-dim)}
+
+/* 编程语言徽记（每语言独立形状/配色，仿 IDE file icon） */
+.lg{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;flex:none}
+.lg img{width:22px;height:22px;display:block}
+.lgx{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:6px;
+  font-size:9.5px;font-weight:700;letter-spacing:.02em;padding:0 4px;font-family:var(--sans);flex:0 0 auto}
+.lgx-TypeScript{background:#3178c6;color:#fff;border-radius:6px 6px 6px 2px}
+.lgx-JavaScript{background:#f0db4f;color:#3b3413}
+.lgx-Python{background:linear-gradient(135deg,#3776ab 50%,#ffd43b 50%);color:#fff}
+.lgx-Rust{background:#2b2118;color:#ce422b;border:1px solid #ce422b}
+.lgx-HTML{background:#e34c26;color:#fff;border-radius:2px}
+.lgx-CSS{background:#2965f1;color:#fff;border-radius:2px 8px 2px 8px}
+.lgx-PowerShell{background:#1e2a4a;color:#5391FE;border:1px solid #5391FE}
+.lgx-Batch{background:#3a3f4b;color:#c9ccd4;border-radius:2px}
+.lgx-Shell{background:#24313f;color:#89e051}
+.lgx-JSON{background:#2d2a1e;color:#cbcb41;border:1px dashed #cbcb41}
+.lgx-TOML{background:#5b1a2e;color:#ff6b8a}
+.lgx-Markdown{background:#4a4f5a;color:#e6e9ef;border-radius:3px}
+.lgrow{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.detail{font-size:14.5px;line-height:1.95;color:var(--fg);max-width:76ch;text-align:justify}
+.detail::first-letter{color:var(--gold);font-size:1.15em}
+.flist{display:flex;flex-direction:column;gap:6px}
+.flist .f{font-size:13px;color:var(--fg);display:flex;align-items:center;gap:8px;font-family:ui-monospace,Consolas,monospace;
+  background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:8px;padding:7px 12px;word-break:break-all}
+
+/* 总览浮层（ACTIVE/BLOCKED/DONE 收纳处） */
+.stats{position:fixed;inset:0;z-index:98;display:none;align-items:center;justify-content:center;background:rgba(15,16,20,.55);backdrop-filter:blur(14px)}
+.stats.on{display:flex}
+.stats .panel{width:100vw;height:100vh;max-height:100vh;overflow:auto;background:var(--bg2);border:none;border-radius:0;padding:56px max(48px,calc(50vw - 620px))}
+.stats h3{font-family:var(--serif);font-style:italic;font-weight:400;font-size:30px;margin:10px 0 24px}
+.stats table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.stats th{font-size:11px;letter-spacing:.25em;color:var(--faint);text-align:right;padding:8px 6px;border-bottom:1px solid var(--line)}
+.stats th:first-child,.stats td:first-child{text-align:left}
+.stats td{font-size:14px;text-align:right;padding:9px 6px;border-bottom:1px solid var(--line);color:var(--fg)}
+.stats td:first-child{color:var(--gold);font-family:var(--serif);font-style:italic;font-size:16px}
+.stats .close{float:right;cursor:pointer;color:var(--dim);font-size:12px;letter-spacing:.25em}
+.stats .close:hover{color:var(--fg)}
+
+/* ---------- dossier（窗口内大面板） ---------- */
+.dossier{position:fixed;inset:0;z-index:97;display:none;align-items:center;justify-content:center;background:rgba(15,16,20,.55);backdrop-filter:blur(14px)}
+.dossier.on{display:flex}
+.sheet{width:100vw;height:100vh;max-height:100vh;overflow:auto;background:var(--bg2);border:none;border-radius:0;padding:56px max(48px,calc(50vw - 640px))}
+.sheet .id{font-size:12px;letter-spacing:.3em;color:var(--gold)}
+.sheet h2{font-family:var(--serif);font-style:italic;font-weight:400;font-size:clamp(28px,3.6vw,44px);margin:14px 0 22px;line-height:1.25}
+.sheet .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px 26px;padding:20px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sheet .meta .m .k{font-size:11px;letter-spacing:.25em;color:var(--faint);margin-bottom:5px}
+.sheet .meta .m .v{font-size:14.5px;color:var(--fg)}
+.sheet .meta .m .v.gold{color:var(--gold)}
+.sheet .sec{margin-top:26px}
+.sheet .sec .k{font-size:11px;letter-spacing:.3em;color:var(--faint);margin-bottom:10px}
+.sheet .sec .tx{font-size:14.5px;line-height:1.9;color:var(--fg)}
+.sheet .acts{display:flex;gap:12px;margin-top:32px;flex-wrap:wrap}
+.sheet .acts button{background:var(--panel2);border:1px solid var(--line2);color:var(--fg);padding:10px 26px;border-radius:999px;cursor:pointer;font-size:13.5px;letter-spacing:.1em;transition:color .25s ease-out,border-color .25s ease-out,background-color .25s ease-out;font-family:var(--sans)}
+.sheet .acts button:hover{border-color:var(--gold);color:var(--gold)}
+.sheet .acts button.pri{background:var(--gold);border-color:var(--gold);color:#171410}
+.sheet .acts button.pri:hover{filter:brightness(1.1);color:#171410}
+.sheet .acts button.undo:hover{border-color:#b05a5a;color:#b05a5a}
+.sheet .close{float:right;cursor:pointer;color:var(--dim);font-size:12px;letter-spacing:.25em;padding:4px 8px}
+.sheet .close:hover{color:var(--fg)}
+#toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:99;background:var(--gold);color:#171410;padding:10px 26px;border-radius:999px;font-size:13.5px;opacity:0;transition:opacity .3s;pointer-events:none}
+#toast.on{opacity:1}
+/* ---------- 全局设置抽屉 ---------- */
+.gearbtn{margin-left:auto;cursor:pointer;user-select:none;display:flex;align-items:center;gap:7px;
+  border:1px solid var(--line2);border-radius:999px;padding:6px 18px;font-size:12.5px;letter-spacing:.16em;color:var(--dim);
+  transition:color .25s ease-out,border-color .25s ease-out,transform .15s ease-out}
+.gearbtn:hover{color:var(--gold);border-color:var(--gold-dim);transform:translateY(-1px)}
+.gearbtn i{font-style:normal;font-size:14px;display:inline-block;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+.gearbtn:hover i{transform:rotate(120deg)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);z-index:96;transform:translateX(105%);
+  transition:transform .45s cubic-bezier(.2,.7,.2,1);display:flex;flex-direction:column;gap:14px;
+  background:linear-gradient(180deg,var(--glassA,rgba(24,26,33,.92)),var(--glassB,rgba(20,22,28,.88)));
+  backdrop-filter:blur(24px) saturate(1.25);
+  border-left:1px solid var(--glassLine,var(--line2));box-shadow:-24px 0 60px rgba(0,0,0,.5);padding:26px 24px;overflow:auto}
+.drawer.on{transform:translateX(0)}
+.drawer .dhead{display:flex;align-items:baseline;gap:14px;font-family:var(--serif);font-style:italic;font-size:19px;color:var(--fg)}
+.drawer .dhead small{font-size:10px;letter-spacing:.3em;color:var(--faint)}
+.drawer .dclose{margin-left:auto;cursor:pointer;font-family:var(--sans);font-style:normal;font-size:11px;letter-spacing:.2em;color:var(--faint)}
+.drawer .dclose:hover{color:var(--fg)}
+.drawer .dsec{font-size:10px;letter-spacing:.28em;color:var(--faint);margin-top:6px;border-bottom:none;padding-bottom:6px;
+  display:flex;align-items:center;gap:10px}
+.drawer .dsec::before{content:'';width:18px;height:1px;background:color-mix(in srgb,var(--hgold,#d4b270) 55%,transparent);flex:none}
+.drawer .dsec::after{content:'';height:1px;flex:1;background:var(--line);opacity:.6}
+/* ---------- SKIN 系统：每壁纸一套定制界面（按钮形状/质感/面板/数字辉光随壁纸联动） ---------- */
+@font-face{font-family:'SKPixel';src:url('/ui/fonts/vt323.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'SKPixelCn';src:url('/ui/fonts/fusion-pixel-sc.woff2') format('woff2');font-display:swap}
+@font-face{font-family:'SKSerif';src:url('/ui/fonts/cormorant-italic.ttf') format('truetype');font-display:swap}
+:root{--skR:999px;--skPanelR:18px;--skBtnA:rgba(255,255,255,.10);--skBtnB:rgba(255,255,255,.045);
+  --skBtnLine:var(--line2);--skNumGlow:transparent}
+/* 共享 luxe 按钮底座：渐变玻璃 + 顶部内高光 + 底部内阴影 + sheen 扫光 + 按压反馈 */
+.views span,.ambchip,.maptools button,.gearbtn,.sheet .acts button,.wslider,#hudpop,.card .id .doss{
+  position:relative;overflow:hidden;isolation:isolate;
+  background:linear-gradient(180deg,var(--skBtnA),var(--skBtnB));
+  border:1px solid var(--skBtnLine);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 -1px 0 rgba(0,0,0,.22),0 2px 8px rgba(0,0,0,.28);
+  border-radius:var(--skR);
+  transition:color .25s ease-out,border-color .25s ease-out,transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .25s ease-out,background-color .25s ease-out}
+.views span::after,.ambchip::after,.maptools button::after,.gearbtn::after,.sheet .acts button::after,#hudpop::after{
+  content:'';position:absolute;top:-2px;bottom:-2px;left:-75%;width:45%;transform:skewX(-18deg);
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.30),transparent);
+  transition:left .65s ease;pointer-events:none;z-index:1}
+.views span:hover::after,.ambchip:hover::after,.maptools button:hover::after,.gearbtn:hover::after,
+.sheet .acts button:hover::after,#hudpop:hover::after{left:140%}
+.views span:not(.on):hover,.ambchip:hover,.maptools button:hover,.gearbtn:hover,.sheet .acts button:hover,#hudpop:hover{
+  transform:translateY(-1.5px);border-color:color-mix(in srgb,var(--hgold,#d4b270) 60%,transparent);
+  color:var(--hgold,#d4b270);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 6px 20px color-mix(in srgb,var(--hgold,#d4b270) 24%,transparent)}
+.views span:active,.ambchip:active,.maptools button:active,.gearbtn:active,.sheet .acts button:active{
+  transform:translateY(0);transition-duration:.08s;
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3)}
+.views span.on{background:linear-gradient(180deg,color-mix(in srgb,var(--hgold,#d4b270) 94%,#fff 6%),color-mix(in srgb,var(--hgold,#d4b270) 74%,#000 12%));
+  color:#171410;border-color:transparent;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),inset 0 -2px 4px color-mix(in srgb,var(--hgold,#d4b270) 60%,#000 30%),0 3px 16px color-mix(in srgb,var(--hgold,#d4b270) 42%,transparent)}
+.sheet .acts button.pri{background:linear-gradient(180deg,color-mix(in srgb,var(--hgold,#d4b270) 94%,#fff 6%),color-mix(in srgb,var(--hgold,#d4b270) 76%,#000 12%));
+  border-color:transparent;color:#171410;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 4px 18px color-mix(in srgb,var(--hgold,#d4b270) 40%,transparent)}
+.card .id .doss{border-radius:calc(var(--skPanelR)*.45)}
+/* 主按钮：参考站曲线括号装饰（deco_curve-lb/rb 同构） */
+#statsbtn{position:relative;overflow:visible;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--hgold,#d4b270) 15%,rgba(255,255,255,.05)),rgba(255,255,255,.03));
+  border:1px solid color-mix(in srgb,var(--hgold,#d4b270) 45%,transparent);
+  border-radius:calc(var(--skPanelR) + 4px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 4px 18px rgba(0,0,0,.3);
+  transition:border-color .25s ease-out,box-shadow .25s ease-out,transform .18s cubic-bezier(.2,.7,.2,1)}
+#statsbtn::before,#statsbtn::after{content:'';position:absolute;top:50%;width:13px;height:32px;margin-top:-16px;
+  background:var(--hgold,#d4b270);opacity:.8;transition:left .3s ease,right .3s ease,opacity .3s ease;pointer-events:none;
+  -webkit-mask:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 34'%3E%3Cpath d='M14 3 Q3 3 3 17 Q3 31 14 31' fill='none' stroke='black' stroke-width='2.4'/%3E%3C/svg%3E") no-repeat center/contain;
+  mask:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 34'%3E%3Cpath d='M14 3 Q3 3 3 17 Q3 31 14 31' fill='none' stroke='black' stroke-width='2.4'/%3E%3C/svg%3E") no-repeat center/contain}
+#statsbtn::before{left:-20px}
+#statsbtn::after{right:-20px;transform:scaleX(-1)}
+#statsbtn:hover{transform:translateY(-2px);border-color:var(--hgold,#d4b270);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 10px 30px color-mix(in srgb,var(--hgold,#d4b270) 30%,transparent)}
+#statsbtn:hover::before{left:-15px;opacity:1}
+#statsbtn:hover::after{right:-15px;opacity:1}
+#statsbtn:active{transform:translateY(0);box-shadow:inset 0 2px 8px rgba(0,0,0,.35)}
+/* 抽屉关闭钮：参考站回转虚线环（hover 暂停，同 btn_modalClose 交互语义） */
+.drawer .dclose{margin-left:auto;cursor:pointer;width:48px;height:48px;border-radius:50%;flex:none;
+  display:flex;align-items:center;justify-content:center;font-family:var(--sans);font-style:normal;
+  font-size:8.5px;letter-spacing:.1em;color:var(--faint);position:relative;transition:color .3s ease,text-shadow .3s ease}
+.drawer .dclose::before{content:'';position:absolute;inset:0;border-radius:50%;
+  border:1.5px dashed color-mix(in srgb,var(--hgold,#d4b270) 70%,transparent);opacity:.65;
+  animation:skspin 9s linear infinite;animation-play-state:paused}
+.drawer.on .dclose::before{animation-play-state:running}
+.drawer .dclose:hover{color:var(--hgold,#d4b270)}
+.drawer .dclose:hover::before{animation-play-state:paused;opacity:1}
+@keyframes skspin{to{transform:rotate(360deg)}}
+/* 面板/画布节点圆角随皮肤 */
+.hpanel{border-radius:var(--skPanelR)}
+.node,.lanehd,.laneframe{border-radius:var(--skPanelR)}
+/* 数字自适应辉光（完成度大数 / BOARD 大数随壁纸金色发光） */
+.ringc b,.nums .v,.ringc b small{text-shadow:0 0 26px var(--skNumGlow),0 0 60px var(--skNumGlow)}
+/* ---- 每壁纸形状语言 ---- */
+body.sk-aurora{--skR:999px 14px 999px 14px;--skPanelR:22px 10px 22px 10px;
+  --skNumGlow:color-mix(in srgb,var(--hgold,#7fd9b8) 38%,transparent)}
+body.sk-meadow{--skR:16px;--skPanelR:22px;
+  --skNumGlow:color-mix(in srgb,var(--hgold,#8fbf8a) 34%,transparent)}
+body.sk-slate{--skR:6px;--skPanelR:10px;--skBtnA:rgba(255,255,255,.16);--skBtnB:rgba(255,255,255,.06);
+  --skNumGlow:color-mix(in srgb,var(--hgold,#9db8d9) 40%,transparent)}
+body.sk-forest{--skR:22px 22px 8px 8px;--skPanelR:26px 26px 12px 12px;
+  --skNumGlow:color-mix(in srgb,var(--hgold,#7fbf8a) 32%,transparent)}
+body.sk-mist{--skR:999px;--skPanelR:24px;--skBtnA:rgba(255,255,255,.06);--skBtnB:rgba(255,255,255,.02);
+  --skBtnLine:color-mix(in srgb,var(--hgold,#fff) 30%,transparent);
+  --skNumGlow:color-mix(in srgb,var(--hgold,#cfd8e6) 30%,transparent)}
+body.sk-aerial{--skR:10px;--skPanelR:14px;
+  --skNumGlow:color-mix(in srgb,var(--hgold,#a8e0ef) 42%,transparent)}
+body.sk-city{--skR:5px;--skPanelR:6px;--skBtnA:rgba(255,255,255,.13);
+  --skNumGlow:color-mix(in srgb,var(--hgold,#e08fd9) 55%,transparent)}
+body.sk-alpine{--skR:12px;--skPanelR:16px;
+  --skNumGlow:color-mix(in srgb,var(--hgold,#d4b270) 40%,transparent)}
+body.sk-dusk{--skNumGlow:color-mix(in srgb,var(--hgold,#d4b270) 36%,transparent)}
+/* 文字风格随皮肤 */
+.drawer .dhead,.logo,.sheet h2,.ledger-nav .tab{text-shadow:var(--skTShadow,none)}
+/* ---- Minecraft 官方贴图皮肤（1.21.8 原版 widget/block 贴图，9-slice 像素风，全套像素字体） ---- */
+body.sk-mc,body.sk-mcsnow{--skR:0;--skPanelR:0;--skNumGlow:transparent;--skTShadow:3px 3px 0 rgba(0,0,0,.7);
+  --serif:'SKPixelCn','SKPixel','Microsoft YaHei',monospace;--sans:'SKPixelCn','SKPixel','Microsoft YaHei',monospace}
+body.sk-mc *,body.sk-mcsnow *{font-style:normal!important;letter-spacing:.02em}
+body.sk-mc header,body.sk-mcsnow header{background:linear-gradient(rgba(6,6,10,.88),rgba(6,6,10,.88)),url("/ui/mc/deepslate.png");
+  background-size:auto,96px 96px;image-rendering:pixelated;border-bottom:2px solid #000}
+body.sk-mc .boardtop,body.sk-mcsnow .boardtop{background:transparent}
+body.sk-mc .hero,body.sk-mcsnow .hero{border-bottom-color:rgba(0,0,0,.6)}
+body.sk-mc .hero,body.sk-mcsnow .hero,body.sk-mc .ledger-nav,body.sk-mcsnow .ledger-nav{background:transparent}
+body.sk-mc .logo,body.sk-mcsnow .logo{color:#ffffa0;letter-spacing:.14em}
+body.sk-mc #clock,body.sk-mcsnow #clock,body.sk-mc #stotal,body.sk-mcsnow #stotal,body.sk-mc .hp-k,body.sk-mcsnow .hp-k,body.sk-mc .wslider,body.sk-mcsnow .wslider{text-shadow:2px 2px 0 rgba(0,0,0,.7)}
+body.sk-mc .ledger-nav .tab,body.sk-mcsnow .ledger-nav .tab{text-shadow:2px 2px 0 rgba(0,0,0,.7)}
+body.sk-mc .ledger-nav .tab.on,body.sk-mcsnow .ledger-nav .tab.on{color:#ffffa0}
+body.sk-mc .ledger-nav .tab.on::after,body.sk-mcsnow .ledger-nav .tab.on::after{background:#ffffa0}
+body.sk-mc #statsbtn,body.sk-mcsnow #statsbtn{border:6px solid transparent;border-radius:0;overflow:visible;
+  border-image:url("/ui/mc/btn_hl.png") 4 fill stretch;image-rendering:pixelated;background:#8b8b8b;box-shadow:none}
+body.sk-mc #statsbtn::before,body.sk-mcsnow #statsbtn::before,body.sk-mc #statsbtn::after,body.sk-mcsnow #statsbtn::after{display:none}
+body.sk-mc #statsbtn:hover,body.sk-mcsnow #statsbtn:hover{transform:none;box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+body.sk-mc #statsbtn:active,body.sk-mcsnow #statsbtn:active{transform:translate(1px,1px)}
+body.sk-mc .views span,body.sk-mcsnow .views span,body.sk-mc .ambchip,body.sk-mcsnow .ambchip,body.sk-mc .maptools button,body.sk-mcsnow .maptools button,body.sk-mc .gearbtn,body.sk-mcsnow .gearbtn,
+body.sk-mc .sheet .acts button,body.sk-mcsnow .sheet .acts button,body.sk-mc #hudpop,body.sk-mcsnow #hudpop,body.sk-mc .card .id .doss,body.sk-mcsnow .card .id .doss,body.sk-mc .wslider,body.sk-mcsnow .wslider{
+  border:6px solid transparent;border-radius:0;background:#8b8b8b;box-shadow:none;
+  border-image:url("/ui/mc/btn.png") 4 fill stretch;image-rendering:pixelated;
+  color:#fff;text-shadow:2px 2px 0 rgba(0,0,0,.6)}
+body.sk-mc .views span:hover,body.sk-mcsnow .views span:hover,body.sk-mc .ambchip:hover,body.sk-mcsnow .ambchip:hover,body.sk-mc .maptools button:hover,body.sk-mcsnow .maptools button:hover,
+body.sk-mc .gearbtn:hover,body.sk-mcsnow .gearbtn:hover,body.sk-mc .sheet .acts button:hover,body.sk-mcsnow .sheet .acts button:hover,body.sk-mc #hudpop:hover,body.sk-mcsnow #hudpop:hover{
+  border-image:url("/ui/mc/btn_hl.png") 4 fill stretch;color:#ffffa0;transform:none;
+  box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+body.sk-mc .views span:active,body.sk-mcsnow .views span:active,body.sk-mc .ambchip:active,body.sk-mcsnow .ambchip:active,body.sk-mc .maptools button:active,body.sk-mcsnow .maptools button:active{
+  border-image:url("/ui/mc/btn_disabled.png") 4 fill stretch;transform:translate(1px,1px)}
+body.sk-mc .views span.on,body.sk-mcsnow .views span.on{border-image:url("/ui/mc/btn_hl.png") 4 fill stretch;color:#ffffa0}
+body.sk-mc .views span::after,body.sk-mcsnow .views span::after,body.sk-mc .ambchip::after,body.sk-mcsnow .ambchip::after,body.sk-mc .maptools button::after,body.sk-mcsnow .maptools button::after,
+body.sk-mc .gearbtn::after,body.sk-mcsnow .gearbtn::after,body.sk-mc .sheet .acts button::after,body.sk-mcsnow .sheet .acts button::after,body.sk-mc #hudpop::after,body.sk-mcsnow #hudpop::after{display:none}
+body.sk-mc .hpanel,body.sk-mcsnow .hpanel{border-radius:0;border:2px solid #000;image-rendering:pixelated;
+  background:linear-gradient(rgba(8,8,12,.62),rgba(8,8,12,.62)),url("/ui/mc/stone.png");
+  background-size:auto,72px 72px;
+  box-shadow:inset 2px 2px 0 rgba(255,255,255,.14),inset -2px -2px 0 rgba(0,0,0,.55),0 6px 0 rgba(0,0,0,.35)}
+body.sk-mc .node,body.sk-mcsnow .node,body.sk-mc .lanehd,body.sk-mcsnow .lanehd,body.sk-mc .laneframe,body.sk-mcsnow .laneframe{border-radius:0;border:2px solid #000;
+  box-shadow:inset 2px 2px 0 rgba(255,255,255,.14),inset -2px -2px 0 rgba(0,0,0,.5)}
+body.sk-mc .drawer,body.sk-mcsnow .drawer{background:linear-gradient(rgba(5,5,8,.82),rgba(5,5,8,.82)),url("/ui/mc/deepslate.png");
+  background-size:auto,96px 96px;image-rendering:pixelated;border-left:2px solid #000}
+body.sk-mc .h4,body.sk-mcsnow .h4,body.sk-mc .pn,body.sk-mcsnow .pn{border-radius:0;background:rgba(0,0,0,.35)}
+body.sk-mc .ringc b,body.sk-mcsnow .ringc b,body.sk-mc .nums .v,body.sk-mcsnow .nums .v{color:#ffffa0;text-shadow:3px 3px 0 rgba(0,0,0,.7)}
+body.sk-mc .wchip,body.sk-mcsnow .wchip{border-radius:0;border:2px solid #000;text-shadow:2px 2px 0 rgba(0,0,0,.6)}
+/* ---- 雪原 MC 皮肤（Winter minecraft / Minecraft Christmas / snow 类壁纸）：官方雪块+浮冰贴图，冷白文字 ---- */
+body.sk-mcsnow{--skNumGlow:transparent}
+body.sk-mcsnow header{background:linear-gradient(rgba(10,16,24,.86),rgba(10,16,24,.86)),url("/ui/mc/snow.png");
+  background-size:auto,96px 96px}
+body.sk-mcsnow .hpanel{background:linear-gradient(rgba(14,22,34,.6),rgba(14,22,34,.6)),url("/ui/mc/snow.png");
+  background-size:auto,72px 72px;
+  box-shadow:inset 2px 2px 0 rgba(255,255,255,.35),inset -2px -2px 0 rgba(30,60,100,.5),0 6px 0 rgba(20,40,70,.4)}
+body.sk-mcsnow .drawer{background:linear-gradient(rgba(10,18,30,.82),rgba(10,18,30,.82)),url("/ui/mc/ice.png");
+  background-size:auto,96px 96px}
+body.sk-mcsnow .logo{color:#dff1ff}
+body.sk-mcsnow .ledger-nav .tab.on{color:#dff1ff}
+body.sk-mcsnow .ledger-nav .tab.on::after{background:#bfe3ff}
+body.sk-mcsnow .ringc b,body.sk-mcsnow .nums .v{color:#dff1ff}
+/* ---- 月夜银辉皮肤（壁纸主题色按钮 + 边框月牙元素突出） ---- */
+body.sk-moon{--skR:999px;--skPanelR:20px;--skBtnA:rgba(255,255,255,.10);--skBtnB:rgba(255,255,255,.03);
+  --skBtnLine:color-mix(in srgb,var(--hgold,#c8d4ea) 42%,transparent);
+  --skNumGlow:color-mix(in srgb,var(--hgold,#c8d4ea) 48%,transparent);
+  --skTShadow:0 0 20px color-mix(in srgb,var(--hgold,#c8d4ea) 30%,transparent);
+  --serif:'SKSerif','Georgia','STZhongsong',serif}
+body.sk-moon .nums .n:first-child .v{letter-spacing:.02em}
+body.sk-moon .views span,body.sk-moon .ambchip,body.sk-moon .gearbtn,body.sk-moon .maptools button,
+body.sk-moon #hudpop,body.sk-moon .sheet .acts button{padding-left:32px}
+body.sk-moon .views span::before,body.sk-moon .ambchip::before,body.sk-moon .gearbtn::before,
+body.sk-moon .maptools button::before,body.sk-moon #hudpop::before,body.sk-moon .sheet .acts button::before{
+  content:'';position:absolute;left:11px;top:50%;width:12px;height:12px;margin-top:-6px;z-index:2;
+  background:var(--hgold,#c8d4ea);opacity:.9;pointer-events:none;
+  -webkit-mask:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M13 1.5a8.5 8.5 0 1 0 5.4 15A10 10 0 0 1 13 1.5z' fill='black'/%3E%3C/svg%3E") no-repeat center/contain;
+  mask:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M13 1.5a8.5 8.5 0 1 0 5.4 15A10 10 0 0 1 13 1.5z' fill='black'/%3E%3C/svg%3E") no-repeat center/contain;
+  transition:opacity .3s ease,transform .4s cubic-bezier(.2,.7,.2,1)}
+body.sk-moon .views span:hover::before,body.sk-moon .ambchip:hover::before,body.sk-moon .gearbtn:hover::before,
+body.sk-moon .maptools button:hover::before{opacity:1;transform:rotate(-24deg) scale(1.15)}
+/* 月夜：域标签（All/VE/...）前置月牙 */
+body.sk-moon .ledger-nav .tab::before{content:'';display:inline-block;width:9px;height:9px;margin-right:8px;
+  vertical-align:.5px;background:currentColor;opacity:.7;
+  -webkit-mask:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M13 1.5a8.5 8.5 0 1 0 5.4 15A10 10 0 0 1 13 1.5z' fill='black'/%3E%3C/svg%3E") no-repeat center/contain;
+  mask:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M13 1.5a8.5 8.5 0 1 0 5.4 15A10 10 0 0 1 13 1.5z' fill='black'/%3E%3C/svg%3E") no-repeat center/contain;
+  transition:opacity .3s ease}
+body.sk-moon .ledger-nav .tab.on::before{opacity:1}
+/* 月夜主按钮：两侧月牙替代曲线括号（满月 + 新月） */
+body.sk-moon #statsbtn::before,body.sk-moon #statsbtn::after{
+  -webkit-mask:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M13 1.5a8.5 8.5 0 1 0 5.4 15A10 10 0 0 1 13 1.5z' fill='black'/%3E%3C/svg%3E") no-repeat center/contain;
+  mask:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M13 1.5a8.5 8.5 0 1 0 5.4 15A10 10 0 0 1 13 1.5z' fill='black'/%3E%3C/svg%3E") no-repeat center/contain;
+  width:18px;height:18px;opacity:1}
+body.sk-moon #statsbtn::before{left:-24px}
+body.sk-moon #statsbtn::after{right:-24px;transform:scaleX(-1) rotate(180deg)}
+body.sk-moon #statsbtn:hover::before{left:-19px}
+body.sk-moon #statsbtn:hover::after{right:-19px}
+/* coarse 指针下停掉纯装饰动画，保帧率 */
+.coarse .dclose::before{animation:none!important}
+
+</style>
+</head>
+<body>
+<div class="aiborder"></div>
+<div class="aichip"><span class="dot"></span><span>AI 施工中</span><span id="aiworkers">—</span></div>
+
+<div id="gwall"><div id="gwall-skel" aria-hidden="true"></div></div>
+<canvas id="gfx"></canvas>
+<header>
+  <div class="logo">VTB</div>
+  <div class="views"><span class="on" data-v="board">BOARD</span><span data-v="map">MAP</span><span data-v="chain">CHAIN</span><span data-v="hud">HUD</span></div>
+  <div id="stotal">条目 <b>—</b></div>
+  <div id="hudpop" style="cursor:pointer;font-size:11px;letter-spacing:.2em;color:var(--dim);border:1px solid var(--line2);border-radius:999px;padding:5px 14px;transition:color .25s ease-out">HUD</div>
+  <div id="clock">—</div>
+  <span class="gearbtn" id="gearbtn"><i>⚙</i>设置</span>
+</header>
+
+<main>
+  <section class="view on" id="board" style="position:static">
+    <div class="boardtop">
+    <div class="hero">
+      <div class="nums">
+        <div class="n"><div class="v" id="n-open">0</div><div class="k">OPEN <span class="u" id="n-locked"></span></div></div>
+      </div>
+      <div id="domain">—</div>
+    </div>
+    <div class="ledger-nav" id="lnav"></div>
+    </div>
+    <div class="boardwrap" id="bwrap" style="position:fixed;inset:0;overflow:hidden;cursor:grab"><div id="bcvs" style="position:absolute;left:0;top:0;transform-origin:0 0"></div></div>
+  </section>
+
+  <section class="view" id="map">
+    <div id="canvas"></div>
+    <div class="maptools">
+      <button id="mexpall">全部展开 ⤢</button>
+      <button id="mcolall">全部收起 ⤡</button>
+    </div>
+    <div id="maplegend">
+      <span><i style="background:var(--faint)"></i>待领</span>
+      <span><i style="background:var(--warn)"></i>已领</span>
+      <span><i style="background:var(--ok)"></i>已完成</span>
+      <span><i style="background:var(--gold)"></i>项目</span>
+    </div>
+  </section>
+
+  <section class="view" id="chain">
+    <div id="ccanvas"></div>
+  </section>
+
+  <section class="view" id="hud">
+    <div class="hudwrap"><div class="hstats" style="display:flex;align-items:center;gap:18px;margin-bottom:14px">
+        <button id="statsbtn" style="background:var(--panel2);border:1px solid var(--line2);color:var(--gold);
+          border-radius:14px;padding:18px 30px;cursor:pointer;font-family:var(--serif);font-style:italic;font-size:20px;
+          letter-spacing:.08em;transition:border-color .2s ease-out,box-shadow .2s ease-out">ACTIVE · BLOCKED · DONE ⧉<span style="display:block;font-family:var(--sans);font-style:normal;font-size:11px;letter-spacing:.3em;color:var(--dim);margin-top:6px">状态总览</span></button>
+        <span style="font-size:11px;letter-spacing:.28em;color:var(--faint)">任务指挥台 · 全局状态与完成度</span>
+      </div><div class="hudgrid">
+      <div class="hpanel hring">
+        <div class="hp-k">总体完成度<span>OVERALL PROGRESS</span></div>
+        <div class="ringbox">
+          <svg viewBox="0 0 200 200">
+            <circle class="rbg" cx="100" cy="100" r="84"/>
+            <circle class="rfg" id="ringfg" cx="100" cy="100" r="84"/>
+            <circle class="rorb" cx="100" cy="100" r="97"/>
+            <circle class="rorb rorb2" cx="100" cy="100" r="97"/>
+          </svg>
+          <div class="ringc"><b id="hpct">0.0<small>%</small></b><span id="hdone">0 / 0</span></div>
+        </div>
+        <div class="hstats4">
+          <div class="h4"><i style="--c:#9aa0ae"></i><b class="cv" id="c-open" data-v="0">0</b><span>待领 OPEN</span></div>
+          <div class="h4"><i style="--c:#c8874a"></i><b class="cv" id="c-claim" data-v="0">0</b><span>施工 ACTIVE</span></div>
+          <div class="h4"><i style="--c:#7da87b"></i><b class="cv" id="c-done" data-v="0">0</b><span>战功 DONE</span></div>
+          <div class="h4"><i style="--c:#b04a4a"></i><b class="cv" id="c-blk" data-v="0">0</b><span>阻塞 BLOCKED</span></div>
+        </div>
+      </div>
+      <div class="hpanel hheat">
+        <div class="hp-k">域战况矩阵<span>DOMAIN MATRIX</span><em id="heatinfo">悬停查看领域战况</em></div>
+        <canvas id="heatcv"></canvas>
+        <div class="hlegend"><i style="--c:rgba(212,178,112,.12)"></i>未开<div><i style="--c:#d4b270"></i>推进中</div><i style="--c:#efe6cf"></i>将成</div>
+      </div>
+      <div class="hpanel hpipe">
+        <div class="hp-k">任务管线<span>PIPELINE</span></div>
+        <div class="pipe">
+          <div class="pn"><b class="cv" id="p-open" data-v="0">0</b><span>待领</span></div>
+          <i class="pl"></i>
+          <div class="pn pn2"><b class="cv" id="p-claim" data-v="0">0</b><span>已领</span></div>
+          <i class="pl"></i>
+          <div class="pn pn3"><b class="cv" id="p-done" data-v="0">0</b><span>已完成</span></div>
+          <i class="pl pb"></i>
+          <div class="pn pn4"><b class="cv" id="p-blk" data-v="0">0</b><span>阻塞</span></div>
+        </div>
+      </div>
+      <div class="hpanel hbooks">
+        <div class="hp-k">三册进度<span>LEDGERS</span></div>
+        <div id="bookbars"></div>
+      </div>
+      <div class="hpanel hworkers">
+        <div class="hp-k">AI 施工<span>WORKERS</span></div>
+        <div id="wchips"><span class="widle">空闲 — 等待派单</span></div>
+      </div>
+    </div></div>
+  </section>
+</main>
+
+<div class="drawer" id="drawer">
+  <div class="dhead">氛围设置<small>AMBIENCE</small><span class="dclose" id="dclose">CLOSE ×</span></div>
+  <div class="dsec">主题风格 · 整套重排布</div>
+  <div class="ambbar" id="ambbar"></div>
+</div>
+<div class="dossier" id="dossier"><div class="sheet" id="sheet"></div></div>
+<div class="stats" id="stats"><div class="panel">
+  <span class="close" id="sclose">CLOSE ×</span>
+  <h3>状态总览</h3>
+  <div id="statbody"></div>
+</div></div>
+<div id="toast"></div>
+
+<script>
+const COLS=[{k:'待领',en:'OPEN'},{k:'已领',en:'ACTIVE'},{k:'阻塞',en:'BLOCKED'},{k:'已完成',en:'DONE'}];
+const CARD_CAP=120;
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let BOOK='', STATE={}, view='board';
+const LICON={"TypeScript": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMjIuNjcgNDdoOTkuNjd2NzMuNjdIMjIuNjd6Ii8+PHBhdGggZGF0YS1uYW1lPSJvcmlnaW5hbCIgZmlsbD0iIzAwN2FjYyIgZD0iTTEuNSA2My45MXY2Mi41aDEyNXYtMTI1SDEuNXptMTAwLjczLTVhMTUuNTYgMTUuNTYgMCAwMTcuODIgNC41IDIwLjU4IDIwLjU4IDAgMDEzIDRjMCAuMTYtNS40IDMuODEtOC42OSA1Ljg1LS4xMi4wOC0uNi0uNDQtMS4xMy0xLjIzYTcuMDkgNy4wOSAwIDAwLTUuODctMy41M2MtMy43OS0uMjYtNi4yMyAxLjczLTYuMjEgNWE0LjU4IDQuNTggMCAwMC41NCAyLjM0Yy44MyAxLjczIDIuMzggMi43NiA3LjI0IDQuODYgOC45NSAzLjg1IDEyLjc4IDYuMzkgMTUuMTYgMTAgMi42NiA0IDMuMjUgMTAuNDYgMS40NSAxNS4yNC0yIDUuMi02LjkgOC43My0xMy44MyA5LjlhMzguMzIgMzguMzIgMCAwMS05LjUyLS4xIDIzIDIzIDAgMDEtMTIuNzItNi42M2MtMS4xNS0xLjI3LTMuMzktNC41OC0zLjI1LTQuODJhOS4zNCA5LjM0IDAgMDExLjE1LS43M0w4MiAxMDFsMy41OS0yLjA4Ljc1IDEuMTFhMTYuNzggMTYuNzggMCAwMDQuNzQgNC41NGM0IDIuMSA5LjQ2IDEuODEgMTIuMTYtLjYyYTUuNDMgNS40MyAwIDAwLjY5LTYuOTJjLTEtMS4zOS0zLTIuNTYtOC41OS01LTYuNDUtMi43OC05LjIzLTQuNS0xMS43Ny03LjI0YTE2LjQ4IDE2LjQ4IDAgMDEtMy40My02LjI1IDI1IDI1IDAgMDEtLjIyLThjMS4zMy02LjIzIDYtMTAuNTggMTIuODItMTEuODdhMzEuNjYgMzEuNjYgMCAwMTkuNDkuMjZ6bS0yOS4zNCA1LjI0djUuMTJINTYuNjZ2NDYuMjNINDUuMTVWNjkuMjZIMjguODh2LTVhNDkuMTkgNDkuMTkgMCAwMS4xMi01LjE3QzI5LjA4IDU5IDM5IDU5IDUxIDU5aDIxLjgzeiIvPjwvc3ZnPg==", "JavaScript": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cGF0aCBmaWxsPSIjRjBEQjRGIiBkPSJNMS40MDggMS40MDhoMTI1LjE4NHYxMjUuMTg1SDEuNDA4eiIvPjxwYXRoIGZpbGw9IiMzMjMzMzAiIGQ9Ik0xMTYuMzQ3IDk2LjczNmMtLjkxNy01LjcxMS00LjY0MS0xMC41MDgtMTUuNjcyLTE0Ljk4MS0zLjgzMi0xLjc2MS04LjEwNC0zLjAyMi05LjM3Ny01LjkyNi0uNDUyLTEuNjktLjUxMi0yLjY0Mi0uMjI2LTMuNjY1LjgyMS0zLjMyIDQuNzg0LTQuMzU1IDcuOTI1LTMuNDAzIDIuMDIzLjY3OCAzLjkzOCAyLjIzNyA1LjA5MyA0LjcyNCA1LjQwMi0zLjQ5OCA1LjM5MS0zLjQ3NSA5LjE2My01Ljg3OS0xLjM4MS0yLjE0MS0yLjExOC0zLjEyOS0zLjAyMi00LjA0NS0zLjI0OS0zLjYyOS03LjY3Ni01LjQ5OC0xNC43NTYtNS4zNTVsLTMuNjg4LjQ3N2MtMy41MzQuODkzLTYuOTAyIDIuNzQ4LTguODc3IDUuMjM1LTUuOTI2IDYuNzI0LTQuMjM2IDE4LjQ5MiAyLjk3NSAyMy4zMzUgNy4xMDQgNS4zMzIgMTcuNTQgNi41NDUgMTguODczIDExLjUzMSAxLjI5NyA2LjEwNC00LjQ4NiA4LjA4LTEwLjIzNCA3LjM3OC00LjIzNi0uODgxLTYuNTkyLTMuMDM0LTkuMTM5LTYuOTQ5LTQuNjg4IDIuNzEzLTQuNjg4IDIuNzEzLTkuNTA4IDUuNDg1IDEuMTQzIDIuNDk5IDIuMzQ0IDMuNjMgNC4yNiA1Ljc5NSA5LjA2OCA5LjE5OCAzMS43NiA4Ljc0NiAzNS44My01LjE3Ni4xNjUtLjQ3OCAxLjI2MS0zLjY2Ni4zOC04LjU4MXpNNjkuNDYyIDU4Ljk0M0g1Ny43NTNsLS4wNDggMzAuMjcyYzAgNi40MzguMzMzIDEyLjM0LS43MTQgMTQuMTQ5LTEuNzEzIDMuNTU4LTYuMTUyIDMuMTE3LTguMTc1IDIuNDI3LTIuMDU5LTEuMDEyLTMuMTA2LTIuNDUxLTQuMzE5LTQuNDg1LS4zMzMtLjU4NC0uNTgzLTEuMDM2LS42NjctMS4wNzFsLTkuNTIgNS44M2MxLjU4MyAzLjI0OSAzLjkxNSA2LjA2OSA2LjkwMiA3LjkwMSA0LjQ2MiAyLjY3OCAxMC40NTkgMy40OTkgMTYuNzMxIDIuMDU5IDQuMDgyLTEuMTg5IDcuNjA0LTMuNjUyIDkuNDQ4LTcuNDAxIDIuNjY2LTQuOTE1IDIuMDk0LTEwLjg2NCAyLjA3LTE3LjQ0NC4wNi0xMC43MzUuMDAxLTIxLjQ2OC4wMDEtMzIuMjM3eiIvPjwvc3ZnPg==", "Python": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48bGluZWFyR3JhZGllbnQgaWQ9InB5dGhvbi1vcmlnaW5hbC1hIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjcwLjI1MiIgeTE9IjEyMzcuNDc2IiB4Mj0iMTcwLjY1OSIgeTI9IjExNTEuMDg5IiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KC41NjMgMCAwIC0uNTY4IC0yOS4yMTUgNzA3LjgxNykiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzVBOUZENCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzMwNjk5OCIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJweXRob24tb3JpZ2luYWwtYiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiIHgxPSIyMDkuNDc0IiB5MT0iMTA5OC44MTEiIHgyPSIxNzMuNjIiIHkyPSIxMTQ5LjUzNyIgZ3JhZGllbnRUcmFuc2Zvcm09Im1hdHJpeCguNTYzIDAgMCAtLjU2OCAtMjkuMjE1IDcwNy44MTcpIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNGRkQ0M0IiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNGRkU4NzMiLz48L2xpbmVhckdyYWRpZW50PjxwYXRoIGZpbGw9InVybCgjcHl0aG9uLW9yaWdpbmFsLWEpIiBkPSJNNjMuMzkxIDEuOTg4Yy00LjIyMi4wMi04LjI1Mi4zNzktMTEuOCAxLjAwNy0xMC40NSAxLjg0Ni0xMi4zNDYgNS43MS0xMi4zNDYgMTIuODM3djkuNDExaDI0LjY5M3YzLjEzN0gyOS45NzdjLTcuMTc2IDAtMTMuNDYgNC4zMTMtMTUuNDI2IDEyLjUyMS0yLjI2OCA5LjQwNS0yLjM2OCAxNS4yNzUgMCAyNS4wOTYgMS43NTUgNy4zMTEgNS45NDcgMTIuNTE5IDEzLjEyNCAxMi41MTloOC40OTFWNjcuMjM0YzAtOC4xNTEgNy4wNTEtMTUuMzQgMTUuNDI2LTE1LjM0aDI0LjY2NWM2Ljg2NiAwIDEyLjM0Ni01LjY1NCAxMi4zNDYtMTIuNTQ4VjE1LjgzM2MwLTYuNjkzLTUuNjQ2LTExLjcyLTEyLjM0Ni0xMi44MzctNC4yNDQtLjcwNi04LjY0NS0xLjAyNy0xMi44NjYtMS4wMDh6TTUwLjAzNyA5LjU1N2MyLjU1IDAgNC42MzQgMi4xMTcgNC42MzQgNC43MjEgMCAyLjU5My0yLjA4MyA0LjY5LTQuNjM0IDQuNjktMi41NiAwLTQuNjMzLTIuMDk3LTQuNjMzLTQuNjktLjAwMS0yLjYwNCAyLjA3My00LjcyMSA0LjYzMy00LjcyMXoiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDAgMTAuMjYpIi8+PHBhdGggZmlsbD0idXJsKCNweXRob24tb3JpZ2luYWwtYikiIGQ9Ik05MS42ODIgMjguMzh2MTAuOTY2YzAgOC41LTcuMjA4IDE1LjY1NS0xNS40MjYgMTUuNjU1SDUxLjU5MWMtNi43NTYgMC0xMi4zNDYgNS43ODMtMTIuMzQ2IDEyLjU0OXYyMy41MTVjMCA2LjY5MSA1LjgxOCAxMC42MjggMTIuMzQ2IDEyLjU0NyA3LjgxNiAyLjI5NyAxNS4zMTIgMi43MTMgMjQuNjY1IDAgNi4yMTYtMS44MDEgMTIuMzQ2LTUuNDIzIDEyLjM0Ni0xMi41NDd2LTkuNDEySDYzLjkzOHYtMy4xMzhoMzcuMDEyYzcuMTc2IDAgOS44NTItNS4wMDUgMTIuMzQ4LTEyLjUxOSAyLjU3OC03LjczNSAyLjQ2Ny0xNS4xNzQgMC0yNS4wOTYtMS43NzQtNy4xNDUtNS4xNjEtMTIuNTIxLTEyLjM0OC0xMi41MjFoLTkuMjY4ek03Ny44MDkgODcuOTI3YzIuNTYxIDAgNC42MzQgMi4wOTcgNC42MzQgNC42OTIgMCAyLjYwMi0yLjA3NCA0LjcxOS00LjYzNCA0LjcxOS0yLjU1IDAtNC42MzMtMi4xMTctNC42MzMtNC43MTkgMC0yLjU5NSAyLjA4My00LjY5MiA0LjYzMy00LjY5MnoiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDAgMTAuMjYpIi8+PHJhZGlhbEdyYWRpZW50IGlkPSJweXRob24tb3JpZ2luYWwtYyIgY3g9IjE4MjUuNjc4IiBjeT0iNDQ0LjQ1IiByPSIyNi43NDMiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMCAtLjI0IC0xLjA1NSAwIDUzMi45NzkgNTU3LjU3NikiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNCOEI4QjgiIHN0b3Atb3BhY2l0eT0iLjQ5OCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzdGN0Y3RiIgc3RvcC1vcGFjaXR5PSIwIi8+PC9yYWRpYWxHcmFkaWVudD48cGF0aCBvcGFjaXR5PSIuNDQ0IiBmaWxsPSJ1cmwoI3B5dGhvbi1vcmlnaW5hbC1jKSIgZD0iTTk3LjMwOSAxMTkuNTk3YzAgMy41NDMtMTQuODE2IDYuNDE2LTMzLjA5MSA2LjQxNi0xOC4yNzYgMC0zMy4wOTItMi44NzMtMzMuMDkyLTYuNDE2IDAtMy41NDQgMTQuODE1LTYuNDE3IDMzLjA5Mi02LjQxNyAxOC4yNzUgMCAzMy4wOTEgMi44NzIgMzMuMDkxIDYuNDE3eiIvPjwvc3ZnPgo=", "Rust": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjY2U0MjJiIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cGF0aCBkPSJNNjIuOTYuMjQyYy0uMjMyLjEzNS0xLjIwMyAxLjUyOC0yLjE2IDMuMDk3LTIuNCAzLjk0LTIuNDI2IDMuOTQyLTUuNjUuNTUtMi4wOTgtMi4yMDgtMi42MDUtMi42MTItMy4yOC0yLjYwNy0uNDQuMDAyLS45OTUuMTUyLTEuMjM1LjMzMi0uMjQuMTgtLjkxNiAxLjYxMi0xLjUwNCAzLjE4My0xLjM0NiAzLjYtMS40MSAzLjcxNS0yLjE1NiAzLjg2LS40Ni4wODYtMS4zNDMtLjQwNy0zLjQ2My0xLjkyOS0xLjU2NS0xLjEyNS0zLjEtMi4wNDUtMy40MTEtMi4wNDUtMS4yOTEgMC0xLjY1NS43MDYtMi4yNyA0LjQtLjc4IDQuNjk3LS43NTQgNC42ODEtNC45ODggMi43NTgtMS43MS0uNzc2LTMuMzMtMS40MS0zLjYwMy0xLjQxLS4yNzQgMC0uNzkyLjI5My0xLjE1LjY1Mi0uNjUyLjY1Mi0uNjUzLjY1NS0uNDc1IDQuMjQ2bC4xNzggMy41OTUtLjY4LjM2NGMtLjYwMi4zMjItMS4wMTcuMjgzLTMuNjg0LS4zNDgtMy40OC0uODIyLTQuMjE2LS44LTQuOTIuMTVsLS41MTYuNjkzLjY5MiAyLjk2NGMuMzggMS42My43NDUgMy4yLjgxNCAzLjQ4Ny4wNjcuMjg3LS4wNS43NDYtLjI2IDEuMDItLjM0OC40NDgtLjcxNy40OS0zLjk0LjQ0LTUuNDUyLS4wODYtNS43NjEuMzgyLTMuNTEgNS4zLjcxOCAxLjU2IDEuMzA1IDIuOTggMS4zMDUgMy4xNSAwIC44OTgtLjcxNyAxLjIyNC0zLjc5NCAxLjcyNy0xLjcyMi4yOC0zLjIxOC41MS0zLjMyNi41MS0uMTA3IDAtLjQzLjIzNS0uNzE3LjUyMi0uOTM3LjkzNi0uNjcxIDEuODE2IDEuNDUzIDQuODE0IDIuNjQ2IDMuNzM1IDIuNjQyIDMuNzUtMS43MyA1LjQyMS00Ljk3MSAxLjkwMi01LjA3MiAyLjM3LTEuMjg3IDUuOTYgMy41MjUgMy4zNDQgMy41MyAzLjI5NS0uNDYxIDUuODA0Qy4yMDggNjIuOC4xNjIgNjIuODQ2LjA4NSA2My44NzZjLS4wOTMgMS4yNTMtLjA3MSAxLjI3NSAzLjUzOCAzLjQ4IDMuNTcgMi4xOCAzLjU3IDIuMjQ2LjA2NyA1LjU2Qy0uMDc4IDc2LjQ4LjAzOCA3NyA1LjAxMyA3OC44NzdjNC4zNDcgMS42NCA0LjM1MyAxLjY2IDEuNzAyIDUuMzk0LTEuNTAyIDIuMTE3LTEuOTgxIDMtMS45ODEgMy42NTMgMCAxLjIyMy42MzcgMS41MzUgNC40NCAyLjE3NCAzLjIwNi41NCAzLjkyLjg1NyAzLjkyIDEuNzQxIDAgLjE4Mi0uNTg4IDEuNjEyLTEuMzA3IDMuMTc3LTIuMjM2IDQuODctMS45ODEgNS4yNzUgMy4zMSA1LjI3NSA0LjkzIDAgNC43OTktLjE1IDMuNzM3IDQuMjk0LS44IDMuMzUtLjgxMyAzLjk5Mi0uMDg4IDQuNzE1LjU1NC41NTYgMS42LjQ5NCA0Ljg3LS4yODkgMi40OTktLjU5NiAyLjkzNy0uNjM3IDMuNTE2LS4zMjhsLjY2LjM1NC0uMTc3IDMuNTk0Yy0uMTc4IDMuNTkzLS4xNzcgMy41OTUuNDc1IDQuMjQ4LjM1OC4zNi44ODQuNjUyIDEuMTY1LjY1Mi4yODIgMCAxLjkwMy0uNjMgMy42MDQtMS40MDQgNC4yMi0xLjkxNiA0LjE5NC0xLjkzMiA0Ljk3MyAyLjc1LjYxNyAzLjcxMS45NzcgNC40IDIuMjk0IDQuNC4zMjcgMCAxLjgzLS44OCAzLjM0LTEuOTU4IDIuNjU0LTEuODkzIDMuMzQyLTIuMTkgNC4wNDktMS43NC4xODIuMTE1Ljg5IDEuNjcgMS41NzIgMy40NTUgMS4wMDMgMi42MjUgMS4zNyAzLjMxIDEuOTI5IDMuNTc2IDEuMDYyLjUxIDEuNzIuMSA0LjIxOC0yLjYyIDMuMDE2LTMuMjg2IDMuMTQtMy4yNyA1LjYwMi43MiAyLjcyIDQuNDA2IDMuNDI0IDQuMzk2IDYuMjEyLS4wODkgMi40MDItMy44NjQgMi4zNzQtMy44NjIgNS42MjEtLjQ3IDIuMTU3IDIuMjUgMi42MTYgMi42MSAzLjM0MyAyLjYxLjQ2NCAwIDEuMDE5LS4xNzUgMS4yMy0uMzg4LjIxNC0uMjEzLjkyLTEuNzg2IDEuNTY4LTMuNDk2LjY0OS0xLjcxIDEuMzIxLTMuMiAxLjQ5NS0zLjMxLjY4Ny0uNDM2IDEuMzk4LS4xMyA0LjA0OCAxLjc1MiAxLjU2IDEuMTA4IDMuMDI4IDEuOTYgMy4zNzcgMS45NiAxLjI5NiAwIDEuNzY0LS45MiAyLjMwMi00LjUzNS40Ni0zLjA4Mi41NTQtMy4zNzggMS4xNi0zLjY4NS41OTYtLjMwMi45NTQtLjIgMy43NSAxLjA3IDEuNzAxLjc3IDMuMzIzIDEuNDAyIDMuNjA0IDEuNDAyLjI4MiAwIC44MTYtLjMwMiAxLjE4NC0uNjcybC42NzItLjY3LS4xODQtMy40NDhjLS4xNzctMy4yOS0uMTYtMy40NjguMzY0LTMuOTQzLjU0LS40ODguNTk2LS40ODYgMy42MTUuMjA0IDMuNjU2LjgzNSA0LjMzOC44NTcgNS4wMjUuMTcuNjcxLS42Ny42NjQtLjgxOC0uMjU0LTQuNjktMS4wMy00LjM0Ni0xLjE2OC00LjE5IDMuNzgtNC4xOSAzLjM3NCAwIDMuNzUtLjA0OSA0LjE4LS41MjMuNzE4LS43OTMuNTQ3LTEuNzAyLS44OTYtNC43NzktLjcyOS0xLjU1LTEuMzItMi45Ni0xLjMxNS0zLjEzNS4wMjQtLjkxNC43NDMtMS4yMjcgNC4wNjUtMS43NjcgMi4wMzMtLjMyOSAzLjU1My0uNzEgMy44MjktLjk2LjkyMy0uODMzLjU4NC0xLjkxOC0xLjUyMy00Ljg3My0yLjY0Mi0zLjcwMy0yLjYzLTMuNzM4IDEuNTk5LTUuMjk3IDUuMDY0LTEuODY2IDUuMjA5LTIuNDg4IDEuNDE5LTYuMDktMy41MS0zLjMzNS0zLjUxMi0zLjMxNy4zMzMtNS42NzcgNC42NDgtMi44NTMgNC42NTUtMy40OTYuMDgyLTYuMzM1LTMuOTMzLTIuNDQtMy45My0yLjQwNi0uNDA1LTUuNzUzIDMuNzgtMy41OTMgMy42NzgtNC4wNjMtMS4yOTUtNS45NjUtNC4zODgtMS42NzktNC40MDItMS43Mi0xLjczNS01LjM4IDEuNTg4LTIuMTggMS45ODItMi45MDMgMS45ODItMy42NSAwLTEuMzA2LS41ODYtMS41OTgtNC40MzYtMi4yMi0zLjIxNi0uNTItMy45MjQtLjgzNS0zLjkyNC0xLjc1IDAtLjE3NC41ODgtMS41NzQgMS4zMDctMy4xMTMgMS40MDYtMy4wMTMgMS42MDQtNC4yMi44MDgtNC45NC0uNDI4LS4zODctMS0uNDQzLTQuMDY3LS4zOTItMy4yMDguMDU0LTMuNjE4LjAwOC00LjA2My0uNDM5LS40ODYtLjQ4OC0uNDgtLjU1Ny4yNzgtMy43MjUuOTMxLTMuODguOTM1LTMuOTc1LjE3LTQuNjk0LS43NzctLjczLTEuMjYyLS43MTgtNC44MjYuMTIxLTIuNTk3LjYxMi0zLjAyNy42NTMtMy42MTcuMzM3bC0uNjctLjM2LjE4NS0zLjU4Mi4xODYtMy41OC0uNjctLjY3Yy0uMzY5LS4zNy0uODkxLS42Ny0xLjE2My0uNjctLjI3IDAtMS44ODQuNjQtMy41ODMgMS40MjEtMi44MzggMS4zMDYtMy4xNDMgMS4zOTMtMy43NTcgMS4wNzItLjYxMi0uMzItLjcxNC0uNjM3LTEuMjM3LTMuODI5LS42MDMtMy42OTMtLjk3Ny00LjQxMi0yLjI4OC00LjQxMi0uMzExIDAtMS44NTMuOTI1LTMuNDI2IDIuMDU1LTIuNTg0IDEuODU2LTIuOTMgMi4wMzItMy41NzQgMS44MDctLjUzMy0uMTg2LS44NDMtLjU5LTEuMjIxLTEuNTk5LS4yOC0uNzQyLS44MTctMi4xNzItMS4xOTQtMy4xNzctLjc2Mi0yLjAyOC0xLjE4Ny0yLjQ4Mi0yLjMyOC0yLjQ4Mi0uNjM3IDAtMS4yMTMuNDU4LTMuMjggMi42MDQtMy4yNSAzLjM3NS0zLjI2MSAzLjM3NC01LjY1LS41NDVDNjYuMDczIDEuNzggNjUuMDc1LjM4MiA2NC44MS4yNGMtLjU5Ny0uMzItMS4zLS4zMi0xLjg1LjAwMm0yLjk2IDExLjc5OGMyLjgzIDIuMDE0IDEuMzI2IDYuNzUtMi4xNDQgNi43NS0zLjM2OCAwLTUuMDY0LTQuMDU3LTIuNjYtNi4zNiAxLjM1OC0xLjMgMy4zMDQtMS40NTkgNC44MDUtLjM5bS0zLjU1OCAxMi41MDdjMS44NTUuNzA1IDIuNjE2LjI4MiA2Ljg1Mi0zLjhsMy4xODItMy4wNyAxLjM0Ny4xOGM0LjIyNS41NiAxMi42MjcgNC4yNSAxNy40NTUgNy42NjYgNC40MzYgMy4xNCAxMC4zMzIgOS41MzQgMTIuODQ1IDEzLjkzbC41MzcuOTQyLTIuMzggNS4zNjRjLTEuMzEgMi45NS0yLjM4MiA1LjY3My0yLjM4MiA2LjA1MyAwIC44NzguNTc2IDIuMjY3IDEuMTMgMi43MjYuMjM0LjE5NSAyLjQ1NyAxLjI2NSA0LjkzOSAyLjM3OGw0LjUxIDIuMDI1LjE3OCAxLjE0OGMuMjMgMS40OTUuMjYgNS4xNjcuMDUyIDYuMjFsLS4xNjMuODE2aC0yLjU3NWMtMi45ODcgMC0yLjc1Ni0uMjY3LTIuOTE4IDMuMzk2LS4xMTggMi42NTYtLjc2IDQuMTI0LTIuMjIgNS4wNzUtMi4zNzcgMS41NTEtNi4zMDQgMS4yNy03Ljk3LS41Ny0uMjU1LS4yODQtLjc1Mi0xLjcwNS0xLjEwNS0zLjE2LTEuMDMtNC4yNTQtMi40MTMtNi42NC01LjE5My04Ljk2NS0uODc4LS43MzMtMS41OTUtMS40MTgtMS41OTUtMS41MjIgMC0uMTAyLjk2NS0uOTE1IDIuMTQ1LTEuODAzIDQuMjk4LTMuMjQgNi43Ny03LjAxMiA3LjA0LTEwLjc0Ny41MTktNy4xMjYtNS4xNTgtMTMuNzY3LTEzLjYwMi0xNS45Mi0yLjAwMi0uNTEtMi44NTctLjUyNi0yNy42MjQtLjUyNi0xNC4wNTcgMC0yNS41Ni0uMDkyLTI1LjU2LS4yMDQgMC0uMjYzIDMuMTI1LTMuMjk1IDQuOTY1LTQuODE2IDUuMDU0LTQuMTc4IDExLjYxOC03LjQ2NSAxOC40MTctOS4yMmwyLjM1LS42MSAzLjM0IDMuMzg3YzEuODM5IDEuODYzIDMuNjQgMy41IDQuMDAzIDMuNjM3TTIwLjMgNDYuMzRjMS41MzkgMS4wMDggMi4xNyAzLjU0IDEuMjYgNS4wNjItMS40MDUgMi4zNTYtNC45NjYgMi40NTUtNi4zNzMuMTc4LTIuMDQ2LTMuMzA5IDEuODk1LTcuMzQ5IDUuMTEzLTUuMjRtOTAuNjcyLjEzYzQuMDI2IDIuNDU0LjkwNiA4LjQ5My0zLjQwNCA2LjU4Ni0yLjg3Ny0xLjI3My0yLjk3LTUuMjA2LS4xNTUtNi42NCAxLjE3NC0uNiAyLjUyMy0uNTc5IDMuNTYuMDUzTTMyLjE2MyA2MS41djE1LjAyaC0xMy4yOGwtLjUyNi0yLjI4NWMtMS4wMzYtNC41LTEuNDcyLTkuMTU2LTEuMjExLTEyLjk2OWwuMTgyLTIuNjc5IDQuNTY1LTIuMDQ3YzIuODY0LTEuMjgzIDQuNzA2LTIuMjYyIDQuOTQzLTIuNjI1IDEuMDM4LTEuNTg0Ljk0LTIuNzE1LS41MTgtNS45MzNsLS42OC0xLjUwMmg2LjUyM1Y2MS41TTcwLjM5IDQ3LjEzMmMyLjg0My43NCA0LjM0NSAyLjI0NSA0LjM0OSA0LjM1NS4wMDIgMS41NS0uNzY1IDIuNTItMi42NyAzLjM4LTEuMzQ4LjYxLTEuNTYyLjYyNS0xMC4wNjMuNzA4bC04LjY4Ni4wODR2LTguOTJoNy43ODJjNi4wNzggMCA4LjExMi4wODYgOS4yODguMzkzbS0yLjkzNCAyMS41NTRjMS40MS4zOTIgMy4wNzYgMS42MTYgMy45MyAyLjg4OC44OTggMS4zMzcgMS40MjMgMy4wNzYgMi42NjcgOC44MzYgMS4wNSA0Ljg3IDEuNzI3IDYuNDYgMy42MiA4LjUzMiAyLjM0NSAyLjU2NiAxLjggMi40NjYgMTMuNTE0IDIuNDY2IDUuNjEgMCAxMC4xOTguMDkgMTAuMTk4LjIgMCAuMTk3LTMuODYzIDQuNzY0LTQuMDMgNC43NjQtLjA0OCAwLTIuMDY2LS40MjItNC40ODQtLjkzOS02LjgyOS0xLjQ1OC03LjA3NS0xLjI4Ny04LjY0MiA2LjAzMmwtMS4wMDggNC43MDItLjkxLjQ0OGMtMS41MTguNzUtNi40NTMgMi4yOTItOS4wMSAyLjgyLTQuMjI4Ljg3LTguODI4IDEuMTYyLTEyLjg3MS44MjEtNi44OTMtLjU4NS0xNi4wMi0zLjI1OS0xNi4zNzctNC44LS4wNzUtLjMyNy0uNTM1LTIuNDQzLTEuMDE4LTQuNzA0LS40ODUtMi4yNi0xLjA3NC00LjQwNC0xLjMxLTQuNzY0LTEuMTMtMS43MjQtMi4zMTgtMS44My03LjU0Ny0uNjc0LTEuOTguNDQtMy43MDguNzk2LTMuODQuNzk2LS4yNDggMC0zLjkyMy00LjI0OS0zLjkyMy00LjUzNSAwLS4wOSA4LjcyOC0uMTk0IDE5LjM5Ni0uMjNsMTkuMzk1LS4wNjYuMDctNi44OWMuMDUtNC44NjUtLjAxOC02Ljk5Ny0uMjMtNy4yNS0uMjM0LS4yODQtMS40ODUtLjM1OC02LjAxMS0uMzU4SDUzLjMydi04LjM2bDYuNTk3LjAwMWMzLjYyNi4wMDIgNy4wMi4xMiA3LjUzOS4yNjRNMzcuNTcgMTAwLjAyYzMuMDg0IDEuODggMS42MDUgNi44MDQtMi4wNDMgNi44LTMuNzQgMC01LjEyNy00Ljg4LTEuOTQtNi44MjYgMS4wNTUtLjY0MyAyLjkwOC0uNjMgMy45ODMuMDI2bTU2LjQ4LjIwNmMxLjUxMiAxLjEwOCAyLjAxNSAzLjQxMyAxLjA3OSA0Ljk1LTIuNDYgNC4wMzQtOC42MTIuODI3LTYuNTU3LTMuNDE5IDEuMDEtMi4wODUgMy42OTUtMi44MzcgNS40NzgtMS41MyIvPjwvc3ZnPgo=", "HTML": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cGF0aCBmaWxsPSIjRTQ0RDI2IiBkPSJNMTkuMDM3IDExMy44NzZMOS4wMzIgMS42NjFoMTA5LjkzNmwtMTAuMDE2IDExMi4xOTgtNDUuMDE5IDEyLjQ4eiIvPjxwYXRoIGZpbGw9IiNGMTY1MjkiIGQ9Ik02NCAxMTYuOGwzNi4zNzgtMTAuMDg2IDguNTU5LTk1Ljg3OEg2NHoiLz48cGF0aCBmaWxsPSIjRUJFQkVCIiBkPSJNNjQgNTIuNDU1SDQ1Ljc4OEw0NC41MyAzOC4zNjFINjRWMjQuNTk5SDI5LjQ4OWwuMzMgMy42OTIgMy4zODIgMzcuOTI3SDY0em0wIDM1Ljc0M2wtLjA2MS4wMTctMTUuMzI3LTQuMTQtLjk3OS0xMC45NzVIMzMuODE2bDEuOTI4IDIxLjYwOSAyOC4xOTMgNy44MjYuMDYzLS4wMTd6Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTYzLjk1MiA1Mi40NTV2MTMuNzYzaDE2Ljk0N2wtMS41OTcgMTcuODQ5LTE1LjM1IDQuMTQzdjE0LjMxOWwyOC4yMTUtNy44Mi4yMDctMi4zMjUgMy4yMzQtMzYuMjMzLjMzNS0zLjY5NmgtMy43MDh6bTAtMjcuODU2djEzLjc2MmgzMy4yNDRsLjI3Ni0zLjA5Mi42MjgtNi45NzguMzI5LTMuNjkyeiIvPjwvc3ZnPg==", "CSS": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cGF0aCBmaWxsPSIjMTU3MkI2IiBkPSJNMTguODE0IDExNC4xMjNMOC43NiAxLjM1MmgxMTAuNDhsLTEwLjA2NCAxMTIuNzU0LTQ1LjI0MyAxMi41NDMtNDUuMTE5LTEyLjUyNnoiLz48cGF0aCBmaWxsPSIjMzNBOURDIiBkPSJNNjQuMDAxIDExNy4wNjJsMzYuNTU5LTEwLjEzNiA4LjYwMS05Ni4zNTRoLTQ1LjE2djEwNi40OXoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJNNjQuMDAxIDUxLjQyOWgxOC4zMDJsMS4yNjQtMTQuMTYzSDY0LjAwMVYyMy40MzVoMzQuNjgybC0uMzMyIDMuNzExLTMuNCAzOC4xMTRoLTMwLjk1VjUxLjQyOXoiLz48cGF0aCBmaWxsPSIjRUJFQkVCIiBkPSJNNjQuMDgzIDg3LjM0OWwtLjA2MS4wMTgtMTUuNDAzLTQuMTU5LS45ODUtMTEuMDMxSDMzLjc1MmwxLjkzNyAyMS43MTcgMjguMzMxIDcuODYzLjA2My0uMDE4di0xNC4zOXoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJNODEuMTI3IDY0LjY3NWwtMS42NjYgMTguNTIyLTE1LjQyNiA0LjE2NHYxNC4zOWwyOC4zNTQtNy44NTguMjA4LTIuMzM3IDIuNDA2LTI2Ljg4MUg4MS4xMjd6Ii8+PHBhdGggZmlsbD0iI0VCRUJFQiIgZD0iTTY0LjA0OCAyMy40MzV2MTMuODMxSDMwLjY0bC0uMjc3LTMuMTA4LS42My03LjAxMi0uMzMxLTMuNzExaDM0LjY0NnptLS4wNDcgMjcuOTk2djEzLjgzMUg0OC43OTJsLS4yNzctMy4xMDgtLjYzMS03LjAxMi0uMzMtMy43MTFoMTYuNDQ3eiIvPjwvc3ZnPg==", "PowerShell": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbDpzcGFjZT0icHJlc2VydmUiIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSI5Ni4zMDYiIHgyPSIyNS40NTQiIHkxPSIzNS4xNDQiIHkyPSI5OC40MzEiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMSAwIDAgLTEgMCAxMjgpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjYTljOGZmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjYzdlNmZmIi8+PC9saW5lYXJHcmFkaWVudD48cGF0aCBmaWxsPSJ1cmwoI2EpIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik03LjIgMTEwLjVjLTEuNyAwLTMuMS0uNy00LjEtMS45LTEtMS4yLTEuMy0yLjktLjktNC42bDE4LjYtODAuNWMuOC0zLjQgNC02IDcuNC02aDkyLjZjMS43IDAgMy4xLjcgNC4xIDEuOSAxIDEuMiAxLjMgMi45LjkgNC42bC0xOC42IDgwLjVjLS44IDMuNC00IDYtNy40IDZINy4yeiIgY2xpcC1ydWxlPSJldmVub2RkIiBvcGFjaXR5PSIuOCIvPjxsaW5lYXJHcmFkaWVudCBpZD0iYiIgeDE9IjI1LjMzNiIgeDI9Ijk0LjU2OSIgeTE9Ijk4LjMzIiB5Mj0iMzYuODQ3IiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDEgMCAwIC0xIDAgMTI4KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzJkNDY2NCIvPjxzdG9wIG9mZnNldD0iLjE2OSIgc3RvcC1jb2xvcj0iIzI5NDA1YiIvPjxzdG9wIG9mZnNldD0iLjQ0NSIgc3RvcC1jb2xvcj0iIzFlMmY0MyIvPjxzdG9wIG9mZnNldD0iLjc5IiBzdG9wLWNvbG9yPSIjMGMxMzFiIi8+PHN0b3Agb2Zmc2V0PSIxIi8+PC9saW5lYXJHcmFkaWVudD48cGF0aCBmaWxsPSJ1cmwoI2IpIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xMjAuMyAxOC41SDI4LjVjLTIuOSAwLTUuNyAyLjMtNi40IDUuMkwzLjcgMTA0LjNjLS43IDIuOSAxLjEgNS4yIDQgNS4yaDkxLjhjMi45IDAgNS43LTIuMyA2LjQtNS4ybDE4LjQtODAuNWMuNy0yLjktMS4xLTUuMy00LTUuM3oiIGNsaXAtcnVsZT0iZXZlbm9kZCIvPjxwYXRoIGZpbGw9IiMyQzU1OTEiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTY0LjIgODguM2gyMi4zYzIuNiAwIDQuNyAyLjIgNC43IDQuOXMtMi4xIDQuOS00LjcgNC45SDY0LjJjLTIuNiAwLTQuNy0yLjItNC43LTQuOXMyLjEtNC45IDQuNy00Ljl6TTc4LjcgNjYuNWMtLjQuOC0xLjIgMS42LTIuNiAyLjZMMzQuNiA5OC45Yy0yLjMgMS42LTUuNSAxLTcuMy0xLjQtMS43LTIuNC0xLjMtNS43LjktNy4zbDM3LjQtMjcuMXYtLjZsLTIzLjUtMjVjLTEuOS0yLTEuNy01LjMuNC03LjQgMi4yLTIgNS41LTIgNy40IDBsMjguMiAzMGMxLjcgMS45IDEuOCA0LjUuNiA2LjR6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiLz48cGF0aCBmaWxsPSIjRkZGIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik03Ny42IDY1LjVjLS40LjgtMS4yIDEuNi0yLjYgMi42TDMzLjYgOTcuOWMtMi4zIDEuNi01LjUgMS03LjMtMS40LTEuNy0yLjQtMS4zLTUuNy45LTcuM2wzNy40LTI3LjF2LS42bC0yMy41LTI1Yy0xLjktMi0xLjctNS4zLjQtNy40IDIuMi0yIDUuNS0yIDcuNCAwbDI4LjIgMzBjMS43IDEuOCAxLjggNC40LjUgNi40ek02My41IDg3LjhoMjIuM2MyLjYgMCA0LjcgMi4xIDQuNyA0LjYgMCAyLjYtMi4xIDQuNi00LjcgNC42SDYzLjVjLTIuNiAwLTQuNy0yLjEtNC43LTQuNiAwLTIuNiAyLjEtNC42IDQuNy00LjZ6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiLz48L3N2Zz4K", "Markdown": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cGF0aCBzdHlsZT0ibGluZS1oZWlnaHQ6bm9ybWFsO2ZvbnQtdmFyaWFudC1saWdhdHVyZXM6bm9ybWFsO2ZvbnQtdmFyaWFudC1wb3NpdGlvbjpub3JtYWw7Zm9udC12YXJpYW50LWNhcHM6bm9ybWFsO2ZvbnQtdmFyaWFudC1udW1lcmljOm5vcm1hbDtmb250LXZhcmlhbnQtYWx0ZXJuYXRlczpub3JtYWw7Zm9udC12YXJpYW50LWVhc3QtYXNpYW46bm9ybWFsO2ZvbnQtZmVhdHVyZS1zZXR0aW5nczpub3JtYWw7Zm9udC12YXJpYXRpb24tc2V0dGluZ3M6bm9ybWFsO3RleHQtaW5kZW50OjA7dGV4dC1hbGlnbjpzdGFydDt0ZXh0LWRlY29yYXRpb24tbGluZTpub25lO3RleHQtZGVjb3JhdGlvbi1zdHlsZTpzb2xpZDt0ZXh0LWRlY29yYXRpb24tY29sb3I6IzAwMDt0ZXh0LXRyYW5zZm9ybTpub25lO3RleHQtb3JpZW50YXRpb246bWl4ZWQ7d2hpdGUtc3BhY2U6bm9ybWFsO3NoYXBlLXBhZGRpbmc6MDtzaGFwZS1tYXJnaW46MDtpbmxpbmUtc2l6ZTowO2lzb2xhdGlvbjphdXRvO21peC1ibGVuZC1tb2RlOm5vcm1hbDtzb2xpZC1jb2xvcjojMDAwO3NvbGlkLW9wYWNpdHk6MSIgZD0iTTExLjk1IDI0LjM0OGMtNS44MzYgMC0xMC42MTggNC44NjctMTAuNjE4IDEwLjY4MXY1Ny45NDJjMCA1LjgxNCA0Ljc4MiAxMC42ODEgMTAuNjE3IDEwLjY4MWgxMDQuMTAyYzUuODM1IDAgMTAuNjE3LTQuODY3IDEwLjYxNy0xMC42ODFWMzUuMDNjMC01LjgxNC00Ljc4My0xMC42ODEtMTAuNjE3LTEwLjY4MUgxNC44OThsLS4wMDItLjAwMkgxMS45NXptLS4wMDcgOS41NDNoMTA0LjEwOGMuNjI1IDAgMS4wNzYuNDIzIDEuMDc2IDEuMTR2NTcuOTRjMCAuNzE3LS40NTMgMS4xNC0xLjA3NiAxLjE0SDExLjk0OWMtLjYyMyAwLTEuMDc2LS40MjMtMS4wNzYtMS4xNFYzNS4wMjljMC0uNzE1LjQ1MS0xLjEzNSAxLjA3LTEuMTM4eiIgY29sb3I9IiMwMDAiIGZvbnQtd2VpZ2h0PSI0MDAiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBvdmVyZmxvdz0idmlzaWJsZSIvPjxwYXRoIGQ9Ik0yMC43MjEgODQuMVY0My45SDMyLjQybDExLjY5NyAxNC43OEw1NS44MSA0My45aDExLjY5NnY0MC4ySDU1LjgxVjYxLjA0NGwtMTEuNjk0IDE0Ljc4LTExLjY5OC0xNC43OFY4NC4xSDIwLjcyMnptNzMuMTA0IDBMNzYuMjggNjQuNTkxaDExLjY5N1Y0My45aDExLjY5OHYyMC42OWgxMS42OTh6bTAgMCIvPjwvc3ZnPgo=", "Shell": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cGF0aCBmaWxsPSIjMjkzMTM4IiBkPSJNMTEyLjIwNSAyNi4xMjkgNzEuOCAyLjE0MkExNS4zMjYgMTUuMzI2IDAgMCAwIDY0LjAwNSAwYy0yLjY4OCAwLTUuMzg2LjcxNy03Ljc5NiAyLjE1MkwxNS43OTUgMjYuMTRDMTAuOTc2IDI4Ljk5OSA4IDM0LjI4OSA4IDQwLjAxOHY0Ny45NzVjMCA1LjcyOSAyLjk2NyAxMS4wMTkgNy43OTYgMTMuODc4TDU2LjIgMTI1Ljg1OEExNS4xOTMgMTUuMTkzIDAgMCAwIDYzLjk5NSAxMjhhMTUuMzIgMTUuMzIgMCAwIDAgNy43OTYtMi4xNDJsNDAuNDE0LTIzLjk4N2M0LjgxOS0yLjg2IDcuNzk2LTguMTYgNy43OTYtMTMuODc4VjQwLjAwN2MwLTUuNzE4LTIuOTY3LTExLjAxOS03Ljc5Ni0xMy44Nzh6bS0zMS4yOSA3NC45MDcuMDYzIDMuNDQ4YzAgLjQxOC0uMjY3Ljg4OS0uNTg4IDEuMDZsLTIuMDQ2IDEuMTc4Yy0uMzIxLjE2LS42LS4wMzItLjYtLjQ1bC0uMDMyLTMuMzk0Yy0xLjc0NS43MjgtMy41MjMuOS00LjY0Ny40NS0uMjE0LS4wODYtLjMxLS4zOTctLjIyNS0uNzZsLjczOS0zLjExN2MuMDY0LS4yNDYuMTkzLS40OTMuMzY0LS42NDNhLjcyNi43MjYgMCAwIDEgLjE5My0uMTM5Yy4xMTctLjA2NC4yMzUtLjA3NS4zMzItLjAzMiAxLjIyLjQwNyAyLjc3My4yMTQgNC4yNzItLjUzNSAxLjkwNy0uOTY0IDMuMTgtMi45MTMgMy4xNi00Ljg0LS4wMjItMS43NTctLjk2NC0yLjQ3NC0zLjI2Ny0yLjQ5Ni0yLjkzNC4wMS01LjY3NS0uNTY3LTUuNzE4LTQuODk0LS4wMzItMy41NTUgMS44MS03LjI2IDQuNzQ0LTkuNTk1bC0uMDMyLTMuNDhjMC0uNDI4LjI1Ny0uOS41ODktMS4wN2wxLjk4LTEuMjY0Yy4zMjItLjE2MS42LjA0Mi42LjQ2bC4wMzMgMy40OGMxLjQ1Ni0uNTc4IDIuNzItLjczOCAzLjg2NS0uNDcuMjQ3LjA2My4zNjQuNDA2LjI1Ny44MDJsLS43NyAzLjA4NGExLjM3MiAxLjM3MiAwIDAgMS0uMzU0LjYyMi44MjUuODI1IDAgMCAxLS4yMDMuMTVjLS4xMDguMDUzLS4yMDQuMDY0LS4zLjA1My0uNTI1LS4xMTgtMS43NjctLjM4NS0zLjcyNy42LTIuMDU2IDEuMDM4LTIuNzczIDIuODI3LTIuNzYzIDQuMTU1LjAyMiAxLjU4NS44MjUgMi4wNjYgMy42MyAyLjExIDMuNzM4LjA2MyA1LjM0NCAxLjY5MSA1LjM4NyA1LjQ1LjA1MyAzLjY4NC0xLjkxNyA3LjY1Ny00LjkzNyAxMC4wNzd6bTI4LjIwNi02NC43ODdMNzAuODkgNTkuODZjLTQuNzY1IDIuNzg0LTguMjc4IDUuOTExLTguMjg4IDExLjY2MnY0Ny4xMDdjMCAzLjQzNyAxLjM5MiA1LjY2NSAzLjUyMyA2LjMxOGExMi44MSAxMi44MSAwIDAgMS0yLjEyLjIwNGMtMi4yMzkgMC00LjQ0NS0uNjEtNi4zODMtMS43NTdMMTcuMjE5IDk5LjQwOGMtMy45NTEtMi4zNDUtNi40MDMtNi43MjUtNi40MDMtMTEuNDI2VjQwLjAwN2MwLTQuNyAyLjQ1Mi05LjA4IDYuNDAzLTExLjQyNkw1Ny42MzQgNC41OTRhMTIuNTU1IDEyLjU1NSAwIDAgMSA2LjM4Mi0xLjc1NmMyLjIzOCAwIDQuNDQ0LjYxIDYuMzgyIDEuNzU2bDQwLjQxNSAyMy45ODdjMy4zMyAxLjk4MSA1LjU3OSA1LjM5NyA2LjIxIDkuMjQyLTEuMzYtMi44Ni00LjM4LTMuNjMtNy45MDItMS41NzR6Ii8+PHBhdGggZmlsbD0iIzRmYTg0NyIgZD0ibTEwMS42MTQgOTIuNjE5LTEwLjA2NiA2LjAxOGMtLjI2OC4xNi0uNDYuMzMyLS40Ni42NTN2Mi42MzVjMCAuMzIuMjE0LjQ2LjQ4MS4zbDEwLjIxNi02LjIxMmMuMjY4LS4xNi4zMS0uNDUuMzEtLjc3di0yLjMyNGMwLS4zMjItLjIxMy0uNDUtLjQ4MS0uM3oiLz48L3N2Zz4K"};
+const lgBadge=l=>LICON[l]?`<span class="lg" title="${l}"><img src="${LICON[l]}" alt="${l}"></span>`:`<span class="lg lgx-${l}">${l.slice(0,2).toUpperCase()}</span>`;
+
+
+/* ---------- 独立软件输入纪律：禁右键菜单 / 中键滚轮 / 拖拽带出 ---------- */
+document.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('dragstart',e=>e.preventDefault());
+document.addEventListener('drop',e=>e.preventDefault());
+document.addEventListener('mousedown',e=>{if(e.button===1)e.preventDefault()},true);
+
+/* SVG 连线工具：柔和曲线 + 流动 + 箭头 */
+function flowSvg(cvs){
+  if(cvs._flowsvg)return cvs._flowsvg;
+  const NS='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(NS,'svg');svg.setAttribute('class','flowsvg');
+  svg.setAttribute('width','400000');svg.setAttribute('height','200000');
+  const defs=document.createElementNS(NS,'defs');
+  const mk=document.createElementNS(NS,'marker');
+  mk.setAttribute('id','varr');mk.setAttribute('viewBox','0 0 10 10');
+  mk.setAttribute('refX','8');mk.setAttribute('refY','5');
+  mk.setAttribute('markerWidth','7');mk.setAttribute('markerHeight','7');
+  mk.setAttribute('orient','auto-start-reverse');
+  const pth=document.createElementNS(NS,'path');
+  pth.setAttribute('d','M 0 1 L 9 5 L 0 9 z');pth.setAttribute('fill','rgba(214,181,114,.75)');
+  mk.appendChild(pth);defs.appendChild(mk);svg.appendChild(defs);
+  cvs.appendChild(svg);cvs._flowsvg=svg;return svg;
+}
+function hpath(x,y,len){
+  const x2=x+len, s=Math.min(14,len*0.35);
+  return `M ${x} ${y} C ${x+len*0.5-s} ${y}, ${x+len*0.5+s} ${y}, ${x2} ${y}`;
+}
+function rafThrottle(fn){let q=false;return(...a)=>{if(q)return;q=true;
+  requestAnimationFrame(()=>{q=false;fn(...a)})}}
+function vpath(x,y,len){
+  const y2=y+len, s=Math.min(14,len*0.3);
+  return `M ${x} ${y} C ${x} ${y+len*0.5-s}, ${x} ${y+len*0.5+s}, ${x} ${y2}`;
+}
+/* 横进横出圆角折线：一条连续路径，拐角圆滑，永不断开 */
+function elbow(x1,y1,x2,y2){
+  const xm=(x1+x2)/2;
+  const r=Math.max(6,Math.min(16,Math.abs(y2-y1)*.5,Math.abs(x2-x1)*.4));
+  const dir=y2>y1?1:-1;
+  return `M ${x1} ${y1} L ${xm-r} ${y1} Q ${xm} ${y1} ${xm} ${y1+dir*r} L ${xm} ${y2-dir*r} Q ${xm} ${y2} ${xm+r} ${y2} L ${x2} ${y2}`;
+}
+
+/* ---------- clock ---------- */
+setInterval(()=>{$('#clock').textContent=new Date().toTimeString().slice(0,8)},1000);
+
+/* ---------- view switch ---------- */
+$$('.views span').forEach(el=>el.addEventListener('click',()=>{
+  $$('.views span').forEach(x=>x.classList.toggle('on',x===el));
+  view=el.dataset.v;
+  $('#board').classList.toggle('on',view==='board');
+  $('#map').classList.toggle('on',view==='map');
+  $('#chain').classList.toggle('on',view==='chain');
+  $('#hud').classList.toggle('on',view==='hud');
+  if(view==='map')MAP.refresh();
+  if(view==='chain')CHAIN.start();
+  if(view==='hud')HUD.start();
+}));
+$('#hudpop').addEventListener('click',()=>$('.views span[data-v="hud"]').click());
+$('#hudpop').addEventListener('mouseenter',()=>$('#hudpop').style.color='var(--gold)');
+$('#hudpop').addEventListener('mouseleave',()=>$('#hudpop').style.color='');
+
+/* AI 施工角标 = 一键取消施工（误触保险） */
+$('.aichip').addEventListener('click',async()=>{
+  const s=STATE.sum, ws=Object.keys(s&&s.workers||{});
+  if(!ws.length)return;
+  if(!confirm('取消 AI 施工？\n\n'+ws.map(w=>`${w} ×${s.workers[w]}`).join('　')+'\n\n其名下全部已领单将退回待领。'))return;
+  const r=await (await fetch('/api/release_worker',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({worker:''})})).json();
+  if(r.ok){toast(`已取消施工 · ${r.n} 单退回待领`);tickBoard();pollNow()}else toast(r.err);
+});
+
+/* ---------- URL 直达 ---------- */
+const Q=new URLSearchParams(location.search);
+if(Q.get('task')){
+  document.addEventListener('DOMContentLoaded',()=>openDossier(Q.get('task')));
+}else if(Q.get('v')==='hud'){
+  document.addEventListener('DOMContentLoaded',()=>$('.views span[data-v="hud"]').click());
+}
+
+/* 任何任务点击 → 进入 CHAIN 并定位（单窗口内） */
+function goChain(id){
+  $('.views span[data-v="chain"]').click();
+  CHAIN.gotoId(id);
+}
+
+/* ---------- board columns ---------- */
+
+
+function renderNav(books,cur){
+  const nav=$('#lnav');
+  nav.innerHTML=`<span class="tab${cur===''?' on':''}" data-b="">All</span>`+
+    books.map(([b,n])=>`<span class="tab${b===cur?' on':''}" data-b="${esc(b)}">${esc(b)}<span class="cnt">${n}</span></span>`).join('');
+}
+$('#lnav').addEventListener('click',e=>{
+  const tab=e.target.closest('.tab');if(!tab)return;
+  BOOK=tab.dataset.b;$('#lnav')._sig=null;tickBoard();
+  MAP.setBook(BOOK);CHAIN.setBook(BOOK);
+});
+
+async function tickBoard(){
+  const sum=await (await fetch('/api/summary')).json();
+  STATE.sum=sum;
+  $('#stotal').innerHTML=`条目 <b>${sum.total.toLocaleString()}</b>`;
+  const bk=BOOK?sum.by_book[BOOK]:null;
+  const st=k=>(bk||sum.by_status)[k]||0;
+  $('#n-open').textContent=st('待领');
+  window._statline=`${bk?esc(BOOK)+' 册内':'全书'}　共 <b>${bk?bk['总']:sum.total}</b> 条`;
+  const books=Object.entries(sum.by_book).map(([b,v])=>[b,v['总']]);
+  const nav=$('#lnav');
+  const sig=books.map(b=>b.join(':')).join('|')+'#'+BOOK;
+  if(nav._sig!==sig){nav._sig=sig;renderNav(books,BOOK)}
+  // AI 边框
+  const ws=Object.keys(sum.workers||{});
+  document.body.classList.toggle('ai-on',ws.length>0);
+  $('#aiworkers').textContent=ws.map(w=>`${w}×${sum.workers[w]}`).join('　');
+  BCAN.setBook(BOOK);BCAN.start();
+  $('#domain').textContent=(bk?`册内 ${bk['总']} 条`:`全书 ${sum.total} 条`);
+}
+
+
+
+/* ---------- dossier：窗口内大面板（误触可取消/可撤销） ---------- */
+async function openDossier(id){
+  const d=await (await fetch(`/api/task?id=${encodeURIComponent(id)}`)).json();
+  if(!d.task){toast('条目不存在');return}
+  const t=d.task;
+  const act=t['状态']==='待领'&&t['解锁']?`<button class="pri" data-act="claim">领取此单</button>`:
+            t['状态']==='已领'?`<button class="undo" data-act="release">撤销领取 · 退回</button>`:'';
+  $('#sheet').innerHTML=`
+    <span class="close" id="xp-close">CLOSE ×</span>
+    <div class="id">${esc(t['册'])} · ${esc(t['域'])} · ${esc(t.id)}</div>
+    <h2>${esc(t.title)}</h2>
+    <div class="meta">
+      <div class="m"><div class="k">状态</div><div class="v gold">${esc(t['状态'])}${t['解锁']?'':' · 🔒 前置未完成'}</div></div>
+      <div class="m"><div class="k">行数目标</div><div class="v">${esc(t['行数']||'见锚点')}</div></div>
+      <div class="m"><div class="k">领取人</div><div class="v">${esc(t['领取人']||'—')}</div></div>
+      <div class="m"><div class="k">时间</div><div class="v">${esc(t['时间']||'—')}</div></div>
+      <div class="m"><div class="k">结果</div><div class="v">${esc(t['结果']||'—')}</div></div>
+    </div>
+    <div class="sec"><div class="k">前置 ${t['前置']?'（需先完成）':'（无——本条为域首条）'}</div>
+      <div class="tx">${t['前置']?`<button data-pre="${esc(t['前置'])}" style="background:none;border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px">${esc(t['前置'])} → 定位</button>`:'<span style="color:var(--dim)">已解锁，可直接领取</span>'}</div>
+    </div>
+    <div class="sec"><div class="k">验收标准（完整）</div><div class="tx">${esc(t['验收']||'按册内锚点原文验收')}</div></div>
+    <div class="sec"><div class="k">产出语言</div><div class="tx"><div class="lgrow">${(t.langs||[]).map(l=>lgBadge(l)+`<span style="font-size:12.5px;color:var(--dim);margin-right:10px">${l}</span>`).join('')||'<span style="color:var(--dim)">未标注</span>'}</div></div></div>
+    ${(t["简介"]?`<div class="sec"><div class="k">功能详述（原书全文）</div><div class="tx detail">${t["简介"]}</div></div>`:"")}
+    ${(t.files&&t.files.length)?`<div class="sec"><div class="k">产出文件（${t.files.length}）</div><div class="tx flist">${t.files.map(f=>`<div class="f">${esc(f)}</div>`).join('')}</div></div>`:''}
+    <div class="sec"><div class="k">册内锚点（规格与判据原文所在）</div><div class="tx" style="color:var(--dim);font-size:13px;word-break:break-all">${esc(t['书路径'])}</div></div>
+    <div class="acts"><button data-act="loc">⤓ 在链中定位</button>${act}</div>`;
+  $('#dossier').classList.add('on');
+  $('#xp-close').onclick=closeDossier;
+  const pb=$('#sheet [data-act="loc"]');if(pb)pb.onclick=()=>{
+    closeDossier();goChain(t.id)};
+  const pre=$('#sheet [data-pre]');if(pre)pre.onclick=()=>{
+    closeDossier();$('.views span[data-v="map"]').click();MAP.gotoPre(pre.dataset.pre)};
+  const cb=$('#sheet [data-act="claim"]');if(cb)cb.onclick=async()=>{
+    const r=await (await fetch('/api/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id,worker:'UI-本地'})})).json();
+    if(r.ok){toast(`已领取 ${t.id} —— 误触了？点「撤销领取」即可退回`);openDossier(id);pollNow()}
+    else toast(r.err)};
+  const rb=$('#sheet [data-act="release"]');if(rb)rb.onclick=async()=>{
+    const r=await (await fetch('/api/release',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id})})).json();
+    if(r.ok){toast(`已撤销 · ${t.id} 退回待领`);openDossier(id);pollNow()}
+    else toast(r.err)};
+}
+function closeDossier(){$('#dossier').classList.remove('on')}
+$('#dossier').addEventListener('click',e=>{if(e.target.id==='dossier')closeDossier()});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDossier();$('#stats').classList.remove('on')}});
+
+/* ---------- 状态总览（ACTIVE/BLOCKED/DONE 收纳的独立界面） ---------- */
+$('#statsbtn').addEventListener('click',async()=>{
+  const sum=STATE.sum||await (await fetch('/api/summary')).json();
+  const books=Object.entries(sum.by_book);
+  const row=bn=>{const b=Array.isArray(bn)?bn[0]:bn;
+    const v=b?sum.by_book[b]:sum.by_status;
+    const g=k=>v[k]||0;
+    return`<tr><td>${esc(b||'全部')}</td><td>${g('待领')}</td><td>${g('已领')}</td><td>${g('阻塞')}</td><td>${g('已完成')}</td><td>${b?sum.by_book[b]['总']:sum.total}</td></tr>`};
+  $('#statbody').innerHTML=`
+    <div style="font-size:14px;color:var(--dim);margin-bottom:18px">${window._statline||''}</div>
+    <table><tr><th>项目册</th><th>待领 OPEN</th><th>已领 ACTIVE</th><th>阻塞 BLOCKED</th><th>已完成 DONE</th><th>合计</th></tr>
+    ${books.map(row).join('')}${BOOK?'':row(null)}</table>
+    <div style="margin-top:22px;font-size:12.5px;color:var(--faint);line-height:2">
+      <b style="color:var(--dim)">说明</b> ——
+      待领：解锁链已放行、可被 AI 领取的单 ·
+      已领：AI 名下施工中（顶部金框即施工态） ·
+      阻塞：卡住待人工裁决 ·
+      已完成：验收通过并写回任务册。点击任意册名（BOARD 下方）可切换范围。</div>`;
+  $('#stats').classList.add('on');$('#sclose').onclick=()=>$('#stats').classList.remove('on');
+});
+$('#stats').addEventListener('click',e=>{if(e.target.id==='stats')$('#stats').classList.remove('on')});
+
+/* ---------- 全屏：F11 切换，Esc 退出 ---------- */
+window.addEventListener('keydown',e=>{
+  if(e.key==='F11'){e.preventDefault();
+    if(document.fullscreenElement)document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(()=>{})}
+});
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2600)}
+
+/* ---------- MAP：导图 · 全部内容逐级向右无限延伸（任务/连线虚拟化） ---------- */
+const MAP=(()=>{
+  const cvs=$('#canvas'), wrap=$('#map');
+  const TX0=1100, TW=320, GAP=92;          // 任务链起点 / 节点宽 / 间距
+  let X=120,Y=-200,SC=0.85;
+  let statNodes=[];                         // root/book/dm：少量，直接 DOM
+  let taskBuckets=new Map();                // 行 y → [任务节点]（分桶，apply 只看可视行）
+  let edgeBuckets=new Map();                // 行 y → [横线]
+  let vEdges=[];                            // 竖线（少量）
+  let statLinkEls=[];                       // root→册 结构折线（数量少，整建整删）
+  let taskEls=new Map(), edgeEls=new Map();
+  let MAPDATA=null, expanded={}, loaded={};
+  let lastSig=null;
+  const apply=rafThrottle(_apply);
+
+  function _apply(){
+    cvs.style.transform=`translate(${X}px,${Y}px) scale(${SC})`;
+    cvs.classList.toggle('coarse',SC<0.45);   // 缩太小：只可移动，不可交互
+    const w=wrap.clientWidth,h=wrap.clientHeight;
+    /* 世界坐标下的可视窗口（含余量） */
+    const vx0=(-X)/SC-500, vx1=(w-X)/SC+500, vy0=(-Y)/SC-400, vy1=(h-Y)/SC+400;
+    for(const n of statNodes){
+      const vis=n.x<vx1&&n.x+n.w>vx0&&n.y<vy1&&n.y+80>vy0;
+      if(n.vis!==vis){n.vis=vis;n.el.style.display=vis?'':'none'}
+    }
+    /* 任务节点：只扫可视行桶，按需创建，屏外回收 */
+    const want=new Map();
+    for(const [ry,list] of taskBuckets){
+      if(ry>vy1||ry+64<vy0)continue;
+      for(const v of list){
+        if(v.x>=vx1||v.x+v.w<=vx0)continue;
+        want.set(v.key,v);
+      }
+    }
+    for(const [k,el] of taskEls){if(!want.has(k)){el.remove();taskEls.delete(k)}}
+    for(const [k,v] of want){if(!taskEls.has(k))taskEls.set(k,mkTask(v))}
+    /* 横线：同样按行桶 */
+    const ewant=new Map();
+    for(const [ry,list] of edgeBuckets){
+      if(ry>vy1+40||ry<vy0-40)continue;
+      for(const e of list)ewant.set(e.x+','+e.y+','+e.len,e);
+    }
+    for(const e of vEdges){
+      if(e.x>=vx1||e.x<=vx0)continue;
+      const y0=e.y,y1=e.y+e.len;
+      if(y1>vy0&&y0<vy1)ewant.set('v'+e.x+','+e.y,e);
+    }
+    for(const [k,el] of edgeEls){if(!ewant.has(k)){el.remove();edgeEls.delete(k)}}
+    const svg=flowSvg(cvs);
+    for(const [k,e] of ewant){
+      if(edgeEls.has(k))continue;
+      const NS='http://www.w3.org/2000/svg', p=document.createElementNS(NS,'path');
+      p.setAttribute('d',(e.h===false)?vpath(e.x,e.y,e.len):hpath(e.x,e.y,e.len));
+      if(e.h===false)p.setAttribute('class','vline');
+      svg.appendChild(p);edgeEls.set(k,p);
+    }
+  }
+  function mkTask(v){
+    const t=v.t;
+    const el=document.createElement('div');
+    el.className='node task st-'+esc(t['状态'])+(t['解锁']?'':' lk');
+    el.innerHTML=`<div class="t">${esc(t.title)}</div><div class="s"><span>${esc(t.id)}</span>${t['前置']?`<span class="pre">${t['解锁']?'':'🔒 '}${esc(t['前置'])}</span>`:''}</div>`;
+    el.style.left=v.x+'px';el.style.top=v.y+'px';el.style.width=TW+'px';
+    el.addEventListener('click',ev=>{ev.stopPropagation();openDossier(t.id)});
+    cvs.appendChild(el);return el;
+  }
+  function div(cls,html){const el=document.createElement('div');el.className=cls;el.innerHTML=html;cvs.appendChild(el);return el}
+  function place(el,x,y,w){el.style.left=x+'px';el.style.top=y+'px';if(w)el.style.width=w+'px';el._x=x;el._y=y;el._w=w||el.offsetWidth}
+
+  /* 数据抓取与布局解耦：结构立即画，域数据由单次批量接口拉齐 */
+  let bulkPending=false;
+  let layoutTimer=0;
+  function scheduleLayout(){
+    if(layoutTimer)return;
+    layoutTimer=setTimeout(()=>{layoutTimer=0;relayout2()},160);
+  }
+  function relayout2(){
+    if(!MAPDATA)return Promise.resolve();
+    if(!loaded._bulk&&!bulkPending){
+      bulkPending=true;
+      fetch('/api/maptasks?limit=120')
+        .then(r=>{if(!r.ok)throw new Error('http '+r.status);return r.json()})
+        .then(j=>{
+          for(const k of Object.keys(j.domains))loaded[k]=j.domains[k];
+          loaded._bulk=true;bulkPending=false;scheduleLayout();
+        })
+        .catch(()=>{bulkPending=false;setTimeout(relayout2,1500)});
+    }
+    layout2();
+    return Promise.resolve();
+  }
+  function layout2(){
+    if(!MAPDATA)return;
+    /* 清掉旧 dm 节点 DOM，root/book 保留 */
+    for(const n of statNodes)if(n.kind==='dm')n.el.remove();
+    statNodes=statNodes.filter(n=>n.kind==='book'||n.kind==='root');
+    taskBuckets=new Map();edgeBuckets=new Map();vEdges=[];
+    const putTask=v=>{let l=taskBuckets.get(v.y);if(!l){l=[];taskBuckets.set(v.y,l)}l.push(v)};
+    const putEdge=e=>{let l=edgeBuckets.get(e.y);if(!l){l=[];edgeBuckets.set(e.y,l)}l.push(e)};
+    let y=0;
+    const books=statNodes.filter(n=>n.kind==='book');
+    const dmLinks=[];                        // 册→域 折线（从册节点右缘出发）
+    for(const bn of books){
+      const b=bn.el._b, dms=MAPDATA.books[b]||[];
+      bn.x=340;bn.y=y;place(bn.el,340,y,240);
+      let dy=y;
+      for(const d of dms){
+        const key=b+'/'+d.d, ex=!!expanded[key];
+        const dn=div('node dm'+(ex?' open':''),`<span class="exp">${ex?'▾':'▸'}</span><div class="t">${esc(d.d)}</div>
+           <div class="s"><span class="gd">${d.total}</span><span>${d.done}✓</span><span>${d.active}▶</span></div>`);
+        place(dn,720,dy,260);dn._d=d.d;dn._b=b;
+        statNodes.push({kind:'dm',el:dn,x:720,y:dy,w:260});
+        /* 册 → 域连接线（折线，从册节点右缘出发） */
+        dmLinks.push([bn.y+30,dy+26]);
+        if(ex){
+          const ts=loaded[key]||[];
+          /* 域 → 首条，然后前置→后继逐条向右无限延伸（每域展示 300 条，全量走 CHAIN） */
+          putEdge({x:980,y:dy+26,len:TX0-980,h:true});
+          ts.forEach((t,i)=>{
+            const tx=TX0+i*(TW+GAP);
+            putTask({key:t.id,x:tx,y:dy,w:TW,t});
+            if(i>0)putEdge({x:tx-GAP,y:dy+26,len:GAP,h:true});
+          });
+          if(d.total>ts.length){
+            const moreX=TX0+ts.length*(TW+GAP);
+            putEdge({x:moreX-GAP,y:dy+26,len:GAP,h:true});
+            const mn=div('node task',`<div class="t" style="color:var(--faint)">… ${d.total-ts.length} more → CHAIN</div>`);
+            place(mn,moreX,dy,220);mn.style.opacity=.55;
+            statNodes.push({kind:'dm',el:mn,x:moreX,y:dy,w:220});
+          }
+          apply();          // 增量渲染：每域加载完立刻显示，不等全部域
+          dy+=118;
+        }
+        dy+=64;
+      }
+      y=dy+40;
+    }
+    /* root → 各册 + 册 → 各域：连续圆角折线（结构线，直接重建） */
+    const svg=flowSvg(cvs);
+    for(const el of statLinkEls)el.remove();
+    statLinkEls=[];
+    const mkLink=(d,cls)=>{
+      const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('class',cls);
+      p.setAttribute('d',Math.abs(d[3]-d[1])<0.5?`M ${d[0]} ${d[1]} L ${d[2]} ${d[3]}`:elbow(d[0],d[1],d[2],d[3]));
+      svg.appendChild(p);statLinkEls.push(p);
+    };
+    for(const bn of books)mkLink([240,30,340,bn.y+30],'vline');
+    for(const bn of books){
+      const b=bn.el._b;
+      for(const n of statNodes)if(n.kind==='dm'&&n.el._b===b)mkLink([580,bn.y+30,720,n.y+26],'');
+    }
+    apply();
+  }
+  function layoutSig(){
+    if(!MAPDATA)return'';
+    let s=Object.keys(expanded).sort().join(',')+'#';
+    for(const b of Object.keys(MAPDATA.books))for(const d of MAPDATA.books[b])s+=b+d.d+d.total+d.done+d.active;
+    return s;
+  }
+  function centerOn(x,y){X=wrap.clientWidth/2-x*SC-170;Y=wrap.clientHeight/2-y*SC-30;apply()}
+
+  cvs.addEventListener('click',e=>{
+    const dm=e.target.closest('.node.dm');if(!dm)return;
+    const key=dm._b+'/'+dm._d;
+    expanded[key]=!expanded[key];
+    relayout2().then(()=>centerOn(720,parseFloat(dm.style.top)));
+  });
+  async function gotoPre(pid){
+    if(!MAPDATA)await refreshData();
+    for(const b of Object.keys(MAPDATA.books)){
+      for(const d of MAPDATA.books[b]){
+        const key=b+'/'+d.d;
+        if(!loaded[key]||loaded[key]._stale){
+          const r=await (await fetch(`/api/tasks?book=${encodeURIComponent(b)}&domain=${encodeURIComponent(d.d)}&limit=300`)).json();
+          loaded[key]=r.tasks;
+        }
+        if(loaded[key].some(t=>t.id===pid)){expanded[key]=true;await relayout2();
+          let v=null;
+          for(const list of taskBuckets.values()){v=list.find(x=>x.key===pid);if(v)break}
+          if(v){X=wrap.clientWidth/2-v.x*SC-160;Y=wrap.clientHeight/2-v.y*SC-30;apply();toast(`已定位前置 ${pid}`);return}}
+      }
+    }
+    toast('前置条目不在任务册（可能是锚点外引用）');
+  }
+  async function refreshData(){MAPDATA=(await (await fetch('/api/map')).json())}
+
+  /* pan/zoom */
+  wrap.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const f=e.deltaY<0?1.12:0.89, ns=Math.min(1.8,Math.max(0.12,SC*f));
+    const r=wrap.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+    X=mx-(mx-X)*(ns/SC);Y=my-(my-Y)*(ns/SC);SC=ns;apply();
+  },{passive:false});
+  let drag=null;
+  wrap.addEventListener('mousedown',e=>{if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,X,Y};wrap.classList.add('drag')});
+  window.addEventListener('mousemove',e=>{if(!drag)return;X=drag.X+e.clientX-drag.x;Y=drag.Y+e.clientY-drag.y;apply()});
+  window.addEventListener('mouseup',()=>{drag=null;wrap.classList.remove('drag')});
+  const keys={};
+  window.addEventListener('keydown',e=>{const k=e.key.toLowerCase();if('wasd'.includes(k)&&(view==='map'||view==='chain'||view==='board')){keys[k]=true;e.preventDefault()}});
+  window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
+  setInterval(()=>{const v=14/Math.max(SC,.3);
+    if(view==='map'){if(keys.a)X+=v;if(keys.d)X-=v;if(keys.w)Y+=v;if(keys.s)Y-=v;if(keys.a||keys.d||keys.w||keys.s)apply()}
+    else if(view==='chain')CHAIN.nudge(keys,v)
+    else if(view==='board')BCAN.nudge(keys,v)},16);
+  window.addEventListener('resize',()=>{if(view==='map')apply();if(view==='chain')CHAIN.apply()});
+
+  async function refresh(){
+    if(!MAPDATA)await refreshData();
+    const names=Object.keys(MAPDATA.books).filter(b=>!BOOK||b===BOOK);
+    /* 默认全部展开：每个域的链直接铺开，不用点 */
+    if(!MAP._autoexp){MAP._autoexp=true;
+      for(const b of names)for(const d of MAPDATA.books[b])expanded[b+'/'+d.d]=true;
+    }
+    if(!cvs._built){cvs._built=true;
+      const total=names.reduce((s,b)=>s+MAPDATA.books[b].reduce((s2,d)=>s2+d.total,0),0);
+      const rn=div('node root',`<div class="t">${esc(BOOK||'VTB')} · ${total.toLocaleString()} 条</div><div class="s">${BOOK?'选中项目':'三册任务全集'}</div>`);
+      place(rn,0,0,240);statNodes.push({kind:'root',el:rn,x:0,y:0,w:240});
+      for(const b of names){
+        const dm=MAPDATA.books[b];
+        const dtot=dm.reduce((s,d)=>s+d.total,0),ddone=dm.reduce((s,d)=>s+d.done,0);
+        const bn=div('node book',`<div class="t">${esc(b)}</div><div class="s"><span class="gd">${dtot.toLocaleString()}</span><span>${ddone}✓</span></div>`);
+        place(bn,340,0,240);bn._b=b;
+        bn.addEventListener('click',()=>toggleBookAll(b));
+        statNodes.push({kind:'book',el:bn,x:340,y:0,w:240});
+      }
+      centerOn(400,30);
+    }
+    const sig=layoutSig();
+    if(sig!==lastSig){
+      /* 数据变化（非首次）时让域任务缓存失效，状态颜色才能刷新 */
+      if(lastSig!==null){
+        const oldExp=Object.keys(expanded).sort().join(',');
+        const oldRest=lastSig.split('#')[1], newRest=sig.split('#')[1];
+        if(oldRest!==newRest){for(const k of Object.keys(loaded))loaded[k]._stale=true;loaded._bulk=false;}
+      }
+      lastSig=sig;await relayout2();
+    }else apply();
+  }
+  /* 点册 = 展开/收起该册全部域（全部内容向右无限延伸） */
+  function toggleBookAll(b){
+    const dms=MAPDATA.books[b]||[];
+    const anyClosed=dms.some(d=>!expanded[b+'/'+d.d]);
+    dms.forEach(d=>expanded[b+'/'+d.d]=anyClosed);
+    relayout2().then(()=>{const bn=statNodes.find(n=>n.kind==='book'&&n.el._b===b);if(bn)centerOn(720,bn.y+20)});
+  }
+  $('#mexpall').addEventListener('click',()=>{
+    for(const b of Object.keys(MAPDATA.books))for(const d of MAPDATA.books[b])expanded[b+'/'+d.d]=true;
+    relayout2().then(()=>centerOn(720,40));
+  });
+  $('#mcolall').addEventListener('click',()=>{
+    expanded={};loaded={};relayout2().then(()=>centerOn(720,40));
+  });
+  /* BOARD 选册联动：清空重画，只画选中项目 */
+  function setBook(b){
+    if(!MAPDATA)return;
+    cvs._built=false;lastSig=null;MAP._autoexp=false;expanded={};loaded={};
+    for(const n of statNodes)n.el.remove();
+    taskEls.forEach(el=>el.remove());edgeEls.forEach(el=>el.remove());
+    taskEls.clear();edgeEls.clear();
+    statNodes=[];taskBuckets=new Map();edgeBuckets=new Map();vEdges=[];
+    statLinkEls.forEach(el=>el.remove());statLinkEls=[];
+    refresh().then(()=>centerOn(400,30));
+  }
+  return {refresh, gotoPre, setBook, _dbg:()=>({vEdges:vEdges.length, edgeRows:[...edgeBuckets.keys()].length,
+    bulk:!!loaded._bulk, nLoaded:Object.keys(loaded).length,
+    veA:(loaded['VE/VE-A']||[]).length})};
+})();
+
+/* ---------- CHAIN：全量横向无限链（虚拟化，屏外回收） ---------- */
+
+/* ---------- BOARD 横向无限画布：每域一个大框（泳道），域内任务向右延展至该域结束 ---------- */
+const BCAN=(()=>{
+  const wrap=$('#bwrap'), cvs=$('#bcvs');
+  const STEP=372, TW=330, HDW=304, LANE_H=196, GAP=22;
+  let SC=.9, X=40, Y=318, inited=false, curBook=null;
+  let lanes=[], tops=[], els=new Map(), edges=new Map(), heads=new Map(), frames=new Map(), fetching=false;
+  let world={w:4000,h:4000};
+  function clampPan(){
+    const w=wrap.clientWidth,h=wrap.clientHeight;
+    X=Math.min(40,Math.max(Math.min(40,w-world.w*SC),X));
+    Y=Math.min(348,Math.max(Math.min(348,h-world.h*SC),Y));
+  }
+  function apply(){
+    clampPan();
+    cvs.style.transform=`translate(${X}px,${Y}px) scale(${SC})`;
+    cvs.classList.toggle('coarse',SC<0.4);sync();
+  }
+  function clearEls(){
+    els.forEach(el=>el.remove());els.clear();
+    edges.forEach(el=>el.remove());edges.clear();
+    heads.forEach(el=>el.remove());heads.clear();
+    frames.forEach(el=>el.remove());frames.clear();
+  }
+  /* 垂直：可见泳道范围；水平：泳道内可见任务范围（双轴虚拟化） */
+  function laneRange(){
+    const h=wrap.clientHeight, pitch=LANE_H+GAP;
+    const j0=Math.max(0,Math.floor((-Y)/(SC*pitch))-1);
+    const j1=Math.ceil((h-Y)/(SC*pitch))+1;
+    return [j0,Math.min(j1,lanes.length-1)];
+  }
+  function taskRange(){
+    const w=wrap.clientWidth;
+    const i0=Math.max(0,Math.floor((-X/SC-HDW)/STEP)-2);
+    const i1=Math.ceil(((w-X)/SC-HDW)/STEP)+2;
+    return [i0,i1];
+  }
+  function mkFrame(ln,top,width){
+    const el=document.createElement('div');el.className='laneframe';
+    el.style.left='0px';el.style.top=top+'px';el.style.width=width+'px';el.style.height=LANE_H+'px';
+    cvs.appendChild(el);return el;
+  }
+  function mkHead(ln,top){
+    const L=lanes[ln],sl=L.key.indexOf('/'),bk=L.key.slice(0,sl),dm=L.key.slice(sl+1);
+    const el=document.createElement('div');el.className='lanehd';
+    el.innerHTML=`<div class="bn">${esc(bk)}</div><div class="dn">${esc(dm)}</div><div class="cn">${L.tasks.length} 项待领 · 向右延展</div>`;
+    el.style.left='16px';el.style.top=(top+10)+'px';
+    cvs.appendChild(el);return el;
+  }
+  function mkNode(ln,i,top){
+    const t=lanes[ln].tasks[i];
+    const el=document.createElement('div');
+    el.className='node task st-'+esc(t['状态'])+(t['解锁']?'':' lk');
+    el.innerHTML=`<div class="t">${esc(t.title)}</div>
+      <div class="s"><span>${esc(t.id)}</span>${t['前置']?`<span class="pre">${t['解锁']?'':'🔒 '}${esc(t['前置'])}</span>`:''}</div>
+      ${(t.langs&&t.langs.length)?`<div class="lgrow" style="margin-top:8px">${t.langs.map(lgBadge).join('')}</div>`:''}
+      <button class="doss" data-doss="${esc(t.id)}" title="档案详情" style="position:absolute;top:8px;right:8px">⧉</button>`;
+    el.style.left=(HDW+i*STEP)+'px';el.style.top=(top+12)+'px';el.style.width=TW+'px';
+    el.addEventListener('click',ev=>{
+      if(ev.target.closest('.doss')){openDossier(t.id);return}
+      goChain(t.id);
+    });
+    cvs.appendChild(el);return el;
+  }
+  function mkEdge(ln,i,top){
+    const NS='http://www.w3.org/2000/svg', p=document.createElementNS(NS,'path');
+    p.setAttribute('d',hpath(HDW+i*STEP+TW,top+30,STEP-TW));
+    flowSvg(cvs).appendChild(p);return p;
+  }
+  function _sync(){
+    if(!lanes.length){clearEls();return}
+    const [j0,j1]=laneRange(),[i0,i1]=taskRange();
+    const alive=new Set(),aliveE=new Set(),aliveH=new Set(),aliveF=new Set();
+    for(let j=j0;j<=j1;j++){
+      const L=lanes[j];if(!L)continue;
+      const top=tops[j];
+      const n=Math.min(L.tasks.length,i1+1);
+      aliveH.add(j);
+      if(!heads.has(j))heads.set(j,mkHead(j,top));
+      if(L.tasks.length){
+        aliveF.add(j);
+        const fw=HDW+L.tasks.length*STEP+8;
+        if(!frames.has(j))frames.set(j,mkFrame(j,top,fw));
+        else frames.get(j).style.width=fw+'px';
+      }
+      for(let i=i0;i<n;i++){
+        const k=j+':'+i;alive.add(k);
+        if(!els.has(k))els.set(k,mkNode(j,i,top));
+        if(i+1<n){const ek=j+':'+i;aliveE.add(ek);
+          if(!edges.has(ek))edges.set(ek,mkEdge(j,i,top))}
+      }
+    }
+    for(const [k,el] of els){if(!alive.has(k)){el.remove();els.delete(k)}}
+    for(const [k,el] of edges){if(!aliveE.has(k)){el.remove();edges.delete(k)}}
+    for(const [k,el] of heads){if(!aliveH.has(k)){el.remove();heads.delete(k)}}
+    for(const [k,el] of frames){if(!aliveF.has(k)){el.remove();frames.delete(k)}}
+  }
+  const sync=rafThrottle(_sync);
+  async function load(){
+    if(fetching)return;fetching=true;
+    try{
+      const q=`status=${encodeURIComponent('待领')}&limit=300`;
+      const r=await (await fetch('/api/maptasks?'+q)).json();
+      lanes=Object.entries(r.domains)
+        .filter(([k])=>!curBook||k===curBook||k.startsWith(curBook+'/'))
+        .map(([k,v])=>({key:k,tasks:v}))
+        .filter(L=>L.tasks.length);
+      tops=lanes.map((_,i)=>i*(LANE_H+GAP));
+      const mx=lanes.reduce((m,L)=>Math.max(m,L.tasks.length),10);
+      world={w:HDW+mx*STEP+120,h:lanes.length*(LANE_H+GAP)+120};
+      clearEls();sync();
+    }catch(e){}finally{fetching=false}
+  }
+  async function start(){
+    if(!inited){inited=true;
+      wrap.addEventListener('wheel',e=>{e.preventDefault();
+        const f=e.deltaY<0?1.1:0.9, ns=Math.min(1.6,Math.max(0.15,SC*f));
+        const r=wrap.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+        X=mx-(mx-X)*(ns/SC);Y=my-(my-Y)*(ns/SC);SC=ns;apply()},{passive:false});
+      let drag=null;
+      wrap.addEventListener('mousedown',e=>{if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,X,Y};wrap.classList.add('drag')});
+      window.addEventListener('mousemove',e=>{if(!drag)return;X=drag.X+e.clientX-drag.x;Y=drag.Y+e.clientY-drag.y;apply()});
+      window.addEventListener('mouseup',()=>{drag=null;wrap.classList.remove('drag')});
+      await load();
+    }
+    apply();
+  }
+  function setBook(b){
+    if(!inited){curBook=b;return}
+    if(curBook===b)return;
+    curBook=b;X=40;Y=318;
+    clearEls();load();
+  }
+  function nudge(keys,v){let m=false;
+    if(keys.a){X+=v*SC/.9;m=true}if(keys.d){X-=v*SC/.9;m=true}
+    if(keys.w){Y+=v*SC/.9;m=true}if(keys.s){Y-=v*SC/.9;m=true}
+    if(m)apply()}
+  function poll(){sync()}
+  return {start,apply,nudge,poll,setBook};
+})();
+
+const CHAIN=(()=>{
+  const wrap=$('#chain'), cvs=$('#ccanvas');
+  const STEP=412, TW=320;
+  let SC=.62, X=80, Y=0, inited=false;
+  let data=[], els=new Map(), edgesE=new Map();
+  let total=null, fetching=false;
+  function apply(){Y=wrap.clientHeight/2-40;cvs.style.transform=`translate(${X}px,${Y}px) scale(${SC})`;cvs.classList.toggle('coarse',SC<0.4);sync()}
+  function idxRange(){
+    const i0=Math.max(0,Math.floor((-X)/(SC*STEP))-4);
+    const i1=Math.ceil((innerWidth-X)/(SC*STEP))+4;
+    return [i0,Math.min(i1,(total===null?data.length:total)-1)];
+  }
+  function mkNode(t,i){
+    const el=document.createElement('div');
+    el.className='node task st-'+esc(t['状态'])+(t['解锁']?'':' lk');
+    el.innerHTML=`<div class="t">${esc(t.title)}</div><div class="s"><span>${esc(t.id)}</span>${t['前置']?`<span class="pre">${t['解锁']?'':'🔒 '}${esc(t['前置'])}</span>`:''}</div>`;
+    el.style.left=(i*STEP)+'px';el.style.top='0px';el.style.width=TW+'px';
+    el.addEventListener('click',()=>openDossier(t.id));
+    cvs.appendChild(el);return el;
+  }
+  function mkEdge(i){
+    const NS='http://www.w3.org/2000/svg', p=document.createElementNS(NS,'path');
+    const x0=i*STEP+TW, len=STEP-TW;
+    p.setAttribute('d',hpath(x0,26,len));
+    flowSvg(cvs).appendChild(p);return p;
+  }
+  function _sync(){
+    const [i0,i1]=idxRange();
+    for(const [i,el] of els){if(i<i0-10||i>i1+10){el.remove();els.delete(i)}}
+    for(const [i,el] of edgesE){if(i<i0-10||i>i1+10){el.remove();edgesE.delete(i)}}
+    for(let i=i0;i<=i1;i++){
+      if(!data[i])continue;
+      if(!els.has(i))els.set(i,mkNode(data[i],i));
+      if(i<i1&&!edgesE.has(i)&&data[i+1])edgesE.set(i,mkEdge(i));
+    }
+  }
+  const sync=rafThrottle(_sync);
+  async function fill(){
+    if(fetching)return;fetching=true;
+    try{
+      const need=Math.ceil((innerWidth-X)/(SC*STEP))+8;
+      const bq=BOOK?`&book=${encodeURIComponent(BOOK)}`:'';
+      while(data.length<=need&&(total===null||data.length<total)){
+        const r=await (await fetch(`/api/tasks?limit=2000&offset=${data.length}${bq}`)).json();
+        total=r.total;
+        data=data.concat(r.tasks);
+        if(r.tasks.length<2000)break;
+      }
+      sync();
+    }catch(e){}finally{fetching=false}
+  }
+  async function start(){
+    if(!inited){inited=true;
+      wrap.addEventListener('wheel',e=>{e.preventDefault();
+        const f=e.deltaY<0?1.12:0.89, ns=Math.min(1.8,Math.max(0.12,SC*f));
+        const r=wrap.getBoundingClientRect(),mx=e.clientX-r.left;
+        X=mx-(mx-X)*(ns/SC);SC=ns;apply()},{passive:false});
+      let drag=null;
+      wrap.addEventListener('mousedown',e=>{if(e.button!==0)return;drag={x:e.clientX,X};wrap.classList.add('drag')});
+      window.addEventListener('mousemove',e=>{if(!drag)return;X=drag.X+e.clientX-drag.x;apply()});
+      window.addEventListener('mouseup',()=>{drag=null;wrap.classList.remove('drag')});
+      await fill();X=80;apply();
+    }
+    apply();fill();
+  }
+  /* 定位到指定条目：取册内序号，按页补数据，平移居中并高亮 */
+  async function gotoId(id){
+    if(!inited)await start();
+    while(fetching)await new Promise(r=>setTimeout(r,120));
+    fetching=true;
+    try{
+      const bq=BOOK?`&book=${encodeURIComponent(BOOK)}`:'';
+      let idx=-1;
+      for(let tries=0;tries<3&&idx<0;tries++){
+        try{
+          const d=await (await fetch(`/api/task?id=${encodeURIComponent(id)}${bq}`)).json();
+          if(d.task&&typeof d.task.index==='number')idx=d.task.index;
+        }catch(e){}
+        if(idx<0)idx=data.findIndex(t=>t.id===id);
+        if(idx<0&&(total===null||data.length<total)){
+          const r=await (await fetch(`/api/tasks?limit=2000&offset=${data.length}${bq}`)).json();
+          total=r.total;data=data.concat(r.tasks);
+          idx=data.findIndex(t=>t.id===id);
+        }
+      }
+      if(idx<0){toast('未找到条目 '+id);return}
+      while(data.length<=idx&&(total===null||data.length<total)){
+        const r=await (await fetch(`/api/tasks?limit=2000&offset=${data.length}${bq}`)).json();
+        total=r.total;data=data.concat(r.tasks);
+        if(r.tasks.length<2000)break;
+      }
+      if(!data[idx]||data[idx].id!==id)idx=data.findIndex(t=>t.id===id);
+      if(idx<0){toast('未找到条目 '+id);return}
+      SC=Math.max(SC,0.62);
+      X=innerWidth/2-(idx*STEP+TW/2)*SC;
+      apply();sync();
+      const el=els.get(idx);
+      if(el){el.classList.add('hl');setTimeout(()=>el.classList.remove('hl'),2800)}
+      toast(`${id} · ${BOOK?BOOK+' 册内 ':''}第 ${idx+1} 位 / 共 ${(total||data.length).toLocaleString()} 条`);
+    }finally{fetching=false}
+  }
+  /* BOARD 选册联动：清空重建为该册的链 */
+  function setBook(b){
+    if(!inited){if(view==='chain')start();return}
+    data=[];total=null;X=80;
+    els.forEach(el=>el.remove());els.clear();
+    edgesE.forEach(el=>el.remove());edgesE.clear();
+    if(view==='chain')fill();
+  }
+  function nudge(keys,v){let m=false;
+    if(keys.a){X+=v*SC/.62;m=true}if(keys.d){X-=v*SC/.62;m=true}
+    if(m){apply();if(keys.d)fill()}}
+  async function poll(){sync();if(data.length<idxRange()[1]+8)fill()}
+  return {start,apply,nudge,poll,gotoId,setBook};
+})();
+
+/* ---------- HUD：任务指挥台 ---------- */
+const HUD=(()=>{
+  let raf=0, sumTimer=0, mapTimer=0;
+  let domains=[], heatCols=0, heatRows=0, hoverCell=-1, T0=performance.now();
+  const cv=()=>$('#hudcv'), hcv=()=>$('#heatcv');
+  /* 数字滚动：600ms 缓动趋近目标值 */
+  function countTo(el,val){
+    const from=+el.dataset.v||0; if(from===val){el.textContent=val.toLocaleString();return}
+    el.dataset.v=val; const t0=performance.now();
+    (function step(t){const p=Math.min(1,(t-t0)/600),e=1-Math.pow(1-p,3);
+      el.textContent=Math.round(from+(val-from)*e).toLocaleString();
+      if(p<1)requestAnimationFrame(step)})(t0);
+  }
+  function applySum(s){
+    const st=k=>s.by_status[k]||0;
+    const done=st('已完成'), total=s.total||0, pct=total?done/total:0;
+    $('#ringfg').style.strokeDashoffset=(527.79*(1-pct)).toFixed(1);
+    $('#hpct').innerHTML=(pct*100).toFixed(1)+'<small>%</small>';
+    $('#hdone').textContent=`${done.toLocaleString()} / ${total.toLocaleString()}`;
+    countTo($('#c-open'),st('待领'));countTo($('#c-claim'),st('已领'));
+    countTo($('#c-done'),done);countTo($('#c-blk'),st('阻塞'));
+    countTo($('#p-open'),st('待领'));countTo($('#p-claim'),st('已领'));
+    countTo($('#p-done'),done);countTo($('#p-blk'),st('阻塞'));
+    const bb=$('#bookbars');
+    const books=Object.entries(s.by_book||{});
+    if(bb.children.length!==books.length){
+      bb.innerHTML=books.map(([b])=>`<div class="brow"><span class="bn">${esc(b)}</span>
+        <div class="btrack"><div class="bfill" id="bf-${esc(b)}"></div></div>
+        <span class="bc" id="bc-${esc(b)}">—</span></div>`).join('');
+    }
+    books.forEach(([b,v])=>{
+      const p=v['总']?(v['已完成']/v['总'])*100:0;
+      const f=$('#bf-'+b);if(f)f.style.width=p.toFixed(1)+'%';
+      const c=$('#bc-'+b);if(c)c.textContent=`${v['已完成']} / ${v['总']} · ${p.toFixed(1)}%`;
+    });
+    const wc=$('#wchips'), ws=Object.entries(s.workers||{});
+    const sig=ws.map(w=>w.join(':')).join('|');
+    if(wc._sig!==sig){wc._sig=sig;
+      wc.innerHTML=ws.length?ws.map(([w,n])=>`<span class="wchip"><i></i>${esc(w)} ×${n}</span>`).join('')
+        :'<span class="widle">空闲 — 等待派单</span>';}
+  }
+  function tickSum(){fetch('/api/summary').then(r=>r.json()).then(s=>{STATE.sum=s;applySum(s)}).catch(()=>{})}
+  async function loadMap(){
+    try{
+      const r=await (await fetch('/api/map')).json();
+      domains=Object.values(r.books||{}).flat();
+      layoutHeat();
+    }catch(e){}
+  }
+  function layoutHeat(){
+    const c=hcv();if(!c||!domains.length)return;
+    const dpr=devicePixelRatio, W=c.clientWidth*dpr, H=c.clientHeight*dpr;
+    c.width=W;c.height=H;
+    const n=domains.length, aspect=W/Math.max(1,H);
+    heatCols=Math.max(1,Math.round(Math.sqrt(n*aspect)));
+    heatRows=Math.ceil(n/heatCols);
+    drawHeat(performance.now());
+  }
+  function drawHeat(now){
+    const c=hcv();if(!c||!heatCols)return;
+    const g=c.getContext('2d'), dpr=devicePixelRatio, W=c.width, H=c.height;
+    g.clearRect(0,0,W,H);
+    const gap=3*dpr, cw=(W-gap*(heatCols-1))/heatCols, ch=(H-gap*(heatRows-1))/heatRows, R=Math.min(3*dpr,cw/3);
+    const t=(now-T0)/1000;
+    domains.forEach((d,i)=>{
+      const x=(i%heatCols)*(cw+gap), y=Math.floor(i/heatCols)*(ch+gap);
+      const pct=d.total?d.done/d.total:0;
+      let a=.10+.75*Math.pow(pct,.8);
+      if(d.active>0)a+= .18*(.5+.5*Math.sin(t*2.4+i*.7));
+      a=Math.min(1,a);
+      g.fillStyle=`${AMB.accentRGB()}${a.toFixed(3).slice(1)}`;
+      g.beginPath();g.roundRect(x,y,cw,ch,R);g.fill();
+      if(i===hoverCell){
+        g.strokeStyle='rgba(255,248,230,.9)';g.lineWidth=1.4*dpr;
+        g.beginPath();g.roundRect(x-1,y-1,cw+2,ch+2,R+1);g.stroke();
+      }
+    });
+  }
+  function tick(now){
+    const c=cv();
+    if(c&&c.offsetParent){
+      drawHeat(now);
+    }
+    raf=requestAnimationFrame(tick);
+  }
+  function bindHeat(){
+    const c=hcv();if(!c||c._bound)return;c._bound=true;
+    c.addEventListener('mousemove',e=>{
+      const r=c.getBoundingClientRect(), dpr=devicePixelRatio;
+      const gap=3*dpr, cw=(c.width-gap*(heatCols-1))/heatCols, ch=(c.height-gap*(heatRows-1))/heatRows;
+      const col=Math.floor((e.clientX-r.left)*dpr/(cw+gap)), row=Math.floor((e.clientY-r.top)*dpr/(ch+gap));
+      const i=(col>=0&&row>=0&&col<heatCols)?row*heatCols+col:-1;
+      if(i!==hoverCell){hoverCell=(i>=0&&i<domains.length)?i:-1;
+        const em=$('#heatinfo');
+        if(hoverCell>=0){const d=domains[hoverCell];
+          em.textContent=`${d.d} · ${d.done}/${d.total} 完成 · ${d.active} 施工中`;
+        }else em.textContent='悬停查看领域战况';}
+    });
+    c.addEventListener('mouseleave',()=>{hoverCell=-1;const em=$('#heatinfo');if(em)em.textContent='悬停查看领域战况'});
+  }
+  function start(){
+    if(!raf)raf=requestAnimationFrame(tick);
+    if(!sumTimer)sumTimer=setInterval(tickSum,2000);
+    if(!mapTimer)mapTimer=setInterval(()=>{loadMap();bindHeat()},10000);
+    tickSum();loadMap();
+    requestAnimationFrame(()=>{layoutHeat();bindHeat()});
+  }
+  return {start};
+})();
+
+/* ---------- 全局天气 FX 层（所有视图常驻） ---------- */
+let fxP=[];
+const GFX=(()=>{
+  let raf=0;
+  function loop(now){
+    const c=document.getElementById('gfx');
+    if(c&&document.body.offsetParent!==null&&!document.body.classList.contains('fx-off')){
+      const W=c.width=c.clientWidth*devicePixelRatio, H=c.height=c.clientHeight*devicePixelRatio;
+      const g=c.getContext('2d'), dpr=devicePixelRatio, T=now/1000;
+      g.clearRect(0,0,W,H);
+      drawWeatherFX(g,W,H,dpr,T,AMB.fx(),AMB.accentRGB()+'.8)');
+    }
+    raf=requestAnimationFrame(loop);
+  }
+  function start(){if(!raf)raf=requestAnimationFrame(loop)}
+  return {start};
+})();
+function drawWeatherFX(g,W,H,dpr,T,mode,gold){
+  if(mode==='rain'){
+    if(fxP.length<130&&Math.random()<.9)fxP.push({x:Math.random()*W,y:-20,v:(9+Math.random()*7)*dpr,l:(11+Math.random()*13)*dpr});
+    g.strokeStyle='rgba(160,190,230,.34)';g.lineWidth=1.1*dpr;g.lineCap='round';
+    g.beginPath();
+    fxP=fxP.filter(p=>p.y<H+30);
+    for(const p of fxP){p.y+=p.v;p.x+=p.v*.12;
+      g.moveTo(p.x,p.y);g.lineTo(p.x-p.l*.12,p.y-p.l)}
+    g.stroke();
+    if(Math.sin(T*.37)>.997)g.fillStyle=`rgba(180,205,240,${(Math.random()*.06+.04).toFixed(3)})`,g.fillRect(0,0,W,H);
+  }else if(mode==='snow'){
+    if(fxP.length<90&&Math.random()<.6)fxP.push({x:Math.random()*W,y:-10,v:(.7+Math.random()*1.4)*dpr,r:(1.2+Math.random()*2.6)*dpr,ph:Math.random()*7});
+    g.fillStyle='rgba(225,238,250,.8)';
+    fxP=fxP.filter(p=>p.y<H+14);
+    for(const p of fxP){p.y+=p.v;p.x+=Math.sin(T*1.1+p.ph)*.7*dpr;
+      g.globalAlpha=.35+.45*Math.sin(T*.8+p.ph)**2;
+      g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill()}
+    g.globalAlpha=1;
+  }else if(mode==='mote'){
+    if(fxP.length<40&&Math.random()<.4)fxP.push({x:Math.random()*W,y:H+8,v:(.3+Math.random()*.9)*dpr,r:(1+Math.random()*2.2)*dpr,ph:Math.random()*7});
+    g.fillStyle='rgba(220,170,110,.7)';
+    fxP=fxP.filter(p=>p.y>-12);
+    for(const p of fxP){p.y-=p.v;p.x+=Math.sin(T*.9+p.ph)*.5*dpr;
+      g.globalAlpha=Math.max(0,Math.min(.6,p.y/H+.1));
+      g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill()}
+    g.globalAlpha=1;
+  }else if(mode==='aurora'){
+    for(let k=0;k<3;k++){
+      g.beginPath();
+      const base=H*(.16+k*.11), amp=H*(.05+k*.02), spd=.22+k*.09;
+      g.moveTo(0,base);
+      for(let x=0;x<=W;x+=W/48)g.lineTo(x,base+Math.sin(x/W*5.2+T*spd+k*2.1)*amp);
+      const gr=g.createLinearGradient(0,base-amp,0,base+amp*2);
+      gr.addColorStop(0,'rgba(0,0,0,0)');
+      gr.addColorStop(.5,k===1?'rgba(110,220,180,.10)':'rgba(90,180,220,.08)');
+      gr.addColorStop(1,'rgba(0,0,0,0)');
+      g.strokeStyle=gr;g.lineWidth=(26+k*18)*dpr;g.lineCap='round';g.stroke();
+    }
+    if(fxP.length<26&&Math.random()<.3)fxP.push({x:Math.random()*W,y:H+8,v:.35*dpr,r:1.4*dpr,ph:Math.random()*7});
+    g.fillStyle='rgba(140,230,195,.55)';
+    fxP=fxP.filter(p=>p.y>-10);
+    for(const p of fxP){p.y-=p.v;g.globalAlpha=.4*Math.sin(T+p.ph)**2;
+      g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill()}
+    g.globalAlpha=1;
+  }else{ /* dusk：金色余烬 */
+    if(fxP.length<26&&Math.random()<.3)fxP.push({x:Math.random()*W,y:H+10,v:.4+Math.random()*1.2,r:(1+Math.random()*2.4)*dpr,ph:Math.random()*7});
+    fxP=fxP.filter(p=>p.y>-14);
+    g.fillStyle=gold;
+    for(const p of fxP){p.y-=p.v*dpr;p.x+=Math.sin(T*1.3+p.ph)*.4*dpr;
+      g.globalAlpha=Math.max(0,Math.min(.85,p.y/H+.15));
+      g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill()}
+    g.globalAlpha=1;
+  }
+}
+/* ---------- AMB 氛围管理：主题整套重排布 + 4K 壁纸 + 光影滑杆 ---------- */
+const AMB=(()=>{
+  const THEMES=[
+    {id:'t-dusk',  label:'曜金暮色', fx:'ember',  rgb:'rgba(212,178,112,'},
+    {id:'t-noir',  label:'暗夜雨幕', fx:'rain',   rgb:'rgba(157,184,217,'},
+    {id:'t-dawn',  label:'晴昼暖光', fx:'mote',   rgb:'rgba(201,143,78,'},
+    {id:'t-frost', label:'霜夜寒穹', fx:'snow',   rgb:'rgba(168,200,232,'},
+    {id:'t-aurora',label:'翠极光幕', fx:'aurora', rgb:'rgba(127,217,184,'}];
+  let cur=null, walls=[], wallSel=null, wallNAME=null;
+  /* ---- SKIN 系统：每壁纸一套定制界面（形状语言 + 质感 + 辉光随壁纸联动） ---- */
+  const SKINS=[
+    {id:'sk-mcsnow',label:'雪原方块 · 官方雪贴图',
+      match:/(?:minec|craft|voxel)[^\n]*(?:winter|christmas|snow|mas\b|雪)|(?:winter|christmas|snow|mas\b|雪)[^\n]*(?:minec|craft|voxel)|(?<!aurora )\bwinter\b/i},
+    {id:'sk-mc',label:'像素方块 · 官方贴图',match:/minec|craft|voxel|像素|方块|block/i},
+    {id:'sk-moon',label:'月夜银辉',match:/moon|luna|月|与你相恋|恋死|席娜/i},
+    {id:'sk-aurora',label:'极光叶形',match:/dusk-aurora|aurora|meteor|wandering|流浪|unreal|whale|sky|galaxy|star|星空|宇宙|星海/i},
+    {id:'sk-meadow',label:'草原圆融',match:/1470071459604/i},
+    {id:'sk-slate', label:'冷岩晶体',match:/1477959858617/i},
+    {id:'sk-forest',label:'深林拱月',match:/1506744038136/i},
+    {id:'sk-mist',  label:'晨雾细线',match:/1519681393784/i},
+    {id:'sk-aerial',label:'冰晶航拍',match:/vid-aerial/i},
+    {id:'sk-city',  label:'霓虹棱角',match:/vid-city/i},
+    {id:'sk-alpine',label:'山脊岩纹',match:/vid-mountains/i}];
+  const ALLSK=['sk-dusk',...SKINS.map(s=>s.id)];
+  const SKIN_NAME={'sk-dusk':'曜金暮色 · 默认'};SKINS.forEach(s=>SKIN_NAME[s.id]=s.label);
+  const THEME_SKIN={'t-dusk':'sk-dusk','t-noir':'sk-mist','t-dawn':'sk-meadow','t-frost':'sk-aerial','t-aurora':'sk-aurora'};
+  let skinCur='sk-dusk';
+  function skinFor(url){
+    if(!url)return THEME_SKIN[cur]||'sk-dusk';
+    /* 匹配键：壁纸显示名（含 WE 标题）优先，URL 兜底——WE 的 /we/<id>/ 前缀不含风格信息 */
+    const key=(wallNAME||'')+' \n '+url;
+    const hit=SKINS.find(s=>s.match.test(key));
+    if(hit)return hit.id;
+    let h=0;for(let i=0;i<url.length;i++)h=((h*31)+url.charCodeAt(i))>>>0;
+    return SKINS[h%SKINS.length].id}
+  function applySkin(){
+    const id=skinFor(wallSel);skinCur=id;
+    document.body.classList.remove(...ALLSK);
+    document.body.classList.add(id);}
+  const S=()=>{try{return JSON.parse(localStorage.getItem('vtb_amb'))||{}}catch(e){return {}}};
+  function save(p){localStorage.setItem('vtb_amb',JSON.stringify({...S(),...p}))}
+  const hud=()=>document.body;
+  let themeAccent=null;
+  function setTheme(id,silent){
+    const t=THEMES.find(x=>x.id===id)||THEMES[0];
+    hud().classList.remove(...THEMES.map(x=>x.id));
+    hud().classList.add(t.id);cur=t.id;fxP=[];themeAccent=t;applySkin();
+    applyAdaptive();
+    if(!silent)save({theme:t.id});
+  }
+  /* 壁纸取色 → UI 金色自适应 */
+  let wallURL=null;
+  function applyAdaptive(){
+    const root=document.documentElement;
+    if(!wallURL||!window.__wallRGB){root.style.removeProperty('--hgold');root.style.removeProperty('--hgoldrgb');
+      root.style.removeProperty('--glassA');root.style.removeProperty('--glassB');root.style.removeProperty('--glassLine');return}
+    const [r,g,b]=window.__wallRGB, t=themeAccent||THEMES[0];
+    const L=.299*r+.587*g+.114*b, lift=v=>Math.round(Math.min(255,Math.max(60,60+v*.55+(t.id==='t-dawn'?26:0))));
+    const gold=`rgb(${lift(r)},${lift(g)},${lift(b)})`;
+    root.style.setProperty('--hgold',gold);
+    root.style.setProperty('--hgoldrgb',`rgba(${lift(r)},${lift(g)},${lift(b)},`);
+    /* 抽屉/浮层玻璃随壁纸色调 */
+    const dark=t.id==='t-dawn'?.5:.68, mix=v=>Math.round(v*dark);
+    root.style.setProperty('--glassA',`rgba(${mix(r)},${mix(g)},${mix(b)},.94)`);
+    root.style.setProperty('--glassB',`rgba(${Math.round(mix(r)*.72)},${Math.round(mix(g)*.72)},${Math.round(mix(b)*.75)},.90)`);
+    root.style.setProperty('--glassLine',`rgba(${lift(r)},${lift(g)},${lift(b)},.28)`);
+  }
+  /* 壁纸元素统一规格：满幅cover + 仅在需要时挂 fx 类（filter 会破坏原生缩放质量）。
+     尺寸适应分两层：
+       1) CSS object-fit:cover 负责「不满屏/不变形」——任意窗口比例都满幅无黑边；
+       2) 母版比例由 wallUrl() 按视口物理像素比向服务端索取，保证 cover 退化为 1:1。
+     image-rendering 在 CSS 里钉死 auto（MC 皮肤的 pixelated 不能污染壁纸）。 */
+  function wallStyle(el){
+    el.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;image-rendering:auto';
+    el.classList.toggle('fx',_wallFxOn());
+    return el;
+  }
+  /* 视口物理像素（CSS 尺寸 x devicePixelRatio）。壁纸实际占据的物理像素就是这个值，
+     服务端按它决定母版比例与超采样系数。 */
+  function viewPhys(){
+    const dpr=window.devicePixelRatio||1;
+    return [Math.max(1,Math.round(innerWidth*dpr)),Math.max(1,Math.round(innerHeight*dpr))];
+  }
+  /* ══ 母版就绪升级（pending -> 4K）══════════════════════════════
+     4K 母版由服务端后台生成（AI 超分要数十秒到数分钟），列表 API 绝不等待。
+     前端策略：先回退原素材顶上（不黑屏、不假装 4K），再后台轮询；
+     一旦母版文件出现（HEAD 200）就重拉列表拿到真元信息，无缝换成 4K 重挂。
+     用 HEAD 探测避免为了"看一眼"而下载几十 MB。 */
+  const _PEND={};
+  function _pendWatch(w){
+    if(!w||!w.pending||!w.url||_PEND[w.url])return;
+    const key=setInterval(()=>{
+      fetch(w.url,{method:'HEAD',cache:'no-store'}).then(r=>r.ok).catch(()=>false)
+        .then(ok=>{
+          if(!ok)return;                        /* 还没生成好，继续等 */
+          clearInterval(key);delete _PEND[w.url];
+          refreshWalls().then(()=>{
+            const nw=walls.find(x=>x&&x.url===w.url);
+            if(nw&&!nw.pending&&wallSel===w.url)setWall(nw,true);  /* 无缝升级 4K */
+          });
+        });
+    },4000);
+    _PEND[w.url]=key;
+  }
+  /* 静图母版 URL：带上当前视口物理尺寸，让服务端按同比例出图（比例一致 -> 1:1 映射）。
+     宽度取**视口物理宽向上取整到 4 的倍数**（H.264 要求偶数，取 4 兼容更多编码器）。
+     之前固定 3200 会与默认 3840 母版错配：白白让服务端重算一张 6400x3600
+     （实测 43s）却只按 3200 宽用，比例还是被浏览器二次裁切。宽度对齐母版才是
+     真正的 1:1 —— 键天然命中已缓存母版，零重算、零等待。
+     比例与已缓存母版差异 <=6% 时直接复用现键，避免拖窗口时反复重建。 */
+  /* 缓存的只是「视口比例」这一项，不是整个 URL —— 早期版本缓存了完整 URL，
+     结果切到下一张壁纸时会把上一张的 /m4k/xxx 地址原样返回（张冠李戴），
+     表现为部分壁纸 404 或挂错图。比例不变就复用同一个 ?r= 值。 */
+  const _M4K_AR={q:null};
+  function wallUrl(u){
+    if(!u||!u.startsWith('/m4k/'))return u;
+    const [vw,vh]=viewPhys();
+    const W0=Math.max(4,Math.ceil(vw/4)*4);
+    const H0=Math.max(4,Math.ceil(W0*vh/vw/4)*4);
+    if(_M4K_AR.q){
+      const p=_M4K_AR.q.split('x');
+      const ow=+p[0],oh=+p[1];
+      if(ow&&oh&&Math.abs(ow/oh-(vw/vh))<=0.06)return u+'?r='+_M4K_AR.q;
+    }
+    _M4K_AR.q=W0+'x'+H0;
+    return u+'?r='+_M4K_AR.q;
+  }
+  /* 视口比例变化超阈值时重建当前壁纸的母版（拖窗口/跨屏 DPI 变化时触发）。
+     去抖 400ms，避免拖动过程中连续触发服务端重算。 */
+  let _rszT=null;
+  addEventListener('resize',()=>{
+    if(!_M4K_AR.q)return;
+    const [vw,vh]=viewPhys();
+    const p=_M4K_AR.q.split('x');const ow=+p[0],oh=+p[1];
+    if(ow&&oh&&Math.abs(ow/oh-(vw/vh))<=0.06)return;
+    clearTimeout(_rszT);
+    _rszT=setTimeout(()=>{
+      const w=walls&&walls.find(x=>x&&x.url===wallSel);
+      if(w)setWall(w,true);          /* 重挂 -> 按新比例取母版 */
+    },400);
+  });
+  /* 光影三参数是否偏离恒等值。恒等 => 不挂 filter，让壁纸走浏览器原生 1:1 栅格化 */
+  function _wallFxOn(){
+    const s=S();
+    return (s.wb??1)!==1||(s.ws??1)!==1||(s.wbl??0)!==0;
+  }
+  function applyWallFx(){
+    const on=_wallFxOn();
+    document.querySelectorAll('#gwall img,#gwall video,#hudwall img,#hudwall video')
+      .forEach(el=>el.classList.toggle('fx',on));
+  }
+  function sampleWallColor(el){
+    try{
+      const cv=document.createElement('canvas');cv.width=48;cv.height=27;
+      const g=cv.getContext('2d',{willReadFrequently:true});
+      g.drawImage(el,0,0,48,27);
+      const d=g.getImageData(0,0,48,27).data;let r=0,gg=0,b=0,n=0;
+      for(let i=0;i<d.length;i+=16){const w=(d[i]+d[i+1]+d[i+2])/3/255;r+=d[i]*w;gg+=d[i+1]*w;b+=d[i+2]*w;n+=w}
+      if(!n)return;
+      window.__wallRGB=[r/n,gg/n,b/n];applyAdaptive();
+    }catch(e){}
+  }
+  /* ══ 壁纸轮播 ══════════════════════════════════════════════════
+     就绪门控是关键：视频不等 canplay 就切下一张必然黑屏（首帧未解码）。
+     静图等 load，视频等 canplay + 再给一帧渲染余量，然后才起算停留时长。 */
+  const _ROT={timer:null,ready:null,gen:0};
+  /* 【2026-10-04 修掉的真bug：轮播默认是**关**的】
+     原实现判「停轮播」的条件是 s.rot===false —— 而 localStorage 里没这个键时
+     s.rot 是 undefined，undefined===false 为假 -> 轮播**默认开着**，
+     且 build() 末尾无条件 _rotArm()。
+     用户反馈「没点击切换壁纸时壁纸自己会切换」，根因就在这：
+       · 首次使用（无存档）-> undefined -> 开 -> 到点自己换一张
+       · 就算手动点过某张，silent=false 的 save({wall}) 不写 rot，
+         下次启动照样接着轮
+     现在改为**显式 opt-in**：只有用户亲手点过「▶▶ 轮播」置 rot=true 才播。
+     并且用户手动点选壁纸时立即 _rotStop()（手动选择优先于任何定时器），
+     避免"我刚选好的图过一会儿又自己变了"。 */
+  const _rotOn=()=>S().rot===true;
+  function _rotStop(){
+    _ROT.gen++;                       /* 作废在途的就绪回调，避免切完后旧定时器复活 */
+    if(_ROT.timer){clearTimeout(_ROT.timer);_ROT.timer=null}
+    _ROT.ready=null;
+  }
+  /* 轮播候选列表。超大视频（默认 >120MB）自动跳过：轮播切换会瞬时拉起整份大文件，
+     841MB 级的 WE 原生视频在 10~60s 间隔下必然把加载管道堵死，反而什么都看不了。
+     它们仍可手动点选（用户明确要看），只是不参与自动轮播。 */
+  const ROT_SKIP_MB = 120;
+  function _rotList(){
+    return (walls||[]).filter(w=>{
+      if(!w||!w.url)return false;
+      if(w.type==='video'&&w.mb>ROT_SKIP_MB)return false;
+      return true;
+    });
+  }
+  function _rotNext(){
+    const list=_rotList();
+    if(list.length<2)return null;
+    const cur=list.findIndex(w=>w.url===wallSel);
+    if(cur<0){
+      /* 当前壁纸被跳过（如超大视频）或不在列表：定位到它在完整列表中的位置，
+         从「它之后的第一个可轮播项」继续，避免永远停在 list[0] 原地踏步。 */
+      const all=(walls||[]).filter(w=>w&&w.url);
+      const i=all.findIndex(w=>w.url===wallSel);
+      for(let k=1;k<=all.length;k++){
+        const c=all[(i+k+all.length)%all.length];
+        if(c&&c.url&&!(c.type==='video'&&c.mb>ROT_SKIP_MB))return c;
+      }
+      return list[0];
+    }
+    return list[(cur+1)%list.length];
+  }
+  /* 当前张渲染就绪后调用：到点切下一张 */
+  function _rotArm(){
+    if(!_rotOn()||!_rotList().length){_rotStop();return}
+    const sec=Math.max(10,+s.rotSec||60)*1000;
+    _ROT.timer=setTimeout(()=>{
+      _ROT.timer=null;
+      const nx=_rotNext();
+      if(nx)setWall(nx,true);          /* silent：不写状态，避免轮播把用户选择覆盖掉 */
+      _rotArm();                        /* 递归续期；setWall 内部会重置 gen */
+    },sec);
+  }
+  /* 由 setWall 在元素就绪时调用：起算本张停留时长 */
+  function _rotReady(gen,el,kind){
+    if(gen!==_ROT.gen)return;           /* 已被更新的 setWall 作废 */
+    if(!_rotOn())return;
+    const wait=()=>{ if(gen!==_ROT.gen)return; _rotArm() };
+    if(kind==='video'){
+      /* canplay 后再等 rAF 两帧，确保首帧已上屏，避免黑屏切入 */
+      const go=()=>requestAnimationFrame(()=>requestAnimationFrame(wait));
+      if(el.readyState>=3)go();else el.addEventListener('canplay',go,{once:true});
+    }else if(kind==='web'){
+      el.addEventListener('load',wait,{once:true});
+      setTimeout(wait,1500);            /* 兜底：iframe load 不可靠 */
+    }else{
+      if(el.complete&&el.naturalWidth)wait();
+      else{el.addEventListener('load',wait,{once:true});setTimeout(wait,1500)}
+    }
+  }
+  /* 切换壁纸：唯一入口，负责清理旧定时器 + 建立新定时器 */
+  /* 壁纸芯片的画质标注：母版分辨率 + 来源（AI 超分/插值/原生）。
+     必须让用户能一眼分清三件事：
+       · master  —— 最终上屏的母版分辨率（本机 3840x2160 = 2x超采样）
+       · sr      —— 该母版由 Real-ESRGAN AI 超分合成（低像素素材的救命通道）
+       · res/up  —— 原始素材的真实尺寸与放大倍数（素材本身的物理上限）
+     绝不把插值产物标成高清，也绝不把 AI 超分说成原生 —— 如实标注是信任的基础。 */
+  function wallResTag(w){
+    const mb=w.mb?(w.mb>=1024?(w.mb/1024).toFixed(1)+'GB':Math.round(w.mb)+'MB'):'';
+    const mst=w.master?('母版 '+w.master):'';
+    /* 生成中：显式告知"正在算"，并说明当前先用原素材顶替。
+       绝不让用户以为这就是最终画质 —— 那属于隐瞒。 */
+    if(w.pending)
+      return `<i class="qu" title="4K 母版正在后台生成（AI 超分需数十秒~数分钟）。期间先用原素材顶替，不黑屏；就绪后自动升级">⏳ 4K 生成中…</i>`;
+    if(w.sr)
+      return `<b class="qh" title="${esc(mst)}${mb?' · '+mb:''} · 原素材仅 ${w.srcRes||w.res||'低分辨率'}（放大 ${w.upscale||'?'}×），母版由 Real-ESRGAN AI 超分合成">AI超分 ${mst}${mb?' · '+mb:''}</b>`;
+    /* 视频重编码母版。
+       ★2026-10-04 文案与策略同步反转★
+       旧文案写「母版不做上采样：把低分辨率源拉大只会得到插值伪高频，
+       不如原生尺寸直出」—— 这条策略已在 wall4k.build_master_video 里
+       正式反转：用户判据是「所有 wallpaperui 壁纸必须在前端显示为 4K，
+       不论什么方法」，而全量诊断实测 10 项 video 里有 4 项是 1080p/1440p
+       直出，UI 上标的就是 1920x1080。判据与要求冲突时服从要求。
+       所以现在不足 4K 的源会lanczos 升到 4K 并轻锐化，文案必须如实说清
+       源是什么、母版是什么 —— 谎报「不创造源里没有的细节」是欺骗用户。 */
+    if(w.v4k)
+      return `<b class="qh" title="源 ${w.srcRes||w.res||'?'} → 4K 母版 ${w.res||''}（NVENC cq14，lanczos 缩放 + 轻锐化，faststart 即下即播）${mb?' · '+mb:''}。${(w.srcRes&&/^3840/.test(w.srcRes))?'源已是 4K，母版保持原生分辨率、只做码率与可播性优化。':'源分辨率不足 4K，母版已按你的判据升到 4K 展示；放大后细节不会凭空产生，但整体清晰度与上屏观感优于低分辨率拉伸。'}">${/^3840/.test(w.res||'')?'4K重编码':'高码率重编码'} ${w.res||''}${mb?' · '+mb:''}</b>`;
+    /* 原生源（scene.pkg 内嵌纹理/动画）：这是 WE 在 Windows 上真正播放的素材，
+       分辨率就是作者放的原生值 —— 比商店页缩略图强一个量级。 */
+    if(w.origin==='tex')
+      return `<b class="qh" title="素材取自 scene.pkg 内嵌的原生${w.type==='video'?'动画':'纹理'} ${w.srcRes||''}，即 Wallpaper Engine 在 Windows 桌面播放的原始素材（非商店缩略图）${mb?' · '+mb:''}">原生源 ${w.srcRes||''}${mb?' · '+mb:''}</b>`;
+    if(w.native)
+      return `<b class="qh" title="原生素材直出${w.res?' · '+w.res:''}${mb?' · '+mb:''}">${w.res||'原生'}${mb?' · '+mb:''}</b>`;
+    if(w.upscale)
+      return `<i class="qu" title="${esc(mst)} · 原素材 ${w.res||'?'}，需放大 ${w.upscale} 倍">${w.upscale}×</i>`;
+    return mst?`<i class="qu" title="${esc(mst)}">${w.master}</i>`:(mb?`<i class="qu" title="文件体积 ${mb}">${mb}</i>`:'');
+  }
+  function setWall(w,silent){
+    _rotStop();const gen=_ROT.gen;
+    /* 【2026-10-04】用户手动选壁纸（silent=false，即来自点击/UI 而非轮播）
+       时**永久关闭轮播**并落盘。只 _rotStop() 只能挡这一轮，下次启动
+       存档里的 rot=true 又会让它接着自己切 —— 用户要的是"我不动它就不动"。 */
+    if(!silent&&w&&_rotOn())save({rot:false});
+    /* 清空时保留骨架节点：真壁纸 2~7MB，首屏有几秒空窗，需要它占位。
+       无壁纸（w 为null）时连骨架一起清掉 —— 空桌面不该显示加载动画。 */
+    const box=$('#gwall'),skel=$('#gwall-skel');
+    /* 实况流层（div.wecap）不在 img,video,iframe 选择器里，必须单独清 ——
+       漏清会导致 /we-live.mjpg 长连接不断开，服务端 _LIVE_REFCOUNT 永不归零，
+       桌面图标一直保持隐藏（WE 被留在"被镜像"状态）。 */
+    if(window.__WALLKILL){try{window.__WALLKILL()}catch(e){}window.__WALLKILL=null}
+    box.querySelectorAll('.wecap').forEach(n=>{try{n.querySelectorAll('img').forEach(i=>i.src='')}catch(e){}n.remove()});
+    box.querySelectorAll('img,video,iframe').forEach(n=>n.remove());
+    box.style.display=w?'block':'none';
+    if(!w&&skel)skel.remove();
+    document.body.classList.toggle('wallon',!!w);wallSel=w?w.url:null;wallURL=w?w.url:null;
+    wallNAME=w?(w.name||''):null;applySkin();
+    if(!w){window.__wallRGB=null;if(!silent)save({wall:null});syncWallChips();applyAdaptive();
+      /* 无壁纸时也续期：轮播到点后 _rotNext 会取第一张，实现「开启即自动开始」 */
+      _rotArm();return}
+    const SRC=wallUrl(w.url);          /* 母版 URL（按视口物理比例带 ?r=） */
+    if(w.type==='video'){
+      /* 单视频 loop 循环（双缓冲会同时拉两份大文件，802MB×2 直接堵死加载管道=卡+后续全失败） */
+      if(window.__WALLKILL){try{window.__WALLKILL()}catch(e){}window.__WALLKILL=null}
+      box.querySelectorAll('.wecap').forEach(n=>{try{n.querySelectorAll('img').forEach(i=>i.src='')}catch(e){}n.remove()});
+      box.querySelectorAll('img,video,iframe').forEach(n=>n.remove());
+      /* fallback 指向 .gif 时必须用 <img>：<video> 不解GIF，readyState 恒为 0
+         —— 表现为"点了壁纸但什么都没出来"。母版 MP4 就绪后 _pendWatch 会无缝换上。 */
+      const fbImg=w.fallback&&/\.gif($|\?)/i.test(w.fallback);
+      if(fbImg&&!/\.mp4($|\?)/i.test(SRC)){
+        const im=document.createElement('img');
+        im.src=SRC+(SRC.includes('?')?'&':'?')+'t='+Date.now();
+        wallStyle(im);
+        let fell=false;
+        im.addEventListener('error',()=>{if(fell)return;fell=true;
+          im.src=w.fallback;if(w.pending)_pendWatch(w);
+          setTimeout(()=>sampleWallColor(im),400)});
+        box.appendChild(im);
+        wallURL=SRC;applyAdaptive();_rotReady(gen,im,'img');
+        if(w.pending)_pendWatch(w);
+        if(!silent)save({wall:w.url});syncWallChips();
+        return}
+      const v=document.createElement('video');
+      /* 4K 母版 MP4（GIF 超分/ 视频重编码产物）也要走 wallUrl 换比例；原生大视频直接用原 URL */
+      v.src=SRC;v.muted=true;v.playsInline=true;v.setAttribute('muted','');
+      /* preload='auto' 是「壁纸能一直播下去」的关键：
+         默认 'metadata' 只拉文件头就停，readyState 到 4 也不再预缓冲，
+         播完当前缓冲就卡住。实测 802MB 的 249s 视频只缓冲 15.8s 就停 ——
+         加上 auto 后浏览器会持续填充缓冲，循环播放不再中断。
+         配合服务端 +faststart（moov 前置），起播也不必等整个文件。 */
+      v.preload='auto';
+      if(w.preview)v.poster=w.preview;   /* 大视频加载期显示预览图，防黑屏 */
+      v.autoplay=true;v.loop=false;v.controls=false;v.disablePictureInPicture=true;
+      wallStyle(v);
+      /* ------------------------------------------------------------------
+       * 【2026-10-04 新增：双缓冲交叉淡入 = 真正无缝的循环】
+       *
+       * 用户反馈"壁纸没有更舒服的循环"。单 video 的 loop 是**硬跳**：
+       * 播到最后一帧瞬间跳回第一帧，母版是裁剪段（首尾无关）所以必跳。
+       *
+       * 为什么当年写着"双缓冲会拉两份大文件"而否掉了？——**那是误解**。
+       * 双缓冲的两个 video 用的是**同一个 URL**，浏览器 HTTP 缓存会命中，
+       * 第二个元素直接吃缓存，**不会真的下载两次**。实测母版最大 125MB，
+       * 真正多出来的流量是 0。
+       *
+       * 为什么不用服务端 xfade 做闭环母版：实测本机 ffmpeg 构建的 xfade
+       * **时长语义是错的**（预期 10s 只出 1.0~1.5s），塞进产线会产出
+       * 1 秒的废壁纸，比有接缝更糟。详见 wall4k.py 同位置的长注释。
+       *
+       * 做法：两个 video 叠放，A 在播，B 静默停在 0s；
+       *  A 距结尾还有 FADE 秒时让 B 起播并交叉淡入，结束后交换角色。
+       * 任意时刻只有一个在出声（都 muted），且始终有一个在播。
+       * ------------------------------------------------------------------ */
+      /* 交叉淡入时长：按母版实际长度自适应。
+       * 固定 1.2s 对长母版（49s）没问题，但对短母版就偏长 ——
+       * 实测 5 项新母版时长 10.13 / 24.00 / 28.90 / 10.10 / 49.00 秒，
+       * 1.2s 固定值在 10s 母版里占 12% 的时间都在交叉，观感偏"一直在淡"。
+       * 规则：占母版 3.5%~8%，再夹在 [0.8, 2.6] 秒。
+       * 不能太小：低于 0.6s 人眼会看出闪烁而不是渐变。 */
+      const fadeMs=()=>{
+        const d=A&&A.duration;
+        if(!isFinite(d)||d<=0)return 1.2;
+        return Math.max(0.8,Math.min(2.6,d*0.06));
+      };
+      const FADE=1.2;                    // 首轮兜底值，A.duration 未就绪时用
+      const wrap=document.createElement('div');
+      wrap.className='wecap';
+      wrap.style.cssText='position:absolute;inset:0;z-index:1';
+      const mk=()=>{const e=document.createElement('video');
+        e.muted=true;e.playsInline=true;e.setAttribute('muted','');
+        e.preload='auto';e.loop=false;e.controls=false;
+        e.disablePictureInPicture=true;wallStyle(e);
+        e.style.opacity='0';e.src=SRC;return e};
+      let A=v,B=mk();                     // A 在播，B 备用
+      B.style.zIndex='2';
+      /* 【2026-10-04 修掉的真bug：淡入状态必须能自愈】
+         原实现用一个 busy 布尔量防重入。但 requestAnimationFrame 在标签页
+         隐藏时**完全不回调** —— 若淡入进行到一半切走标签页，busy 会永久卡在
+         true，回来后 sw 定时器再也不会触发 fade()，循环退回硬跳；
+         更糟的是那一层 video 停在半透明状态，画面永久糊着两层。
+         改为「代」计数：每次淡入领一个号，rAF 回调发现号过期就自行退出；
+         同时用一个墙钟时间戳做兜底，超时即强制收尾，绝不卡死。 */
+      let fadeGen=0,busy=false,genT0=0;
+      let seamless=true;                  // 运行时探测：不可用就退回硬 loop
+      const swap=()=>{const t=A;A=B;B=t;B.style.zIndex='1';A.style.zIndex='2'};
+      /* B 的预热：淡入前必须让解码器**已经就位**。
+       * 原来 prepB 在 fade() 内部才 B.play()，而 play() 到出首帧还要走
+       * 一遍解码管线。FADE 只有 0.8~2.6s —— 首帧若在 400ms 才到，交叉的
+       * 前 1/4 就会出现「B 还没出画面就已被拉高不透明度」= 视觉上的硬跳。
+       * 实测 4K 母版解码器分配要 100~400ms。
+       *
+       * 【2026-10-04 二次修正：预热后不能立刻 pause】
+       * 上一版是 play() 之后在 then 里立刻 pause()，理由是「只唤醒解码器」。
+       * 但 pause() 让 B 停在刚解出的那一帧上，多数浏览器随即开始回收
+       * 未显示帧的解码缓冲 —— 正式淡入时又要重解一次，等于白预热。
+       * 正确做法：预热后**继续播**。B 的不透明度是 0，用户看不见它播到哪，
+       * 所以让��跑着不花钱也不出戏；正式淡入时直接接着播，首帧已在显存里。 */
+      const warmB=()=>{try{B.currentTime=0;const p=B.play();
+        if(p)p.catch(()=>{})}catch(e){}};
+      const prepB=()=>{try{B.currentTime=0;
+        const p=B.play();if(p)p.catch(()=>{})}catch(e){}};
+      /* B 等待首帧的上限（毫秒）。**单一事实来源**——
+         fade() 里的 gate 与 sw 里的预热提前量都从这里取，
+         避免两处各写一份又跑偏（上一版就因为预热提前量 < gate 上限
+         导致预热白做：短母版上提前 1.2s、gate 却要 1.2s，余量为零）。
+         构成：固定 1200ms（覆盖 4K 首帧实测上界 400ms 的 3 倍余量）
+             + 0.5*FADE（母版越大解码压力越大，再放宽一点）。 */
+      const gateMs=()=>fadeMs()*1000*0.5+1200;
+      const fade=()=>{
+        if(busy||!seamless||!B)return;
+        /* 【2026-10-04 补修的真bug：B 没出帧就不能开始交叉】
+           原实现 prepB() 之后立刻用 rAF 拉 B 的不透明度。但 play() 到真正
+           出第一帧要走解码管线（4K 实测 100~400ms，B 刚被预热时更久）。
+           这段时间里 B 的画面是空的 —— 却被按k 线性拉高不透明度，
+           于是屏幕上出现「A 变淡 -> 一段黑/空 -> B 显现」的夹心。
+           母版越大越明显：用户看到的正是「壁纸卡住不动/黑一下」。
+           修法：先等 B 真正 ready（rs>=2 且 videoWidth>0）再起淡入，
+           等不到（超过 FADE 时长）就判定本轮不可信，退回硬 loop ——
+           硬跳虽然不完美，但**绝不黑屏**，这与全局「异常显性化、
+           不假装在动」的口径一致。 */
+        if(B.readyState<2||!B.videoWidth){
+          abortFade();seamless=false;try{A.loop=true}catch(e){}
+          if(window.console)console.warn('[wall] B 未出帧，本轮退回硬 loop');
+          return}
+        busy=true;
+        const myGen=++fadeGen;genT0=performance.now();
+        prepB();
+        /* 等首帧：上限用共享的 gateMs()。等待期间**A 保持完全不透明**
+           （画面绝对不黑）；实在等不到就退回硬 loop，不假装在交叉。 */
+        const gateLimit=gateMs();
+        const gate=()=>{
+          if(myGen!==fadeGen){busy=false;return}       // 已被 abort
+          if(B.readyState>=2&&B.videoWidth){step();return}
+          if(performance.now()-genT0>gateLimit){
+            busy=false;try{A.style.opacity='1';B.style.opacity='0'}catch(e){}
+            try{A.loop=true}catch(e){}                   // 退回硬 loop，不黑屏
+            if(window.console)console.warn('[wall] B 首帧超时，退回硬 loop');
+            return}
+          requestAnimationFrame(gate);
+        };
+        const step=()=>{
+          /* 号过期 = 已被强制收尾/abort，本轮回调直接退出，别再改画面 */
+          if(myGen!==fadeGen){busy=false;return}
+          const el=performance.now()-genT0;
+          const k=Math.min(1,el/(fadeMs()*1000));
+          A.style.opacity=String(1-k);
+          B.style.opacity=String(k);
+          if(k<1){requestAnimationFrame(step);return}
+          /* 淡入完成：A 已完全透明，交换角色继续播。
+             旧 A 此刻停在片尾，必须立刻暂停并归零 —— 它已经播完了
+             （loop=false），留着不暂停只会白占一路 4K 解码器。 */
+          swap();
+          A.style.opacity='1';B.style.opacity='0';
+          try{B.pause();B.currentTime=0}catch(e){}
+          /* ★预热标记必须跟着角色走★
+             swap() 之后 A/B 互换了。新的 B（=刚才播完的旧 A）当前是
+             pause 在片尾、readyState 充足，本身就是「热」的；而新的 A
+             （刚才起播的旧 B）刚开始播满全程。
+             所以要把 warm 标记给**新的 B**（它才需要被预热），
+             而不是简单清零 —— 清零会导致新一轮预热被跳过，
+             淡入又退化成硬跳。 */
+          B.dataset.warm='1';
+          busy=false;
+        };
+        requestAnimationFrame(gate);
+      };
+      /* 强制收尾：标签页切回 / 元素被换掉时调用。
+         必须把状态**归零**（busy=false、fadeGen 作废），
+         否则会复现上面那条「永久卡在 busy」的死锁。 */
+      const abortFade=()=>{
+        if(!busy)return;
+        fadeGen++;                        // 作废所有在飞的 rAF 回调
+        busy=false;
+        try{A.style.opacity='1';B.style.opacity='0'}catch(e){}
+        try{B.pause();B.currentTime=0}catch(e){}
+      };
+      /* 【2026-10-04 修掉的真bug：sw 必须监视 A，不是 v】
+         swap() 之后 v 就变成了**备用角色**（暂停在 0s），它的 currentTime
+         永远不再增长。原实现监视 v.currentTime，于是只有第一轮淡入生效，
+         第二轮起全部退回硬跳 —— 恰好等于「循环不舒适」没有被修好。
+         现在监视真正在播的 A。 */
+      const sw=setInterval(()=>{
+        if(!document.body.contains(wrap)){clearInterval(sw);return}
+        if(document.hidden||busy||!seamless||!B)return;
+        /* 兜底自愈：rAF 停摆后 busy 可能残留，超过 3 倍 FADE 强制收尾 */
+        if(busy&&performance.now()-genT0>fadeMs()*3000)abortFade();
+        if(busy)return;
+        const d=A.duration;
+        if(!isFinite(d)||d<=0)return;
+        /* ---- 预热 B：在正式淡入前足够久就唤醒解码器 ----
+           ★2026-10-04 二次修正★
+           提前量必须明显大于 gateMs()（B 等待首帧的上限），
+           否则「B 刚被预热完就该淡入，解码器还没热好」，预热白做。
+           旧值 max(1.2, FADE*2.2) 在短母版上只有 1.2s，而 gate 下限也是
+           1.2s —— 余量为零，实测导致 B 首帧超时、整轮退回硬 loop
+           （2605308770 推进率掉到 47.2%）。
+           现在取 1.6 倍 gate 窗口作提前量，另有 2.0s 绝对下限。
+           预热期间 B 不透明度为 0，用户完全无感。 */
+        const lead=Math.max(2.0,fadeMs()*2.2,gateMs()/1000*1.6);
+        if(!B.dataset.warm&&A.currentTime>=d-lead){
+          B.dataset.warm='1';warmB();
+        }
+        /* A 已停播（缓冲耗尽 ended）也算该接了：交给交叉淡入重新起步，
+           绝不让画面停在最后一帧。 */
+        if(A.currentTime>=d-(fadeMs()+0.35)||A.ended)fade();
+      },120);
+      /* 探测双缓冲是否真的可用：任一元素起不来就退回硬 loop，绝不黑屏。
+         【2026-10-04 修掉的真bug：3 秒固定窗口对大母版远远不够】
+         原实现在 3 秒后只看B.readyState<2 就 B.remove() + 退化硬 loop。
+         实测（CDP 逐项采样，本轮抓到）：母版体积一旦上到70~120MB，
+         第二个 video 的解码器分配 + 首段缓冲在 3 秒内**根本来不及**——
+         2898887949（71.2MB）在整个观察窗里层内只有 **1 个** video，
+         也就是双缓冲已经退化了。退化后 loop=true 播放，接缝就是硬跳，
+         用户说的「循环不舒适」原封不动地回来了。
+         改成三段式渐进探测：
+           3s   -> 若B 未就绪，不放弃，先 kick 一下逼它分配解码器再缓冲
+           递增  -> 每次 +1.5s，最多到 _seamWaitSec()（按母版体积估算）
+           耗尽  -> 才判定真不可用，退硬 loop
+         体积估算依据：本地环回实测吞吐约 6~8MB/s，而 B 走 HTTP 缓存，
+         真正要等的是解码器分配（100~400ms）与首段缓冲。 */
+      const _seamWaitSec=()=>{
+        /* 按母版体积估算「B 需要多久才可能就绪」。
+           w.mb 是列表 API 直接给的母版体积（MB），没有就按 60MB 估。
+           系数 5.5：本地环回 + HTTP 缓存命中后，扣掉解码器分配与首段缓冲，
+           实际有效吞吐约 5.5MB/s；下限 6s 覆盖解码器分配本身，
+           上限 26s 免得真不可用时白等太久。 */
+        const mb=Number(w&&w.mb)||60;
+        return Math.max(6,Math.min(26,mb/5.5+3));
+      };
+      const _seamProbe=setInterval(()=>{
+        if(!document.body.contains(v)){clearInterval(_seamProbe);return}
+        if(!B||B.readyState>=2){clearInterval(_seamProbe);return}
+        // 没就绪就催它：play() 才会真正分配解码器与缓冲
+        try{kick0(B)}catch(e){}
+      },1500);
+      const _seamT0=performance.now();
+      setTimeout(()=>{
+        if(!document.body.contains(v))return;
+        if(B&&B.readyState<2&&performance.now()-_seamT0<_seamWaitSec()*1000){
+          kick0(B);                 // 继续等，别急着退化
+          return}
+        clearInterval(_seamProbe);
+        if(B&&B.readyState<2){abortFade();seamless=false;B.remove();B=null;v.loop=true;
+          if(window.console)console.warn('[wall] 双缓冲不可用，已退回硬 loop')}
+      },3000);
+      const kick0=el=>{if(!el)return;try{const p=el.play();if(p)p.catch(()=>{})}catch(e){}};
+      const kick=el=>{if(!el)return;const p=el.play();if(p)p.catch(()=>{})};
+      kick(v);
+      /* 母版未就绪（后台超分生成中，URL 404）-> 回退原素材顶上，绝不留黑屏。
+         fallback 若是 GIF 必须换成 <img>：<video> 不解 GIF，readyState 恒为 0，
+         表现为"点了壁纸什么都没有"。母版就绪后 _pendWatch 会无缝换成 4K MP4。 */
+      let fell=false;
+      v.addEventListener('error',()=>{
+        if(fell||!w.fallback)return;fell=true;
+        if(/\.gif($|\?)/i.test(w.fallback)){
+          const im=document.createElement('img');
+          im.src=w.fallback;wallStyle(im);
+          v.replaceWith(im);
+          im.addEventListener('load',()=>sampleWallColor(im));
+          return;
+        }
+        v.src=wallUrl(w.fallback);kick(v);
+      });
+      if(w.pending&&w.fallback)_pendWatch(w);
+      v.addEventListener('canplay',()=>{kick(v);sampleWallColor(v)});
+      /* B 也必须单独兜错误：它起不来就退硬 loop，否则无声黑屏。
+         （A 出错走下面的 fallback；B 出错只影响无缝性，不影响有画面。） */
+      if(B)B.addEventListener('error',()=>{abortFade();seamless=false;v.loop=true;
+        try{B.pause();B.removeAttribute('src');B.load()}catch(e){}});
+      const vis=()=>{if(!document.body.contains(wrap)){document.removeEventListener('visibilitychange',vis);return}
+        /* 切走时先中止淡入：rAF 在隐藏期间不回调，不中止就会留下
+           半透明冻结帧 + busy 永久卡死（详见 fadeGen 处的注释）。 */
+        if(document.hidden){abortFade();try{A.pause();if(B)B.pause()}catch(e){}}
+        else{kick(A);if(B&&seamless){try{B.currentTime=0}catch(e){}kick(B)}}};
+      document.addEventListener('visibilitychange',vis);
+      /* 看门狗：非人为暂停即拉起；缓冲耗尽时处理。
+         大视频靠 preload=auto + 服务端 faststart + 高码率母版三重保障，
+         这里是最后一道兜底。
+
+         【2026-10-04 修掉的真bug：看门狗自己制造跳变】
+         原实现每 1.5s 检查一次「播放头越过缓冲尾就拽回缓冲起点」。
+         但**循环播放时缓冲尾就在片尾**，于是每 1.5s 就把播放头拉回片头 ——
+         对一个10s 的循环母版来说，等于每 1.5s 跳一次帧，循环观感被彻底毁掉。
+         （这也是"循环不舒适"的另一半原因，接缝只是另一半。）
+         现在改成：只在**真的停播**（paused 且停在半路）时救，
+         片尾一律交给双缓冲交叉淡入，绝不介入。 */
+      const wd=setInterval(()=>{
+        if(!document.body.contains(wrap)){clearInterval(wd);return}
+        if(document.hidden){try{A.pause();if(B)B.pause()}catch(e){}return}
+        const cur=A;
+        /* 缓冲是否真的耗尽到影响播放：readyState<2 才是真没数据。
+           readyState>=2 却 paused 属于被浏览器暂停（如内存回收），kick 即可。
+           注意**不能**对双缓冲元素调 load() —— load() 会丢弃已缓冲数据并把
+           currentTime 归零，那正是我们要消除的那种跳变。这里只拉起播放。 */
+        if(cur.readyState<2)return;
+        if(cur.paused&&cur.currentTime<(cur.duration||0)-0.6)kick(cur);  // 停在半路才拉起
+        else if(!cur.paused)sampleWallColor(cur);
+        /* 【已移除】播放头越过缓冲尾就拽回缓冲起点 —— 循环时缓冲尾=片尾，
+           这个逻辑会在循环播放中每 1.5s 制造一次跳变。片尾由双缓冲淡入衔接。 */
+      },1500);
+      A.style.opacity='1';
+      wrap.appendChild(v);if(B)wrap.appendChild(B);
+      box.appendChild(wrap);
+      /* 切壁纸时必须把**两个** video 一起停并清空 src，
+         否则第二个元素会继续下载/解码，累积成"后台偷偷跑 N 个 4K 解码器"。
+         与实况流层的 __WALLKILL 同一套生命周期纪律。 */
+      if(window.__WALLKILL){try{window.__WALLKILL()}catch(e){}window.__WALLKILL=null}
+      window.__WALLKILL=()=>{try{clearInterval(sw);clearInterval(wd)}catch(e){}
+        try{document.removeEventListener('visibilitychange',vis)}catch(e){}
+        try{abortFade()}catch(e){}
+        try{[v,B].forEach(e=>{if(e){e.pause();e.removeAttribute('src');e.load()}})}catch(e){}
+        try{wrap.remove()}catch(e){}};
+      wallURL=SRC;applyAdaptive();_rotReady(gen,v,'video')}
+    else if(w.type==='web'){const fr=document.createElement('iframe');
+      fr.src=w.url;fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none';
+      fr.setAttribute('scrolling','no');box.appendChild(fr);
+      wallURL=w.url;applyAdaptive();_rotReady(gen,fr,'web')}
+    else if(w.type==='live'){
+      /* WE scene 壁纸：原生 4K 母版（服务端已按视口物理比例 cover 预裁 + AI 超分）
+         打底，上面叠「实况流」= 真正的 Windows 原生动态效果。
+
+         为什么必须叠实况流：scene 壁纸在 WE 里是 GPU 实时渲染（粒子+shader），
+         实测 scene.pkg 内**没有视频**（1646702957 / 2688582860 / 3119968347 /
+         3304033014 / 2372436763 五个包候选视频数均为 0）—— 只铺母版就是一张
+         再清晰也不会动的静帧，完全达不到「原生动态效果」的判据。
+
+         分层职责（任一层失效都不影响另一层，绝不留白屏、绝不假装在动）：
+           底层 <img>  4K 母版 → 保证不糊，且实况流没就绪时也有画面
+           上层 <img>  /we-live.mjpg（multipart）→ 逐帧推进的真实渲染
+         服务端先把 WE 桌面切到该 scene.pkg（we_open_scene），再抓帧推流；
+         拿不到新鲜帧时端点直接 404，这里靠 onerror 退回静帧层。 */
+      const base=document.createElement('img');
+      base.src=SRC+(SRC.includes('?')?'&':'?')+'t='+Date.now();
+      wallStyle(base);
+      let fell=false;
+      base.addEventListener('error',()=>{if(fell)return;fell=true;
+        base.src=w.fallback||w.preview||'';if(base.src)setTimeout(()=>sampleWallColor(base),400)});
+      if(w.pending)_pendWatch(w);
+      box.appendChild(base);
+      wallURL=SRC;applyAdaptive();_rotReady(gen,base,'img');
+
+      /* 实况流层：仅当条目确认带 scene.pkg 时才接（否则纯属白等6s 超时） */
+      if(w.scenePkg&&window.fetch){
+        const q=document.createElement('div');
+        q.id='wecap';q.className='wecap';
+        /* 【2026-10-04 修掉的真bug：不能自动开 Pop-out】
+           原实现在这里**无条件** fetch('/api/we/open')，而 applyState() 在启动时
+           也会按持久化状态 setWall()——只要上次存的是 live壁纸，软件一开就会
+           触发 Pop-out。用户反馈「Pop-out 通道莫名的在打开软件时打开并占用
+           全部界面」。
+
+           现在改为**显式 opt-in**：只有用户亲手点了该壁纸的「🖥 桌面」按钮
+           （window._LVON===该壁纸 id），才真的去开 Pop-out。
+           否则只挂 4K 母版静帧 —— 清晰度不打折，只是不动而已，
+           而不动绝不比"半路劫持用户桌面"更糟。 */
+        const _lvOn=(window._LVON===w.id);
+        if(_lvOn)try{fetch('/api/we/open?id='+encodeURIComponent(w.id||''),
+                  {method:'POST'}).catch(()=>{})}catch(e){}
+        const live=document.createElement('img');
+        /* 走 wallStyle：满幅 cover + 跟随光影的 fx 类，与底图规格完全一致，
+           否则拖光影滑杆时底图变了上层不变，会看到"两层不同调"。
+           顺序要紧：wallStyle 用 cssText 覆盖内联样式、先挂 fx，
+           所以 className 必须在它之后写（只保留 welive，不再重复设 fx）。 */
+        wallStyle(live);
+        live.classList.add('welive');
+        live.alt='';live.setAttribute('aria-hidden','true');
+        live.src='/we-live.mjpg?pid='+encodeURIComponent(w.id||'');
+        let got=false;
+        /* 【2026-10-04 修掉的真bug：实况层亮起后底层母版必须彻底让位】
+           用户反馈「更新到原生效果的壁纸会和原有界面重影」。
+           根因：base（4K 母版静帧）始终 opacity:1 实打实铺在最底下，
+           live（实况流）只是**盖在它上面**，两层都是满幅 cover 同一张壁纸。
+           母版是母版里截的那一帧、实况流是 WE 此刻的渲染相位 —— 两者内容
+           必然不同，叠起来就是一层"重影/鬼影"（尤其有粒子/光效的scene）。
+
+           正确做法是**互斥**，不是叠加：
+             · live 首帧到达 -> base 立刻 opacity:0（不再参与显示，但仍留在
+               DOM 里做fallback：万一实况流中途断，base 立刻接回来）；
+             · live 出错/断流/撤层 -> base 立刻 opacity:1 复位。
+           留 base 在 DOM 里不删，是为了"实况流挂了就退回母版"这条降级路径
+           依然成立，且切换是瞬时的，不会闪黑。 */
+        const baseOn=()=>{try{base.style.opacity='1'}catch(e){}};
+        const baseOff=()=>{try{base.style.opacity='0'}catch(e){}};
+        /* 让位/复位都要**平滑**：base 加与 .welive 同规格的 transition。
+           不加的话 base 是瞬时切换，而 live 有 0.18s 淡入 ——
+           两层不同步的那0.18s 里就是最明显的重影。 */
+        base.style.transition='opacity .18s ease-out';
+        /* onload 在 multipart 长连接上只在**首帧到达**时触发一次（后续帧是流内替换，
+           不再触发 load）—— 所以这里用"首帧即成功"作为可用判据，10s 仍未到则撤层。
+           不设超时也不撤：宁可停在静帧，也不让用户看到半截加载中的破图。 */
+        live.addEventListener('load',()=>{
+          if(got)return;got=true;live.classList.add('on');
+          baseOff();                   /* 实况接管 -> 母版让位，杜绝重影 */
+          if(!fell)sampleWallColor(live);
+          armKeepAlive();
+        });
+        /* 【2026-10-04 修掉的真bug：中途断流必须能自动接回】
+           原实现 error 处理器开头是 `if(got)return;` —— 而 got 在**首帧**
+           到达时就已置true。于是流中途断开（弹窗被系统回收 / 休眠唤醒 /
+           网络抖动）时，error 事件虽触发却被这一行直接挡掉：
+           既不撤层也不复位母版，画面**永久冻结在最后一帧**，
+           在用户眼里就是「循环停止了」。
+
+           现在分两种情况处理：
+             · 首帧就失败（got=false）-> 判定流不可用，撤层 + 母版接回；
+             · 已成功过再断（got=true）-> 母版接回 + **退避重连**。
+               重连用指数退避（有上限），成功后重新点亮 live；
+               这样即使服务重启、弹窗被系统回收，也能自愈回动态，
+               而不是永远冻在一帧上。 */
+        let retryN=0,reTimer=null,reRec=null;
+        const reconnect=()=>{
+          if(!document.body.contains(live))return;
+          if(retryN>=6){                    // 退避到 6 次仍失败 -> 交回母版
+            baseOn();q.remove();return;
+          }
+          const wait=Math.min(8000,600*Math.pow(1.7,retryN++));
+          reRec=setTimeout(()=>{
+            if(!document.body.contains(live))return;
+            /* 【2026-10-04 补修的真bug：重连成功必须重新点亮 live 层】
+               error 处理器里做了 baseOn()（母版接回），这是对的 ——
+               但 reconnect 只换了 src，**没有把 .on 加回去**。
+               而 .welive 的不透明度完全由 CSS 类 .on 控制
+               （#gwall .wecap .welive{opacity:0} / .on{opacity:1}），
+               元素内联 style 一直是空串。于是重连即使成功、字节在流、
+               画面却仍停在 base 上 —— 用户看到的就是「动态效果不再回来」，
+               也就是本轮要修的「循环停止」的另一种形态。
+               所以每次重连都要先把状态复位成「等首帧」：
+               去掉 .on（防旧帧残影）、got复位false（让 load 处理器重新接管）、
+               baseOn()（先显示母版，拿到新帧再让位）。 */
+            try{live.classList.remove('on')}catch(e){}
+            got=false;baseOn();
+            try{live.src='/we-live.mjpg?pid='+encodeURIComponent(w.id||'')
+              +'&r='+Date.now()}catch(e){}
+            armKeepAlive();
+          },wait);
+        };
+        const armKeepAlive=()=>{if(reTimer)return;
+          /* 保活探针：multipart <img> 在流静默时不会触发任何事件，
+             唯一能发现「流已死」的手段是**主动周期性检查**。
+             但不能只看时间戳（画面静止时本来就无新帧），所以这里
+             只做「确认连接还活着」的轻量检查：connected 仍为真即认为活着。
+             真正判定死亡靠浏览器的 error 事件（见上）。*/
+          reTimer=setInterval(()=>{
+            if(!document.body.contains(live)){clearInterval(reTimer);reTimer=null;return}
+            if(document.hidden)return;
+            /* 流死亡但没触发 error（部分平台行为）：src 变成空且 complete
+               为真，说明连接已结束 -> 主动重连。 */
+            if(!live.src||(live.complete&&live.naturalWidth===0)){
+              clearInterval(reTimer);reTimer=null;reconnect();
+            }
+          },4000);
+        };
+        const clearKA=()=>{if(reTimer){clearInterval(reTimer);reTimer=null}
+          if(reRec){clearTimeout(reRec);reRec=null}};
+        live.addEventListener('error',()=>{
+          clearKA();
+          if(!got){got=true;baseOn();q.remove();return}   /* 从未成功过 */
+          /* 中途断开：母版立刻接回（画面不再冻住），再退避重连 */
+          baseOn();
+          reconnect();
+        });
+        q.appendChild(live);box.appendChild(q);
+        /* 【2026-10-04 二次修正：续窗计数必须是 per-wallpaper 的局部量】
+           第一版把续窗次数挂在 `window.__lvWait` 上 —— 那是**全局**的，
+           跨壁纸累加且永不清零。结果：第一项壁纸正常续了 2 次窗（22~33s），
+           换到第二项时计数已经是 2，一到期就落进 else 分支被立刻撤层。
+           实测 5 项 live 里有 3 项报 `live 层未点亮(nocap)`，
+           全部是第 2 项之后 —— 现象与「全局计数被前一项吃光」完全吻合。
+           现在改为闭包内的局部变量：每张壁纸的实况层各自独立计数，
+           互不影响（这本来就是「一张壁纸一条流」的语义）。 */
+        let lvWaits=0, lvWatchT=0;
+        const lvWatch=()=>{
+          if(got)return;
+          /* 连接真的结束（src 空/ 被清，或 complete 且无宽度）-> 立即撤层。
+             这是唯一必须立刻收的情况：留着只会是一层空图。 */
+          const dead=!live.src||(live.complete&&live.naturalWidth===0);
+          if(dead){baseOn();q.remove();return}
+          if(retryN>0){baseOn();q.remove();return}   /* 已重连过仍无帧 -> 撤层 */
+          /* 还在正常等待首帧：续一个观察窗，最多续 2 次（合计约 33s）。
+             服务端自己最多等 15s 才放弃，所以这个窗口是有界的，
+             不会变成「永远挂着不撤」。 */
+          if(++lvWaits<=2){
+            lvWatchT=setTimeout(lvWatch,11000);
+            if(window.console)console.warn('[wall] 实况首帧仍在等待，延长观察窗 '+lvWaits+'/2');
+          }else{baseOn();q.remove()}
+        };
+        lvWatchT=setTimeout(lvWatch,11000);
+        /* 换壁纸时断开长连接：否则 refcount 泄漏，桌面图标一直隐藏。
+           setWall 开头统一调 __WALLKILL 清理，这里只负责登记。
+           撤层前必须 baseOn()复位 —— 否则切走时 base 停在 opacity:0，
+           而新壁纸若也走 live 分支，会继承到"母版不可见"的错误状态。 */
+        if(window.__WALLKILL)window.__WALLKILL();
+        window.__WALLKILL=()=>{try{live.src=''}catch(e){}
+          try{clearTimeout(lvWatchT);clearTimeout(reRec);clearInterval(reTimer)}catch(e){}
+          try{baseOn()}catch(e){}
+          try{q.remove()}catch(e){}};
+      }}
+    else{
+      /* 静图/gif：全幅 cover 满屏（无边带无黑边），服务端已按显示区比例预裁切到目标尺寸，
+         浏览器端退化为等比映射，不再二次插值 */
+      const im=document.createElement('img');im.src=SRC;
+      wallStyle(im);
+      im.addEventListener('load',()=>sampleWallColor(im));
+      box.appendChild(im);
+      wallURL=w.url;applyAdaptive();_rotReady(gen,im,'img')}
+    if(!silent)save({wall:w.url});syncWallChips();
+  }
+  function setVar(k,v,saveKey){hud().style.setProperty(k,v);if(saveKey)save({[saveKey]:v})}
+  function applyState(){
+    const s=S();
+    setTheme(s.theme||'t-dusk',true);
+    const w=walls.find(x=>x.url===s.wall)||null;
+    setWall(w,true);
+    const wp=$('#gwall');
+    wp.style.setProperty('--wb',s.wb??1);wp.style.setProperty('--ws',s.ws??1);wp.style.setProperty('--wbl',(s.wbl??0)+'px');
+    if(s.wdim!=null){delete s.wdim;try{localStorage.setItem('vtb_amb',JSON.stringify(s))}catch(e){}}
+    document.body.classList.toggle('fx-off',s.fx===false);
+  }
+  function syncWallChips(){
+    [...$('#ambbar').querySelectorAll('.ambchip[data-w]')].forEach(c=>c.classList.toggle('on',(c.dataset.w||null)===(wallSel||null)));
+  }
+  /* 重拉壁纸列表（母版后台生成完成后调用）。只重绘壁纸芯片行 ——
+     不碰光影滑杆/轮播控件的值与事件，避免打断用户正在拖的滑块。
+     URL 是同一字符串（/m4k/<key>），所以 wallSel 无需变更，当前壁纸不闪断。 */
+  async function refreshWalls(){
+    let loc=[],we=[];
+    try{loc=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){}
+    try{we=(await (await fetch('/api/we/list')).json()).items||[]}catch(e){}
+    const prev=walls||[];
+    walls=loc.concat(we);
+    const row=$('#ambbar .ambrow');
+    if(!row)return;
+    row.innerHTML=`<span class="ambchip sys" data-w="">无壁纸</span>`+
+      walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.master?' · 母版 '+w.master:''}${w.sr?' · AI 超分（原素材 '+(w.srcRes||w.res||'低分辨率')+'，放大 '+(w.upscale||'?')+'×）':''}${w.v4k?' · 4K 母版（源 '+(w.srcRes||w.res||'?')+' → '+w.res+'，NVENC cq14 + lanczos；源不足 4K 时按判据升到 4K）':''}${!w.sr&&!w.v4k&&w.res?' · 素材 '+w.res+' 原生直出':''}${!w.sr&&!w.v4k&&w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}${w.pending?' · 4K 母版生成中（先用原素材顶替，就绪后自动升级）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在本软件内开启 Windows 原生动态效果（Wallpaper Engine 真实渲染，不改动你的桌面）">🖥 动态</span>`:''}`).join('');
+    row.querySelectorAll('.ambchip[data-w]').forEach(c=>c.addEventListener('click',()=>{
+      const w=walls.find(x=>x.url===c.dataset.w)||null;
+      /* 【2026-10-04 修掉的真bug：点壁纸芯片不得自动开实况流】
+         原实现：只要 w.type==='live'，点一下芯片就 _LVON=w.id + lv(true)，
+         而 live 分支据此去开 WE Pop-out 弹窗 —— 于是"选壁纸"这个动作
+         顺带把 WE 弹窗拉起来（用户反馈：占满整个 Windows 界面）。
+         现在：点芯片**只显示 4K 母版**（清晰度不打折，只是不动）。
+         要原生动态效果，必须再点该壁纸右侧独立的「🖥」按钮 ——
+         显式 opt-in，且用户能清楚区分"我看静态图"和"我开动态渲染"。 */
+      if(w&&w.type==='live'&&window._LVON!==w.id){/* 换到别的 live：不自动开 */}
+      window._LVON=null;lv(false);
+      setWall(w)}));
+    row.querySelectorAll('.amblive[data-live]').forEach(c=>c.addEventListener('click',ev=>{
+      ev.stopPropagation();_lvToggle(c.dataset.live)}));
+    /* 仍在等待的项继续挂观察（重绘后旧 observer 已随 _PEND 保留） */
+    walls.filter(w=>w.pending).forEach(_pendWatch);
+    syncWallChips();
+  }
+  const lv=on=>fetch('/api/we/liveview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on})}).catch(()=>{});
+  /* 第二份 build() 作用域内的同名实现（本文件有两处 build/refreshWalls 定义，
+     靠后者覆盖前者生效；必须两处都改，否则行为取决于加载顺序 —— 这类
+     "重复定义"坑正是本轮 _lvToggle 找不到定义的原因）。 */
+  async function _lvToggle(pid){
+    if(!pid)return;
+    const on = window._LVON!==pid;
+    window._LVON = on?pid:null;
+    lv(on);
+    if(on){
+      toast('正在启动 Windows 原生动态渲染…');
+      try{
+        const r=await (await fetch('/api/we/open?id='+encodeURIComponent(pid),
+                                   {method:'POST'})).json();
+        if(r&&r.ok===false)toast('动态渲染启动失败，已保留 4K 静帧母版');
+        else if(r&&r.animated===false)toast('该场景内容本身是静止的，已按原生画面显示');
+      }catch(e){toast('动态渲染启动失败，已保留 4K 静帧母版')}
+    }else{
+      toast('已关闭动态效果，回到 4K 静帧母版');
+    }
+    const cur=walls.find(x=>x.id===pid);
+    if(cur)setWall(cur,true);
+    syncWallChips();
+  }
+  async function build(){
+    const bar=$('#ambbar');
+    try{walls=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){walls=[]}
+    let we=[], weRoot=null;
+    try{const r=await (await fetch('/api/we/list')).json();we=r.items||[];weRoot=r.root}catch(e){}
+    walls=walls.concat(we);
+    bar.innerHTML=`
+      <div class="ambrow"><span class="ambchip sys" data-w="">无壁纸</span>
+        ${walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.master?' · 母版 '+w.master:''}${w.sr?' · AI 超分（原素材 '+(w.srcRes||w.res||'低分辨率')+'，放大 '+(w.upscale||'?')+'×）':''}${!w.sr&&w.res?' · 素材 '+w.res:''}${!w.sr&&w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在本软件内开启 Windows 原生动态效果（Wallpaper Engine 真实渲染，不改动你的桌面）">🖥 动态</span>`:''}`).join('')}</div>
+      <div class="ambrow">
+        <span class="ambchip sys" id="amb-rot">▶▶ 轮播</span>
+        <span class="wslider">每<input type="range" id="amb-rotsec" min="10" max="600" step="10"><span id="amb-rotsecv">60</span>s</span>
+        <span id="amb-rotpos" class="rotpos"></span>
+      </div>
+      <div class="ambrow"><span class="ambchip sys" id="amb-fxt">天气粒子</span></div>
+      <div class="ambrow">
+        <span class="wslider">亮<input type="range" id="amb-wb" min="0.3" max="1.6" step="0.02"></span>
+        <span class="wslider">彩<input type="range" id="amb-ws" min="0" max="1.8" step="0.02"></span>
+        <span class="wslider">虚<input type="range" id="amb-wbl" min="0" max="14" step="0.5"></span>
+      </div>`;
+    bar.querySelectorAll('.ambchip[data-t]').forEach(c=>c.addEventListener('click',()=>setTheme(c.dataset.t)));
+    bar.insertAdjacentHTML('afterbegin',
+      we.length?`<div class="dsec">Wallpaper Engine · 自动识别 ${we.length} 项${weRoot?` <span style="letter-spacing:0;text-transform:none" title="${esc(weRoot)}">${esc(weRoot.split('\\').slice(-1)[0])}</span>`:''}</div>`:
+      '<div class="dsec">Wallpaper Engine · 未检测到安装目录</div>');
+    bar.insertAdjacentHTML('afterbegin','<div class="dsec">桌面壁纸 · 4K 图 / 循环视频（放入 wallpapers 文件夹）</div>');
+    bar.insertAdjacentHTML('beforeend','<div class="dsec">光影调整 · 亮度 / 饱和 / 虚化</div>');
+    window._LVON=null;
+    bar.querySelectorAll('.ambchip[data-w]').forEach(c=>c.addEventListener('click',()=>{
+      const w=walls.find(x=>x.url===c.dataset.w)||null;
+      /* 【2026-10-04 修掉的真bug：点壁纸芯片不得自动开实况流】
+         原实现：只要 w.type==='live'，点一下芯片就 _LVON=w.id + lv(true)，
+         而 live 分支据此去开 WE Pop-out 弹窗 —— 于是"选壁纸"这个动作
+         顺带把 WE 弹窗拉起来（用户反馈：占满整个 Windows 界面）。
+         现在：点芯片**只显示 4K 母版**（清晰度不打折，只是不动）。
+         要原生动态效果，必须再点该壁纸右侧独立的「🖥」按钮 ——
+         显式 opt-in，且用户能清楚区分"我看静态图"和"我开动态渲染"。 */
+      if(w&&w.type==='live'&&window._LVON!==w.id){/* 换到别的 live：不自动开 */}
+      window._LVON=null;lv(false);
+      setWall(w)}));
+    /* 🖥 桌面：显式把 Windows 桌面切到该 WE 场景（15 分钟后自动还原） */
+    bar.querySelectorAll('.amblive[data-live]').forEach(c=>c.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      fetch('/api/we/preview?id='+encodeURIComponent(c.dataset.live),{method:'POST'})
+        .then(r=>r.json()).then(r=>toast(r.ok?'🖥 桌面已切到该场景，15 分钟后自动还原':'桌面预览失败（Wallpaper Engine 未运行？）')).catch(()=>{})}));
+    const s=S();
+    $('#amb-wb').value=s.wb??1;$('#amb-ws').value=s.ws??1;$('#amb-wbl').value=s.wbl??0;
+    const upd=()=>{const wp=$('#gwall');
+      wp.style.setProperty('--wb',$('#amb-wb').value);wp.style.setProperty('--ws',$('#amb-ws').value);
+      wp.style.setProperty('--wbl',$('#amb-wbl').value+'px');
+      save({wb:+$('#amb-wb').value,ws:+$('#amb-ws').value,wbl:+$('#amb-wbl').value});
+      applyWallFx()};
+    ['amb-wb','amb-ws','amb-wbl'].forEach(id=>$('#'+id).addEventListener('input',upd));
+    const ft=$('#amb-fxt');
+    /* ── 轮播控制 ── */
+    const rb=$('#amb-rot'),rs=$('#amb-rotsec'),rsv=$('#amb-rotsecv'),rp=$('#amb-rotpos');
+    const syncRotUI=()=>{
+      const s=S(),on=_rotOn();
+      rb.classList.toggle('on',on);
+      rb.textContent=(on?'⏸ 暂停轮播':'▶▶ 轮播');
+      rs.value=s.rotSec??60;rsv.textContent=rs.value;
+      const list=_rotList(),i=list.findIndex(x=>x.url===wallSel);
+      rp.textContent=list.length>1?(i>=0?`${i+1}/${list.length}`:`0/${list.length}`):'';
+    };
+    rb.addEventListener('click',()=>{
+      /* 显式 opt-in 的另一面：手动点「暂停」要把 rot 写成 false，
+         不能只是不置 true —— 否则旧存档里的 rot=true 会让下次启动又自己播。 */
+      const on=!_rotOn();save({rot:on});
+      if(on){const w=walls.find(x=>x.url===wallSel);if(w)setWall(w,true);else _rotArm()}
+      else _rotStop();
+      syncRotUI();
+    });
+    rs.addEventListener('input',()=>{rsv.textContent=rs.value;save({rotSec:+rs.value});_rotArm()});
+    $('#gwall').appendChild(document.createComment('rot'));
+    window._syncRotUI=syncRotUI;
+    const _origSync=syncWallChips;
+    syncWallChips=function(){_origSync();syncRotUI()};
+    ft.classList.toggle('on',S().fx!==false);
+    ft.addEventListener('click',()=>{const on=!(S().fx!==false);save({fx:on});
+      document.body.classList.toggle('fx-off',!on);ft.classList.toggle('on',on)});
+    const dr=$('#drawer');
+    $('#gearbtn').addEventListener('click',()=>dr.classList.toggle('on'));
+    $('#dclose').addEventListener('click',()=>dr.classList.remove('on'));
+    applyState();
+    /* 启动即生效：applyState 已按持久化状态设好当前壁纸。
+       【2026-10-04】原来这里无条件 _rotArm()，是「没点也自己切壁纸」的直接原因。
+       现在只在用户**显式开启过**轮播（rot===true）时才续期；
+       默认（无存档 / rot=false）一律不启动任何定时器。 */
+    if(typeof syncRotUI==='function'){syncRotUI();if(_rotOn())_rotArm()}
+  }
+  return {build,
+          accent:()=>THEMES.find(x=>x.id===cur)?.rgb.slice(5,-1)||'212,178,112',
+          accentRGB:()=>THEMES.find(x=>x.id===cur)?.rgb||'rgba(212,178,112,',
+          fx:()=>THEMES.find(x=>x.id===cur)?.fx||'ember'};
+})();
+AMB.build();
+
+/* ---------- 主启动与轮询（2026-10-03 重建：原尾部随文件损坏丢失） ---------- */
+function pollNow(){tickBoard().catch(()=>{})}
+pollNow();
+setInterval(pollNow,8000);
+window.addEventListener('resize',()=>{if(view==='board')BCAN.start()});
+</script>
+</body>
+</html>

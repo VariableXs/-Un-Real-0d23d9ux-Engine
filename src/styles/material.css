@@ -1,0 +1,98 @@
+/* ============================================================
+ * AI-17 · U-08 材质引擎（Material Engine）
+ * 三档表面材质：solid（实心）/ frosted（亚克力感）/ deep（云母感）。
+ * 对号入座规则（写入 docs/DESIGN.md，由 audit 只紧不松守护）：
+ *   桌面层 = deep；VWM 窗口 = solid；悬浮面板（快捷面板/通知）= frosted。
+ * 性能预算：frosted 同屏并发 ≤ 3，超出自动降级 solid（.mat-budget-degrade）；
+ *   reduce-motion / bgTier 低档（html[data-mat-tier="low"]）全局降级。
+ * 高对比度主题全部自动降级为实心（对比度硬指标优先）。
+ * ============================================================ */
+
+.mat-solid {
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+}
+
+.mat-frosted {
+  background: color-mix(in oklab, var(--bg-raised) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--stroke);
+  /* 8% 白叠层 + 1px 顶部高光描边（Fluent 亚克力语言） */
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--text-primary) 8%, transparent);
+}
+
+.mat-deep {
+  background: var(--bg-canvas);
+  background-image: var(--texture-grain);
+  border: 1px solid var(--stroke);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--text-primary) 3%, transparent),
+    inset 0 8px 24px oklch(0 0 0 / 0.18);
+}
+
+/* --- 降级链路 --- */
+[data-theme="high-contrast"] .mat-frosted,
+html[data-mat-tier="low"] .mat-frosted,
+[data-reduce-motion="true"] .mat-frosted {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--bg-raised);
+}
+[data-theme="high-contrast"] .mat-deep {
+  background-image: none;
+  box-shadow: none;
+}
+
+/* frosted 并发超预算（>3）：JS 侧给多余面板挂此标记类降级 solid */
+.mat-budget-degrade {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: var(--bg-raised) !important;
+  box-shadow: none !important;
+}
+
+/* DEBUG HUD 计数（.mat-debug 显示 frosted 数量，VisionTab 打开） */
+.mat-debug::after {
+  content: "frosted: " attr(data-frosted-count);
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  z-index: 9999;
+  font-size: var(--fs-12);
+  padding: 2px 6px;
+  border-radius: var(--r-chip);
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  border: 1px solid var(--stroke);
+}
+
+/* ============================================================
+ * AI-17 · U-09 光影系统（Light & Shadow Language）
+ * 全局光源：左上 45°。海拔令牌 --elev-0…5（tokens.css）。
+ * hover=抬升 elev-1（120ms）、active=下压 + 亮度 -4%、拖拽=elev-3。
+ * ============================================================ */
+
+.elev-1 { box-shadow: var(--elev-1); }
+.elev-2 { box-shadow: var(--elev-2); }
+.elev-3 { box-shadow: var(--elev-3); }
+.elev-4 { box-shadow: var(--elev-4); }
+.elev-5 { box-shadow: var(--elev-5); }
+
+/* 交互态光影语义（组件按抬升层级取用；transition 走 --dur-2=120ms） */
+.elev-interactive {
+  transition: box-shadow var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-standard),
+    filter var(--dur-2) var(--ease-standard);
+}
+.elev-interactive:hover { box-shadow: var(--elev-hover); }
+.elev-interactive:active {
+  box-shadow: var(--elev-0);
+  filter: brightness(0.96);
+}
+.elev-dragging { box-shadow: var(--elev-drag) !important; }
+
+/* 选中态：主题色淡底 + 左侧 3px 指示条（Z-05 选择态规范全局统一） */
+.sel-indicator {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}

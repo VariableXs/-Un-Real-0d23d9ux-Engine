@@ -1,0 +1,481 @@
+/* ==========================================================================
+   开始菜单 · Win11 新版面板（三栏棋盘）  startmenu-board.css
+   --------------------------------------------------------------------------
+   尺寸来源：对真实 Win11「开始菜单」面板截图（1027×966 @100% DPI）逐像素测量，
+   再换算为 CSS px。所有数值都有实测出处，不是估算：
+     面板 969 宽 · 圆角 8 · 底色 #242424 · 底部居中
+     内边距 上 22 / 左右 40 · 面板高上限 908（视口内滚动）
+     搜索框 888×38 · 圆角 19（胶囊）· 底色 #202020（比面板更深）
+     三栏 356 / 257 / 256 · 栏间距 15
+     应用行 56（图标 32 + 图标-文字 24）· 卡片 #2f2f2f · 卡片圆角 8
+     中栏今日行 35 · 每日一图 281 高（实测 179..467 减去标题行）
+     热门应用卡 294 高 · 问答卡 328 高（与中栏首行等高）·
+     提示卡 294 高 · 底部推荐搜索卡 153 高（跨中/右栏）
+     胶囊控件 高 36 · 圆角 18 · 底色 #3e3e3e
+
+   命名空间纪律：新增类名一律 `sm-*`；面板级规则一律写
+   `.start-overlay .start-menu`（0-2-0），以覆盖 desktop.css 里既有的
+   `.start-menu` / `.start-search` / `.start-app`（0-1-0~0-2-0）而不改写它们。
+   被外部模块依赖的类名（.start-menu / .start-search / .start-app /
+   .start-app-name / .start-recent* / .start-section）全部保留 —— nova 的
+   「昨日延续」注入锚点、singularity 的拼音流导航都挂在它们上面。
+   ========================================================================== */
+
+/* ---------- 面板本体 ---------- */
+
+.start-overlay .start-menu {
+  width: min(969px, calc(100vw - 32px));
+  max-height: min(908px, calc(100vh - 96px));
+  padding: 22px 40px 24px;
+  border-radius: 8px;
+  background: #242424;
+  border: 1px solid rgb(255 255 255 / 0.07);
+  backdrop-filter: blur(30px) saturate(1.25);
+  -webkit-backdrop-filter: blur(30px) saturate(1.25);
+  box-shadow: 0 28px 72px rgb(0 0 0 / 0.6);
+  color: #fff;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.3) transparent;
+}
+
+.start-overlay .start-menu::-webkit-scrollbar { width: 4px; }
+.start-overlay .start-menu::-webkit-scrollbar-track { background: transparent; }
+.start-overlay .start-menu::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.3);
+  border-radius: 2px;
+}
+.start-overlay .start-menu::-webkit-scrollbar-thumb:hover { background: rgb(255 255 255 / 0.46); }
+
+/* ---------- 顶部搜索框（888×38 胶囊） ---------- */
+
+.start-overlay .start-menu .start-search {
+  height: 38px;
+  gap: 12px;
+  padding: 0 14px 0 22px;
+  border-radius: 19px;
+  border: 1px solid transparent;
+  background: #202020;
+}
+.start-overlay .start-menu .start-search:hover {
+  background: #2a2a2a;
+  border-color: transparent;
+}
+.start-overlay .start-menu .start-search input {
+  font-size: 14px;
+  color: #fff;
+}
+.start-overlay .start-menu .start-search input::placeholder { color: rgb(255 255 255 / 0.45); }
+.start-overlay .start-menu .start-search svg { color: rgb(255 255 255 / 0.6); }
+
+/* ---------- 三栏棋盘 ---------- */
+
+.start-overlay .start-menu .sm-body {
+  display: grid;
+  grid-template-columns: 356px 257px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  align-items: start;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.start-overlay .start-menu .sm-col { min-width: 0; }
+.start-overlay .start-menu .sm-col-a { grid-column: 1; grid-row: 1 / span 3; }
+.start-overlay .start-menu .sm-col-b {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 328px;
+}
+.start-overlay .start-menu .sm-col-b2 { grid-column: 2; grid-row: 2; }
+.start-overlay .start-menu .sm-col-c { grid-column: 3; grid-row: 1; }
+.start-overlay .start-menu .sm-col-c2 { grid-column: 3; grid-row: 2; }
+.start-overlay .start-menu .sm-trend { grid-column: 2 / 4; grid-row: 3; }
+.start-overlay .start-menu .sm-col-c .sm-card,
+.start-overlay .start-menu .sm-col-c2 .sm-card,
+.start-overlay .start-menu .sm-col-b2 .sm-card { height: 100%; }
+
+/* ---------- 分区标题 ---------- */
+
+.start-overlay .start-menu .sm-head {
+  margin: 0 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(255 255 255 / 0.62);
+}
+.start-overlay .start-menu .sm-empty { margin: 4px 2px 8px; }
+.start-overlay .start-menu .sm-flex { flex: 1; }
+
+/* ---------- 左栏：应用行列表（最近使用 + 已固定） ---------- */
+
+.start-overlay .start-menu .sm-recent-list {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 18px;
+}
+
+.start-overlay .start-menu .sm-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  width: calc(100% + 20px);
+  height: 56px;
+  margin-left: -10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition: background 0.12s ease;
+}
+.start-overlay .start-menu .sm-row:hover { background: rgb(255 255 255 / 0.07); }
+.start-overlay .start-menu .sm-row:active { background: rgb(255 255 255 / 0.11); }
+.start-overlay .start-menu .sm-row-icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+.start-overlay .start-menu .sm-row-icon svg { width: 18px; height: 18px; }
+.start-overlay .start-menu .sm-row-name {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 「已固定」沿用既有 .start-grid / .start-app，仅把网格改为竖列表行 */
+
+.start-overlay .start-menu .sm-col-a .start-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.start-overlay .start-menu .sm-col-a .start-app {
+  flex-direction: row;
+  align-items: center;
+  gap: 24px;
+  width: calc(100% + 20px);
+  height: 56px;
+  margin-left: -10px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border-color: transparent;
+}
+.start-overlay .start-menu .sm-col-a .start-app .desktop-icon-tile {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+.start-overlay .start-menu .sm-col-a .start-app .desktop-icon-tile svg { width: 18px; height: 18px; }
+.start-overlay .start-menu .sm-col-a .start-app .desktop-icon-tile img { width: 18px; height: 18px; }
+.start-overlay .start-menu .sm-col-a .start-app-name {
+  max-width: none;
+  font-size: 14px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 字母索引条：置顶贴左，单列分组（列表化后仍可用） */
+
+.start-overlay .start-menu .start-index-wrap { display: flex; gap: 6px; }
+.start-overlay .start-menu .start-index-grid { flex: 1; columns: 1; }
+.start-overlay .start-menu .start-idx-bar {
+  position: sticky;
+  top: 0;
+  flex: none;
+  align-self: flex-start;
+}
+
+/* ---------- 中栏：今日行 + 每日一图 ---------- */
+
+.start-overlay .start-menu .sm-today {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 35px;
+  margin-bottom: 4px;
+  padding: 0 2px;
+}
+.start-overlay .start-menu .sm-today-l { font-size: 15px; font-weight: 600; color: #fff; }
+.start-overlay .start-menu .sm-today-d { font-size: 15px; color: rgb(255 255 255 / 0.55); }
+.start-overlay .start-menu .sm-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-size: 13px;
+  color: rgb(255 255 255 / 0.72);
+}
+.start-overlay .start-menu .sm-me {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+  font: 700 12px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+.start-overlay .start-menu .sm-me:hover { background: rgb(255 255 255 / 0.18); }
+.start-overlay .start-menu .sm-more {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: rgb(255 255 255 / 0.82);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+.start-overlay .start-menu .sm-more:hover,
+.start-overlay .start-menu .sm-more.active { background: rgb(255 255 255 / 0.12); }
+
+.start-overlay .start-menu .sm-hero {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #2f2f2f;
+}
+.start-overlay .start-menu .sm-hero-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.start-overlay .start-menu .sm-hero-art {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 92% at 16% 10%, hsl(var(--hue, 210) 58% 48% / 0.95), transparent 62%),
+    radial-gradient(130% 100% at 84% 90%, hsl(calc(var(--hue, 210) + 46) 54% 40% / 0.9), transparent 60%),
+    linear-gradient(155deg, #1e2c3a, #0e1520);
+}
+.start-overlay .start-menu .sm-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 46%, rgb(0 0 0 / 0.58) 100%);
+}
+.start-overlay .start-menu .sm-hero-cap {
+  position: absolute;
+  z-index: 1;
+  left: 16px;
+  right: 16px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.start-overlay .start-menu .sm-hero-kicker { font-size: 12px; color: rgb(255 255 255 / 0.84); }
+.start-overlay .start-menu .sm-hero-title { font-size: 21px; font-weight: 700; color: #fff; }
+
+/* ---------- 卡片通用 ---------- */
+
+.start-overlay .start-menu .sm-card {
+  background: #2f2f2f;
+  border-radius: 8px;
+  padding: 20px 22px;
+}
+.start-overlay .start-menu .sm-card-head {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: rgb(255 255 255 / 0.88);
+}
+
+/* ---------- 中栏下：热门应用 ---------- */
+
+.start-overlay .start-menu .sm-topapps-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px 12px;
+}
+.start-overlay .start-menu .sm-topapp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+  transition: background 0.12s ease;
+}
+.start-overlay .start-menu .sm-topapp:hover { background: rgb(255 255 255 / 0.07); }
+.start-overlay .start-menu .sm-topapp-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+}
+.start-overlay .start-menu .sm-topapp-icon svg { width: 22px; height: 22px; }
+.start-overlay .start-menu .sm-topapp-icon img { width: 22px; height: 22px; }
+.start-overlay .start-menu .sm-topapp-name {
+  font-size: 12px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 96px;
+}
+
+/* ---------- 右栏上：每日问答 ---------- */
+
+.start-overlay .start-menu .sm-quiz { display: flex; flex-direction: column; }
+.start-overlay .start-menu .sm-quiz-art {
+  display: block;
+  height: 112px;
+  margin: -20px -22px 16px;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+  background: linear-gradient(150deg, #3a4a5c, #1a222b);
+}
+.start-overlay .start-menu .sm-quiz-art img,
+.start-overlay .start-menu .sm-tip-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.start-overlay .start-menu .sm-quiz-head {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: rgb(255 255 255 / 0.6);
+}
+.start-overlay .start-menu .sm-quiz-q {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #fff;
+}
+.start-overlay .start-menu .sm-quiz-opts { display: flex; flex-direction: column; gap: 8px; }
+.start-overlay .start-menu .sm-quiz-note { margin: 12px 0 0; line-height: 1.5; }
+.start-overlay .start-menu .sm-quiz-note.right { color: rgb(150 214 165); }
+
+/* ---------- 胶囊控件 ---------- */
+
+.start-overlay .start-menu .sm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 18px;
+  background: #3e3e3e;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: default;
+  transition: background 0.12s ease;
+}
+.start-overlay .start-menu .sm-chip:hover { background: #4b4b4b; }
+.start-overlay .start-menu .sm-chip.right { background: rgb(88 168 106 / 0.34); }
+.start-overlay .start-menu .sm-chip.right:hover { background: rgb(88 168 106 / 0.42); }
+.start-overlay .start-menu .sm-chip.wrong { background: rgb(196 90 90 / 0.3); }
+.start-overlay .start-menu .sm-chip.wrong:hover { background: rgb(196 90 90 / 0.38); }
+
+/* ---------- 右栏下：今日提示 ---------- */
+
+.start-overlay .start-menu .sm-tip { display: flex; flex-direction: column; }
+.start-overlay .start-menu .sm-tip-art {
+  display: block;
+  height: 148px;
+  margin: -20px -22px 16px;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+  background: linear-gradient(150deg, #35452f, #1a2318);
+}
+.start-overlay .start-menu .sm-tip-head {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: rgb(255 255 255 / 0.6);
+}
+.start-overlay .start-menu .sm-tip-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+.start-overlay .start-menu .sm-tip-note { margin: 0; line-height: 1.5; }
+
+/* ---------- 底部：热门搜索（跨中/右栏） ---------- */
+
+.start-overlay .start-menu .sm-trend {
+  background: #2f2f2f;
+  border-radius: 8px;
+  padding: 16px 22px 18px;
+}
+.start-overlay .start-menu .sm-trend-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.start-overlay .start-menu .sm-trend-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+.start-overlay .start-menu .sm-trend-chip {
+  min-height: 38px;
+  padding: 8px 16px;
+  color: rgb(255 255 255 / 0.92);
+}
+.start-overlay .start-menu .sm-trend-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 窄窗降级：三栏 → 单栏 ---------- */
+
+@media (max-width: 1040px) {
+  .start-overlay .start-menu {
+    width: min(560px, calc(100vw - 24px));
+    padding: 18px 20px 20px;
+  }
+  .start-overlay .start-menu .sm-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .start-overlay .start-menu .sm-col-a,
+  .start-overlay .start-menu .sm-col-b,
+  .start-overlay .start-menu .sm-col-b2,
+  .start-overlay .start-menu .sm-col-c,
+  .start-overlay .start-menu .sm-col-c2,
+  .start-overlay .start-menu .sm-trend {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .start-overlay .start-menu .sm-col-b { min-height: 0; }
+}
+
+/* ---------- 降低动效偏好 ---------- */
+
+[data-reduce-motion="true"] .start-overlay .start-menu .sm-row,
+[data-reduce-motion="true"] .start-overlay .start-menu .sm-topapp,
+[data-reduce-motion="true"] .start-overlay .start-menu .sm-chip {
+  transition: none;
+}

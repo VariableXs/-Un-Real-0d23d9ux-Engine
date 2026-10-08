@@ -1,0 +1,287 @@
+/* Variable — mind map canvas */
+.mindmap-view { flex: 1; display: flex; flex-direction: column; position: relative; min-height: 0; outline: none; }
+.mindmap-view.chooser { align-items: center; justify-content: center; }
+.chooser-card { width: 340px; padding: 22px; border-radius: var(--radius); background: var(--panel-solid); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.mm-toolbar {
+  position: absolute; top: 10px; left: 14px; right: 14px; z-index: 30;
+  display: flex; align-items: center; gap: 3px;
+  background: var(--panel); backdrop-filter: blur(12px);
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px;
+}
+.zoom-pill { font-size: 11.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; padding: 0 6px; }
+.seg { display: inline-flex; background: var(--accent-soft); border-radius: 7px; padding: 2px; gap: 2px; }
+.seg button {
+  border: none; background: transparent; color: var(--text-dim); cursor: pointer;
+  border-radius: 5px; padding: 3px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;
+}
+.seg button.on { background: var(--panel-solid); color: var(--text); }
+.mm-map-name {
+  position: absolute; bottom: 12px; left: 16px; z-index: 30;
+  font-size: 12px; color: var(--text-dim); cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px;
+}
+
+.mm-canvas { flex: 1; position: relative; overflow: hidden; cursor: grab; touch-action: none; outline: none; }
+.mm-canvas.select { cursor: crosshair; }
+.mm-canvas:active { cursor: grabbing; }
+/* Exact viewport anchor: this 0×0 point IS the canvas center at any zoom.
+   screen = canvasCenter + v + world * zoom */
+.mm-origin { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.mm-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+
+/* ---------- grid modes (density adapts via --grid-size) ---------- */
+.mm-world.grid {
+  background-image:
+    linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+}
+.mm-world.grid-dot {
+  background-image: radial-gradient(var(--grid-color) 1.3px, transparent 1.4px);
+  background-size: var(--grid-size) var(--grid-size);
+}
+.mm-world.grid-iso {
+  background-image:
+    linear-gradient(60deg, var(--grid-color) 1px, transparent 1px),
+    linear-gradient(-60deg, var(--grid-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+  background-size: var(--grid-size) calc(var(--grid-size) * 0.58);
+}
+.mm-world.grid-none { background-image: none; }
+[data-theme="paper"] .mm-world.grid {
+  background-image:
+    linear-gradient(to right, rgba(90,80,60,.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(90,80,60,.12) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+}
+
+/* ---------- alignment guides ---------- */
+.align-guide { position: absolute; pointer-events: none; z-index: 800; }
+.guide-v { width: 0; border-left: 1px dashed #6fa8ff; box-shadow: 0 0 4px rgba(111,168,255,.7); }
+.guide-h { height: 0; border-top: 1px dashed #6fa8ff; box-shadow: 0 -2px 4px rgba(111,168,255,.5); }
+.guide-gap {
+  position: absolute; left: 50%; top: -20px; transform: translateX(-50%);
+  font-size: 10px; color: #bcd6ff; background: rgba(30,50,90,.85);
+  border-radius: 4px; padding: 1px 5px; white-space: nowrap;
+}
+.guide-h .guide-gap { top: -22px; }
+[data-theme="paper"] .mm-world.grid {
+  background-image:
+    linear-gradient(to right, rgba(90,80,60,.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(90,80,60,.12) 1px, transparent 1px);
+}
+
+.edge-layer { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.edge-hit { stroke: transparent; fill: none; pointer-events: stroke; cursor: pointer; }
+.edge-flow { stroke-dasharray: 7 7; animation: edgeflow 2.6s linear infinite; }
+@keyframes edgeflow { to { stroke-dashoffset: -28; } }
+
+.mm-node {
+  position: absolute; min-height: 44px; cursor: move;
+  filter: drop-shadow(0 3px 10px rgba(0,0,0,.35));
+  transition: box-shadow .12s;
+}
+.mm-node.editing { cursor: text; z-index: 500 !important; }
+/* Contract-3: plain selection = pure shape + soft glow. NO rectangular
+   bounding box, NO corner handles in this state. */
+.mm-node.selected { filter: drop-shadow(0 0 7px rgba(140,170,255,.45)) drop-shadow(0 3px 10px rgba(0,0,0,.4)); }
+/* Contract-3/5: the dashed bounding box exists ONLY for box-shaped frames
+   (rect/rounded) in deep-edit / free-transform mode. Polygons and circles are
+   pure — no rectangular skeleton is ever rendered around them. */
+.mm-node.boxed::after {
+  content: ""; position: absolute; inset: -3px; border: 1.5px dashed var(--accent);
+  border-radius: inherit; pointer-events: none;
+  opacity: 0; transition: opacity .18s ease;
+}
+.mm-node.boxed.show-box::after { opacity: .9; }
+/* Module-0 forced dismissal: the selection glow, dashed box and vertex handles
+   fade out together over ~200ms instead of snapping away. The ghost node is
+   inert (pointer-events none) while the animation plays. */
+.mm-node.sel-fade {
+  pointer-events: none;
+  filter: drop-shadow(0 3px 10px rgba(0,0,0,.35));
+  animation: selFadeOut .2s ease forwards;
+}
+@keyframes selFadeOut {
+  from { filter: drop-shadow(0 0 7px rgba(140,170,255,.45)) drop-shadow(0 3px 10px rgba(0,0,0,.4)); }
+  to   { filter: drop-shadow(0 3px 10px rgba(0,0,0,.35)); }
+}
+.mm-node.sel-fade.boxed.show-box::after { opacity: .9; animation: selBoxFadeOut .2s ease forwards; }
+@keyframes selBoxFadeOut { from { opacity: .9; } to { opacity: 0; } }
+.mm-node.sel-fade .resize-handle {
+  opacity: .85; pointer-events: none;
+  animation: selHandleFadeOut .2s ease forwards;
+}
+@keyframes selHandleFadeOut { from { opacity: .85; } to { opacity: 0; } }
+.mm-node.locked { cursor: default; }
+.shape-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mm-content {
+  position: relative; z-index: 1; padding: 13px 15px; outline: none;
+  word-break: break-word; overflow-wrap: anywhere; overflow-y: auto; overflow-x: auto;
+  line-height: 1.55;
+  /* Readability contract: explicit high-contrast body color on the dark node
+     fill — never inherit a dark tone over the dark-blue starfield. */
+  color: var(--text, #e8eef7);
+  font-size: max(12px, 1em);
+}
+.mm-content img, .mm-content video { max-width: 100%; border-radius: 6px; display: block; margin-top: 6px; }
+.mm-empty-hint { position: absolute; top: 12px; left: 16px; color: var(--text-dim); opacity: .5; }
+
+.record-badge {
+  position: absolute; top: -9px; right: 8px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; color: var(--bg); background: var(--accent);
+  border: none; border-radius: 10px; padding: 2px 8px; cursor: pointer;
+}
+
+.node-actions {
+  position: absolute; left: 50%; transform: translateX(-50%) translateY(6px); bottom: -34px;
+  display: flex; gap: 2px; z-index: 3; padding: 3px;
+  background: var(--panel-solid); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35);
+  /* Contract-4: hidden by default, fade in/out on lower-half hover */
+  opacity: 0; pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+.node-actions.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+.locked-hint { position: absolute; top: -10px; left: 8px; color: var(--warn); background: var(--panel-solid); border-radius: 8px; padding: 2px; border: 1px solid var(--border); }
+
+/* Handles are mounted while a node stays selected (invisible, inert) so that
+   leaving deep-edit fades them out instead of snapping them away. */
+.resize-handle {
+  position: absolute; z-index: 4;
+  background: var(--accent); border: 1.5px solid #fff; border-radius: 50%;
+  opacity: 0; pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: opacity .15s ease, transform .12s ease;
+}
+.mm-node.show-box .resize-handle { opacity: .85; pointer-events: auto; }
+.resize-handle:hover { opacity: 1; transform: translate(-50%, -50%) scale(1.25); }
+/* Polygon vertex handles (deep-edit / free-transform). */
+.resize-handle.vh { border-radius: 3px; }
+.h-nw { left: 0; top: 0; cursor: nwse-resize; }
+.h-n  { left: 50%; top: 0; cursor: ns-resize; }
+.h-ne { left: 100%; top: 0; cursor: nesw-resize; }
+.h-e  { left: 100%; top: 50%; cursor: ew-resize; }
+.h-se { left: 100%; top: 100%; cursor: nwse-resize; }
+.h-s  { left: 50%; top: 100%; cursor: ns-resize; }
+.h-sw { left: 0; top: 100%; cursor: nesw-resize; }
+.h-w  { left: 0; top: 50%; cursor: ew-resize; }
+
+.marquee { position: absolute; border: 1.5px dashed var(--accent); background: rgba(111,143,216,.08); pointer-events: none; z-index: 400; }
+
+.card-pop { background: var(--panel-solid); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 12px 34px rgba(0,0,0,.45); }
+
+.selection-ops {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 3px; flex-wrap: wrap; justify-content: center;
+  padding: 6px 10px; z-index: 60; max-width: 86%;
+  /* Module-6: the bar's own rectangle must never swallow wheel/pointer events
+     aimed at the canvas — only the buttons themselves are interactive. */
+  pointer-events: none;
+}
+.selection-ops .ops-btn, .selection-ops .icon-btn { pointer-events: auto; }
+.ops-btn { border: none; background: transparent; color: var(--text-dim); cursor: pointer; font-size: 11.5px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+.ops-btn:hover { background: var(--accent-soft); color: var(--text); }
+.ops-btn.danger { color: var(--danger); }
+
+.node-menu, .edge-pop { position: fixed; z-index: 320; width: 240px; padding: 12px; }
+.edge-pop { width: 268px; }
+/* Contract-2: the "more" panel is welded to the screen's top-left corner,
+   fully decoupled from pan/zoom and node position. */
+/* Contract-2/5: the "more" panel and the edge property popover are welded to
+   the screen's client-area top-left corner, fully decoupled from pan/zoom and
+   from node/edge positions. */
+/* Contract-2/5 (rev 2): the "more" panel and the edge property popover are
+   welded to the LITERAL screen top-left corner (top:0; left:0), fully
+   decoupled from pan/zoom and from node/edge positions. */
+.node-menu.pinned-tl, .edge-pop.pinned-tl { left: 0; top: 0; transform-origin: top left; animation: pin-pop .16s ease; }
+@keyframes pin-pop { from { opacity: 0; transform: scale(.96) translateY(-4px); } }
+/* Unified overlay dismissal protocol (module-4): closing fades out over 150ms. */
+.card-pop.closing, .ctx-menu.fading {
+  opacity: 0; transform: scale(.97) translateY(-3px);
+  transition: opacity .15s ease, transform .15s ease;
+  pointer-events: none;
+}
+.nm-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; flex-wrap: wrap; }
+.nm-row:last-child { margin-bottom: 0; }
+.shape-grid { display: grid; grid-template-columns: repeat(8, 24px); gap: 3px; }
+.shape-btn { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--text-dim); cursor: pointer; padding: 0; }
+.shape-btn:hover { background: var(--accent-soft); }
+.shape-btn.active { color: var(--accent); border-color: var(--accent); }
+.swatch-line { display: inline-flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.stepper { display: inline-flex; align-items: center; gap: 6px; }
+.check-line { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
+.check-line.disabled { opacity: .45; }
+.danger-zone { border-top: 1px solid var(--border); padding-top: 9px; }
+
+.quick-find { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 320; display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+.quick-find input { background: transparent; border: none; outline: none; color: var(--text); font-size: 13px; width: 220px; }
+.mm-note { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); z-index: 200; padding: 7px 16px; font-size: 12px; color: var(--text-dim); }
+
+/* ---------- minimap ---------- */
+.minimap {
+  position: absolute; right: 14px; bottom: 14px; z-index: 60;
+  background: var(--panel); backdrop-filter: blur(12px);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease;
+  /* Module-6: wrapper is click-transparent; only the canvas hit area keeps
+     interaction, so wheel/keys near the thumbnail reach the main canvas. */
+  pointer-events: none;
+}
+.minimap.hover { transform: scale(1.35); transform-origin: bottom right; box-shadow: 0 14px 40px rgba(0,0,0,.5); }
+.minimap canvas { display: block; pointer-events: auto; }
+
+/* ---------- inspector (pinned literal top-left per contract-5 rev 2) ---------- */
+.inspector { position: fixed; left: 0; top: 0; z-index: 330; width: 250px; padding: 10px 12px; user-select: none; transform-origin: top left; animation: pin-pop .16s ease; }
+.insp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+.insp-grid label { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-dim); }
+.insp-grid input { width: 100%; min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 12px; padding: 4px 6px; outline: none; }
+.insp-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 11.5px; color: var(--text-dim); flex-wrap: wrap; }
+.insp-row input[type="range"] { width: 110px; accent-color: var(--accent); }
+.preset-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--border); background: transparent; color: var(--text-dim); border-radius: 12px; font-size: 10.5px; padding: 2px 9px; cursor: pointer; }
+.chip:hover { color: var(--text); }
+.chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* ---------- bottom dock ---------- */
+.dock-wrap {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 64px; z-index: 90;
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; pointer-events: none; visibility: hidden;
+  transition: opacity .22s ease, transform .25s ease, visibility 0s linear .3s;
+  transform: translateY(60%);
+}
+.dock-wrap.shown { opacity: 1; pointer-events: auto; visibility: visible; transform: translateY(0); transition-delay: 0s; }
+.dock-bar { display: flex; align-items: center; gap: 3px; padding: 6px 10px; margin-bottom: 12px; background: var(--panel); backdrop-filter: blur(14px); pointer-events: auto; }
+.dock-btn { width: 34px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-dim); border-radius: 7px; cursor: pointer; position: relative; }
+.dock-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--text); }
+.dock-btn:disabled { opacity: .3; cursor: default; }
+.dock-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+
+/* ---------- confirm bubble ---------- */
+.confirm-bubble {
+  position: fixed; z-index: 750; display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; max-width: 300px;
+  animation: toast-in .18s ease;
+}
+.bubble-msg { font-size: 12px; }
+
+/* ---------- status strip ---------- */
+.mm-status { position: absolute; right: 232px; bottom: 14px; z-index: 55; display: flex; align-items: center; gap: 7px; padding: 5px 10px; font-size: 11.5px; color: var(--text-dim); }
+.mm-status .sep { opacity: .5; }
+
+/* ---------- node presets ---------- */
+.mm-node.preset-tech .shape-bg { filter: drop-shadow(0 0 6px rgba(111,168,255,.55)); }
+.mm-node.preset-tech .mm-content { text-shadow: 0 0 8px rgba(140,190,255,.45); }
+.mm-node.preset-modern .shape-bg rect, .mm-node.preset-modern .shape-bg polygon { stroke-width: 1; }
+.mm-node.preset-minimal .shape-bg { visibility: hidden; }
+.mm-node.preset-handdrawn .shape-bg { filter: contrast(1.05) sepia(.15); }
+.mm-node.preset-handdrawn .mm-content { font-style: italic; }
+.mm-node.preset-pixel { image-rendering: pixelated; }
+.mm-node.preset-pixel .shape-bg { shape-rendering: crispEdges; }
+.mm-node.preset-cyber .shape-bg { filter: drop-shadow(0 0 3px rgba(255,80,180,.8)) drop-shadow(0 0 9px rgba(80,220,255,.5)); }
+
+.mm-collapsed-title { position: relative; z-index: 1; display: flex; align-items: center; gap: 6px; padding: 5px 10px; height: 34px; overflow: hidden; }
+.mm-collapsed-title .ellipsis { flex: 1; }

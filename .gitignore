@@ -1,0 +1,128 @@
+# ── 测试产物与归档区（可重建，不入库）────────────────────────────
+# _attic = 测试软件/测试截图归档区（126 个文件 43MB：探测脚本、对比截图、
+# 损坏备份）。保留在本地磁盘，不进版本库。
+# 2026-10-04 起根级 _attic/ 统一排除：每项项目完成后，所有测试/调试/验证的
+# 日志、截图、临时探针、实验产物全部归集到此，按会话或日期分子目录。
+_attic/
+VarixTaskOps/VTaskBoard/_attic/
+VarixTaskOps/VTaskBoard/_tex/
+VarixTaskOps/VTaskBoard/_wehd/
+VarixTaskOps/VTaskBoard/_probe*.py
+VarixTaskOps/VTaskBoard/_probe*.js
+VarixTaskOps/VTaskBoard/_cmp_*
+VarixTaskOps/VTaskBoard/_shot_*
+VarixTaskOps/VTaskBoard/_lv_*
+VarixTaskOps/VTaskBoard/_va_*
+VarixTaskOps/VTaskBoard/_srv_ready
+
+# ── 源码保护红线（2026-10-04，源于 4153 个 .rs 被单提交抹掉的事故）────
+# 负向断言：以下源码路径永不进入忽略规则。任何在此处新增源码目录的忽略项，
+# 都属违反 Variable 明令的源码保护红线。
+# 说明：源码只增不减不移动、不 gitignore——恢复靠的是 git 历史里有一份。
+# 现有 *.exe / *.png 等全局模式已收窄到 VarixTaskOps/ 下（见文件末尾），
+# 避免连带忽略 kernel/ code-analysis/ src-tauri/ 内的资产文件。
+
+# ── 构建产物 ──────────────────────────────────────────────────────
+VarixTaskOps/VTaskBoard/build/
+VarixTaskOps/VTaskBoard/dist/
+VarixTaskOps/VTaskBoard/*.spec
+__pycache__/
+*.pyc
+
+# ── 壁纸 4K 母版缓存（可再生，体积巨大，禁止入库）──────────────────
+# _m4k 580MB + _wetexture 167MB + _exehome 718MB。
+# 全部是 Real-ESRGAN 超分与 NVENC 重编码的**产物**，删掉会自动重算。
+VarixTaskOps/VTaskBoard/_m4k/
+VarixTaskOps/VTaskBoard/_wetexture/
+VarixTaskOps/VTaskBoard/_exehome/
+# 母版原子写中途产物（进程被杀会残留 .part）
+# 2026-10-04 收窄为 VTaskBoard 区（见下方「运行时临时文件」段）
+# Real-ESRGAN 引擎与模型（51MB，外部依赖，可由脚本重建）
+VarixTaskOps/VTaskBoard/_sr/
+# ffmpeg 二进制（15MB，由 VTaskBoard.spec 收集进包）
+VarixTaskOps/VTaskBoard/ffmpeg/
+# exe 本体由 PyInstaller 从 spec 构建
+# 2026-10-04 收窄：原为全局 *.exe，会连带忽略源码树内的可执行资产，
+# 改为仅限 VTaskBoard 构建区。
+VarixTaskOps/VTaskBoard/*.exe
+
+# ── 运行时临时文件 ────────────────────────────────────────────────
+# 2026-10-04 收窄：原 *.lock / *.part 为全局模式。源码入库后，
+# kernel/Cargo.lock、code-analysis/Cargo.lock、user/*/Cargo.lock 会被
+# *.lock 连带忽略——Cargo.lock 是构建可复现性的源码级资产，必须入库。
+*.lock
+# Cargo.lock 是构建可复现性的源码级资产，一处不漏地豁免（含 userspace/
+# svcabin/ launcher/ 等子 workspace）。逐个列举易漏项，改用通配。
+!**/Cargo.lock
+# .part 为母版原子写中途产物（Real-ESRGAN/NVENC），仅限 VTaskBoard 区
+VarixTaskOps/VTaskBoard/*.part
+chromiumerrorsentinel.lock
+Typora_Hook_Log.txt
+
+# ── 大体积本地数据 ────────────────────────────────────────────────
+# taskboard.md 35MB 为本地任务台账，随用随改，不适合入库。
+VarixTaskOps/VTaskBoard/taskboard.md
+
+# ── 用户本地壁纸与素材 ────────────────────────────────────────────
+# 壁纸/贴图/素材为用户本地资产（含 WE 创意工坊派生图），不入库。
+VarixTaskOps/VTaskBoard/wallpapers/
+VarixTaskOps/VTaskBoard/assets/
+VarixTaskOps/VTaskBoard/*.png
+VarixTaskOps/VTaskBoard/*.jpg
+VarixTaskOps/VTaskBoard/*.ico
+VarixTaskOps/VTaskBoard/*.txt
+
+# ── 测试代码（Variable 明令 2026-10-04：GitHub 上只留纯功能源码）────
+# 入库清单已剔除 tests/ fuzz/ benches/（kernel/varix/tests/fuzz.rs、
+# src-tauri/tests/*、src/test/*）。以下规则防止它们被再次提交。
+# 注意：这些文件保留在本地磁盘，只是不进版本库——删掉就没法本地跑测试了。
+kernel/varix/tests/
+src-tauri/tests/
+src/test/
+**/tests/
+**/fuzz/
+**/benches/
+# 测试脚本与探测脚本（过程产物，归 _attic）
+**/test_*.py
+**/*_test.py
+**/*_test.js
+**/probe*.py
+**/probe*.js
+**/*_probe.py
+**/*_probe.js
+scripts/
+tools/
+# 2026-10-04：tools/ 是为排除一次性探针/构建脚本而设的全局规则，
+# 但 VarixAutoPilot2/tools/open_port.py 是**交付功能的一部分**
+#（用户靠它一键开 9222 端口），属源码保护红线里的"源码只增不减"，必须入库。
+# 例外必须写在**这一层**：子目录的 ! 规则无法复活被目录级规则忽略的路径。
+!VarixAutoPilot2/tools/
+!VarixAutoPilot2/tools/open_port.py
+
+# ── 构建产物（可再生，禁止入库）────────────────────────────────────
+# 2026-10-04：源码入库后 target/ 会产生巨量中间产物，必须排除。
+target/
+**/target/
+dist/
+**/dist/
+build/
+**/build/
+node_modules/
+**/node_modules/
+*.iso
+*.img
+*.ppm
+*.dif
+*.fd
+# 内核根级调试产物（QEMU 截屏/串口日志/测试镜像）
+kernel/*.log
+kernel/*.iso
+kernel/*.img
+kernel/*.ppm
+kernel/*.png
+# 测试/调试日志与截图
+*.log
+qemu-*.log
+qs-*.log
+*-shot-*.ppm
+*-shot-*.png
