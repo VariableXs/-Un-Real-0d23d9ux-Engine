@@ -35,7 +35,7 @@
 
 extern crate alloc;
 
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -119,7 +119,22 @@ fn c1613_single(s: &mut CheckSet) {
     );
 
     // ③ 五项判定齐备且与 `Metric::ALL` **同序**（顺序错则报告串行）。
-    let r = st::inspect_mesh(42, &good_stat(), &t).expect("合法网格应出报告");
+    //
+    // 取报告失败（Err）**必须记红而不是 panic** —— 见文件头第 7 条「判据区零
+    // panic 面」：`.expect()` 会让被测实现一改坏，判据自己先崩，症状变成
+    // 「探针无输出」而非「某条判据变红」，变异 harness 只能记 EMPTY，
+    // 真实缺陷（谁把它改坏的）被掩盖。
+    //
+    // 报告提到外层供 ④ 复用（同一份报告既验同序也验「不报警」，
+    // 免得为④ 再取一次报告而两次取值可能不一致）。
+    let r = match st::inspect_mesh(42, &good_stat(), &t) {
+        Ok(rep) => rep,
+        Err(_) => {
+            s.add("五项判定齐备且与枚举同序", false, "inspect_mesh 对合法网格返回 Err");
+            s.add("合格网格不产生高亮", false, "无报告可比（上游 Err）");
+            return;
+        }
+    };
     let mut order_ok = r.verdicts.len() == st::Metric::ALL.len();
     for (i, m) in st::Metric::ALL.iter().enumerate() {
         if i >= r.verdicts.len() {
@@ -153,7 +168,14 @@ fn c1613_single(s: &mut CheckSet) {
         faces: EXP_FACE_CEILING + 1,
         ..good_stat()
     };
-    let rh = st::inspect_mesh(7, &heavy, &t).expect("应出报告");
+    // 取报告失败记红而非 panic（见文件头第 7 条）。
+    let rh = match st::inspect_mesh(7, &heavy, &t) {
+        Ok(r) => r,
+        Err(_) => {
+            s.add("面数超预算判 Over 并高亮", false, "inspect_mesh 对重网格返回 Err");
+            return;
+        }
+    };
     let fv = rh.verdict_of(st::Metric::Faces);
     s.add(
         "面数超预算判 Over 并高亮",
@@ -166,7 +188,13 @@ fn c1613_single(s: &mut CheckSet) {
 
     // ⑥ **压缩率低 → Over**（锚点明列的另一超标项）。
     let low = st::MeshStat { compression_permille: (EXP_COMP_FLOOR - 1) as u32, ..good_stat() };
-    let rl = st::inspect_mesh(8, &low, &t).expect("应出报告");
+    let rl = match st::inspect_mesh(8, &low, &t) {
+        Ok(r) => r,
+        Err(_) => {
+            s.add("压缩率低于下限判 Over", false, "inspect_mesh 对低压缩率网格返回 Err");
+            return;
+        }
+    };
     s.add(
         "压缩率低于下限判 Over",
         rl.verdict_of(st::Metric::CompressionPermille)
@@ -186,7 +214,13 @@ fn c1613_single(s: &mut CheckSet) {
         compression_permille: EXP_COMP_FLOOR as u32,
         ..good_stat()
     };
-    let re = st::inspect_mesh(9, &exact, &t).expect("应出报告");
+    let re = match st::inspect_mesh(9, &exact, &t) {
+        Ok(r) => r,
+        Err(_) => {
+            s.add("恰好等于阈值判 Ok 不判 Over", false, "inspect_mesh 对临界网格返回 Err");
+            return;
+        }
+    };
     let at_vert = re.verdict_of(st::Metric::Vertices).map(|v| v.severity).unwrap_or(st::Severity::Over);
     let at_comp = re
         .verdict_of(st::Metric::CompressionPermille)
@@ -202,7 +236,13 @@ fn c1613_single(s: &mut CheckSet) {
     //
     // 顶点数取警戒线 16 万（上限 20 万的 80%）：未超红线但已到警戒 ⇒ Warn。
     let warn_zone = st::MeshStat { vertices: EXP_VERT_WARN_AT, ..good_stat() };
-    let rw = st::inspect_mesh(10, &warn_zone, &t).expect("应出报告");
+    let rw = match st::inspect_mesh(10, &warn_zone, &t) {
+        Ok(r) => r,
+        Err(_) => {
+            s.add("达警戒线判 Warn（未超红线）", false, "inspect_mesh 对警戒区网格返回 Err");
+            return;
+        }
+    };
     let wv = rw.verdict_of(st::Metric::Vertices).map(|v| v.severity).unwrap_or(st::Severity::Ok);
     s.add(
         "达警戒线判 Warn（未超红线）",
@@ -472,7 +512,13 @@ fn c1613_batch(s: &mut CheckSet) {
     );
 
     // ⑨ 覆盖后项目类型与阈值联动（**报告要能自解释**）。
-    let r_custom = st::inspect_mesh(300, &good_stat(), &t2).expect("应出报告");
+    let r_custom = match st::inspect_mesh(300, &good_stat(), &t2) {
+        Ok(r) => r,
+        Err(_) => {
+            s.add("覆盖后阈值与项目类型联动", false, "inspect_mesh 对覆盖表返回 Err");
+            return;
+        }
+    };
     s.add(
         "覆盖后阈值与项目类型联动",
         t2.project_kind == "tight"
@@ -486,7 +532,13 @@ fn c1613_batch(s: &mut CheckSet) {
     // 面数须给合法值：V=50 时面上界是 2*50-4=96，若沿用 good_stat 的 1800 面
     // 会先被「自相矛盾」拒掉（`expect` 就会panic），压根到不了顶点判定。
     let mid = st::MeshStat { vertices: 50, faces: 80, ..good_stat() };
-    let rm = st::inspect_mesh(301, &mid, &t2).expect("应出报告");
+    let rm = match st::inspect_mesh(301, &mid, &t2) {
+        Ok(r) => r,
+        Err(_) => {
+            s.add("覆盖收紧后原合格网格判超标", false, "inspect_mesh 对收紧表返回 Err");
+            return;
+        }
+    };
     s.add(
         "覆盖收紧后原合格网格判超标",
         rm.verdict_of(st::Metric::Vertices)
@@ -584,10 +636,86 @@ fn c1613_export(s: &mut CheckSet) {
                 body_flagged == 2 && bundle.flagged_lines_containing("WARN").is_empty(),
                 "402 顶点 OVER + 403 压缩率 OVER ⇒ 正文 2 行；401 合格不上正文、404 失败进失败计数",
             );
+
+            // ④-2 **导出的文本本身**必须带口径头，而不是只有结构体字段带。
+            //
+            // 弱门禁警示：上面 ②③ 只断言 `bundle.ruleset` / `self_describing()`
+            // 这些**结构体字段**，而消费方拿到的是 `lines` 里的**文本**。
+            // 只查字段不查文本 ⇒ 把 `lines.push("ruleset="…)` 整行删掉，
+            // 上面 ②③ 全绿，而导出的报告实际已不自解释（这正是E1/E2 变异
+            // 曾 MISS 的原因）。故此处逐条核对文本里真的写了口径头。
+            let want_ruleset = String::from("ruleset=") + &st::RULESET_VERSION.to_string();
+            let want_fp = String::from("thresholds_fp=") + &st::thresholds_fingerprint(&t).to_string();
+            let has_ruleset = bundle.lines.iter().any(|l| l == &want_ruleset);
+            let has_fp = bundle.lines.iter().any(|l| l == &want_fp);
+            let thr_lines = st::Metric::ALL
+                .iter()
+                .filter(|m| {
+                    let want = String::from("thr.") + m.label() + "=" + &t.value_of(**m).to_string();
+                    bundle.lines.iter().any(|l| l == &want)
+                })
+                .count();
+            s.add(
+                "导出文本含口径头（ruleset/指纹/五项阈值）",
+                has_ruleset && has_fp && thr_lines == st::Metric::ALL.len(),
+                "口径头必须出现在导出行文本里：只断言结构体字段会漏掉「文本里没写」这种真缺陷",
+            );
         }
     } else {
         s.add("导出自解释：版本与项目标签齐备", false, "导出失败");
         s.add("导出正文只列异常网格", false, "导出失败");
+    }
+
+    // ④-3 **筛行必须按「段」而非子串** —— 用真实的反例语料钉死。
+    //
+    // 弱门禁警示：`flagged_lines_containing("OVER")` 若从「段以 `:OVER` 结尾」
+    // 退化成「整行含 `:OVER` 子串」，那么一行里只要**任何段**出现 `:OVER`
+    // 就被误命中（例如某段文字是 `note:OVERVIEW`）——子串匹配下它同样以
+    // `:OVER` 开头。现有判据只断「OVER 命中 2 行、WARN 命中 0 行」，
+    // 在子串实现下**同样成立**（子串只会多命中，不会少命中）⇒ 弱门禁。
+    //
+    // 反例语料必须**真的含 `:OVER` 子串**但所在段不以 `:OVER` 结尾：
+    //   `700|note:OVERVIEW`
+    // 含 `:OVER`，段尾是 `OVERVIEW` ≠ `:OVER` ⇒ 段匹配不命中、子串匹配命中。
+    // 再配一条真命中 `701|comp:400:OVER`，双向钉死。
+    if let Ok(bundle) = st::export_report(&b, &t) {
+        let trap = st::ExportBundle {
+            lines: vec![
+                String::from("700|note:OVERVIEW"),
+                String::from("701|comp:400:OVER"),
+            ],
+            thresholds: bundle.thresholds.clone(),
+            ruleset: bundle.ruleset,
+            fingerprint: bundle.fingerprint,
+            project_kind: bundle.project_kind,
+            export_failures: 0,
+        };
+        let hits = trap.flagged_lines_containing("OVER");
+        s.add(
+            "筛行按段不按子串（OVERVIEW 不误命中）",
+            hits.len() == 1 && hits[0].starts_with("701|"),
+            "含 `:OVER` 子串但段尾非 `:OVER` 的行不得命中；段尾为 `:OVER` 的行必须命中",
+        );
+
+        // ④-4 `self_describing()` 必须**真的会因版本不符而拒绝**。
+        //
+        // 弱门禁警示：若把 `self.ruleset == RULESET_VERSION` 这一项从
+        // `self_describing()` 里删掉，它对「版本对不上」的包仍返回 true，
+        // 而现有判据只断「正常包 self_describing()==true」——
+        // 恒返回 true 也能过⇒ 弱门禁。这里用**版本错一位**的包做反向断言。
+        let wrong_ver = st::ExportBundle {
+            lines: bundle.lines.clone(),
+            thresholds: bundle.thresholds.clone(),
+            ruleset: st::RULESET_VERSION + 1,
+            fingerprint: bundle.fingerprint,
+            project_kind: bundle.project_kind,
+            export_failures: 0,
+        };
+        s.add(
+            "版本不符的自解释检查必须拒绝",
+            wrong_ver.self_describing() == false && bundle.self_describing() == true,
+            "ruleset 错一位 ⇒ self_describing 必须为 false（删掉版本核对项会变红）",
+        );
     }
 
     // ⑤ **缺项不导出**（不产出半截报告）。
