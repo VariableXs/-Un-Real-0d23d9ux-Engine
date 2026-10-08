@@ -317,6 +317,8 @@
 //! | [`vev05_checks`] | F4405 域自检（判据五条逐条映射共 23 项五组；**判据侧独立重算**——KEY_SPECS 十条白名单与短码四域与脱敏占位符字面量写死、开放格式以导出回导整档相等断言、回退快照逐字段相等、条数离账自证） | VE 册 #VE-F4405 |
 //! | [`vev06_csconv`] | F4406 色彩空间转换引擎（**空间矩阵库** XYZ 桥三空间 sRGB/Display P3/Rec2020 正逆双定位矩阵、矩阵缺失拒绝转换不臆造 AdobeRgb→None；**双精度**同路径双定位——快速万分位/高精亿分位矩阵+十亿分点、色卡往返实测快速超 8bit 半级承诺物理必然、高精达承诺；**往返断言** O(色卡数) 8 卡最大误差对照容差 39=10000/255、超差强制高精立案；**缓存** FNV 定槽 32 槽条目存转换输出、版本戳失配全表作废非 LRU；**显式缺省**策略结构体 is_default 位不静默 Custom→sRGB；对接 F4403 上游、F4444/F4453 前向声明） | VE 册 #VE-F4406 |
 //! | [`vev06_checks`] | F4406 域自检（判据五条逐条映射共 27 项五组；**判据侧独立重算**——往返误差判据侧逐字复算对账、矩阵正逆与高精元素字面量抽查、容差 39 半级换算自洽、红点跨空间期望 [209,8,4] 判据侧独立模拟、条数离账自证） | VE 册 #VE-F4406 |
+//! | [`vev07_multisync`] | F4407 多屏色彩同步（跨屏一致观感三件：**配置联动**主屏校准单向派生副屏三态 InSync/重算留痕/豁免标注、派生失配逐屏重算是正常工作模式非异常路径；**漂移监测**周期采样对拍只采参数不含内容、阈内记账不告警超阈三通道齐发；**独立豁免**撤销翻位不删记录计数跨撤销累计、反复横跳超频次提示显性不阻止；**告警三通道**读屏行+台账立案+校准建议同一事实三呈现；主流程一 tick 编排、登记值与物理采样两读数源分立；性能联动 O(屏数)/采样 O(1)/告警 O(1)；对接 F4405 上游 F4425/F4426 前向声明） | VE 册 #VE-F4407 |
+//! | [`vev07_checks`] | F4407 域自检（判据五条逐条映射共 27 项六组；**判据侧独立重算**——容差 15/频次限 3/gamma 域 800..=1200/短码四域字面量写死、阈值边界 15/16 对拍防等价变异、豁免反复横跳真实触发频次提示反恒假、两读数源分立验证告警路径可达、条数离账自证） | VE 册 #VE-F4407 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -742,6 +744,8 @@ pub mod vev05_config;
 pub mod vev05_checks;
 pub mod vev06_csconv;
 pub mod vev06_checks;
+pub mod vev07_multisync;
+pub mod vev07_checks;
 pub mod vew01_sdk_arch;
 /// VE-AB · AB01 批次 · AB 域开工与音频总架构（VE-F5601）
 ///
@@ -1081,6 +1085,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F5604", veab04_mixbus_checks::run_veab04_checks()),
         ("VE-F4405", vev05_checks::run_vev05_checks()),
         ("VE-F4406", vev06_checks::run_vev06_checks()),
+        ("VE-F4407", vev07_checks::run_vev07_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
         ("VE-F3203", veq03_handle::run_veq03_checks()),
