@@ -188,6 +188,8 @@
 //! | [`vef10_checks`] | F1008 域自检（判据逐条映射，72 项：合法性矩阵 12 / 压缩比权衡 10 / 快速模式 11 / 拒绝与建议 21 / 元数据部分成功 10 / 门禁自洽 8；变异双向验证 23/23 全捕获） | VE 册 #VE-F1008 |
 //! | [`vef11_wide`] | F1009 PNG 16 位深支持（16 位样本一律网络序大端且读写只有 put_be16/get_be16 两个入口，字节序反了只会画面错不会 panic 故须唯一入口 / 16→8 降转换用 u32 中间量并显式钳位——锚点 `(v+128)>>8` 照搬会错两次：v>=65408 时 u16 回绕使最亮值变0，且满位算出 256 越界；算术与查表两实现在全部 65536 个输入上对拍 / sBIT 有效位按**有效位量程**归一而非盲目 >>8，满位 65280→255 而 255→0，越界块拒块并**按满精度**处理而非按声明值缩放 / 16 位+调色板按规范显性拒绝（宽容处理会让索引图变成能显示的噪声图）/ HDR 交接契约三条冻结，gAMA 联动 F1004 但 16 位定点线性化留给 VE-V） | VE 册 #VE-F1009 |
 //! | [`vef11_checks`] | F1009 域自检（判据逐条映射，64 项：字节序 4 / 往返 6 / 降位 8 / sBIT 17 / 规范禁止 5 / HDR 交接 8 / 性能 5 / 错误与溢出 10 / 判据承载 1；诊断码段双向钉死——在 F1009 专属的 0xF5 段且不在 VE-N F2606 已占的 0x2C 段；解析层越界守卫独立承重，不依赖 resolve_sbit 前置扫描。mod.rs 三处注册的逐字节核对**不在本层**——用常量自造切片再自己核对是自证式，改由独立探针从真 mod.rs 切段后送no_std 校验） | VE 册 #VE-F1009 |
+//! | [`vef12_alpha`] | F1010 PNG 透明度全语义（三形态统一表示：alpha 通道(类型4/6)·调色板 per-entry alpha(类型3)·灰度/真彩色键(类型0/2) / 色键**精确匹配**——差 1 邻值不透明，范围式匹配会把整段亮度抠空 / 混合形态仲裁：tRNS+alpha 共存 ⇒ alpha 优先且 tRNS 忽略**计数告警**，静默是事故 / 错误路径：tRNS 超 PLTE **截断到合法长度并告警**(kept/dropped 留痕)·色键值超位深量程**拒块**·短 tRNS 按 ISO/IEC 15948 §4.3.2.1 缺省项全不透明 / 预乘转换：直通⇄预乘 8/16 位双路径，查表(65536 项)+算术+4 路 lanes 三实现全域逐值对拍；「roundtrip ≤1 LSB」由**精确分子路径**(u32 分子中间量不量化)全域 65536 组**零误差**达成非抽样；u8/u16 量化存储路径的往返上界按 F0625 单向阈值同源口径**实测声明**(127/32767 LSB，低 alpha 段信息量不足属单向区)，判据独立重算双向钉死 / 码段 F1010 独占 0xF6，双向钉死不撞 F1009(0xF5) 与 F2606(0x2C)) | VE 册 #VE-F1010 |
+//! | [`vef12_checks`] | F1010 域自检（判据逐条映射，45 项：形态 7 / 优先级 3 / 精确匹配 4 / 截断 8（含恰超长一项的 off-by-one 边界正例）/ 拒绝 5 / 预乘对拍·精确分子零误差·零alpha约定·量化上界钉死 11 / 渐变质量 4 / 码段与三要素 5 / 判据承载 1；roundtrip 主承载真遍历全域不抽样；色键补差 1 邻值反向断言防范围式匹配；对拍层查表 Err 一律判红不用 unwrap_or 兜底；变异 9 项 8 捕获 + 1 项等价变异留痕（unpremul_num 去舍入对契约内精确分子输入恒等价）） | VE 册 #VE-F1010 |
 //! | [`vef54_aaarch`] | F5401 AA 域网络总架构（传输→会话→复制→玩法四层 + 层间接口逐条冻结不可解冻 + 层间失配只对拍不补偿 + Z 域移交包承接面三落点回溯绑源 + 带宽预算突发上界与帧预算双闸 + 公平判定与时钟负载无关） | VE 册 #VE-F5401 |
 //! | [`vef54_checks`] | F5401 域自检（判据逐条映射，43 项分 a/b/c 三族；变异双向验证 15/17 捕获 + 2 项等价变异留痕） | VE 册 #VE-F5401 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
@@ -440,6 +442,8 @@ pub mod vef10_pngopts;
 pub mod vef10_checks;
 pub mod vef11_wide;
 pub mod vef11_checks;
+pub mod vef12_alpha;
+pub mod vef12_checks;
 pub mod vef54_aaarch;
 pub mod vef54_checks;
 pub mod veg03_checks;
@@ -890,6 +894,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1005", vef05_checks::run_vef05_checks()),
         ("VE-F1008", vef10_checks::run_vef10_checks()),
         ("VE-F1009", vef11_checks::run_vef11_checks()),
+("VE-F1010", vef12_checks::run_vef12_checks()),
         ("VE-F1007", vef07_pngstream_checks::run_vef07_pngstream_checks()),
         ("VE-F1007-stream-a", vef07_checks::run_vef07_checks_a_standalone()),
         ("VE-F1007-stream-b", vef07_checks::run_vef07_checks_b_standalone()),
