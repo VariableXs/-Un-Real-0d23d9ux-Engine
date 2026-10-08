@@ -72,6 +72,7 @@
 //! | [`ved21_blendreg`] | F0621 混合模式规范实现总纲（声称24vs条款18差额逐格登记含未归因项/三路同公式以FormulaId全等判定/条款段号与行号逐条对账/四条横切纪律按族绑定且反装饰/抽样覆盖面位图显性/条目级N/A必带理由/歧义裁决留痕拒空条款号） | VE 册 #VE-F0621 |
 //! | [`ved22_separable`] | F0622 可分离混合模式 12 种（公式单一来源IR三路物化：标量/SIMD宽通道/WGSL文本；dodge与burn除零取值方向相反分档携带无传参错配面；soft-light三段全实现含D分支与连续段夹逼探针；可分离性机器证明=通道置换等变+alpha签名分离；反假变体19/19捕获含4条初测漏网补强） | VE 册 #VE-F0622 |
 //! | [`ved23_nonseparable`] | F0623 不可分离混合模式 4 种（ClipColor 两段正序正反可分辨；SatClip 三分支后两支输出同值故直接断枚举与台账；Lum 权重逐字核对 0.3/0.59/0.11 拒Rec.709；四路同源含独立f64 oracle；顺序契约以双alpha<1语料可测） | VE 册 #VE-F0623 |
+//! | [`ved24_additive`] | F0624 附加混合族（plus-lighter 线性光加法 Co=min(Cs+Cb,1) 预乘 alpha 同步相加；线性前提双层拦截：LinearRgb/SrgbRgb 异类型无隐式转换 + 运行期四层空间断言且诊断码互不遮蔽；自实现 fpow 供 no_std 真内核 sRGB 传输；候选登记三态如实 plus-darker 仅草案；场景登记含高光叠加反例推荐 screen；加法≠源覆盖以 F0622 normal 同语料对拍；反假变体 9/9 捕获含 1 处实测弱门禁补强） | VE 册 #VE-F0624 |
 //! | [`vea20_stencil`] | F0020 深度模板状态机 | VE 册 #VE-F0020 |
 //! | [`vea21_raster`] | F0021 光栅化状态机 | VE 册 #VE-F0021 |
 //! | [`vea22_vlayout`] | F0022 顶点输入布局描述器（声明式偏移推导/编译期签名闸门/对齐修正/规范形去重/A27 位置空间） | VE 册 #VE-F0022 |
@@ -312,6 +313,7 @@ pub mod ved20_closeout;
 pub mod ved21_blendreg;
 pub mod ved22_separable;
 pub mod ved23_nonseparable;
+pub mod ved24_additive;
 
 pub mod vea20_stencil;
 pub mod vea21_raster;
@@ -636,6 +638,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0621", ved21_blendreg::run_ved21_checks()),
         ("VE-F0622", ved22_separable::run_ved22_checks()),
         ("VE-F0623", ved23_nonseparable::run_ved23_checks()),
+("VE-F0624", ved24_additive::run_ved24_checks()),
 
         ("VE-F0020", vea20_stencil::run_vea20_checks()),
         ("VE-F0021", vea21_raster::run_vea21_checks()),
