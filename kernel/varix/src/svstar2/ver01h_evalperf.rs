@@ -896,7 +896,18 @@ impl EvalPipeline {
             // 共享数已由ref_count 统一计，此处不再判"批内第二次"。
             if let Some(hit) = self.cache.get(*n) {
                 prof.hits += 1;
-                values.push((*n, hit.clone()));
+                // ⚠ 命中产出的 `cached` 须置真：`cached` 的契约是
+                // 「true = 本次未重算」，而缓存里存的是建值时快照
+                // （cached=false）。原样 clone 会让命中值永远自称
+                // "实际计算"，下游追踪器（F3409）据此读屏即说谎。
+                values.push((
+                    *n,
+                    EvalValue {
+                        value: hit.value.clone(),
+                        steps: hit.steps,
+                        cached: true,
+                    },
+                ));
                 steps.push(hit.steps);
                 frame_len += 1;
                 if frame_len >= MAX_FRAME_TOKENS {

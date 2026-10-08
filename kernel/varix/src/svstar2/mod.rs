@@ -134,6 +134,7 @@
 //! | [`ver01e_typetree`] | F3405 令牌类型系统（六类封闭全集 + 声明先行校验 + px/rem/ms 显式单位 + 三级降级矩阵 + E17 报告） | VE 册 #VE-F3405 |
 //! | [`ver01f_overlay`] | F3406 令牌覆盖层（四级栈默认→主题→场景→组件 + 读时刻优先级仲裁 + 越级不生效 + 来源审计 + E14 准入报告） | VE 册 #VE-F3406 |
 //! | [`ver01h_evalperf`] | F3408 令牌求值性能（求值缓存依赖图增量重算 + 批量求值流水线 + P95 承诺与告警 + 分帧兜底 + AD06 预算对齐） | VE 册 #VE-F3408 |
+//! | [`ver01i_debugtool`] | F3409 令牌调试工具（令牌检查器双向反查 O(1) 开桶索引 + 求值追踪正向闭包超预算截断留痕 + 覆盖来源视图漂移校准 + X03 会话统一闸） | VE 册 #VE-F3409 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
 //! | [`ver03_arch`] | F3602 创作生态总架构（三层五段+开放格式P0+激励双单源+沙箱复述+收敛两段线） | VE 册 #VE-F3602 |
 //! | [`ver04_arch`] | F3603 创作资产模型（七要素+七类两轴+许可三态+兼容四级+schema两级复用） | VE 册 #VE-F3603 |
@@ -584,6 +585,8 @@ pub mod ver01f_checks;
 pub mod ver01f_overlay;
 pub mod ver01h_checks;
 pub mod ver01h_evalperf;
+pub mod ver01i_checks;
+pub mod ver01i_debugtool;
 pub mod ver02_arch;
 pub mod ver02_checks;
 pub mod ver03_arch;
@@ -838,6 +841,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3406", ver01f_checks::run_ver01f_checks()),
         ("VE-F3408-a", ver01h_checks::run_ver01h_checks_a()),
         ("VE-F3408-b", ver01h_checks::run_ver01h_checks_b()),
+        ("VE-F3409-a", ver01i_checks::run_ver01i_checks_a()),
+        ("VE-F3409-b", ver01i_checks::run_ver01i_checks_b()),
         ("VE-F3601", ver02_arch::run_ver02_checks()),
         ("VE-F3602", ver03_arch::run_ver03_checks()),
         ("VE-F3603", ver04_arch::run_ver04_checks()),
