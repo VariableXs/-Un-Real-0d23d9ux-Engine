@@ -18,6 +18,9 @@ pub mod vcq01_reliability;
 pub mod vcq01_reliability_checks;
 pub mod vcq02_metrics;
 pub mod vcq02_metrics_checks;
+pub mod vco03_triggersrc;
+pub mod vco03_triggersrc_checks;
+//! vco03_triggersrc — CGPU-F2243 降级触发源汇总（七类触发源闭集帧超时/热档/续航档/CGPU 档位/弱网/资源紧张/场景切换/源注册追加式可扩展重复拒/源融合复用 F1459 主源 severity 最高平局取注册序最早确定性/贡献源账升序留痕/0x59xx 五码/12 项域自检）
 //! vcq02_metrics — CGPU-F2562 可靠性模型与指标（五指标闭集 MTBF/MTTR/可用性/RPO/RTO 定义与口径字面量冻结/口径复用/可用性万分比纯算术/目标表版本化不可变/RTO>0 RPO≤RTO 校验双向/V1 三条目钉死/0x58xx 五码/13 项域自检）
 //! vcq01_reliability — CGPU-F2561 Q 域开工与可靠性总架构（恢复起点哲学三条款/P 域移交包 F2557 七件签收/五主题十组映射/五段单向流水线/O 域交接+混沌设施复用/不可恢复=最高缺陷红线+立案码/风险四条预案互异/0x56xx 六码/19 项域自检）
 //! vcl01_virtualarch — CGPU-F1761 L 域开工与虚拟化总架构（域使命三条款平等声明/八主题十组映射/K 域签收+I09 预留兑现/五段单向流水线/复用不重建 1601→1763+1466→1776/模式×合同等级表/场景四族/风险四条预案互异/0x53xx 五码/22 项域自检）
@@ -30,20 +33,23 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
             cgi01_bandwidth_checks::run_cgi01_checks(),
-        crate::checks::CheckSet::merge(
             cgd02_frametimer_checks::run_cgd02_checks(),
+        ),
+        crate::checks::CheckSet::merge(
             vcj01_powerarch_checks::run_vcj01_checks(),
-        ),
-        ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
             cga02_threadpool_checks::run_cga02_checks(),
-            vcl01_virtualarch_checks::run_vcl01_checks(),
+        ),
         ),
         crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
+            vcl01_virtualarch_checks::run_vcl01_checks(),
             vcq01_reliability_checks::run_vcq01_checks(),
+        ),
+        crate::checks::CheckSet::merge(
             vcq02_metrics_checks::run_vcq02_checks(),
+            vco03_triggersrc_checks::run_vco03_checks(),
         ),
         ),
         ),
