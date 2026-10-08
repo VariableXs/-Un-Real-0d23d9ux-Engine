@@ -486,6 +486,8 @@ pub mod vej08_probe;
 pub mod vej08_checks;
 pub mod vej09_ibl;
 pub mod vej09_checks;
+pub mod vej10_lightdbg;
+pub mod vej10_checks;
 pub mod vek04_bloom;
 pub mod vek04_checks;
 pub mod vek05_params;
@@ -790,6 +792,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-J/F1808", vej08_checks::run_vej08_checks()),
         ("VE-J/F1809-a", vej09_checks::run_vej09_checks_a()),
         ("VE-J/F1809-b", vej09_checks::run_vej09_checks_b()),
+        ("VE-J/F1810", vej10_checks::run_vej10_checks()),
 ("VE-F2801", veo01_checks::run_veo01_checks()),
         ("VE-F2802", veo02_vendor_checks::run_veo02_checks()),
         ("VE-F2803", veo03_subset_checks::run_veo03_checks()),
