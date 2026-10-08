@@ -44,6 +44,8 @@
 //! | [`vcq01_reliability_checks`] | CGPU | 磁盘在账模块（注释行待该单负责人补全，先保编译面与聚合面完整） |
 //! | [`vcq02_metrics_checks`] | CGPU | 磁盘在账模块（注释行待该单负责人补全，先保编译面与聚合面完整） |
 //! | [`cgm04_topology_checks`] | CGPU | 磁盘在账模块（注释行待该单负责人补全，先保编译面与聚合面完整） |
+//! | [`vcv01_realverify`] | CGPU-F3361 | V 域开工与真机验收总架构（签收 U10 移交包 F3360 七件逐件对账缺件即空头签收拒；真机验收定位两条款字面量冻结——用手不用测试报告+十五章呼应不另立口径；四段单向流水线 矩阵→判据→走查→报告 跳段/回退/过早报告显性码拒；U10 预告兑现——Bench 分数与验收判据映射表整数口径恰阈值过差一分拒表外未映射拒；V_DOMAIN_TOTAL 160 守恒；0x5Bxx 六码独占） |
+//! | [`vcv01_realverify_checks`] | CGPU-F3361 域自检（13 项六族：RECEIPT2 七件逐件对账+缺件错名反向必拒 / POSITION2 两条款逐字对拍+主证据篡改反向必拒 / PIPE2 四段恰一步全过+跳段回退双向拒与报告终端闸 / FULFILL3 兑现结构核对+映射表逐行独立对拍+恰阈值双向与表外拒 / CODE2 码段 0x5B 独占 !=0x50..0x5C 防自判死+码互异原因非空 / META2 域守恒独立重算+判据条数对账） |
 
 pub mod cga01_simdprim;
 pub mod cga01_simdprim_checks;
@@ -89,6 +91,8 @@ pub mod vcq01_reliability;
 pub mod vcq01_reliability_checks;
 pub mod vcq02_metrics;
 pub mod vcq02_metrics_checks;
+pub mod vcv01_realverify;
+pub mod vcv01_realverify_checks;
 
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
 /// 结构：21 个在账判据集顺序归约（与上方登记一一对应），新单入账在此追加。
@@ -117,5 +121,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     let acc = crate::checks::CheckSet::merge(acc, vcq01_reliability_checks::run_vcq01_checks());
     let acc = crate::checks::CheckSet::merge(acc, vcq02_metrics_checks::run_vcq02_checks());
     let acc = crate::checks::CheckSet::merge(acc, vct01_tbridge_checks::run_vct01_checks());
+    let acc = crate::checks::CheckSet::merge(acc, vcv01_realverify_checks::run_vcv01_checks());
     acc
 }
