@@ -231,6 +231,7 @@
 //! | [`vef11_checks`] | F1009 域自检（判据逐条映射，64 项：字节序 4 / 往返 6 / 降位 8 / sBIT 17 / 规范禁止 5 / HDR 交接 8 / 性能 5 / 错误与溢出 10 / 判据承载 1；诊断码段双向钉死——在 F1009 专属的 0xF5 段且不在 VE-N F2606 已占的 0x2C 段；解析层越界守卫独立承重，不依赖 resolve_sbit 前置扫描。mod.rs 三处注册的逐字节核对**不在本层**——用常量自造切片再自己核对是自证式，改由独立探针从真 mod.rs 切段后送no_std 校验） | VE 册 #VE-F1009 |
 //! | [`vef12_alpha`] | F1010 PNG 透明度全语义（三形态统一表示：alpha 通道(类型4/6)·调色板 per-entry alpha(类型3)·灰度/真彩色键(类型0/2) / 色键**精确匹配**——差 1 邻值不透明，范围式匹配会把整段亮度抠空 / 混合形态仲裁：tRNS+alpha 共存 ⇒ alpha 优先且 tRNS 忽略**计数告警**，静默是事故 / 错误路径：tRNS 超 PLTE **截断到合法长度并告警**(kept/dropped 留痕)·色键值超位深量程**拒块**·短 tRNS 按 ISO/IEC 15948 §4.3.2.1 缺省项全不透明 / 预乘转换：直通⇄预乘 8/16 位双路径，查表(65536 项)+算术+4 路 lanes 三实现全域逐值对拍；「roundtrip ≤1 LSB」由**精确分子路径**(u32 分子中间量不量化)全域 65536 组**零误差**达成非抽样；u8/u16 量化存储路径的往返上界按 F0625 单向阈值同源口径**实测声明**(127/32767 LSB，低 alpha 段信息量不足属单向区)，判据独立重算双向钉死 / 码段 F1010 独占 0xF6，双向钉死不撞 F1009(0xF5) 与 F2606(0x2C)) | VE 册 #VE-F1010 |
 //! | [`vef12_checks`] | F1010 域自检（判据逐条映射，45 项：形态 7 / 优先级 3 / 精确匹配 4 / 截断 8（含恰超长一项的 off-by-one 边界正例）/ 拒绝 5 / 预乘对拍·精确分子零误差·零alpha约定·量化上界钉死 11 / 渐变质量 4 / 码段与三要素 5 / 判据承载 1；roundtrip 主承载真遍历全域不抽样；色键补差 1 邻值反向断言防范围式匹配；对拍层查表 Err 一律判红不用 unwrap_or 兜底；变异 9 项 8 捕获 + 1 项等价变异留痕（unpremul_num 去舍入对契约内精确分子输入恒等价）） | VE 册 #VE-F1010 |
+//! | [`vef25_math`] | F1622 变换数学系统（Lane4 SIMD 就绪四通道 + Mat4 列 lane 存储——乘法直写口径/伴随求逆 O(常数)/转置对合；齐次透视除法 w 近零恰端点拒绝 + 投影结构核对末行齐次位；TRS 分解均匀缩放唯一解、非均匀歧义 NONUNIFORM 显性拒绝；NaN/Inf 双入口拒绝污染不进管线；牛顿迭代纯乘除开方——no_std 无 sqrt 依赖；0x42xx 五码独占互异） | VE 册 #VE-F1622 |
 //! | [`vef54_aaarch`] | F5401 AA 域网络总架构（传输→会话→复制→玩法四层 + 层间接口逐条冻结不可解冻 + 层间失配只对拍不补偿 + Z 域移交包承接面三落点回溯绑源 + 带宽预算突发上界与帧预算双闸 + 公平判定与时钟负载无关） | VE 册 #VE-F5401 |
 //! | [`vef54_checks`] | F5401 域自检（判据逐条映射，43 项分 a/b/c 三族；变异双向验证 15/17 捕获 + 2 项等价变异留痕） | VE 册 #VE-F5401 |
 //! | [`vef55_netmodel`] | F5402 网络分层模型（四层职责册**每层单句**与 F5401 Layer 单源逐位对账；**跨层直调禁止**——依赖（F5401 allowed_deps 编译期）与调用（本条运行期相邻下传）两条纪律正交：越层直调拦截+**归位**改道逐层下传链、向上调用拒绝无归位（反向依赖不给路径）；层职责漂移**对拍修正**（DutyAct 行为归属投影，修正目标=职责册单源）；层间契约**版本拦截**（F5401 冻结之上不静默兼容旧版）；拦截器四路记账 O(1) 每调用） | VE 册 #VE-F5402 |
@@ -765,6 +766,7 @@ pub mod vef21_apifreeze;
 pub mod vef21_checks;
 pub mod vef22_consistency;
 pub mod vef22_checks;
+pub mod vef25_math;
 pub mod vead03_materials;
 pub mod vead03_checks;
 pub mod vew02_manifest;
@@ -916,6 +918,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1617", vef20_checks::run_vef20_checks()),
         ("VE-F1618", vef21_checks::run_vef21_checks()),
         ("VE-F1619", vef22_checks::run_vef22_checks()),
+        ("VE-F1622", vef25_math::run_vef25_checks()),
         ("VE-F6003", vead03_checks::run_vead03_checks()),
         ("VE-F5201", vez01_vfxarch_checks::run_vez01_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
