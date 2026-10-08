@@ -2045,7 +2045,9 @@ pub fn run_ved25_checks() -> CheckSet {
         // 同理，纯内部操作（合成 + 滤波）也必须零台账——上一条只查了
         // internal，这里把四本账全查：合成/滤波若偷偷调了转换函数，
         // 会在 inlet/outlet 上留痕。
-        let mut l3 = ConvLog::new();
+        // `l3` 只被读取（`l3.total()`），不需 `mut`——纯内部操作本就不该
+        // 改动任何台账，`mut` 在这里是「本来可能有写入」的误导性信号。
+        let l3 = ConvLog::new();
         let g = PremulFlow::new();
         let px = Premul::new(0.3, 0.3, 0.3, 0.6);
         let _ = g.composite_over(px, px);
