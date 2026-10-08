@@ -69,6 +69,8 @@
 //! | [`veab02_audioout_checks`] | F5602 域自检（32 项四组：设备表+建档分档边界 9/选举四向+锁定失效 6/切换状态机全路径+预算边界+紧急路径 11/读屏+判据元 6；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F5602 |
 //! | [`veae01_inputarch`] | F6201 输入域总架构（四层：设备抽象/事件/映射/消费——依赖方向 16 对独立重算+**耦合违规拒绝注册**+越权审计留痕（拒绝+记账双动作）；**输入三律**可达/一致/可重绑——声明闭集+判定码 1/2/3 与 **U 域词典第十章同源同判**（前向契约位不复制口径）+**违例整改闭环**（违规史不可抹）；**输入如呼吸**域本色可机检化=**通道零丢帧账**（dropped 恒 0 判据钉死+三账守恒——卡一帧=假一帧）；AD10 承接契约位） | VE 册 #VE-F6201 |
 //! | [`veae01_inputarch_checks`] | F6201 域自检（27 项四组：架构层序+耦合拦截+审计 8/三律声明+同源码+整改闭环 9/通道零丢帧+守恒+红项可达 4/读屏+判据元 6；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F6201 |
+//! | [`vcb01_framegraph`] | CGPU-F0161 帧任务图数据结构（CGPU-B 域首单——一帧渲染工作的图模型：任务节点**六型闭集**（上传/计算/图形/拷贝/合成/呈现——加一型必须改调度器，编译器替架构把关）×五属性（读写集/预算/优先级/截止/队列）+边**四型闭集**（写后读/读后写/写后写/用户显式）三闸校验（自环/端点未知/重复边）；**ID 索引化**下标即句柄 O(1)；**arena 节点池**只分配不下单点释放——帧末整池释放零碎片+双释放拒绝；**图不可变快照**into_snapshot 消费构建器——所有权迁移保证无可变入口（多消费者安全）；帧号关联每帧一图；环检出 Kahn+按型普查+帧预算对账；万节点压测判据） | CGPU 册 #CGPU-F0161 |
+//! | [`vcb01_framegraph_checks`] | CGPU-F0161 域自检（31 项七组：结构全覆盖 4/ID 索引 4/arena 整池+双释放 4/快照语义 4/边三闸 3/环检出双向+普查+预算 4/万节点压测 4/读屏+判据元 4；期望值判据侧独立重算，不变量两头都测） | CGPU 册 #CGPU-F0161 |
 //! | [`ved14_traverse`] | F0614 图层渲染遍历器 | VE 册 #VE-F0614 |
 //! | [`ved15_cache`] | F0615 图层缓存策略 | VE 册 #VE-F0615 |
 //! | [`ved16_scale`] | F0616 大层数性能（虚拟化与扁平化） | VE 册 #VE-F0616 |
@@ -721,6 +723,8 @@ pub mod veab02_audioout;
 pub mod veab02_audioout_checks;
 pub mod veae01_inputarch;
 pub mod veae01_inputarch_checks;
+pub mod vcb01_framegraph;
+pub mod vcb01_framegraph_checks;
 pub mod vef16_gridstat;
 pub mod vef16_checks;
 pub mod vef18_geofuzz;
@@ -824,6 +828,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F5601", veab01_audioarch_checks::run_veab01_checks()),
 ("VE-F5602", veab02_audioout_checks::run_veab02_checks()),
 ("VE-F6201", veae01_inputarch_checks::run_veae01_checks()),
+("CGPU-F0161", vcb01_framegraph_checks::run_vcb01_checks()),
         ("VE-F4602", vew02_manifest::run_vew02_checks()),
         ("VE-F4603", vew03_loader::run_vew03_checks()),
         ("VE-F4604", vew04_sandbox::run_vew04_checks()),
