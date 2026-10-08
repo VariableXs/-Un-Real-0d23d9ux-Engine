@@ -13,6 +13,8 @@
 //! vcq01_reliability — CGPU-F2561 Q 域开工与可靠性总架构（恢复起点哲学三条款/P 域移交包 F2557 七件签收/五主题十组映射/五段单向流水线/O 域交接+混沌设施复用/不可恢复=最高缺陷红线+立案码/风险四条预案互异/0x56xx 六码/19 项域自检）
 //! vcq02_metrics — CGPU-F2562 可靠性模型与指标（五指标闭集 MTBF/MTTR/可用性/RPO/RTO 定义与口径字面量冻结/口径复用/可用性万分比纯算术/目标表版本化不可变/RTO>0 RPO≤RTO 校验双向/V1 三条目钉死/0x58xx 五码/13 项域自检）
 //! cgm01_display —— CGPU-F1921 M 域开工与显示输出总架构（最后一厘米三条款/L 域 F1917 签收七件/五主题十组映射覆盖守恒/五段单向流水线/F1768 贯通+V 域协同/呈现预算合同终端/风险四条预案/0x54xx 七码）
+//! vct01_tbridge —— CGPU-F3041 T 域开工与 VE 对接总架构（S10 移交包七件逐件签收——衔接确认/协议桥梁定位声明=发起VE·执行CGPU·加速而非替代/四段架构闭集 命令·状态·资产·事件/四段→T02-T05 四批区间无缝兑现机检/SessionCtxTag 会话上下文传递不串户=衔接包约定落地/0.1ms 桥路预算在册/0x5Axx 五码）
+//! vct01_tbridge_checks —— CGPU-F3041 域自检（14 项四组：签收 3=七件齐签收+缺件越界必拒重复去重+衔接包会话标签双非零哨兵 / 定位 2=定位三元组逐字在册+信封双校验与 0.1ms 预算恰端点 / 四段 3=闭集名实对应段序4拒+两两互异双证+兑现映射全可查 / 兑现 3=区间无缝首单紧随开工+职责句独立非空+批次名首单号对拍 / 码段 1=0x5A 独占+码互异 / 判据 2=实挂条数实取+名字互异）
 //! cgm02_display —— CGPU-F1922 显示枚举与热插拔（枚举能力快照 id+EDID 指纹+seq 三件齐/去抖 leading-edge 恰端点/竞态=缺陷红线序列号恰一+快照新鲜度/三态单向状态机 mode-set 幂等/批量固定序去重重跑一致/0x5408~0x540C 域段续占互异）
 //! cgm03_edid —— CGPU-F1923 显示能力查询 EDID（EDID1.4 基块解析 8 字节魔数+128 字节校验和 mod 256 硬门/首个 DTD@54 12 位拼装刷新率毫赫兹 u64 中间量防溢出 14850×10^7÷(2200×1125)=60000mHz 手算对账/CTA-861 扩展 YCbCr422·444 与 HDR 静态元数据 0xE6/损坏三向显性码拒+截断降级读出不虚构/能力缓存 display_id+指纹双键失效重读/能力投影纯裁剪诚实红线/覆盖白名单台账表外拒绝不突变/0x540D~0x5412 续占互异）
 //! | [`cga01_simdprim`] | CGPU-F0001 | SIMD 栅格化基元库（矩形/渐变/圆角/椭圆/三角/搬运/混合 12 式，掩码裁剪零写穿，GPU 对拍仅舍入，基准入 CGPU-Bench） |
@@ -59,6 +61,8 @@ pub mod cgi01_bandwidth;
 pub mod cgi01_bandwidth_checks;
 pub mod cgm01_display;
 pub mod cgm01_display_checks;
+pub mod vct01_tbridge;
+pub mod vct01_tbridge_checks;
 pub mod cgm02_display;
 pub mod cgm02_display_checks;
 pub mod cgm03_edid;
@@ -112,5 +116,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     let acc = crate::checks::CheckSet::merge(acc, vco03_triggersrc_checks::run_vco03_checks());
     let acc = crate::checks::CheckSet::merge(acc, vcq01_reliability_checks::run_vcq01_checks());
     let acc = crate::checks::CheckSet::merge(acc, vcq02_metrics_checks::run_vcq02_checks());
+    let acc = crate::checks::CheckSet::merge(acc, vct01_tbridge_checks::run_vct01_checks());
     acc
 }
