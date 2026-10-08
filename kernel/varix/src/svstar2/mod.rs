@@ -185,6 +185,8 @@
 //! | [`vec20_checks`] | F0420 域自检（判据逐条映射，56 项） | VE 册 #VE-F0420 |
 //! | [`vec21_parser`] | F0421 语法分析器架构（递归下降手写分析器选型留痕含被拒策略逐条理由 / 记号流前瞻窗口 k=2 不回扫由消费水位结构性保证并可变异体验证 / 解析只产生动作 AST 构建降为可替换消费者且回调拒绝被隔离不影响状态机 / 解析深度上限超限报嵌套源头而非当前位置 / 文法派生表 FIRST-FOLLOW 规范期拦截歧义且可前缀分解不误拦 / 诊断码锚点引用 F0420 移交两条可机检下游动作兑现） | VE 册 #VE-F0421 |
 //! | [`vec21_checks`] | F0421 域自检（判据逐条映射，78 项：选型决策 14 / 前瞻窗口 10 / 动作分离 11 / 深度防护 13 / 锚点引用 8 / 文法冲突 10 / 性能 6 / 进度保底 6） | VE 册 #VE-F0421 |
+//! | [`vec22_ast`] | F0422 AST 节点定义与 arena 池（节点类型全集按声明/语句/表达式三大族+ 根承载体分族且分族直接决定arena 分桶 / 同族节点连续布局由「单一Vec 桶 + 尾部 +1 bump」结构性保证并以连续段实测而非信任设计 / 无单节点释放入口使零碎片在API 层无可写代码且父指针是桶下标故整池释放后取节点走 Err 而非悬垂 / 节点版本登记簿与实现全集集合相等且版本号严格递增倒退即拒 / 骨架20 条产生式映射全覆盖未登记产生式显性计数不回退默认类型 / 跨度缺失按锚点降级标注而非阻断） | VE 册 #VE-F0422 |
+//! | [`vec22_checks`] | F0422 域自检（判据逐条映射，64 项：三大族 10 / arena 连续 8 / 一次释放 7 / 版本登记 9 / 错误路径与边界 19 / 上游对接 8 / 门禁自洽 3；变异双向验证 14/15全捕获，未捕获项由编译期数组长度声明在类型层拦截） | VE 册 #VE-F0422 |
 //! | [`ves04_flow`] | F3604 创作工作流引擎（DAG 契约复用 F3005+ 三预置流 + 断点续作 + 沙箱 + 驱动协议） | VE 册 #VE-F3604 |
 //! | [`ves04_checks`] | F3604 域自检（判据逐条映射，55 项分两批落集） | VE 册 #VE-F3604 |
 //! | [`vez50_arch`] | F5001 Y 域开工与场景图脚本总架构（四层设计→词法→语法→运行时，层间接口冻结；脚本为人写= 可读性优先于机巧，诊断须带源位置与人话建议；承接 X 域 F4993 十件移交包三承接面，缺件回溯源头件号；层间失配→对拍、接口越权→冻结流程） | VE 册 #VE-F5001 |
@@ -287,6 +289,8 @@ pub mod vec20_checks;
 pub mod vec20_closure;
 pub mod vec21_checks;
 pub mod vec21_parser;
+pub mod vec22_ast;
+pub mod vec22_checks;
 pub mod ved01_checks;
 pub mod ved01_tree;
 pub mod ved02_checks;
@@ -620,6 +624,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0419", vec19_checks::run_vec19_checks()),
 ("VE-F0420", vec20_checks::run_vec20_checks()),
 ("VE-F0421", vec21_checks::run_vec21_checks()),
+("VE-F0422", vec22_checks::run_vec22_checks()),
         ("VE-F0601", ved01_checks::run_ved01_checks()),
         ("VE-F0602", ved02_checks::run_ved02_checks()),
         ("VE-F0603", ved03_checks::run_ved03_checks()),
