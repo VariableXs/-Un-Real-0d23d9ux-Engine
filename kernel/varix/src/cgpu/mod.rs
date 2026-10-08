@@ -64,6 +64,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
             crate::checks::CheckSet::merge(
             crate::checks::CheckSet::merge(
             cgm01_display_checks::run_cgm01_checks(),
+            cgr01_secure_checks::run_cgr01_checks(),
             crate::checks::CheckSet::merge(
             cgm02_display_checks::run_cgm02_checks(),
             vco01_degrade_checks::run_vco01_checks(),
