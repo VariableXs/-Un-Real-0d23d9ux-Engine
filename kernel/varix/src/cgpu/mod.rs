@@ -16,6 +16,9 @@ pub mod vcl01_virtualarch;
 pub mod vcl01_virtualarch_checks;
 pub mod vcq01_reliability;
 pub mod vcq01_reliability_checks;
+pub mod vcq02_metrics;
+pub mod vcq02_metrics_checks;
+//! vcq02_metrics — CGPU-F2562 可靠性模型与指标（五指标闭集 MTBF/MTTR/可用性/RPO/RTO 定义与口径字面量冻结/口径复用/可用性万分比纯算术/目标表版本化不可变/RTO>0 RPO≤RTO 校验双向/V1 三条目钉死/0x58xx 五码/13 项域自检）
 //! vcq01_reliability — CGPU-F2561 Q 域开工与可靠性总架构（恢复起点哲学三条款/P 域移交包 F2557 七件签收/五主题十组映射/五段单向流水线/O 域交接+混沌设施复用/不可恢复=最高缺陷红线+立案码/风险四条预案互异/0x56xx 六码/19 项域自检）
 //! vcl01_virtualarch — CGPU-F1761 L 域开工与虚拟化总架构（域使命三条款平等声明/八主题十组映射/K 域签收+I09 预留兑现/五段单向流水线/复用不重建 1601→1763+1466→1776/模式×合同等级表/场景四族/风险四条预案互异/0x53xx 五码/22 项域自检）
 //! cga02_threadpool —— CGPU-F0002 渲染线程池与工作窃取调度器（池规模核数减二/合成器专核隔离/同层优先窃取偷头不偷尾/瓦片独立缓冲确定性归并乱序逐像素一致/协作式 2ms 让位抢占三档优先/均衡≤5%/遥测三面/窃取开销≤3%账面/0x39xx 域码段）
@@ -34,10 +37,13 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ),
         ),
         crate::checks::CheckSet::merge(
-            cga02_threadpool_checks::run_cga02_checks(),
         crate::checks::CheckSet::merge(
+            cga02_threadpool_checks::run_cga02_checks(),
             vcl01_virtualarch_checks::run_vcl01_checks(),
+        ),
+        crate::checks::CheckSet::merge(
             vcq01_reliability_checks::run_vcq01_checks(),
+            vcq02_metrics_checks::run_vcq02_checks(),
         ),
         ),
         ),
