@@ -19,8 +19,6 @@ pub mod vcj01_powerarch;
 pub mod vcj01_powerarch_checks;
 pub mod cga02_threadpool;
 pub mod cga02_threadpool_checks;
-pub mod cgr01_secure;
-pub mod cgr01_secure_checks;
 pub mod vcl01_virtualarch;
 pub mod vcl01_virtualarch_checks;
 pub mod vcq01_reliability;
@@ -42,25 +40,21 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
             ),
             crate::checks::CheckSet::merge(
                 vcj01_powerarch_checks::run_vcj01_checks(),
-                crate::checks::CheckSet::merge(
-                    cga02_threadpool_checks::run_cga02_checks(),
-                    vcl01_virtualarch_checks::run_vcl01_checks(),
-                ),
+                cga02_threadpool_checks::run_cga02_checks(),
             ),
         ),
         crate::checks::CheckSet::merge(
+            vcl01_virtualarch_checks::run_vcl01_checks(),
             crate::checks::CheckSet::merge(
                 vcq01_reliability_checks::run_vcq01_checks(),
-                vcq02_metrics_checks::run_vcq02_checks(),
-            ),
-            crate::checks::CheckSet::merge(
-                cgm01_display_checks::run_cgm01_checks(),
                 crate::checks::CheckSet::merge(
-                    cgm02_display_checks::run_cgm02_checks(),
-                    cgr01_secure_checks::run_cgr01_checks(),
+                    vcq02_metrics_checks::run_vcq02_checks(),
+                    crate::checks::CheckSet::merge(
+                        cgm01_display_checks::run_cgm01_checks(),
+                        cgm02_display_checks::run_cgm02_checks(),
+                    ),
                 ),
             ),
         ),
-    ),
+    )
 }
-
