@@ -146,6 +146,8 @@
 //! | [`vep04_checks`] | F3004 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3004 |
 //! | [`vep05_orch`] | F3005 转场编排器（DAG 三边型+四原语+打断三策略+嵌套上限 8+统一 reduce） | VE 册 #VE-F3005 |
 //! | [`vep05_checks`] | F3005 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3005 |
+//! | [`vep07_compose`] | F3007 动效组合与编排图（三模式编译规则+compose DSL 冻结+属性冲突仲裁+整体 reduce 坍缩+图单源） | VE 册 #VE-F3007 |
+//! | [`vep07_checks`] | F3007 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3007 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
 //! | [`veq03_handle`] | F3203 资源句柄与生命周期（类型化句柄+五态弧表+计数与图双源对账+分代GC与误收P1红线） | VE 册 #VE-F3203 |
@@ -553,6 +555,8 @@ pub mod vep04_checks;
 pub mod vep04_stack;
 pub mod vep05_checks;
 pub mod vep05_orch;
+pub mod vep07_checks;
+pub mod vep07_compose;
 pub mod veq01_checks;
 pub mod veq01_pipeline;
 pub mod veq02_checks;
@@ -645,7 +649,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 252] = [
+    let blocks: [(&'static str, CheckSet); 254] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -860,6 +864,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3004-b", vep04_checks::run_vep04_checks_b()),
         ("VE-F3005-a", vep05_checks::run_vep05_checks_a()),
         ("VE-F3005-b", vep05_checks::run_vep05_checks_b()),
+        ("VE-F3007-a", vep07_checks::run_vep07_checks_a()),
+        ("VE-F3007-b", vep07_checks::run_vep07_checks_b()),
         ("VE-F4002", vei02_checks::run_vei02_checks()),
         ("VE-F4003", vei03_checks::run_vei03_checks()),
         ("VE-F4004", vei04_checks::run_vei04_checks()),
