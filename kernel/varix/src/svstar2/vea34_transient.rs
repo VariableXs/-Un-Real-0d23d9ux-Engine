@@ -968,8 +968,18 @@ pub fn run_vea34_checks() -> CheckSet {
                 && !z2.conflicts(&z2)
                 && !z2.conflicts(&c)
                 // 零时长票据不「活跃」，但也不冲突（瞬时分配合法）
-                && !a.active_at(0),
-            "半开区间 [first_touch,release)：端点相接不冲突；零时长（两种形态）对任何区间都不冲突",
+                && !a.active_at(0)
+                // 零时长区间**落在活跃区间内部**（此前语料只覆盖了相离与端点
+                // 相接两种位置）。变异 M02（`||` 改 `&&`）在相离语料下依旧
+                // 返回 false——只有把零时长区间放进活跃区间内部，[12,12) 与
+                // [10,20) 才真正重叠，早退失效后 `12<20 && 10<12` 才会
+                // 误判为冲突。此处补该位置，闸门才有牙。
+                && !Liveness::new(12, 12).conflicts(&a)
+                && !a.conflicts(&Liveness::new(12, 12))
+                // 反向：畸形零时长（release < first_touch）置于活跃区间内部
+                && !Liveness::new(18, 11).conflicts(&c)
+                && !c.conflicts(&Liveness::new(18, 11)),
+            "半开区间 [first_touch,release)：端点相接不冲突；零时长（两种形态）对任何区间都不冲突（含置于活跃区间内部）",
         );
     }
 
@@ -1383,6 +1393,36 @@ pub fn run_vea34_checks() -> CheckSet {
             "A34-块粒度-向上取整到粒度整数倍",
             ok,
             "分配尺寸向上取整到 256 字节粒度，取整结果必为粒度倍数且不小于请求",
+        );
+    }
+
+    // --- 判据 14b：零字节请求的块字节数必须为 0（**不得**返回一整块） --------
+    //
+    // `block_bytes()` 是 `pub const fn`、`AllocRequest::transient` 也是 pub
+    // 构造器 ⇒ 「零字节请求」这条**公开可达**的输入不能只靠 `allocate`
+    // 里的 `bytes == 0 ⇒ Rejected` 兜底：那只保护走分配路径的调用方，
+    // 直接问 `block_bytes()` 的人仍会拿到 256。
+    //
+    // 变异实测（M19：删掉零字节提前返回）**杀不死**本模块既有任何判据，
+    // 即该口径此前无门禁。此处补三要件：
+    //   ① 零字节 ⇒ 块字节 0（不是一整块）；
+    //   ② 负向：1 字节 ⇒ 恰好一整块（证明 ① 不是「恒返回 0」的假通过）；
+    //   ③ 恒等式 `block_bytes() % g == 0 && block_bytes() >= bytes`
+    //      对零字节同样成立（0 是 g 的倍数且不小于 0）。
+    {
+        let zero = AllocRequest::transient(900, 0, Liveness::new(0, 1));
+        let one = AllocRequest::transient(901, 1, Liveness::new(0, 1));
+        let zp = AllocRequest::persistent(902, 0, Liveness::new(0, 1));
+        let zero_is_zero = zero.block_bytes() == 0;
+        let zero_persist_is_zero = zp.block_bytes() == 0;
+        // 反证：非零输入仍须正常取整 ⇒ 「恒返回 0」骗不过这条
+        let one_is_one_block = one.block_bytes() == BLOCK_GRANULARITY;
+        let identity_holds = zero.block_bytes() % BLOCK_GRANULARITY == 0
+            && zero.block_bytes() >= zero.bytes;
+        s.add(
+            "A34-块粒度-零字节请求块字节为0且非零仍取整",
+            zero_is_zero && zero_persist_is_zero && one_is_one_block && identity_holds,
+            "零字节请求的块字节数必须为 0（公开可达口径，不靠分配路径兜底）；1 字节仍取整为一整块",
         );
     }
 
