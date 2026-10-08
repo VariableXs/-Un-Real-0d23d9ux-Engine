@@ -288,6 +288,10 @@
 //! | [`vee16_checks`] | F0816 域自检（五族判据逐条映射 + 码段承载：契约/协商/限额/协议/金样；每条红线配反向用例——FatBackend 内存虚报被闸、FaultyBackend 崩溃被兜底、FakeAa 档位二值被金样抓、残缺四要素被全域门槛拒、ban 名单再注册被拒；协商边界 64px 含等与 2ms 恰等不摘双侧钉死） | VE 册 #VE-F0816 |
 //! | [`vee17_textapi`] | F0817 文字渲染 API（三函数十年冻结的**机制化**：签名落成规范化文本 SIGNATURE_TEXTS 做 FNV-1a 指纹，判据侧独立写死对拍——签名漂移含参数名都必红；扩展只走 options 结构体追加字段；MeasureText 只读不缓存纯函数语义、异步模式句柄 ticket=请求指纹、超时降级置低置信不阻塞 UI 帧；RenderText 幂等由规范化内容指纹保证——同参数重复提交收据全等，text_hash 纳入指纹使内容失敏必被抓；CacheControl 图集预热/清理/水位查询，全量拒绝不做部分预热；错误契约四段编码/字体/缓存/管线七码独占 0x17 细分段、呈现三要素码|原因|建议；废弃双轨渐弃 legacy_glow 保留+计数告警+两版本倒计时公示） | VE 册 #VE-F0817 |
 //! | [`vee17_textapi_checks`] | F0817 域自检（25 条判据两族：规格+边界+幂等 18 / 降级+判据承载力 7；度量手算对拍 500‰×10px×2=640 判据侧独立重算；四段错误码逐段可达断言；签名指纹独立第二实现对拍；幂等-02 逐字段变异扫指纹敏感性；水位 969/970 恰边界两侧翻面；判据-03 聚合防自调——只调不递归的 A 族+进行中 set 自身 tally、族条数判据侧写死，族内调本族/全域入口即自我递归栈溢出（F0817 首版实测），守恒断言归 CI 探针层） | VE 册 #VE-F0817 |
+//! | [`vee18_ncontract`] | F0818 与 N 域消费契约（F0813 号测量契约的兑现闭环：契约自带全套类型 FontRef/ContractParams/ContractRequest/ContractResponse——N 侧构建单元 import 不到 vee17/vee08 任何实现类型，类型所有权即「只依赖契约不依赖实现」的载体，EngineBackend 单向适配可整体替换（Stub 后端同路径驱动即证）；契约哈希双端同败——E 侧 const 哈希对 N 侧独立写死文本重算，PROVIDER_GATE/N_GATE 两条 const 闸任一漂移双端同时编译红+运行期复核；精度 1/64px 网格舍入方向钉死 advance/行高上取整边界下取整（布局保守不低估/内容内收不高估）；失败语义超时保守估算+low_confidence 帧不阻塞；超时率 >0.1% 严格大于触发评审线；开销模型 2000ns 预算记账；兑现声明四条逐条应答证据值与常量判据对账） | VE 册 #VE-F0818 |
+//! | [`vee18_checks`] | F0818 域自检（闭环/兑现声明/四条内容/双端哈希/可替换后端 + 量化方向钉死 50→64/0 与 120→128/64 四向 + 超时 16ms 恰边界翻面 + 评审线严格大于 + 参数闸/后端故障双路 + 幂等句柄/响应/簇映射手算 A
+//! | [`vcf01_gpucompat`] | CGPU-F0801 F 域开工与兼容矩阵方法论（铁律 8 域级兑现做成**类型闸**——CertEvidence 携带实机测试凭据 suite_run 与文档声明标记 doc_claim_only，certify 入口对 doc_claim_only 直接拒绝 C_VCF01_UNVERIFIED，「凭文档声明」在类型上进不了认证状态机；六主题封闭表（Intel 核显全系/AMD RX 系/认证流程/能力探测/驱动差异表/回归矩阵）与十组规划（F01 认证体系/F02-F04 Intel/F05-F06 AMD/F07 驱动差异/F08 回归矩阵/F09 场景扩展/F10 域收口）各自守恒可审计；D08 分工契约结构化——D08 出考卷与判定、本域出考生与成绩，职责集互斥+接口点齐备双向交接 verify 断言，越界 C_VCF01_D08_OVERLAP 可观测） | VE 册 #CGPU-F0801 |
+//! | [`vcf01_gpucompat_checks`] | CGPU-F0801 域自检（13 条判据两族：规格+铁律+分工+规划 13 / 判据承载力 4；六主题封闭与组号连续判据侧独立重算、铁律三态闸——文档声明拒认证/未实测显性 Uncertified/实机凭据 Certified、D08 越界拒绝与接口点齐备闸、域段 801-960 恰 160 单守恒、码段 0x9F 独占、零 panic 自扫、聚合防自调） | VE 册 #CGPU-F0801 |
 //! | [`veb226_mpo`] | F0226 Intel MPO 协商（**协商是逐 plane 对表不是整体开关**：主 plane/SPR/CUR 层级口径同源 F0225，逐 plane 结论+原因同落结果（输出×plane 配置×原因），O(plane×输出) 协商、缓存后 O(1)；**缓存脏只认现实变了**——有效性锚在模式×热插拔纪元两个现实量上，不认时间戳（没发生的切换不打翻缓存，发生的必须打翻）；**兜底「常备并验证」四字全硬**：单 plane 合成路径构造即建不走动态加载（故障路径上不叠故障点），构造即跑四类金丝雀逐点验证；**降级通知三要素与 F0103 同构**（what/why/next 逐类齐备），合并限频留给 F0103——源头限频丢事件连回溯原料都没有；整数交叉相乘判缩放（恰 2x 夹逼合格）、越界输出拒绝不钳制不 panic、no_std 零 std 依赖） | VE 册 #VE-F0226 |
 //! | [`veb227_mediacaps`] | F0227 Intel 媒体引擎能力位（**缺席与读取失败是两种病两种治法**：实例数 0 标记缺席不假设存在（把缺席当未测是能力位撒谎第一形式）、读取失败按代际保守下限并标注 ConservativeFloor（Gen9 下限里 H264 确定有的，读失败说没有是撒谎第二形式）、未知编解码不宣称（宣称是枚举出来的不是缺省出来的）；能力矩阵九格按 GenTier 查表且**口径逐字同源 F0221「Baseline 新特性位一律不给」**——基线档不给 AV1，按最优批给承诺等于让下位机用户踩空；下限表独立重排九格逐格对账、宣称不得超表；探测一次性重复拒绝（能力读数不许抖动）、查询 O(1) 常驻缓存；只读视图无写入口且范围红线随视图走——不做编解码本体，能力位虚报让媒体栈在不存在能力上建大厦、本体混入让探测路径背上编解码复杂度，两头堵死） | VE 册 #VE-F0227 |
 //! | [`veb230_firmstate`] | F0230 Intel 固件接口只读状态（GuC/HuC 加载状态与运行统计**只读采集**——只读红线是**结构性**的：寄存器银行按共享引用消费、类型上无写路径无内部可变性，判据用「采集前后银行 FNV 摘要逐位不变」把红线变成可运行断言（判据侧独立重算 FNV 对拍防恒真）；加载态闭集四态解码，全 1 读取失败/魔数不符按**缺测**不按「未加载」——缺测与未加载是两种病混报即撒谎；**降级只由 GuC 失败触发**：GuC 承担提交调度、失败降级 EXECLISTS 直通（与 F0224 ELSP 队头直入同语义）并出 F0103 三要素通知（复用 F0212 DegradeNotice 契约），HuC 服务媒体/功耗、失败只标注不牵连提交；通知边沿触发不随周期刷屏、切换 O(1) 计次可观测；统计异常**如实呈现不修数**——倒退/越界/回绕原值保留（修数即销毁下游 F0235 漂移检测的事实来源），异常容量上界满即截断如实标记；缺测绝不编值补位；诊断码独占 0x3Dxx 段五码、桥接单射可溯源；采集 O(1) 固定寄存器数×固定比较数） | VE 册 #VE-F0230 |
@@ -781,6 +785,10 @@ pub mod vee16_textext;
 pub mod vee16_checks;
 pub mod vee17_textapi;
 pub mod vee17_textapi_checks;
+pub mod vee18_ncontract;
+pub mod vee18_checks;
+pub mod vcf01_gpucompat;
+pub mod vcf01_gpucompat_checks;
 pub mod veb226_mpo;
 pub mod veb227_mediacaps;
 pub mod veb230_firmstate;
@@ -1110,6 +1118,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0815", vee15_perf::run_vee15_checks()),
         ("VE-F0816", vee16_checks::run_vee16_checks()),
 ("VE-F0817", vee17_textapi_checks::run_vee17_checks()),
+        ("VE-F0818", vee18_checks::run_vee18_checks()),
+        ("CGPU-F0801", vcf01_gpucompat_checks::run_vcf01_checks()),
         ("VE-F0226", veb226_mpo::run_veb226_checks()),
         ("VE-F0227", veb227_mediacaps::run_veb227_checks()),
         ("VE-F0230", veb230_checks::run_veb230_checks()),
