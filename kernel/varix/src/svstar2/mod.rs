@@ -119,6 +119,8 @@
 //! | [`ven05_checks`] | F2605 域自检（判据逐条映射，56 项分两批落集） | VE 册 #VE-F2605 |
 //! | [`ven06_incr`] | F2606 控件树增量更新（精确失效/帧边界批处理/三分发/双树增量同步；溢出强制提交+错路逐条审计；缺失目标绝不退化全树） | VE 册 #VE-F2606 |
 //! | [`ven06_checks`] | F2606 域自检（判据逐条映射，70 项分两批落集；变异双向验证 22/22 全捕获——含三位全占拆分、脏掩码整条丢弃、缺失目标不退化全树、溢出强制提交正向计数四条，实测补自「两条拆分与三条拆分是不同形态」「纯脏掩码下守卫摘与不摘外部表现相同」「两个入口各写一份兜底」「负向断言不覆盖正向计数」四处弱门禁） | VE 册 #VE-F2606 |
+//! | [`ven07_serde`] | F2607 控件树序列化（四段 schema：节点/属性/绑定/模板引用；四重校验逐重独立结论且inspected==0 时不作数；诊断码独占 0x2D 段且基数低位留空给序号；模板引用缺失进清单并出非阻断告警、节点照常建树；往返三条断言逐位+分段+子序；版本链 v1→v2 幂等迁移，属性类型唯一来源是 F2604 键规格） | VE 册 #VE-F2607 |
+//! | [`ven07_checks`] | F2607 域自检（95 项分 a/b 两族：a=结构/四重/JSON/模板 38 项，b=往返/迁移/审计/性能/对接/无障碍/隐私/分工 57 项；变异双向验证 5/5 全捕获——含属性段被写入顺序影响、颜色线缆值差一、hex 输出变大写、码段基数带低位、hex 解析吞掉末位五个） | VE 册 #VE-F2607 |
 //! | [`ver01_arch`] | F3401 令牌运行时架构（四件两律总纲） | VE 册 #VE-F3401 |
 //! | [`ver01b_parser`] | F3402 令牌解析器（JSON/TOML 双格式 + 引用 DAG + 迭代 DFS 环检测 + 断链三要素） | VE 册 #VE-F3402 |
 //! | [`ver01c_cascade`] | F3403 令牌依赖图与级联（依赖图可视化 + 批量合并级联 + 双深度闸 + 耗时画像） | VE 册 #VE-F3403 |
@@ -492,6 +494,8 @@ pub mod ven05_checks;
 pub mod ven05_dual;
 pub mod ven06_checks;
 pub mod ven06_incr;
+pub mod ven07_checks;
+pub mod ven07_serde;
 pub mod vel03_checks;
 pub mod vel03_emitter;
 pub mod vel04_checks;
@@ -606,7 +610,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 180] = [
+    let blocks: [(&'static str, CheckSet); 181] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -840,6 +844,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2605-b", ven05_checks::run_ven05_checks_b()),
         ("VE-F2606-a", ven06_checks::run_ven06_checks_a()),
         ("VE-F2606-b", ven06_checks::run_ven06_checks_b()),
+        ("VE-F2607", ven07_checks::run_ven07_checks()),
         ("VE-F3604-a", ves04_checks::run_ves04_checks_a()),
         ("VE-F3604-b", ves04_checks::run_ves04_checks_b()),
     ];
