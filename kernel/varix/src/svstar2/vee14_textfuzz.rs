@@ -60,10 +60,7 @@ use super::vee02_utf8::{
     DecodeOptions, DecodeResult, Decoder, Disposition, MAX_CODEPOINT, REPLACEMENT_CHAR,
     SURROGATE_FIRST, SURROGATE_LAST,
 };
-use super::vee10_textsecurity::{
-    sandbox_check, SandboxInput, SandboxLimits, SandboxVerdict, SANDBOX_MEM_LIMIT_BYTES,
-    SANDBOX_TIME_LIMIT_MS,
-};
+use super::vee10_textsecurity::{sandbox_check, SandboxInput, SandboxLimits, SandboxVerdict};
 
 // ---------------------------------------------------------------------------
 // 一、Fuzz 面与语料三源（判据一、判据三的骨架）
@@ -1119,7 +1116,7 @@ impl RegressionLedger {
                     }
                 }
                 FuzzFace::EncodingSeq => {
-                    let res = Decoder.new().decode(&c.bytes, &DecodeOptions::new());
+                    let res = Decoder::new().decode(&c.bytes, &DecodeOptions::new());
                     match c.expect {
                         RegressionExpect::DispositionFires(d) => {
                             res.stats.disp_count(d) >= 1
@@ -1479,7 +1476,7 @@ pub fn run_text_fuzz(cfg: &TextFuzzConfig, lim: &SandboxLimits, led: &Regression
                         }
                     }
                     FuzzFace::EncodingSeq => {
-                        let res = Decoder.new().decode(&bytes, &DecodeOptions::new());
+                        let res = Decoder::new().decode(&bytes, &DecodeOptions::new());
                         // 变异源带注入标签（期望档位），其余源无标签。
                         let expect = match source {
                             CorpusSource::MutatedSeeds => {
@@ -1745,7 +1742,7 @@ pub fn run_vee14_checks() -> crate::checks::CheckSet {
             }
         };
         let (injected, _, _) = inject_encoding(base_seed, op, &mut Rng::new(0x0EED + ei as u64));
-        let res = Decoder.new().decode(&injected, &DecodeOptions::new());
+        let res = Decoder::new().decode(&injected, &DecodeOptions::new());
         let o = encoding_oracle(&res, Some(op));
         if !o.all_hold() || !o.expected_fired {
             enc_ok = false;
@@ -1763,7 +1760,7 @@ pub fn run_vee14_checks() -> crate::checks::CheckSet {
         Some(v) => *v,
         None => &[] as &[u8],
     };
-    let res_ascii = Decoder.new().decode(ascii_seed, &DecodeOptions::new());
+    let res_ascii = Decoder::new().decode(ascii_seed, &DecodeOptions::new());
     let o_rev = encoding_oracle(&res_ascii, Some(EncInjection::TruncateMultibyte));
     let illegal_probe_ok = illegal_for_downstream(0xD800)
         && illegal_for_downstream(0x11_0000)
