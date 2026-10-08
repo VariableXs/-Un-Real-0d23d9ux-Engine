@@ -209,6 +209,8 @@
 //! | [`vel06_checks`] | F2206 域自检（判据逐条映射，61 项；变异双向验证 12/12 全捕获——含拖尾宽度轴垂直段向与环形读出时间序两条，实测补自「宽度距离量法对side 方向不敏感」与「cap=3 推 6 次游标恰回 0 使退化实现与正确实现数值重合」两处弱门禁） | VE 册 #VE-F2206 |
 //! | [`vel07_blend`] | F2207 粒子排序与混合（透明排序前提的**可证**落位：视深=dot(p-eye,forward)、键降序（画家算法由远及近）、同键按提交序升序使规范序**不依赖排序算法**（否则换个sort 实现次序就变）；比较排序与基数排序**两条真实 CPU 路径**对同一量化键契约给出**逐位相同的置换**——那条 O(N) 声明因此不是空头支票，GPU 路径届时只需换执行载体；三混合语义各有适用场景与四维+独立alpha 维因子表，混合本体是纯函数且不钳制 HDR；免排序声明做成**可证事实**（order_invariant 实测两序合成结果，加法逐位相等 ⇔ alpha/预乘逐位不等，**双向**验证故恒等混合与无序混合都被抓）；排序键为量化深度是**契约本身**（GPU 只能对整数键做基数排序），量化误差有解析上界且断言上界非虚高；逐发射器排序开关产出三态裁决（Required/Unnecessary/Forbidden），Forbidden 显性警告并写明**视觉后果**（前后颠倒）而非只说「配置非法」，Unnecessary 关排序**零成本可证**（未进排序路径且比较次数恰为 0）；排序键 NaN/±Inf/越界一律钳制并计数（NaN 参与比较不确定，画面不报错只是次序随机——本域最恶劣缺陷形态）；GPU 预留位结构齐备且请求校验真实存在（五类非法各被拒而合规通过），被调用恒显性报错且**不静默退回 CPU**（调用方会按GPU 假设做性能预算）；与 I03 混合语义对齐断的是**七元 wire 键数字**不是感觉，并断三型互不相同与无语义重合，混合本体另与判据侧独立因子求值器逐位对拍；已知偏差如实记录（锚点写 I03 F1670 混合状态，册内 F1670 标题却是「蒙皮 fuzz」，本仓混合状态机实为 F0019，按其语义对齐且不编造对象） | VE 册 #VE-F2207 |
 //! | [`vel07_checks`] | F2207 域自检（判据逐条映射，62 项；**双向验证**：免排序「加法两序相等」与「alpha/预乘两序不等」成对断言，只断前者被恒等混合骗过、只断后者被无序混合骗过；期望序由判据侧**独立重算**（先序号升序再键稳定降序）而不调用被测比较器——否则「比较器写反」会同时改掉实现与期望值造成假绿；排序置换断**双射**与**内容守恒**（有序判据查不出丢元素/重复元素）；「全拒」与「全过」双向验证 GPU 请求校验；变异双向验证 13/13 全捕获） | VE 册 #VE-F2207 |
+//! | [`vef17_toolcontract`] | F1614 网格工具数据契约（查看器五类字段封闭全集 + 显式「产出/漏产出」分账而非只给 Option——二者被同一个 None 吞掉时上游漏产出就变成静默空白视图；坐标用**定点整数**而非 f32，与 F1619 字节级确定不冲突且跨平台读出同一组数；修复器三字段 schema 里位置用「整数索引 + 空间偏移」两段，几何位置在编辑中会变而索引在单次会话内才稳定；越界索引**每面至多报一条**，按越界顶点数逐个报会在同一面位置产出 kind/location 完全相同的重复条目，UI 上是同一行重复三次且看不出是哪几个索引坏了；退化面与自环边**只标记不修正**，悄悄改掉会让契约数据与网格真相对不上；修复预览持before/after **双快照**且 delta **有符号**，就地改后无法呈现「改前是什么样」；线上格式指纹钉死具体数值，改算法/改顺序/改短码都会红） | VE 册 #VE-F1614 |
+//! | [`vef17_checks`] | F1614 域自检（48 项分 a/b/c 三族规避 MAX_CHECKS 截断：a=查看器 17 / b=修复器 15 / c=契约冻结与判据集自检 16；判据区零 panic 面，取值失败一律 match 记红） | VE 册 #VE-F1614 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -599,6 +601,8 @@ pub mod ves04_flow;
 pub mod ves04_checks;
 pub mod vez50_arch;
 pub mod vez50_checks;
+pub mod vef17_toolcontract;
+pub mod vef17_checks;
 
 pub use vea01_index::{ProbeReport, effective_renderer, run_a01};
 
@@ -853,6 +857,9 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2607", ven07_checks::run_ven07_checks()),
         ("VE-F3604-a", ves04_checks::run_ves04_checks_a()),
         ("VE-F3604-b", ves04_checks::run_ves04_checks_b()),
+        ("VE-F1614-a", vef17_checks::run_vef17_checks_a_standalone()),
+        ("VE-F1614-b", vef17_checks::run_vef17_checks_b_standalone()),
+        ("VE-F1614-c", vef17_checks::run_vef17_checks_c_standalone()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
