@@ -172,6 +172,8 @@
 //! | [`vep08_checks`] | F3008 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3008 |
 //! | [`vep09_exit`] | F3009 退场动效族（六型+对称表双向互逆/参数转查对称面单源+非对称须显式理由+移除护栏三态双轨（不可交互不可聚焦/语义延迟移除）+双重移除幂等+超时兜底强制回收立案+逐型打断策略表（F2871 契约位）+reduce 双零直达） | VE 册 #VE-F3009 |
 //! | [`vep09_checks`] | F3009 域自检（判据逐条映射：对称/护栏/兜底/reduce/契约五组） | VE 册 #VE-F3009 |
+//! | [`vep10_shared_element`] | F3010 共享元素转场（pair 配对声明**入口双闸**（自配对拒+Stretch 映射拒——内容不拉伸红线从数据结构入口执行）；配对表按源有序二分 **O(log n)** 重复源拒；四维插值（位置/尺寸/圆角/裁剪）**零浮点千分比定点** 双重钳制病态不进管线；**内容不拉伸红线**容器变形+内容恒定尺寸居中裁剪多帧恒等；三态生命周期（配对/飞行/接管）跳步拒 reduce 直达显性记退化；**飞行体协议**独立图层强制提升（F2850 前向契约位）+快照 O(1) 纹理复用账+丢失重建诊断+视频海报帧降级显性入账；**语义不跟着飞**飞行期读屏焦点=目标语义飞行体恒隐藏） | VE 册 #VE-F3010 |
+//! | [`vep10_checks`] | F3010 域自检（49 项六组：pair 声明入口双闸+配对表有序二分 8/四维插值端点恒等+中点独立重算+单调+钳制 10/内容不拉伸多帧恒等+居中复算+溢出不崩 5/飞行体协议提升+复用账+重建+降级 9/语义不飞+reduce 直达 6/生命周期闭包+判据元 11；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F3010 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
 //! | [`veq03_handle`] | F3203 资源句柄与生命周期（类型化句柄+五态弧表+计数与图双源对账+分代GC与误收P1红线） | VE 册 #VE-F3203 |
@@ -623,6 +625,8 @@ pub mod vep08_entry;
 pub mod vep08_checks;
 pub mod vep09_exit;
 pub mod vep09_checks;
+pub mod vep10_shared_element;
+pub mod vep10_checks;
 pub mod vep07_compose;
 pub mod veq01_checks;
 pub mod veq01_pipeline;
@@ -978,6 +982,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F3008-a", vep08_checks::run_vep08_checks_a()),
 ("VE-F3008-b", vep08_checks::run_vep08_checks_b()),
 ("VE-F3009", vep09_checks::run_vep09_checks()),
+("VE-F3010", vep10_checks::run_vep10_checks()),
         ("VE-F4002", vei02_checks::run_vei02_checks()),
         ("VE-F4003", vei03_checks::run_vei03_checks()),
         ("VE-F4004", vei04_checks::run_vei04_checks()),
