@@ -23,20 +23,29 @@
                           新建同编号工人会话继续）；--nudge-min 补发检查仍在
                           （dead_min=0 时作为唯一自愈手段）；
        会话 id 丢失      → 用首条提示词里的 VARIX-Wxx 标记在侧栏标题里重链。
-  3. 积分监控与自动切号（--no-account-pool 关闭）：三信号任一命中即切号——
-     ① 单轮发送失败 ≥3；② 页面积分提示连续 ≥2 次（toast/dialog 扫描，
-     排除聊天区）；③ 阻塞单原因含积分关键词 ≥2 例（积分耗尽时塔的发送
-     不耗积分、round_fail 恒 0，2026-10-07 实测只靠连败会漏掉整个场景，
-     任务板阻塞单堆积停摆）；另有每 10 分钟预防性巡检 → 查 TreeCode
-     账号池（127.0.0.1:8792）；池里有 ≥门槛余量的号 → 自动切号（TreeCode
-     重启 WorkBuddy，塔等待 CDP 恢复并兜底带参重启）。切号异常自动换号
-     （2026-10-06 Variable 指定）：切号失败 / WorkBuddy 未恢复 / 切入后
-     账号显示异常（疑似封号）→ 拉黑该号换下一个，直到切到可用号；
-     全池耗尽 → 判定「无可用积分账号」→ 优雅停机。切号成功后自动把
-     积分阻塞单逐个 /api/release 重排回待领（任务继续做下去）；切号后
-     先看 18 路对话存活情况（Variable 指定）：≥2/3 会话还在且状态真实 →
-     保全续用（逐路点回旧对话唤醒 + 静置 --settle-min 分钟体检补活，
-     不释放任务不整体重建）；不足 → 释放全部在途任务 + 重建 18 路。
+  3. 积分监控与自动切号（--no-account-pool 关闭）：五信号任一命中即切号——
+     ① 单轮发送失败 ≥3；② 页面积分提示连续 ≥2 次（全页可见文本扫描，
+     排除聊天区/侧栏/代码块；2026-10-08 实测横幅「账户下可用的积分额度
+     已耗尽，升级套餐继续完成任务。」是输入框上方内嵌横幅不是弹层，
+     旧弹层扫描+旧关键词双重漏检）；③ 阻塞单原因含积分关键词 ≥2 例
+     （积分耗尽时塔的发送不耗积分、round_fail 恒 0，2026-10-07 实测只靠
+     连败会漏掉整个场景，任务板阻塞单堆积停摆）；④ 页面提示 1 次 +
+     阻塞积分单 ≥1 或阻塞堆积 ≥8（交叉印证）；⑤ 4min 内 ≥4 个不同 AI
+     异常（提交后占位超 4min/状态含异常字样，2026-10-08 Variable 指定）。
+     触发后先确保 TreeCode 控制台在线（不在线自动拉起
+     D:/Treecode/TreeCode客户版/TreeCode控制台.exe）→ 查账号池
+     （127.0.0.1:8792）切号（TreeCode 重启 WorkBuddy，塔等待 CDP 恢复
+     并兜底带参重启）。禁切名单 BANNED_ACCOUNTS={"19871051162"}
+     （2026-10-08 Variable 指定永不切入）；切号失败 / WorkBuddy 未恢复 /
+     切入后账号显示异常（疑似封号）→ 拉黑该号换下一个，直到切到可用号；
+     全池耗尽 → 判定「无可用积分账号」→ 优雅停机。切号恢复后先把模型
+     确保为 GLM-5.3-Flash（思考强度高/300K 上下文/消耗 0.00x 免单，
+     2026-10-08 Variable 指定，本进程只切一次）；自动把积分阻塞单逐个
+     /api/release 重排回待领（任务继续做下去）；切号后先看 18 路对话存活
+     情况（Variable 指定）：≥2/3 会话还在且状态真实 → 保全续用（逐路点回
+     旧对话唤醒 + 静置 --settle-min 分钟体检补活，不释放任务不整体重建）；
+     不足 → 释放全部在途任务 + 重建 18 路。另有每 10 分钟预防性巡检
+     （只记日志报池况，信号成立才切号）。
   4. 收口：任务板「待领/已领/阻塞」全为 0 且塔内无 BUSY 工人 → 全部完成退出；
      否则永远运行，直到 ① 50000+ 任务全部完成 ② 无可用积分账号 ③ 人工 Ctrl+C。
 
@@ -119,7 +128,19 @@ QUOTA_CHECK_EVERY = 600.0  # 预防性积分巡检间隔（秒）
 # round_fail 恒为 0——只靠发送连败触发切号会彻底漏掉这个场景，任务板
 # 阻塞单堆积、产线停摆。三信号任一命中即切号，切号成功后自动重排阻塞单）
 CREDIT_KW = ("积分不足", "积分不够", "积分用尽", "积分用完", "积分已用完",
-             "积分耗尽", "余额不足", "额度不足", "配额不足")
+             "积分耗尽", "积分额度已耗尽", "额度已耗尽", "余额不足", "额度不足",
+             "配额不足", "升级套餐继续完成")
+# 2026-10-08 实测（Variable 截图）：WorkBuddy 的积分横幅文案是
+# 「账户下可用的积分额度已耗尽，升级套餐继续完成任务。」——内嵌在输入框
+# 上方的横幅（不是 toast/dialog 弹层），且旧关键词「积分耗尽」匹配不上
+# 「积分额度已耗尽」（中间隔着额度二字）——双重漏检导致积分用完也不切号。
+BANNED_ACCOUNTS = {"19871051162"}   # Variable 2026-10-08 指定：永不切入的账号
+TREECODE_CONSOLE_EXE = Path(r"D:\Treecode\TreeCode客户版\TreeCode控制台.exe")
+MODEL_TARGET = "GLM-5.3-Flash"      # 免单模型（0.00x，思考强度高/300K 上下文）
+ANOMALY_WINDOW_S = 240.0            # 「4min 内连续 AI 异常」统计窗口（Variable 指定）
+ANOMALY_LIMIT = 4                   # 窗口内 ≥4 个不同工人异常 → 触发切号
+_last_dispatch: dict[str, float] = {}  # wid → 塔最近一次向该工人提交成功时刻
+_anomaly_at: dict[str, float] = {}     # wid → 最近一次记 AI 异常的时刻（节流）
 
 
 def log(msg: str):
@@ -248,25 +269,101 @@ JS_IDLE = r"""(() => {
            stopN: stopEls.length, animN: animN };
 })()"""
 
-# 页面积分耗尽提示扫描（2026-10-07）：只扫 toast/dialog/modal 弹层容器且
-# 排除 .cr-message-list 聊天区——工人对话里可能转述「积分不足」，正文区
-# 一律不算，只有真实弹层命中才算信号（防误报触发无谓切号重启）。
+# 页面积分耗尽提示扫描（2026-10-08 重写）：WorkBuddy 的积分横幅是输入框
+# 上方的**内嵌横幅**（不是 toast/dialog 弹层）——旧版只扫弹层容器永远扫不到
+# （2026-10-08 Variable 截图实证「账户下可用的积分额度已耗尽，升级套餐继续
+# 完成任务。」没触发切号）。改为全页可见文本扫描，排除三类误报源：
+# 聊天消息区（工人会转述「积分不足」）、侧栏会话列表（塔自己的对话标题
+# 就含「积分用完」）、markdown/代码块（任务书正文）。只认**可见**文本
+# （display/visibility/opacity/尺寸四重过滤），隐藏模板不算。
 JS_CREDIT_PROMPT = r"""(() => {
-  const KW = /(积分不足|积分不够|积分用尽|积分用完|积分已用完|积分耗尽|余额不足|额度不足|配额不足)/;
-  const vis = (e) => { const r = e.getBoundingClientRect();
-    return r.width > 4 && r.height > 4; };
-  const ml = document.querySelector('.cr-message-list');
-  const sel = '[class*="toast"],[class*="Toast"],[class*="dialog"],[class*="Dialog"],' +
-              '[class*="modal"],[class*="Modal"],[class*="popover"],[class*="Popover"],' +
-              '[class*="message-box"],[class*="notice"],[class*="snackbar"]';
-  for (const e of document.querySelectorAll(sel)) {
-    if (!vis(e) || (ml && ml.contains(e))) continue;
-    const t = (e.innerText || '').trim();
-    if (t && t.length <= 80 && KW.test(t))
-      return { hit: true, where: 'overlay', text: t.slice(0, 50) };
+  const KWS = ['积分不足','积分不够','积分用完','积分已用完','积分用尽',
+               '积分已用尽','积分耗尽','积分额度已耗尽','额度已耗尽',
+               '余额不足','额度不足','配额不足','升级套餐继续完成'];
+  const EXCL = '.cr-message-list, div.conversation-item, [class*="message-list"],' +
+               '[class*="conversation-item"], [class*="markdown"], pre, code';
+  const vis = (el) => {
+    for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
+      const s = getComputedStyle(e);
+      if (s.display === 'none' || s.visibility === 'hidden') return false;
+    }
+    const r = el.getBoundingClientRect();
+    return r.width > 2 && r.height > 2;
+  };
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walker.nextNode())) {
+    const t = n.textContent || '';
+    if (!t.trim()) continue;
+    let kw = '';
+    for (const k of KWS) { if (t.includes(k)) { kw = k; break; } }
+    if (!kw) continue;
+    const el = n.parentElement;
+    if (!el || (el.closest && el.closest(EXCL))) continue;
+    if (!vis(el)) continue;
+    return { hit: true, kw: kw, text: t.trim().slice(0, 60) };
   }
   return { hit: false };
 })()"""
+
+# 模型芯片（composer 底部）读取/点开/选择三件套（2026-10-08 切号后确保
+# GLM-5.3-Flash 免单模型用）。芯片定位：composer 停靠在窗口底部，先在
+# 底部 180px 条带找含已知模型名的最小可见元素，兜底放宽到下半屏；
+# 选择项：弹出菜单里文本含目标模型名的最短可见行（悬停详情面板文本很长
+# 会被长度上限自然排除）。
+JS_MODEL_CHIP = r"""(() => {
+  const names = /GLM|Space-Bunny|DeepSeek|Hyl4|Hy3/;
+  const scan = (strip) => Array.from(
+      document.querySelectorAll('button,[role="button"],div,span'))
+    .filter(e => e.childElementCount <= 3 && names.test(e.innerText || ''))
+    .map(e => ({ e: e, r: e.getBoundingClientRect() }))
+    .filter(x => x.r.width > 20 && x.r.width < 400 && x.r.height > 10 &&
+                 x.r.height < 60 && x.r.top > strip &&
+                 (x.e.innerText || '').length <= 40)
+    .sort((a, b) => (a.e.innerText || '').length - (b.e.innerText || '').length);
+  const hit = scan(innerHeight - 180)[0] || scan(innerHeight * 0.5)[0];
+  return hit ? { ok: true, text: (hit.e.innerText || '').trim().slice(0, 40) }
+             : { ok: false, why: '没找到模型芯片（composer 底部）' };
+})()"""
+
+JS_MODEL_OPEN = r"""(() => {
+  const names = /GLM|Space-Bunny|DeepSeek|Hyl4|Hy3/;
+  const scan = (strip) => Array.from(
+      document.querySelectorAll('button,[role="button"],div,span'))
+    .filter(e => e.childElementCount <= 3 && names.test(e.innerText || ''))
+    .map(e => ({ e: e, r: e.getBoundingClientRect() }))
+    .filter(x => x.r.width > 20 && x.r.width < 400 && x.r.height > 10 &&
+                 x.r.height < 60 && x.r.top > strip &&
+                 (x.e.innerText || '').length <= 40)
+    .sort((a, b) => (a.e.innerText || '').length - (b.e.innerText || '').length);
+  const x = scan(innerHeight - 180)[0] || scan(innerHeight * 0.5)[0];
+  if (!x) return { ok: false, why: '没找到模型芯片（composer 底部）' };
+  const r = x.r;
+  const o = { bubbles: true, cancelable: true, view: window,
+              clientX: r.left + 8, clientY: r.top + 8, button: 0, detail: 1 };
+  ['mouseover','mousemove','mousedown','mouseup','click'].forEach(t =>
+      x.e.dispatchEvent(new MouseEvent(t, o)));
+  return { ok: true, text: (x.e.innerText || '').trim().slice(0, 40) };
+})()"""
+
+JS_MODEL_PICK = r"""((name) => {
+  const items = Array.from(document.querySelectorAll(
+      'div,li,[role="menuitem"],[role="option"],button'))
+    .filter(e => { const t = e.innerText || '';
+                   return t.includes(name) && t.length <= 60; })
+    .map(e => ({ e: e, r: e.getBoundingClientRect() }))
+    .filter(x => x.r.width > 60 && x.r.height > 12 && x.r.height < 90 &&
+                 x.r.top > 0 && x.r.bottom < innerHeight)
+    .sort((a, b) => (a.e.innerText || '').length - (b.e.innerText || '').length);
+  const x = items[0];
+  if (!x) return { ok: false, why: '菜单里没有 ' + name };
+  const r = x.r;
+  const o = { bubbles: true, cancelable: true, view: window,
+              clientX: r.left + 8, clientY: r.top + 8, button: 0, detail: 1 };
+  ['mouseover','mousemove','mousedown','mouseup','click'].forEach(t =>
+      x.e.dispatchEvent(new MouseEvent(t, o)));
+  return { ok: true, text: (x.e.innerText || '').trim().slice(0, 40) };
+})("%s")"""
 
 # 切会话：对内层 _card_ 派发完整 MouseEvent 序列（裸 click React 不吃，D3/D14）
 JS_CLICK_CONV = r"""((cid) => {
@@ -901,7 +998,10 @@ def dispatch_continue(wid: str, conv_id: str, msg: str) -> tuple[bool, str]:
         return False, f"切会话失败（含滚动查找）：{conv_id[:12]}"
     if not wait_idle(60):
         return False, "切过去后 60s 仍忙，本轮回头再试"
-    return send_text(msg, f"VARIX-{wid}·塔", expect_active=conv_id)
+    ok, ev2 = send_text(msg, f"VARIX-{wid}·塔", expect_active=conv_id)
+    if ok:
+        _last_dispatch[wid] = time.time()   # AI 异常统计（提交后 4min 仍占位=异常）
+    return ok, ev2
 
 
 # ══════════════ 卡死归档重建 & 积分切号（2026-10-06 Variable 指定）══════════════
@@ -1001,8 +1101,10 @@ def rebuild_worker(wid: str) -> tuple[str, str]:
     if conv:
         write_conv(wid, conv)
         write_state(wid, "BUSY claim")
+        _last_dispatch[wid] = time.time()
     elif "发送成功" in ev:
         write_state(wid, "BUSY claim")   # 侧栏没来得及刷新 → 标记重链兜底
+        _last_dispatch[wid] = time.time()
     return conv, ev
 
 
@@ -1094,6 +1196,77 @@ def post_start_check(started: int, settle_min: float, reused: set,
            f"{settle_min:g}min 静置后：健康 {ok_cnt}，修复 {fixed}，共 {started}")
 
 
+def ensure_treecode_up(timeout_s: float = 75.0) -> str:
+    """确认 TreeCode 控制台 API（127.0.0.1:8792）在线；不在线就自动拉起
+    TreeCode 控制台 exe 再等（Variable 2026-10-08 指定「打开 treecode 并
+    切换账号」——积分耗尽时控制台可能压根没开，塔不能干等）。
+    返回人类可读状态；「仍不在线」时调用方下次 probe 自然失败走重试。
+    """
+    try:
+        if apool.probe_all(0).get("ok"):
+            return "在线"
+    except Exception:
+        pass
+    if not TREECODE_CONSOLE_EXE.exists():
+        return f"控制台不在线且未找到 {TREECODE_CONSOLE_EXE}（请确认路径）"
+    log(f"[TreeCode] 控制台不在线 → 自动拉起 {TREECODE_CONSOLE_EXE}")
+    try:
+        subprocess.Popen([str(TREECODE_CONSOLE_EXE)],
+                         cwd=str(TREECODE_CONSOLE_EXE.parent))
+    except Exception as e:
+        return f"拉起控制台失败：{e}"
+    dl = time.time() + timeout_s
+    while time.time() < dl:
+        time.sleep(3)
+        try:
+            if apool.probe_all(0).get("ok"):
+                return f"已拉起并在线（等了 {timeout_s - (dl - time.time()):.0f}s）"
+        except Exception:
+            pass
+    return "拉起后仍不在线（下轮重试）"
+
+
+_model_once = {"done": False, "last_try": 0.0}
+
+
+def ensure_model_once(reason: str, retry_gap_s: float = 300.0) -> str:
+    """切号恢复后把 composer 模型确保为 GLM-5.3-Flash（思考强度高 / 300K
+    上下文 / 消耗 0.00x 免单），成功后本进程内**只切这一次**（Variable
+    2026-10-08 指定「切换成 GLM 5.3 FLASH 高，然后 300K，只切换一次」）。
+
+    背景：切号重启 WorkBuddy 后模型可能被重置成消耗高的默认模型——新号
+    积分会被工人继续跑迅速烧掉；GLM-5.3-Flash 免单，确保选中即止血。
+    已是目标模型 → 一步不动直接置完成；切换失败不阻塞调用方（切号流程
+    照常走），retry_gap_s 节流后可重试，直到成功为止。
+    """
+    if _model_once["done"]:
+        return f"模型已是 {MODEL_TARGET}（本进程已确保过，跳过）"
+    if time.time() - _model_once["last_try"] < retry_gap_s:
+        return "距上次模型尝试太近，跳过（节流）"
+    _model_once["last_try"] = time.time()
+    r0 = st.call_js(JS_MODEL_CHIP)
+    if isinstance(r0, dict) and r0.get("ok") \
+            and MODEL_TARGET in (r0.get("text") or ""):
+        _model_once["done"] = True
+        ledger("模型确认", "-", "领单塔", f"{MODEL_TARGET} 已选中（{reason}）")
+        return f"模型本就是 {MODEL_TARGET}，无需切换"
+    r1 = st.call_js(JS_MODEL_OPEN)
+    if not (isinstance(r1, dict) and r1.get("ok")):
+        return f"打开模型菜单失败：{r1}"
+    time.sleep(1.2)
+    r2 = st.call_js(JS_MODEL_PICK % MODEL_TARGET)
+    if not (isinstance(r2, dict) and r2.get("ok")):
+        return f"选择 {MODEL_TARGET} 失败：{r2}"
+    time.sleep(1.5)
+    r3 = st.call_js(JS_MODEL_CHIP)
+    if isinstance(r3, dict) and r3.get("ok") \
+            and MODEL_TARGET in (r3.get("text") or ""):
+        _model_once["done"] = True
+        ledger("模型切换", "-", "领单塔", f"→ {MODEL_TARGET} 高思考/300K 免单（{reason}）")
+        return f"已切到 {MODEL_TARGET}（高思考/300K/免单 0.00x）"
+    return f"切换后验证未确认：{r3}"
+
+
 def switch_account_flow(reason: str, workers: int,
                         settle_min: float = 5.0) -> str:
     """积分耗尽 → TreeCode 切号 → 等 WorkBuddy 回来 → 按存活情况续用或重建。
@@ -1115,7 +1288,13 @@ def switch_account_flow(reason: str, workers: int,
       存活不足 2/3 → 释放全部在途任务 + 作废全部映射 + 逐路新建（原路径）。
     """
     log(f"[积分] 触发切号检查（{reason}）…")
-    banned: set[str] = set()
+    # Variable 2026-10-08 指定「打开 treecode 并切换账号」：控制台没开就自动拉起
+    tc = guarded("TreeCode 探活", ensure_treecode_up,
+                 default="探活异常（继续尝试）")
+    if tc != "在线":
+        log(f"[TreeCode] {tc}")
+    banned: set[str] = set(BANNED_ACCOUNTS)   # 禁切名单（Variable 指定永不切入）
+    bad_banned: set[str] = set()              # 运行期拉黑的异常/疑似封号
     label, ev, remain_txt = "", "", "?"
     while True:
         info = apool.probe_all(REMAIN_MIN)
@@ -1124,13 +1303,15 @@ def switch_account_flow(reason: str, workers: int,
         log(f"[积分] 池子 {info['accounts']} 号 / 总余 {info['pool_remain']} / "
             f"最高 {info['richest']}({info['richest_remain']}) / 可切 "
             f"{info['switchable']} 号"
-            + (f"（已拉黑异常号 {len(banned)} 个）" if banned else ""))
+            + (f" / 运行期拉黑 {len(bad_banned)} 个" if bad_banned else "")
+            + f" / 禁切 {sorted(BANNED_ACCOUNTS)}（Variable 指定）")
         target = apool.pick_richest(REMAIN_MIN, exclude_labels=banned)
         if not target:
             ledger("停机", "-", "领单塔",
                    f"无可用积分账号（门槛 {REMAIN_MIN}）"
-                   + (f"；{len(banned)} 号异常/疑似封号已跳过：{sorted(banned)}"
-                      if banned else f"：池 {info}"))
+                   f"；禁切 {sorted(BANNED_ACCOUNTS)}"
+                   + (f"；异常/疑似封号已跳过：{sorted(bad_banned)}"
+                      if bad_banned else f"；池 {info}"))
             return "no_account"
         label = target.get("label")
         log(f"[切号] → {label}（余 {target.get('remain')}）。TreeCode 将重启 WorkBuddy…")
@@ -1140,12 +1321,14 @@ def switch_account_flow(reason: str, workers: int,
         if not ok:
             log(f"[FAIL] 切号 {label} 失败：{msg} → 疑似异常号，拉黑换下一个")
             banned.add(label)
+            bad_banned.add(label)
             ledger("切号跳过", "-", "领单塔", f"{label} 切号失败：{msg}")
             continue
         ok_b, ev = apool.wait_workbuddy_back(log=log)
         if not ok_b:
             log(f"[FAIL] 切到 {label} 后 WorkBuddy 未恢复：{ev} → 疑似异常号，拉黑换下一个")
             banned.add(label)
+            bad_banned.add(label)
             ledger("切号跳过", "-", "领单塔", f"{label} WorkBuddy 未恢复：{ev}")
             continue
         # 切入后体检该号：显示异常（可能封号）→ 拉黑换下一个
@@ -1161,6 +1344,7 @@ def switch_account_flow(reason: str, workers: int,
                     f"remain={cur.get('remain') if cur else '无记录'}）"
                     f"→ 疑似封号，拉黑换下一个")
                 banned.add(label)
+                bad_banned.add(label)
                 ledger("切号跳过", "-", "领单塔", f"{label} 切入后异常/疑似封号")
                 continue
             remain_txt = str(cur.get("remain"))
@@ -1168,6 +1352,13 @@ def switch_account_flow(reason: str, workers: int,
             log(f"[WARN] {label} 切入后账号体检失败（{e}）→ 不拉黑，交给运行期判据")
         log(f"[切号] {label} 可用（余 {remain_txt}）✓")
         break
+
+    # 切号后模型确保（2026-10-08 Variable 指定）：GLM-5.3-Flash（思考强度高 /
+    # 300K 上下文 / 消耗 0.00x 免单）——切号重启后模型可能被重置，工人继续跑
+    # 会把新号积分烧掉；成功后本进程只切这一次，失败不阻塞切号流程。
+    mr = guarded("模型切换", ensure_model_once, f"切号→{label}",
+                 default="异常（不阻塞，5 分钟后可重试）")
+    log(f"[模型] {mr}")
 
     # 积分耗尽卡死的阻塞单 → 新账号就绪后逐个退回待领（Variable 2026-10-07
     # 指定「任务要继续做下去」：不重排的话这些单永远躺在阻塞栏没人再领）
@@ -1404,6 +1595,7 @@ def main() -> int:
                 known.add(conv)
                 write_conv(wid, conv)
                 write_state(wid, "BUSY claim")
+                _last_dispatch[wid] = time.time()
                 ledger("派协议(新会话)", "-", wid, ev)
                 log(f"{wid} ✓ {ev}")
                 created += 1
@@ -1411,6 +1603,7 @@ def main() -> int:
             elif "发送成功" in ev:
                 # 发出去了但侧栏没来得及刷新：状态照记，标记重链兜底
                 write_state(wid, "BUSY claim")
+                _last_dispatch[wid] = time.time()
                 ledger("派协议(待重链)", "-", wid, ev)
                 log(f"[WARN] {wid} {ev}")
                 created += 1
@@ -1500,6 +1693,21 @@ def main() -> int:
                         continue
 
                     missing_since.pop(wid, None)   # 会话已找回，清失链计时
+                    # ── AI 异常信号（2026-10-08 Variable 指定：4min 内 4 个
+                    #    AI 连续异常 → 切号）——积分耗尽时工人接了单也跑不动，
+                    #    状态永远停在塔占位；每个工人每个窗口只记一次 ──
+                    if now - _anomaly_at.get(wid, 0.0) > ANOMALY_WINDOW_S:
+                        why_anom = ""
+                        if "异常" in state:
+                            why_anom = f"状态含异常字样：{state[:40]}"
+                        elif state == "BUSY claim":
+                            ld = _last_dispatch.get(wid, 0.0)
+                            if ld and now - ld >= ANOMALY_WINDOW_S:
+                                why_anom = (f"提交后 {ANOMALY_WINDOW_S:.0f}s "
+                                            "工人仍未接手（状态还是塔占位）")
+                        if why_anom:
+                            _anomaly_at[wid] = now
+                            log(f"[AI异常] {wid} {why_anom}")
                     if state.startswith("BUSY"):
                         busy_cnt += 1
                         any_busy = True
@@ -1599,7 +1807,13 @@ def main() -> int:
                 #        排除聊天区；连续两次防单次误报触发无谓重启）
                 #      ③ 阻塞单原因含积分关键词 ≥2 例（工人 AI 失败把任务标阻塞）
                 #      ④ 页面提示 1 次 + 阻塞积分单 ≥1 或阻塞堆积 ≥8（交叉印证）
+                #      ⑤ 4min 内 ≥4 个不同 AI 异常（提交后占位超 4min/状态含
+                #        异常字样，Variable 2026-10-08 指定「连续提交 4 个 AI
+                #        在 4min 内显示异常」）
                 #      切号成功后自动把积分阻塞单重排回待领（任务继续做下去）。
+                anomaly_fire = len([w for w, t in _anomaly_at.items()
+                                    if time.time() - t <= ANOMALY_WINDOW_S]) \
+                    >= ANOMALY_LIMIT
                 quota_due = time.time() - last_quota_check >= QUOTA_CHECK_EVERY
                 page_credit = ""
                 if time.time() - _last_credit_scan >= 30:
@@ -1628,7 +1842,7 @@ def main() -> int:
                                  or credit_hits >= 2
                                  or (page_credit and credit_hits >= 1)
                                  or (page_credit and blocked_all >= 8)
-                                 or quota_due):
+                                 or anomaly_fire or quota_due):
                     last_quota_check = time.time()
                     info = guarded("积分巡检", apool.probe_all, REMAIN_MIN,
                                    default={"ok": False, "why": "异常（见塔日志）"})
@@ -1643,13 +1857,17 @@ def main() -> int:
                         need_switch = (round_fail >= 3 or _credit_streak >= 2
                                        or credit_hits >= 2
                                        or (page_credit and credit_hits >= 1)
-                                       or (page_credit and blocked_all >= 8))
+                                       or (page_credit and blocked_all >= 8)
+                                       or anomaly_fire)
                         if need_switch:
                             why_sw = (f"单轮发送失败 {round_fail} 次"
                                       if round_fail >= 3 else
                                       f"页面积分提示×{_credit_streak}"
                                       if _credit_streak >= 2 else
-                                      f"阻塞单积分信号 {credit_hits} 例")
+                                      f"阻塞单积分信号 {credit_hits} 例"
+                                      if credit_hits >= 2 else
+                                      f"{ANOMALY_WINDOW_S:.0f}s 内 {ANOMALY_LIMIT} "
+                                      f"个 AI 连续异常")
                             if info.get("switchable", 0) <= 0:
                                 log("★ 停机 ★ 积分耗尽信号成立但账号池无可用"
                                     "积分账号——产线终止（需人工补充账号）")
@@ -1666,6 +1884,7 @@ def main() -> int:
                                 return 2
                             if r == "ok":
                                 _credit_streak = 0   # 新号就绪：页面信号清零重计
+                                _anomaly_at.clear()  # AI 异常窗口同步清零
                                 log("[切号] 工人已重建/保全续用，产线继续")
                             else:
                                 log(f"[FAIL] 切号失败：{r}（下轮重试）")

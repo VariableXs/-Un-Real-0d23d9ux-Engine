@@ -48,6 +48,7 @@
 //! 零 panic 面（固定下标走 `get`/`Option`，算术全饱和）、零 IO、零墙钟、
 //! 无全局可变状态、no_std 零 std 依赖。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

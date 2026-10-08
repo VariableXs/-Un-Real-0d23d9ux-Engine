@@ -637,6 +637,10 @@ pub mod svstar;
 // 服务」——"用户态服务"指不在内核态特权上下文运行，非"用前端语言写"。
 // 本仓内核树为 no_std Rust，JS 必须靠运行时执行，故 VE 全册落地为 Rust。
 pub mod svstar2;
+// CGPU Varix STAR II · CGPU 册（F0001~F3840）CPU 侧渲染加速与帧预算仲裁落位。
+// 全册 Rust、no_std；SIMD 基元按 cfg(target_feature) 编译期派发（AVX2 主力/
+// AVX512 加宽/SSE4 保底/NEON 供 ARM），无运行时探测特权面。
+pub mod cgpu;
 // Varix STAR I · 泳道二 A 应用兼容域·后段（AI-C2 · F021-F040）：二十项功能。
 // 目录名 compatstar2：compatstar/ 已被 AI-C1（F001-F020，在途）占用，按
 // secstar → secstar2 先例顺延，两包互不重叠。

@@ -29,11 +29,18 @@ REM  >=2/3 of the 18 conversations survived with real worker state they
 REM  are KEPT (nudged back to work + settle health check) instead of a
 REM  full 18-conversation rebuild.
 REM
-REM  Credit exhaustion (2026-10-07): three signals trigger the switch -
-REM  on-page "not enough credits" prompt (x2 consecutive), >=2 blocked
-REM  tasks whose reason mentions credits, or 3 send failures in a round.
-REM  After a successful switch, credit-blocked tasks are automatically
-REM  requeued (released back to pending) so work continues.
+REM  Credit exhaustion (updated 2026-10-08): FIVE signals trigger the
+REM  switch - on-page credit-exhausted banner (the inline banner above
+REM  the composer, e.g. "credits exhausted, upgrade plan", scanned via
+REM  visible-text walk excluding chat/sidebar/code), >=2 blocked tasks
+REM  whose reason mentions credits, 3 send failures in a round, or 4
+REM  distinct AIs going abnormal within 4 minutes (dispatched but still
+REM  on the tower placeholder / state says abnormal). The TreeCode
+REM  console exe is auto-launched if not running. Account 19871051162
+REM  is NEVER switched to (owner's directive). After a successful
+REM  switch the model is ensured to GLM-5.3-Flash (high thinking /
+REM  300K context / 0.00x free) ONCE, and credit-blocked tasks are
+REM  automatically requeued (released back to pending) so work continues.
 REM
 REM  24h guard: if the tower crashes (any exit code other than 0/2)
 REM  this bat restarts it after 60s. Exit 0 = graceful stop / wrap-up,
