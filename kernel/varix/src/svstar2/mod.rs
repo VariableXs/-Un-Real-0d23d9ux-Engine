@@ -73,6 +73,8 @@
 //! | [`vcb01_framegraph_checks`] | CGPU-F0161 域自检（31 项七组：结构全覆盖 4/ID 索引 4/arena 整池+双释放 4/快照语义 4/边三闸 3/环检出双向+普查+预算 4/万节点压测 4/读屏+判据元 4；期望值判据侧独立重算，不变量两头都测） | CGPU 册 #CGPU-F0161 |
 //! | [`vcb02_depderive`] | CGPU-F0162 资源读写集自动依赖推导（声明序单遍扫描按子资源键建边——**RAW/WAR/WAW 三规则**+**读读不建边**（可并行的结构性来源）；**子资源粒度** base+mip+数组层键控——同纹理异 mip 推导不出边；**边合并**同对任务多冲突一条边且成因三布尔保留（合并不是信息损失）；**漏边零容忍**注入测试口径——手算期望边集不漏不滥双向对账；whole 整资源键与子键异粒显性不相撞；from_frame_graph 扁平退化衔接 F0161+主因映射回落单型边；万节点链式/万读者收口压测） | CGPU 册 #CGPU-F0162 |
 //! | [`vcb02_depderive_checks`] | CGPU-F0162 域自检（28 项七组：三规则+读读 6/子资源粒度 5/边合并 3/漏边零容忍注入 3/衔接+性能 7/结构无环 1/判据元 4；期望值判据侧独立手算，不变量两头都测） | CGPU 册 #CGPU-F0162 |
+//! | [`vcb03_topopath`] | CGPU-F0163 拓扑排序与关键路径（CGPU-B 域执行序推导：**Kahn 分层拓扑排序**——入度归零发射，每轮归零集即一个**波次**（同波互不依赖可全并行发射，波次数=关键深度下限，最大波宽=并行发射吞吐上限）；**关键路径计算**按预算权重整数 DP——最长链=帧延迟下限，平坦拓扑序逐点「先收自身预算再向邻接出边松弛」防后继预算覆盖丢失；**关键路径标注**critical_set 单链语义；**环检测**Kahn 残留=环成员清单（有环报错含环路径可定位断链，无环空表双向）；派生消费面：线性拓扑序=波次级联确定性投影 + **松弛量**整数三段式（earliest_finish=最长前驱链、tail=到汇最长链倒序 DP、slack=critical_total-tail+bud-dist）——零松弛集⊇关键路径（并列关键链可更大）；O(节点+边) 万节点链/星/环三语料压测） | CGPU 册 #CGPU-F0163 |
+//! | [`vcb03_topopath_checks`] | CGPU-F0163 域自检（33 项七组：排序正确性 6/空图环检测双向 6/关键路径理论对拍 6/并行发射吞吐 4/万节点性能 3/派生消费面 4/F0162 衔接+判据元 4；期望值判据侧独立手算，不变量两头都测——无环空表+有环精确清单、零松弛入集+非零松弛不入集） | CGPU 册 #CGPU-F0163 |
 //! | [`vch01_budgetpool`] | CGPU-F1121 H 域开工与显存预算池架构（显存管理域（F1121-F1280）开山单——**显存分配全面预算化**：所有显存分配走预算池，**三级池闭集**（进程池=各引擎会话/系统池=系统 UI/合成器/保留池=应急+驱动保留且不可为零）；**无预算即无分配**——超配额显性拒绝不给满不静默降质（降质是上层策略对拒绝的反应），恰好配额边界放行/+1 拒绝双向精确；**Σ配额≤总显存守恒**构造期一次验证（checked 防回绕）破坏即拒绝构造；**账实守恒贯穿全生命周期**——used 逐字节记账/重复释放拒绝/释放即时归还/audit 对账不齐立案（泄漏防线与显存遥测的事实来源）；峰值记账不随回退抹除；水位四档 O(1)（80%/95% 阈值判据侧写死对拍）；**C 域 F0338 显存维度兑现声明+落地双面**——三条款闭集冻结且每条有可观察池侧行为兑现点（分配前预算校验=拒绝路径/超用告警=水位联动源/回收归还=release 即时回退），指纹 FNV 版本混入可对账；**G 域联动**三厂商闭集差异消费面——F0964/F0852 表未冻结前一律 Unknown 保守缺省不假宣称；显存哲学三条公理字面量冻结（有界才能稳定/无界即事故复用 E04/预算先行）；七主题闭集枚举域界宣言；诊断码独占 0x50xx 六码） | CGPU 册 #CGPU-F1121 |
 //! | [`vch01_budgetpool_checks`] | CGPU-F1121 域自检（锚点六条判据映射 26 项七族：七主题 2/哲学 2/三级池 8/守恒 4/C 域兑现 4/G 域联动 2/判据自检 4；**判据侧独立重算**——七主题与公理与条款与阈值字面量写死、守恒恰边界双向（Σ==total 放行/+1 拒）、水位 79.9/80/95 具体字节两侧重演、指纹独立 FNV 对拍、C 域每条款池侧行为直证不做空头支票、码段判据 != 防自判死） | CGPU 册 #CGPU-F1121 |
 //! | [`ved14_traverse`] | F0614 图层渲染遍历器 | VE 册 #VE-F0614 |
@@ -754,6 +756,8 @@ pub mod vcb01_framegraph;
 pub mod vcb01_framegraph_checks;
 pub mod vcb02_depderive;
 pub mod vcb02_depderive_checks;
+pub mod vcb03_topopath;
+pub mod vcb03_topopath_checks;
 pub mod vch01_budgetpool;
 pub mod vch01_budgetpool_checks;
 pub mod vef16_gridstat;
@@ -872,6 +876,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F6201", veae01_inputarch_checks::run_veae01_checks()),
 ("CGPU-F0161", vcb01_framegraph_checks::run_vcb01_checks()),
 ("CGPU-F0162", vcb02_depderive_checks::run_vcb02_checks()),
+        ("CGPU-F0163", vcb03_topopath_checks::run_vcb03_checks()),
 ("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks()),
         ("VE-F4602", vew02_manifest::run_vew02_checks()),
         ("VE-F4603", vew03_loader::run_vew03_checks()),
