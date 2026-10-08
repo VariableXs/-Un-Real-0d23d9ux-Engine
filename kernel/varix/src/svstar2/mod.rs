@@ -219,6 +219,8 @@
 //! | [`vef12_checks`] | F1010 域自检（判据逐条映射，45 项：形态 7 / 优先级 3 / 精确匹配 4 / 截断 8（含恰超长一项的 off-by-one 边界正例）/ 拒绝 5 / 预乘对拍·精确分子零误差·零alpha约定·量化上界钉死 11 / 渐变质量 4 / 码段与三要素 5 / 判据承载 1；roundtrip 主承载真遍历全域不抽样；色键补差 1 邻值反向断言防范围式匹配；对拍层查表 Err 一律判红不用 unwrap_or 兜底；变异 9 项 8 捕获 + 1 项等价变异留痕（unpremul_num 去舍入对契约内精确分子输入恒等价）） | VE 册 #VE-F1010 |
 //! | [`vef54_aaarch`] | F5401 AA 域网络总架构（传输→会话→复制→玩法四层 + 层间接口逐条冻结不可解冻 + 层间失配只对拍不补偿 + Z 域移交包承接面三落点回溯绑源 + 带宽预算突发上界与帧预算双闸 + 公平判定与时钟负载无关） | VE 册 #VE-F5401 |
 //! | [`vef54_checks`] | F5401 域自检（判据逐条映射，43 项分 a/b/c 三族；变异双向验证 15/17 捕获 + 2 项等价变异留痕） | VE 册 #VE-F5401 |
+//! | [`vef55_netmodel`] | F5402 网络分层模型（四层职责册**每层单句**与 F5401 Layer 单源逐位对账；**跨层直调禁止**——依赖（F5401 allowed_deps 编译期）与调用（本条运行期相邻下传）两条纪律正交：越层直调拦截+**归位**改道逐层下传链、向上调用拒绝无归位（反向依赖不给路径）；层职责漂移**对拍修正**（DutyAct 行为归属投影，修正目标=职责册单源）；层间契约**版本拦截**（F5401 冻结之上不静默兼容旧版）；拦截器四路记账 O(1) 每调用） | VE 册 #VE-F5402 |
+//! | [`vef55_checks`] | F5402 域自检（27 项五组：职责册对账+行为射影 6/漂移对拍 4/拦截四向闭包+记账隔离 8/契约版本双向 4/读屏可达+判据元 5；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F5402 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
 //! | [`veu03_registry`] | F4203 契约注册中心（四能力+五字段冻结+唯一性+引用计数+生命周期） | VE 册 #VE-F4203 |
@@ -491,6 +493,8 @@ pub mod vef12_alpha;
 pub mod vef12_checks;
 pub mod vef54_aaarch;
 pub mod vef54_checks;
+pub mod vef55_netmodel;
+pub mod vef55_checks;
 pub mod veg03_checks;
 pub mod veg03_webm_mkv;
 pub mod veg04_checks;
@@ -1013,6 +1017,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1007-stream-c", vef07_checks::run_vef07_checks_c_standalone()),
         ("VE-F5401-a", vef54_checks::run_vef54_aaarch_checks_a_standalone()),
         ("VE-F5401-b", vef54_checks::run_vef54_aaarch_checks_b_standalone()),
+("VE-F5402", vef55_checks::run_vef55_checks()),
         ("VE-F5401-c", vef54_checks::run_vef54_aaarch_checks_c_standalone()),
         ("VE-F1203", veg03_checks::run_veg03_checks()),
         ("VE-F1204-a", veg04_checks::run_veg04_checks_a()),
