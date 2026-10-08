@@ -288,6 +288,8 @@
 //! | [`vev03_checks`] | F4403 域自检（判据五条逐条映射：四模块/按需激活/缺省标注/意图仲裁/判据共 40 项五组；**判据侧独立重算**——FNV 定槽判据侧逐字重写五键对账、优先级表与闭集与四码字面量写死、激活表全扫计数对账、判据条数离账自证） | VE 册 #VE-F4403 |
 //! | [`vev04_hdr`] | F4404 HDR 管线（**四段**：能力探测双源对账 O(1)——快照×EDID 失准以 EDID 声明为准选边并标注；元数据抽象层 HDR10 静态与动态类归一毫尼特整数零浮点缺失静态回退；色调映射整数 Reinhard 曲线表三档可调 O(像素批次) 渐近不超目标白；SDR 同屏混合 O(1) 混合过曝亮度钳制 203 nit 参考白留痕计数；读屏播报失准>钳制>正常>SDR 四态域本色；对接 F4402 能力上游，F4409/F4426 前向声明） | VE 册 #VE-F4404 |
 //! | [`vev04_checks`] | F4404 域自检（判据五条逐条映射共 29 项五组；**判据侧独立重算**——Reinhard 判据侧逐字重写六点对账、曲线表膝点/分档阈值/203nit/缺省CLL 字面量写死、探测真值表四组合全枚举、钳制边界两侧同查、条数离账自证） | VE 册 #VE-F4404 |
+//! | [`vev05_config`] | F4405 显示器配置文件（每屏一档**三节封闭**：能力节/校准节/偏好节不串；**开放格式**分节键值导出可回导+脱敏可选校准节整节占位；**版本链**快照式变更留痕、一键回退 O(1) 直达不重放、回退亦留痕历史只增不改；**三查校验** O(字段数) 字段/范围/引用三类分立、每错三要素提示、校验不过拒绝生效；导入冲突逐项裁决清单三态显性；对接 F4402 台账上游+F4403 短码引用域，F4407 同步/F4422 持久前向声明） | VE 册 #VE-F4405 |
+//! | [`vev05_checks`] | F4405 域自检（判据五条逐条映射共 23 项五组；**判据侧独立重算**——KEY_SPECS 十条白名单与短码四域与脱敏占位符字面量写死、开放格式以导出回导整档相等断言、回退快照逐字段相等、条数离账自证） | VE 册 #VE-F4405 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -707,6 +709,8 @@ pub mod vev03_color;
 pub mod vev03_checks;
 pub mod vev04_hdr;
 pub mod vev04_checks;
+pub mod vev05_config;
+pub mod vev05_checks;
 pub mod vew01_sdk_arch;
 /// VE-AB · AB01 批次 · AB 域开工与音频总架构（VE-F5601）
 ///
@@ -1011,6 +1015,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4402-b", vev02_checks::run_vev02_checks_b()),
         ("VE-F4403", vev03_checks::run_vev03_checks()),
         ("VE-F4404", vev04_checks::run_vev04_checks()),
+        ("VE-F4405", vev05_checks::run_vev05_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
         ("VE-F3203", veq03_handle::run_veq03_checks()),
