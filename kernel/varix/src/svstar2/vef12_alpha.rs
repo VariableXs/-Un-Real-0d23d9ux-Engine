@@ -69,6 +69,7 @@
 #![allow(clippy::needless_range_loop)]
 
 // lib.rs 只有 `extern crate alloc` 且无 `#[macro_use]`，宏逐文件显式导入。
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
