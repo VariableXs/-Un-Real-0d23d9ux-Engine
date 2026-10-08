@@ -118,6 +118,8 @@
 //! | [`veb21_checks`] | F0221 域自检（判据逐条映射锚点五条判据 + 无隐私，41 项分六族：DID 覆盖 7 / 档案挂接 8 / 能力探针 12 / 降级路径 6 / 性能 6 / 无障碍 2；**判据侧独立重算**——期望机型清单是独立写死的 23 个 DID 字面量不从被测表导出、比较次数用判据侧独立重写的扫描口径对拍、EU 数区间与下限/上限契约字面量均判据侧写死；变异双向验证 32/32 全捕获） | VE 册 #VE-F0221 |
 //! | [`veb22_gtt`] | F0222 Intel 显存管理对接 GTT（GGTT 与 ppGTT **两表分池**，跨表批写在提交口按 TableMismatch 拦截；批写两段式**先验证后落笔**——任一条非法整批拒绝零写入，「整批回滚」由从未半提交结构性保证；aperture 耗尽走 LRU 驱逐——只逐 refcount==0 且非 pending 的绑定、last_use 最旧优先、重试上限内凑不齐即明确失败不无限驱逐；驱逐决策带冷却窗口限频且 defer 留痕可判据；引用计数全生命周期契约——checked_add 防回绕、不越零、refcount>0 拒绝解绑；大页 4K/2M 分级——Auto 降级可观测记账、Force2m 不满足专属码拒绝不静默降级、代际门控对接 F0221 GenTier 基线档 4K only；unbind PTE 立即清零、区间进 pending 等 fence 签到方可复用——A 域围栏契约兑现点，pending 满最旧强收如实记账；自建诊断码独占 0x2Fxx 段） | VE 册 #VE-F0222 |
 //! | [`veb22_checks`] | F0222 域自检（判据逐条映射锚点五条判据：TBL 7 / BATCH 6 / EVICT 8 / REF 7 / PAGE 7 / FENCE 2 / PERF-A11Y 5 共 42 项七族；**判据侧独立重算**——页数 ceil 口径与 PTE 编码字面量均判据侧独立实现不向被测问答案、LRU 序判据侧 tick 台账重演、字节账全表重扫累加对拍、判据侧口径自检先行防判据自身写错） | VE 册 #VE-F0222 |
+//! | [`veb23_cmdenc`] | F0223 Intel 命令流编码器（MI 族 BB_START/SEMAPHORE_WAIT/STORE_DATA/NOOP 与 3D 族 VF/视口/混合/深度/RT 集合全编码；**代际分派唯一映射** GenTier→GenVariant 无默认回退——Xe 起 3D 头带 ext dword、视口上限 16→32、Scope 位 Xe2 独有、内存轮询 Xe 独有，拿错代际表=输出另一条命令；**地址空间 32 位契约**与 F0222 aperture 模型一致，超界专属码拒绝不静默截断；**8 字节对齐是发射路径的一部分**——奇 dword 显式补 NOOP；patching=重定位单 dword 精确收集、finalize 先全解析后落笔零半提交；吞吐用**确定性 dword 计数**不用墙钟，空会话产出 0 基线可判据；诊断码独占 0x32xx 段 13 码） | VE 册 #VE-F0223 |
+//! | [`veb23_checks`] | F0223 域自检（判据逐条映射锚点五条判据：MI 7 / 3D 7 / GEN 5 / AP 8 / THRU 5 / ERR 6 / A11Y-PRIV 3 共 41 项七族；**判据侧独立参照编码器**——预期 dword 序列按字面量独立展开不向被测问答案、代际差异「恰为 ext dword」防整体错位型变异、重定位收集→回填闭环与零半提交对拍、吞吐基线自证与预算字面量写死） | VE 册 #VE-F0223 |
 //! | [`ven02_tree`] | F2602 控件树模型（四要素/三不变量/三操作原子事务/M04 绑定路径解析；自 F2603 迁入的 Rust 权威实现） | VE 册 #VE-F2602 |
 //! | [`ven03_ctype`] | F2603 控件类型体系（六类最小集/扩展三件套/类型注册制/内核-上层分层边界） | VE 册 #VE-F2603 |
 //! | [`ven03_checks`] | F2602/F2603 域自检（判据逐条映射，55 项分三批落集） | VE 册 #VE-F2603 |
@@ -526,6 +528,8 @@ pub mod veb21_ident;
 pub mod veb21_checks;
 pub mod veb22_gtt;
 pub mod veb22_checks;
+pub mod veb23_cmdenc;
+pub mod veb23_checks;
 pub mod ven02_tree;
 pub mod ven03_ctype;
 pub mod ven03_checks;
@@ -833,6 +837,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0220-c", veb20_checks::run_veb20_checks_c_standalone()),
         ("VE-F0221", veb21_checks::run_veb21_checks()),
         ("VE-F0222", veb22_checks::run_veb22_checks()),
+        ("VE-F0223", veb23_checks::run_veb23_checks()),
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F2205", vel05_checks::run_vel05_all_checks()),
