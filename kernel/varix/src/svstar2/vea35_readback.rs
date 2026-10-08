@@ -676,7 +676,7 @@ impl MappingLedger {
         let mut i = 0usize;
         while i < MAPPING_SLOTS {
             let stale = match self.rows[i] {
-                Some(r) => r.frame <= here,
+                Some(r) => r.frame < here,
                 None => false,
             };
             if stale {
