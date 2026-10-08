@@ -53,6 +53,8 @@
 //! | [`vcw01_sdkdoc`] | CGPU-F3521 | W 域开工与 SDK 文档总架构（签收 V10 移交包 F3520 七件逐件对账缺件即空头签收拒；SDK 文档定位两条款字面量冻结——十年接口的说明书冻结签名才进参考+文档即契约漂移即缺陷；四段单向流水线 参考→教程→质量→站点 跳段/回退/未过质量关即发布显性码拒；V10 预告兑现——验收判据入文档示例映射表与 V 域 vcv01 映射表跨单元同源对拍表外判据拒；W_DOMAIN_TOTAL 160 守恒；0x5Cxx 六码独占） |
 //! | [`vcw01_sdkdoc_checks`] | CGPU-F3521 域自检（13 项六族：RECEIPT2 七件逐件对账+缺件错名反向必拒 / POSITION2 两条款逐字对拍+口径篡改反向必拒 / PIPE2 四段恰一步全过+跳段回退双向拒与发布终端闸 / FULFILL3 兑现结构核对+映射表逐行独立对拍+判据id与V域映射表跨单元同源 / CODE2 码段 0x5C 独占 !=0x50..0x5D 防自判死+码互异原因非空 / META2 域守恒独立重算+判据条数对账） |
 //! vco05_statemachine — CGPU-F2245 全域降级状态机（四态闭集正常/降级中/降级档/恢复标签冻结/形式化复用J03=1475迁移表全枚举+不可达态检查/六条合法迁移条件显性逐字/跳段倒退自迁移逐类显性拒/带迁移史留痕与断裂拒/重入迁移恢复途中再触发/与vco01段态分工声明/码段0x5Bxx五码/14项域自检）
+//! | [`vcw02_infoarch`] | CGPU-F3522 | 文档信息架构（承接 F3521 站点结构图——导航树是它的实现；四分区闭集 参考/教程/指南/FAQ 每节点恰一分区表外拒+每分区根≥1；导航树唯一事实源——导航表由树 DFS 前序展开生成不手写 表行数恒等树节点数同源+两次展开逐行相同确定性；树结构五律机检 路径非空/前缀律孤儿拒/路径全局唯一/标题非空/分区覆盖 违律逐条专属码；F3521_LINK 站点结构图跨单元对拍；0x5C07~0x5C0C 续段与 vcw01 六码不重叠 cgm02 续段先例） |
+//! | [`vcw02_infoarch_checks`] | CGPU-F3522 域自检（13 项六族：SECTION2 四分区闭集枚举+表外分区反向必拒 / TREE3 五律逐条+违规反向必拒+确定性两次展开逐行相同 / TABLE3 导航表行数恒等树节点数+逐行对拍树展开+手写漂移架构不可能 / LINK2 F3521_LINK 跨单元对拍 vcw01 HANDOVER_ITEMS 在账+断链反向必拒 / CODE2 码段 0x5C07~0C 独占与 vcw01 不重叠+码互异原因非空 / META1 判据条数对账） |
 pub mod cga01_simdprim;
 pub mod cga01_simdprim_checks;
 pub mod cga02_threadpool;
@@ -101,6 +103,8 @@ pub mod vcq02_metrics;
 pub mod vcq02_metrics_checks;
 pub mod vcv01_realverify;
 pub mod vcv01_realverify_checks;
+pub mod vcw02_infoarch;
+pub mod vcw02_infoarch_checks;
 pub mod vcw01_sdkdoc;
 pub mod vcw01_sdkdoc_checks;
 pub mod vco04_priorcon;
@@ -170,6 +174,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         crate::checks::CheckSet::merge(
             cgp03_sampling_checks::run_cgp03_checks(),
             vco05_statemachine_checks::run_vco05_checks(),
+            vcw02_infoarch_checks::run_vcw02_checks(),
         ),
         ),
         ),
