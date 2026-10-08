@@ -116,6 +116,8 @@
 //! | [`vcb04_crossframe_checks`] | CGPU-F0164 域自检（29 项六组：跨帧等待正确 7/链式传播 5/超时降级 5/持久化正确 4/跨 3 帧用例 4/判据元 4；期望值判据侧独立手算，不变量两头都测——恰边界 N-1/N 双向、传播两级与叶子 waiter 计账分明） | CGPU 册 #CGPU-F0164 |
 //! | [`vcb05_priority`] | CGPU-F0165 优先级发射与抢占点（CGPU-B 域发射序精细化：**三档封闭** 实时帧/交互/后台——tier_of 映射表把 F0161 priority 钉死归档（0=实时帧 1=交互 2+=后台）判据全表对拍；**发射顺序** 三档严格序+同档 FIFO——drain 只从最高非空档队首出；**抢占点** 协作式让位——长任务每 2ms 检查 F0063 抢占请求（步长钉死），让位延迟=请求到检查点距离上界恰步长；**让位延迟 P95** 整数千分比分位（ceil(950n/1000) 位）——超步长即检查点漏标判据抓；**饥饿防护** F0090 老化复用——等待满 8 轮升一档入新档队尾（公平不是特权）实时流持续插队下后台任务仍获发射；遥测三档发射/让位/检查点/升档四账守恒） | CGPU 册 #CGPU-F0165 |
 //! | [`vcb05_priority_checks`] | CGPU-F0165 域自检（31 项六组：三档发射序 6/抢占点检查 6/让位延迟 P95 5/饥饿防护 5/遥测 5/判据元 4；期望值判据侧独立手算，不变量两头都测——恰阈值升档+未到不升、3 路定向变异全击杀） | CGPU 册 #CGPU-F0165 |
+//! | [`vcb06_graphexec`] | CGPU-F0166 图执行引擎（任务图的执行驱动：**执行循环** 拓扑排序→就绪集发射→等待完成→逐批次推进——波次投影 F0163 为输入，整波发射整波收敛不做事件循环；**执行模式** 双模同核——同步全完成才返回/异步逐批次事件回调驱动，报告逐字段可对拍；**执行上下文** 每任务资源绑定读写集/命令编码器逐任务递增（发射序即编码器序）/预算消耗全额记账；**同波写写冲突** 建引擎时资源→写者映射显性拒绝——并行语义破坏非法化（读写同波合法）；帧预算超线只记账不拦截——裁决是 F0171 的职责；开销记账恒定与图规模无关 | CGPU 册 #CGPU-F0166 |
+//! | [`vcb06_graphexec_checks`] | CGPU-F0166 域自检（36 项八组：循环 6/双模 5/上下文 6/开销 4/预算 4/压测 5/冲突 2/判据元 4；判据侧独立手算、不变量两头都测、判据区零 panic 面、3 路定向变异全击杀） | CGPU 册 #CGPU-F0166 |
 //! | [`ved14_traverse`] | F0614 图层渲染遍历器 | VE 册 #VE-F0614 |
 //! | [`ved15_cache`] | F0615 图层缓存策略 | VE 册 #VE-F0615 |
 //! | [`ved16_scale`] | F0616 大层数性能（虚拟化与扁平化） | VE 册 #VE-F0616 |
@@ -896,6 +898,8 @@ pub mod vcb04_crossframe;
 pub mod vcb04_crossframe_checks;
 pub mod vcb05_priority;
 pub mod vcb05_priority_checks;
+pub mod vcb06_graphexec;
+pub mod vcb06_graphexec_checks;
 pub mod veae01_inputarch;
 pub mod veae01_inputarch_checks;
 pub mod vef16_gridstat;
@@ -1047,6 +1051,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("CGPU-F0163", vcb03_topopath_checks::run_vcb03_checks()),
         ("CGPU-F0164", vcb04_crossframe_checks::run_vcb04_checks()),
         ("CGPU-F0165", vcb05_priority_checks::run_vcb05_checks()),
+        ("CGPU-F0166", vcb06_graphexec_checks::run_vcb06_checks()),
         ("VE-F4602", vew02_manifest::run_vew02_checks()),
         ("VE-F4603", vew03_loader::run_vew03_checks()),
         ("VE-F4604", vew04_sandbox::run_vew04_checks()),
