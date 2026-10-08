@@ -12,6 +12,12 @@ pub mod vcj01_powerarch;
 pub mod vcj01_powerarch_checks;
 pub mod cga02_threadpool;
 pub mod cga02_threadpool_checks;
+pub mod cgm01_display;
+pub mod cgm01_display_checks;
+pub mod cgm02_display;
+pub mod cgm02_display_checks;
+pub mod cgr01_secure;
+pub mod cgr01_secure_checks;
 pub mod vcl01_virtualarch;
 pub mod vcl01_virtualarch_checks;
 pub mod vcq01_reliability;
@@ -29,29 +35,36 @@ pub mod vco03_triggersrc_checks;
 
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
-
     crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-            cgi01_bandwidth_checks::run_cgi01_checks(),
-            cgd02_frametimer_checks::run_cgd02_checks(),
+            crate::checks::CheckSet::merge(
+                cgi01_bandwidth_checks::run_cgi01_checks(),
+                cgd02_frametimer_checks::run_cgd02_checks(),
+            ),
+            crate::checks::CheckSet::merge(
+                vcj01_powerarch_checks::run_vcj01_checks(),
+                crate::checks::CheckSet::merge(
+                    cga02_threadpool_checks::run_cga02_checks(),
+                    vcl01_virtualarch_checks::run_vcl01_checks(),
+                ),
+            ),
         ),
         crate::checks::CheckSet::merge(
-            vcj01_powerarch_checks::run_vcj01_checks(),
-            cga02_threadpool_checks::run_cga02_checks(),
+            crate::checks::CheckSet::merge(
+                vcq01_reliability_checks::run_vcq01_checks(),
+                crate::checks::CheckSet::merge(
+                    vcq02_metrics_checks::run_vcq02_checks(),
+                    vco03_triggersrc_checks::run_vco03_checks(),
+                ),
+            ),
+            crate::checks::CheckSet::merge(
+                cgm01_display_checks::run_cgm01_checks(),
+                crate::checks::CheckSet::merge(
+                    cgm02_display_checks::run_cgm02_checks(),
+                    cgr01_secure_checks::run_cgr01_checks(),
+                ),
+            ),
         ),
-        ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-            vcl01_virtualarch_checks::run_vcl01_checks(),
-            vcq01_reliability_checks::run_vcq01_checks(),
-        ),
-        crate::checks::CheckSet::merge(
-            vcq02_metrics_checks::run_vcq02_checks(),
-            vco03_triggersrc_checks::run_vco03_checks(),
-        ),
-        ),
-        ),
-    )
+    ),
 }
+
