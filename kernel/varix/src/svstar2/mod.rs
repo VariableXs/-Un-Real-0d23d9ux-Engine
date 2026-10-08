@@ -265,6 +265,7 @@
 //! | [`vee14_textfuzz`] | F0814 文字渲染 fuzz（两面 fuzz 真打两条真实管线：**字体文件面**三算子——表裁剪/长度篡改/循环链——改**真实字节**（目录字段按 sfnt 布局定位）喂沙箱解析模型、**编码序列面**三注入——截断多字节/代理区/过长编码——喂 F0812 真解码器；oracle 三件套逐条可判且**独立实现**（下游码点合法性谓词不借被测模块函数）；护栏理由与 F0810 真 sandbox_check **对账映射**（TableCap 归内存类与 F0810 同优先级语义，TableCap→MemExceeded）；回归闭环是结构不是文案：发现→最小化（增量式 delta debugging，判据由调用方提供）→定级（MemorySafety 最高，与 VS-P1 同名同序）→promote 入账（重名拒绝）→每轮必跑；免责唯一出口=修 oracle（版本**严格递增**才摘，改判据放行没有入口）；无墙钟环境用确定性成本模型规划批次（增量取 1/10 下限 8，缩新语料**不缩回归**）；门禁六路（NoInput/CorpusDegenerate/RegressionBroken/CriticalOpen/BudgetBroken/Allow）配反向污染报告逐路核对——判据区零 panic 面） | VE 册 #VE-F0814 |
 //! | [`vee15_perf`] | F0815 文字渲染性能（**预算表同源引用不重抄**：六段分解/水位阈值/降级三步序全部复用 F0801（TextPipeline::degradation_plan 逐字同源+按名核对），场景常量同源引用 F0812（1000 静态+500 动态）；**五段计时**——「余量」是预算组成不是计时对象，给它建计时器等于造恒零段；段级超支定位防「总账掩盖段级劣化」；**三水位**复用 Water::judge 并 300/750 夹逼；**降级保护序是结构不是文案**：a11y 耗时单列入参、三步只作用于其余部分（想砍无障碍没有入口），回收量是显性估计常量不冒充实测，三步用尽如实报未达标；**双通道** CPU 结算 GPU 旁证、分歧>10% 预算入账不静默；缓存诊断线 90%（与 F0809 的 80% 健康告警线并存各司其职）持续 5 逻辑秒自动出报告、恰 90% 夹逼不触发、恢复清账可再报；P50/P95 取秩公式沿用 F0809 且升序语料使 P50≠P95（恒等语料放走秩位漂移——F0809 变异实测教训）；Eb07 只汇总不重测——本模块是测量真源） | VE 册 #VE-F0815 |
 //! | [`veb226_mpo`] | F0226 Intel MPO 协商（**协商是逐 plane 对表不是整体开关**：主 plane/SPR/CUR 层级口径同源 F0225，逐 plane 结论+原因同落结果（输出×plane 配置×原因），O(plane×输出) 协商、缓存后 O(1)；**缓存脏只认现实变了**——有效性锚在模式×热插拔纪元两个现实量上，不认时间戳（没发生的切换不打翻缓存，发生的必须打翻）；**兜底「常备并验证」四字全硬**：单 plane 合成路径构造即建不走动态加载（故障路径上不叠故障点），构造即跑四类金丝雀逐点验证；**降级通知三要素与 F0103 同构**（what/why/next 逐类齐备），合并限频留给 F0103——源头限频丢事件连回溯原料都没有；整数交叉相乘判缩放（恰 2x 夹逼合格）、越界输出拒绝不钳制不 panic、no_std 零 std 依赖） | VE 册 #VE-F0226 |
+//! | [`veb227_mediacaps`] | F0227 Intel 媒体引擎能力位（**缺席与读取失败是两种病两种治法**：实例数 0 标记缺席不假设存在（把缺席当未测是能力位撒谎第一形式）、读取失败按代际保守下限并标注 ConservativeFloor（Gen9 下限里 H264 确定有的，读失败说没有是撒谎第二形式）、未知编解码不宣称（宣称是枚举出来的不是缺省出来的）；能力矩阵九格按 GenTier 查表且**口径逐字同源 F0221「Baseline 新特性位一律不给」**——基线档不给 AV1，按最优批给承诺等于让下位机用户踩空；下限表独立重排九格逐格对账、宣称不得超表；探测一次性重复拒绝（能力读数不许抖动）、查询 O(1) 常驻缓存；只读视图无写入口且范围红线随视图走——不做编解码本体，能力位虚报让媒体栈在不存在能力上建大厦、本体混入让探测路径背上编解码复杂度，两头堵死） | VE 册 #VE-F0227 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -715,6 +716,7 @@ pub mod vee13_textdemo;
 pub mod vee14_textfuzz;
 pub mod vee15_perf;
 pub mod veb226_mpo;
+pub mod veb227_mediacaps;
 
 pub use vea01_index::{ProbeReport, effective_renderer, run_a01};
 
@@ -1025,6 +1027,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0814", vee14_textfuzz::run_vee14_checks()),
         ("VE-F0815", vee15_perf::run_vee15_checks()),
         ("VE-F0226", veb226_mpo::run_veb226_checks()),
+        ("VE-F0227", veb227_mediacaps::run_veb227_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
