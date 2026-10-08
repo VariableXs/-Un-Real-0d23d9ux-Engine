@@ -66,6 +66,7 @@
 //! vco06_executor — CGPU-F2246 降级执行器（统一接口冻结v1——ExecAction五元组只增不改/执行域四闭集与F2244四维对齐/执行语义建议vs强制复用/失败处置三态留痕跳过-重试恰一次-升级立案/回执账对账序号递增标记自洽/码段0x5Cxx五码/14项域自检）
 //! | [`vcw03_genpipeline`] | CGPU-F3523 | 文档生成管线（承接 F3522 信息架构——生成的文档页必须挂进导航树 页面在树上不在树外；管线四段单向 抽取→归一→渲染→产出 跳段/回退/终端再推进显性码拒+产出终端闸无自动生成印记即发布拒——手写混入即拒；文档是注释源的自动派生物不手写——AUTO_BANNER 印记+行数同源公式+两次生成逐行相同确定性 手写漂移架构不可能；源注释三律机检 标题非空/正文逐行非空/源路径唯一；0x5C0D~0x5C12 续段与 vcw01/vcw02 十二码不重叠 cgm02 续段先例） |
 //! | [`vcw03_genpipeline_checks`] | CGPU-F3523 域自检（13 项六族：GEN3 印记逐字双向对拍+行数三方同源判据侧独立重算+确定性排序首末条与渲染标题行逐字 / PIPE3 四段名对拍+违序三向语料逐条拒+发布终端闸三态 / SRC2 在账源抽取全过+三律反向语料专属码分账 / LINK2 源路径全在 vcw02 导航树路径集合跨单元对拍+域守恒 160 / CODE2 码段 0x5C0D~12 连续与前十十二码不重叠+码互异原因非空 / META1 判据条数对账） |
+//! vco07_recovery — CGPU-F2247 降级恢复引擎（恢复序四级闭集资源/效果/呈现/调度逐级回升/限速500+滞回带3不对称防振荡/恢复复用J03家族=1481过冲记忆回退一级+振荡达限冻结/恢复观测账留痕对账/引擎账一致性核验/码段0x5Dxx五码/12项域自检）
 pub mod cga01_simdprim;
 pub mod cga01_simdprim_checks;
 pub mod cga02_threadpool;
@@ -134,93 +135,98 @@ pub mod vco05_statemachine;
 pub mod vco05_statemachine_checks;
 pub mod vco06_executor;
 pub mod vco06_executor_checks;
+pub mod vco07_recovery;
+pub mod vco07_recovery_checks;
 
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
 /// 结构：21 个在账判据集顺序归约（与上方登记一一对应），新单入账在此追加。
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
-    crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
-        cga01_simdprim_checks::run_cga01_checks(),
         crate::checks::CheckSet::merge(
-        cga02_threadpool_checks::run_cga02_checks(),
-        cgd02_frametimer_checks::run_cgd02_checks()
-    )
-    ),
+            cga01_simdprim_checks::run_cga01_checks(),
         crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        cgd03_frameledger_checks::run_cgd03_checks(),
-        cgi01_bandwidth_checks::run_cgi01_checks()
-    ),
-        crate::checks::CheckSet::merge(
-        cgm01_display_checks::run_cgm01_checks(),
-        cgm02_display_checks::run_cgm02_checks()
-    )
-    )
-    ),
+            cga02_threadpool_checks::run_cga02_checks(),
+            cgd02_frametimer_checks::run_cgd02_checks(),
+        ),
+        ),
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
-        cgp01_adaptivearch_checks::run_cgp01_checks(),
+            cgd03_frameledger_checks::run_cgd03_checks(),
+            cgi01_bandwidth_checks::run_cgi01_checks(),
+        ),
         crate::checks::CheckSet::merge(
-        cgp02_unifiedmodel_checks::run_cgp02_checks(),
-        cgr01_secure_checks::run_cgr01_checks()
-    )
-    ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        cgr02_threatmodel_checks::run_cgr02_checks(),
-        vcj01_powerarch_checks::run_vcj01_checks()
-    ),
-        crate::checks::CheckSet::merge(
-        vcl01_virtualarch_checks::run_vcl01_checks(),
-        vco03_triggersrc_checks::run_vco03_checks()
-    )
-    )
-    )
-    ),
+            cgm01_display_checks::run_cgm01_checks(),
+            cgm02_display_checks::run_cgm02_checks(),
+        ),
+        ),
+        ),
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
-        vcq01_reliability_checks::run_vcq01_checks(),
+            cgp01_adaptivearch_checks::run_cgp01_checks(),
+            cgp02_unifiedmodel_checks::run_cgp02_checks(),
+        ),
         crate::checks::CheckSet::merge(
-        vcq02_metrics_checks::run_vcq02_checks(),
-        vct01_tbridge_checks::run_vct01_checks()
-    )
-    ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        vcv01_realverify_checks::run_vcv01_checks(),
-        vco04_priorcon_checks::run_vco04_checks()
-    ),
-        crate::checks::CheckSet::merge(
-        vct02_layers_checks::run_vct02_checks(),
-        vcw01_sdkdoc_checks::run_vcw01_checks()
-    )
-    )
-    ),
+            cgr01_secure_checks::run_cgr01_checks(),
+            cgr02_threatmodel_checks::run_cgr02_checks(),
+        ),
+        ),
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
+            vcj01_powerarch_checks::run_vcj01_checks(),
+            vcl01_virtualarch_checks::run_vcl01_checks(),
+        ),
         crate::checks::CheckSet::merge(
-        cgp03_sampling_checks::run_cgp03_checks(),
-        vco05_statemachine_checks::run_vco05_checks()
-    ),
-        crate::checks::CheckSet::merge(
-        vcw02_infoarch_checks::run_vcw02_checks(),
-        cgp04_pipeline_checks::run_cgp04_checks()
-    )
-    ),
+            vco03_triggersrc_checks::run_vco03_checks(),
+            vcq01_reliability_checks::run_vcq01_checks(),
+        ),
+        ),
+        ),
+        ),
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
-        vco06_executor_checks::run_vco06_checks(),
-        vcw03_genpipeline_checks::run_vcw03_checks()
-    ),
         crate::checks::CheckSet::merge(
-        cgp05_tiers_checks::run_cgp05_checks(),
-        cgp06_query_checks::run_cgp06_checks()
-    )
-    )
-    )
-    )
-    )
+            vcq02_metrics_checks::run_vcq02_checks(),
+        crate::checks::CheckSet::merge(
+            vct01_tbridge_checks::run_vct01_checks(),
+            vcv01_realverify_checks::run_vcv01_checks(),
+        ),
+        ),
+        crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
+            vco04_priorcon_checks::run_vco04_checks(),
+            vct02_layers_checks::run_vct02_checks(),
+        ),
+        crate::checks::CheckSet::merge(
+            vcw01_sdkdoc_checks::run_vcw01_checks(),
+            cgp03_sampling_checks::run_cgp03_checks(),
+        ),
+        ),
+        ),
+        crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
+            vco05_statemachine_checks::run_vco05_checks(),
+            vcw02_infoarch_checks::run_vcw02_checks(),
+        ),
+        crate::checks::CheckSet::merge(
+            cgp04_pipeline_checks::run_cgp04_checks(),
+            vco06_executor_checks::run_vco06_checks(),
+        ),
+        ),
+        crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
+            vcw03_genpipeline_checks::run_vcw03_checks(),
+            cgp05_tiers_checks::run_cgp05_checks(),
+        ),
+        crate::checks::CheckSet::merge(
+            cgp06_query_checks::run_cgp06_checks(),
+            vco07_recovery_checks::run_vco07_checks(),
+        ),
+        ),
+        ),
+        ),
+        ),
 }
