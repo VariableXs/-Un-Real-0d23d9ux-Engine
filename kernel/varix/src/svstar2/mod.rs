@@ -77,6 +77,8 @@
 //! | [`vcb03_topopath_checks`] | CGPU-F0163 域自检（33 项七组：排序正确性 6/空图环检测双向 6/关键路径理论对拍 6/并行发射吞吐 4/万节点性能 3/派生消费面 4/F0162 衔接+判据元 4；期望值判据侧独立手算，不变量两头都测——无环空表+有环精确清单、零松弛入集+非零松弛不入集） | CGPU 册 #CGPU-F0163 |
 //! | [`vcb04_crossframe`] | CGPU-F0164 跨帧依赖与围栏传播（CGPU-B 域帧间执行序：**跨帧围栏账本**——独立于帧图持久化，类型上不持有 FrameGraph 杜绝「随帧图释放」；围栏**三态封闭** Pending/Fulfilled/Lost；**跨帧边登记闸**——帧号不严格向前拒绝+重复边拒绝；**链式传播**——源头 Lost 沿等待链 BFS 一次性下推，每个转 Lost 围栏的 waiter 计一笔降级，Fulfilled 不传播不翻脸；**跨帧超时**——N 帧未完成显性标记丢失走降级算子非沉默挂死，恰 N-1 帧在等恰 N 帧判丢边界双向；发射闸三态 Clear/Blocked/Degraded（Degraded 优先）；丢失/降级/完成三计数入账零静默；跨 3 帧 happy/lost/混合三路用例） | CGPU 册 #CGPU-F0164 |
 //! | [`vcb04_crossframe_checks`] | CGPU-F0164 域自检（29 项六组：跨帧等待正确 7/链式传播 5/超时降级 5/持久化正确 4/跨 3 帧用例 4/判据元 4；期望值判据侧独立手算，不变量两头都测——恰边界 N-1/N 双向、传播两级与叶子 waiter 计账分明） | CGPU 册 #CGPU-F0164 |
+//! | [`vcb05_priority`] | CGPU-F0165 优先级发射与抢占点（CGPU-B 域发射序精细化：**三档封闭** 实时帧/交互/后台——tier_of 映射表把 F0161 priority 钉死归档（0=实时帧 1=交互 2+=后台）判据全表对拍；**发射顺序** 三档严格序+同档 FIFO——drain 只从最高非空档队首出；**抢占点** 协作式让位——长任务每 2ms 检查 F0063 抢占请求（步长钉死），让位延迟=请求到检查点距离上界恰步长；**让位延迟 P95** 整数千分比分位（ceil(950n/1000) 位）——超步长即检查点漏标判据抓；**饥饿防护** F0090 老化复用——等待满 8 轮升一档入新档队尾（公平不是特权）实时流持续插队下后台任务仍获发射；遥测三档发射/让位/检查点/升档四账守恒） | CGPU 册 #CGPU-F0165 |
+//! | [`vcb05_priority_checks`] | CGPU-F0165 域自检（31 项六组：三档发射序 6/抢占点检查 6/让位延迟 P95 5/饥饿防护 5/遥测 5/判据元 4；期望值判据侧独立手算，不变量两头都测——恰阈值升档+未到不升、3 路定向变异全击杀） | CGPU 册 #CGPU-F0165 |
 //! | [`vch01_budgetpool`] | CGPU-F1121 H 域开工与显存预算池架构（显存管理域（F1121-F1280）开山单——**显存分配全面预算化**：所有显存分配走预算池，**三级池闭集**（进程池=各引擎会话/系统池=系统 UI/合成器/保留池=应急+驱动保留且不可为零）；**无预算即无分配**——超配额显性拒绝不给满不静默降质（降质是上层策略对拒绝的反应），恰好配额边界放行/+1 拒绝双向精确；**Σ配额≤总显存守恒**构造期一次验证（checked 防回绕）破坏即拒绝构造；**账实守恒贯穿全生命周期**——used 逐字节记账/重复释放拒绝/释放即时归还/audit 对账不齐立案（泄漏防线与显存遥测的事实来源）；峰值记账不随回退抹除；水位四档 O(1)（80%/95% 阈值判据侧写死对拍）；**C 域 F0338 显存维度兑现声明+落地双面**——三条款闭集冻结且每条有可观察池侧行为兑现点（分配前预算校验=拒绝路径/超用告警=水位联动源/回收归还=release 即时回退），指纹 FNV 版本混入可对账；**G 域联动**三厂商闭集差异消费面——F0964/F0852 表未冻结前一律 Unknown 保守缺省不假宣称；显存哲学三条公理字面量冻结（有界才能稳定/无界即事故复用 E04/预算先行）；七主题闭集枚举域界宣言；诊断码独占 0x50xx 六码） | CGPU 册 #CGPU-F1121 |
 //! | [`vch01_budgetpool_checks`] | CGPU-F1121 域自检（锚点六条判据映射 26 项七族：七主题 2/哲学 2/三级池 8/守恒 4/C 域兑现 4/G 域联动 2/判据自检 4；**判据侧独立重算**——七主题与公理与条款与阈值字面量写死、守恒恰边界双向（Σ==total 放行/+1 拒）、水位 79.9/80/95 具体字节两侧重演、指纹独立 FNV 对拍、C 域每条款池侧行为直证不做空头支票、码段判据 != 防自判死） | CGPU 册 #CGPU-F1121 |
 //! | [`ved14_traverse`] | F0614 图层渲染遍历器 | VE 册 #VE-F0614 |
@@ -238,6 +240,8 @@
 //! | [`vef12_alpha`] | F1010 PNG 透明度全语义（三形态统一表示：alpha 通道(类型4/6)·调色板 per-entry alpha(类型3)·灰度/真彩色键(类型0/2) / 色键**精确匹配**——差 1 邻值不透明，范围式匹配会把整段亮度抠空 / 混合形态仲裁：tRNS+alpha 共存 ⇒ alpha 优先且 tRNS 忽略**计数告警**，静默是事故 / 错误路径：tRNS 超 PLTE **截断到合法长度并告警**(kept/dropped 留痕)·色键值超位深量程**拒块**·短 tRNS 按 ISO/IEC 15948 §4.3.2.1 缺省项全不透明 / 预乘转换：直通⇄预乘 8/16 位双路径，查表(65536 项)+算术+4 路 lanes 三实现全域逐值对拍；「roundtrip ≤1 LSB」由**精确分子路径**(u32 分子中间量不量化)全域 65536 组**零误差**达成非抽样；u8/u16 量化存储路径的往返上界按 F0625 单向阈值同源口径**实测声明**(127/32767 LSB，低 alpha 段信息量不足属单向区)，判据独立重算双向钉死 / 码段 F1010 独占 0xF6，双向钉死不撞 F1009(0xF5) 与 F2606(0x2C)) | VE 册 #VE-F1010 |
 //! | [`vef12_checks`] | F1010 域自检（判据逐条映射，45 项：形态 7 / 优先级 3 / 精确匹配 4 / 截断 8（含恰超长一项的 off-by-one 边界正例）/ 拒绝 5 / 预乘对拍·精确分子零误差·零alpha约定·量化上界钉死 11 / 渐变质量 4 / 码段与三要素 5 / 判据承载 1；roundtrip 主承载真遍历全域不抽样；色键补差 1 邻值反向断言防范围式匹配；对拍层查表 Err 一律判红不用 unwrap_or 兜底；变异 9 项 8 捕获 + 1 项等价变异留痕（unpremul_num 去舍入对契约内精确分子输入恒等价）） | VE 册 #VE-F1010 |
 //! | [`vef25_math`] | F1622 变换数学系统（Lane4 SIMD 就绪四通道 + Mat4 列 lane 存储——乘法直写口径/伴随求逆 O(常数)/转置对合；齐次透视除法 w 近零恰端点拒绝 + 投影结构核对末行齐次位；TRS 分解均匀缩放唯一解、非均匀歧义 NONUNIFORM 显性拒绝；NaN/Inf 双入口拒绝污染不进管线；牛顿迭代纯乘除开方——no_std 无 sqrt 依赖；0x42xx 五码独占互异） | VE 册 #VE-F1622 |
+//! | [`vef26_vfetch`] | F1623 顶点拉取优化（F1609 重排的**运行时落地端口** prefetch_reorder 委托 meshbatch 不复制算法——进管线一次重排每帧吃现成收益；LRU 命中率模拟器=验收量尺（纯函数整数运算，F1619 确定性纪律的量尺延续：量尺不确定测量就是玄学）；实例布局 AoS/SoA 双模式可配语义等价（布局是拉取策略不是数据变形）；FetchLedger 实时快照（F1630 调试数据消费点）；收益入册用命中率差+未命中操作计数（无墙钟不伪造毫秒数），跨缓存大小不可直比口径在册） | VE 册 #VE-F1623 |
+//! | [`vef26_vfetch_checks`] | F1623 域自检（14 项六族：命中 4=重排提升≥100‰下限+缓存=1 边界实测+模拟器双跑确定+零缓存拒绝 / 布局 3=闭集在册+逐字段语义等价+28B 口径跨度分账 / 统计 2=账本累计+命中率独立重算 / 度量 2=五字段齐备+操作计数同源对拍 / 码段 1=0x43 独占+码互异 / 判据 2=实挂条数实取+名字互异） | VE 册 #VE-F1623 |
 //! | [`vef54_aaarch`] | F5401 AA 域网络总架构（传输→会话→复制→玩法四层 + 层间接口逐条冻结不可解冻 + 层间失配只对拍不补偿 + Z 域移交包承接面三落点回溯绑源 + 带宽预算突发上界与帧预算双闸 + 公平判定与时钟负载无关） | VE 册 #VE-F5401 |
 //! | [`vef54_checks`] | F5401 域自检（判据逐条映射，43 项分 a/b/c 三族；变异双向验证 15/17 捕获 + 2 项等价变异留痕） | VE 册 #VE-F5401 |
 //! | [`vef55_netmodel`] | F5402 网络分层模型（四层职责册**每层单句**与 F5401 Layer 单源逐位对账；**跨层直调禁止**——依赖（F5401 allowed_deps 编译期）与调用（本条运行期相邻下传）两条纪律正交：越层直调拦截+**归位**改道逐层下传链、向上调用拒绝无归位（反向依赖不给路径）；层职责漂移**对拍修正**（DutyAct 行为归属投影，修正目标=职责册单源）；层间契约**版本拦截**（F5401 冻结之上不静默兼容旧版）；拦截器四路记账 O(1) 每调用） | VE 册 #VE-F5402 |
@@ -313,8 +317,6 @@
 //! | [`vev05_checks`] | F4405 域自检（判据五条逐条映射共 23 项五组；**判据侧独立重算**——KEY_SPECS 十条白名单与短码四域与脱敏占位符字面量写死、开放格式以导出回导整档相等断言、回退快照逐字段相等、条数离账自证） | VE 册 #VE-F4405 |
 //! | [`vev06_csconv`] | F4406 色彩空间转换引擎（**空间矩阵库** XYZ 桥三空间 sRGB/Display P3/Rec2020 正逆双定位矩阵、矩阵缺失拒绝转换不臆造 AdobeRgb→None；**双精度**同路径双定位——快速万分位/高精亿分位矩阵+十亿分点、色卡往返实测快速超 8bit 半级承诺物理必然、高精达承诺；**往返断言** O(色卡数) 8 卡最大误差对照容差 39=10000/255、超差强制高精立案；**缓存** FNV 定槽 32 槽条目存转换输出、版本戳失配全表作废非 LRU；**显式缺省**策略结构体 is_default 位不静默 Custom→sRGB；对接 F4403 上游、F4444/F4453 前向声明） | VE 册 #VE-F4406 |
 //! | [`vev06_checks`] | F4406 域自检（判据五条逐条映射共 27 项五组；**判据侧独立重算**——往返误差判据侧逐字复算对账、矩阵正逆与高精元素字面量抽查、容差 39 半级换算自洽、红点跨空间期望 [209,8,4] 判据侧独立模拟、条数离账自证） | VE 册 #VE-F4406 |
-//! | [`vev07_multisync`] | F4407 多屏色彩同步（跨屏一致观感三件：**配置联动**主屏校准单向派生副屏三态 InSync/重算留痕/豁免标注、派生失配逐屏重算是正常工作模式非异常路径；**漂移监测**周期采样对拍只采参数不含内容、阈内记账不告警超阈三通道齐发；**独立豁免**撤销翻位不删记录计数跨撤销累计、反复横跳超频次提示显性不阻止；**告警三通道**读屏行+台账立案+校准建议同一事实三呈现；主流程一 tick 编排、登记值与物理采样两读数源分立；性能联动 O(屏数)/采样 O(1)/告警 O(1)；对接 F4405 上游 F4425/F4426 前向声明） | VE 册 #VE-F4407 |
-//! | [`vev07_checks`] | F4407 域自检（判据五条逐条映射共 27 项六组；**判据侧独立重算**——容差 15/频次限 3/gamma 域 800..=1200/短码四域字面量写死、阈值边界 15/16 对拍防等价变异、豁免反复横跳真实触发频次提示反恒假、两读数源分立验证告警路径可达、条数离账自证） | VE 册 #VE-F4407 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -740,8 +742,6 @@ pub mod vev05_config;
 pub mod vev05_checks;
 pub mod vev06_csconv;
 pub mod vev06_checks;
-pub mod vev07_multisync;
-pub mod vev07_checks;
 pub mod vew01_sdk_arch;
 /// VE-AB · AB01 批次 · AB 域开工与音频总架构（VE-F5601）
 ///
@@ -766,6 +766,8 @@ pub mod vcb03_topopath;
 pub mod vcb03_topopath_checks;
 pub mod vcb04_crossframe;
 pub mod vcb04_crossframe_checks;
+pub mod vcb05_priority;
+pub mod vcb05_priority_checks;
 pub mod vch01_budgetpool;
 pub mod vch01_budgetpool_checks;
 pub mod vef16_gridstat;
@@ -781,6 +783,8 @@ pub mod vef21_checks;
 pub mod vef22_consistency;
 pub mod vef22_checks;
 pub mod vef25_math;
+pub mod vef26_vfetch;
+pub mod vef26_vfetch_checks;
 pub mod vead03_materials;
 pub mod vead03_checks;
 pub mod vc61_goverview;
@@ -886,6 +890,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("CGPU-F0162", vcb02_depderive_checks::run_vcb02_checks()),
         ("CGPU-F0163", vcb03_topopath_checks::run_vcb03_checks()),
         ("CGPU-F0164", vcb04_crossframe_checks::run_vcb04_checks()),
+        ("CGPU-F0165", vcb05_priority_checks::run_vcb05_checks()),
 ("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks()),
         ("VE-F4602", vew02_manifest::run_vew02_checks()),
         ("VE-F4603", vew03_loader::run_vew03_checks()),
@@ -937,6 +942,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1618", vef21_checks::run_vef21_checks()),
         ("VE-F1619", vef22_checks::run_vef22_checks()),
         ("VE-F1622", vef25_math::run_vef25_checks()),
+        ("VE-F1623", vef26_vfetch_checks::run_vef26_checks()),
         ("VE-F6003", vead03_checks::run_vead03_checks()),
         ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks()),
         ("VE-F5201", vez01_vfxarch_checks::run_vez01_checks()),
@@ -1075,7 +1081,6 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F5604", veab04_mixbus_checks::run_veab04_checks()),
         ("VE-F4405", vev05_checks::run_vev05_checks()),
         ("VE-F4406", vev06_checks::run_vev06_checks()),
-        ("VE-F4407", vev07_checks::run_vev07_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
         ("VE-F3203", veq03_handle::run_veq03_checks()),
