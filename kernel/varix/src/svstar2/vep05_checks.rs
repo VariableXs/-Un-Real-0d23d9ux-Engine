@@ -13,8 +13,8 @@
 //!   `F3005-原语-错开步长零拒`、`F3005-原语-分支状态真才连`、
 //!   `F3005-原语-分支状态假不连`、`F3005-原语-编译成实例组`、
 //!   `F3005-原语-编译实例守恒`、`F3005-原语-编译目标经决策表`、
-//!   `F3005-原语-变体错开非均布必被抓`、`F3005-原语-变体分支连错必被抓`、
-//!   `F3005-原语-错开表自推`；
+//!   `F3005-原语-变体错开非均布必被抓`、`F3005-原语-编译错开均布生效`、
+//!   `F3005-原语-变体分支连错必被抓`、`F3005-原语-错开表自推`；
 //! - **打断三策略** → `F3005-打断-三策略齐备`、`F3005-打断-已完成保持`、
 //!   `F3005-打断-快速完成归零`、`F3005-打断-原地保持留时长`、
 //!   `F3005-打断-回滚留时长`、`F3005-打断-未选型默认快速完成`、
@@ -26,7 +26,8 @@
 //!   `F3005-嵌套-超限拒`、`F3005-嵌套-超限给出路`、`F3005-嵌套-深度透传`、
 //!   `F3005-嵌套-变体上限失效必被抓`；
 //! - **统一 reduce** → `F3005-reduce-常规态有动画`、`F3005-reduce-时长全零`、
-//!   `F3005-reduce-偏移全零`、`F3005-reduce-阶段坍为单`、
+//!   `F3005-reduce-偏移全零`、`F3005-reduce-常规态偏移非零`、
+//!   `F3005-reduce-有偏移语料下全零`、`F3005-reduce-阶段坍为单`、
 //!   `F3005-reduce-实例不减少`、`F3005-reduce-控制段也归零`、
 //!   `F3005-reduce-组件零分支`、`F3005-reduce-变体部分坍缩必被抓`、
 //!   `F3005-reduce-变体元素丢失必被抓`；
@@ -62,7 +63,8 @@ use crate::svstar2::vep03_token::Lane;
 use crate::svstar2::vep04_stack::{CompileTarget, ControlDirection};
 use crate::svstar2::vep05_orch::{
     apply_interrupt, apply_primitive, check_budget, compile, merged_stagger_step,
-    stagger_offsets, verify_reduce_collapse, BudgetAction, Criterion, EdgeKind, ERROR_CODES,
+    stagger_offsets, verify_reduce_collapse, BudgetAction, CompileParams, Criterion, EdgeKind,
+    ERROR_CODES,
     HANDOVERS, InterruptCtx, InterruptStrategy, OrchNode, Orchestrator, PendingAction,
     PolicySource, Primitive, PrimitiveCtx, TimingEdge, BUDGET_TRIP, INSTANCE_BUDGET,
     INTERRUPT_PROTOCOL_VERSION, MAX_NEST_DEPTH, MAX_STAGGER_ELEMENTS, NODE_NAME_CAP,
@@ -497,11 +499,38 @@ fn chk_primitive(set: &mut CheckSet) {
         .all(|i| i.target == CompileTarget::CssAnimation);
     set.add("F3005-原语-编译目标经决策表", target_ok, "");
 
-    // 变体：错开非均布必被抓（步长表自推，改成外部传入不均布偏移时判据仍应绿——
-    // 故此处验证「均布性由实现保证」：改步长后均布仍成立）。
-    let offs2 = stagger_offsets(EXPECT_LINEAR_NODES, 45).unwrap();
-    let still_uniform = offs2.windows(2).all(|w| w[1] - w[0] == 45);
-    set.add("F3005-原语-变体错开非均布必被抓", still_uniform, "");
+    // 变体：错开非均布必被抓。
+    //
+    // 【修正】原写法是「改步长后再断均布仍成立」——那断的是**均布性由谁保证**，
+    // 而被测函数若改成「所有元素同偏移」这种非均布实现，只要传入的期望差恰好
+    // 等于实现给的常量，这条判据照样全绿（实测变异 `saturating_mul(idx)` →
+    // 常数项，全绿）。这与「断言两侧同值」同病：拿实现自己的输出对齐实现自己。
+    //
+    // 正确口径 = 独立重算期望偏移，与产物**逐槽对拍**：
+    // 第 i 个元素的偏移必须恰为 step*i。均布被改成常数/线性以外的任何形状，
+    // 至少一槽对不上 ⇒ 转红。
+    let mut sg = Orchestrator::new();
+    for k in 1..=(EXPECT_LINEAR_NODES as u32) {
+        sg.node(OrchNode::new(k, 10 + k, 100 + k, "s", 100, 1)).unwrap();
+    }
+    let sg_g = sg.commit().unwrap();
+    let EXPECT_STEP: u32 = 30;
+    let sg_c = compile(&sg_g, &CompileParams::with_stagger(Lane::Normal, EXPECT_STEP)).unwrap();
+    let uniform_exact = sg_c.instances.len() == EXPECT_LINEAR_NODES
+        && sg_c
+            .instances
+            .iter()
+            .enumerate()
+            .all(|(i, inst)| inst.offset_in_stage_ms == EXPECT_STEP * i as u32);
+    set.add("F3005-原语-变体错开非均布必被抓", uniform_exact, "");
+    // 反向断言：均布必须**真的非零**且随序递增，否则上条恒真
+    // （全零偏移也能「逐槽等于0*i」——这是本域最容易写出的恒真门禁）。
+    let sg_nonzero = sg_c
+        .instances
+        .iter()
+        .enumerate()
+        .all(|(i, inst)| inst.offset_in_stage_ms > 0 || i == 0);
+    set.add("F3005-原语-编译错开均布生效", sg_nonzero, "");
 
     // 变体：分支连错必被抓（把真分支换成假分支，链边数归零）。
     let mut cb3 = Orchestrator::new();
@@ -799,6 +828,40 @@ fn chk_reduce(set: &mut CheckSet) {
     set.add(
         "F3005-reduce-偏移全零",
         reduced.instances.iter().all(|i| i.offset_in_stage_ms == 0), "");
+    // 【修正】上一条是**恒真门禁**：`linear_graph()` 无偏移启动边、且 `cp()`
+    // 的 stagger 步长为 0，故常规态偏移本就全零——「reduce 全零」无论实现
+    // 是否坍缩都成立（实测变异 `off_eff = off` 全绿）。
+    // 正确口径 = 三要件：常规态偏移**确实非零**（证明语料真的造出了偏移）
+    // ∧ reduce 态全零 ∧ 控制段偏移同步归零。三者缺一，判据即失效。
+    let mut og = Orchestrator::new();
+    og.node(OrchNode::new(1, 10, 100, "o1", 200, 1)).unwrap();
+    og.node(OrchNode::new(2, 11, 101, "o2", 200, 1)).unwrap();
+    og.node(OrchNode::new(3, 12, 102, "o3", 200, 1)).unwrap();
+    og.edge(TimingEdge::after_complete(1, 2)).unwrap();
+    og.edge(TimingEdge::offset_start(2, 3, 120)).unwrap();
+    let og_g = og.commit().unwrap();
+    let og_normal = compile(&og_g, &CompileParams::with_stagger(Lane::Normal, 40)).unwrap();
+    let og_reduced = compile(&og_g, &CompileParams::with_stagger(Lane::Reduced, 40)).unwrap();
+    let normal_has_offset = og_normal
+        .instances
+        .iter()
+        .any(|i| i.offset_in_stage_ms > 0);
+    let reduced_zero = og_reduced
+        .instances
+        .iter()
+        .all(|i| i.offset_in_stage_ms == 0);
+    let ctrl_zero = og_reduced
+        .instances
+        .iter()
+        .all(|i| i.control.offset_ms == 0);
+    set.add(
+        "F3005-reduce-常规态偏移非零",
+        normal_has_offset,
+        "常规态无偏移 ⇒ reduce 偏移判据恒真，语料无效",
+    );
+    set.add(
+        "F3005-reduce-有偏移语料下全零",
+        normal_has_offset && reduced_zero && ctrl_zero, "");
     set.add(
         "F3005-reduce-阶段坍为单",
         reduced.instances.iter().all(|i| i.stage == 0), "");
