@@ -73,6 +73,8 @@
 //! | [`vcb01_framegraph_checks`] | CGPU-F0161 域自检（31 项七组：结构全覆盖 4/ID 索引 4/arena 整池+双释放 4/快照语义 4/边三闸 3/环检出双向+普查+预算 4/万节点压测 4/读屏+判据元 4；期望值判据侧独立重算，不变量两头都测） | CGPU 册 #CGPU-F0161 |
 //! | [`vcb02_depderive`] | CGPU-F0162 资源读写集自动依赖推导（声明序单遍扫描按子资源键建边——**RAW/WAR/WAW 三规则**+**读读不建边**（可并行的结构性来源）；**子资源粒度** base+mip+数组层键控——同纹理异 mip 推导不出边；**边合并**同对任务多冲突一条边且成因三布尔保留（合并不是信息损失）；**漏边零容忍**注入测试口径——手算期望边集不漏不滥双向对账；whole 整资源键与子键异粒显性不相撞；from_frame_graph 扁平退化衔接 F0161+主因映射回落单型边；万节点链式/万读者收口压测） | CGPU 册 #CGPU-F0162 |
 //! | [`vcb02_depderive_checks`] | CGPU-F0162 域自检（28 项七组：三规则+读读 6/子资源粒度 5/边合并 3/漏边零容忍注入 3/衔接+性能 7/结构无环 1/判据元 4；期望值判据侧独立手算，不变量两头都测） | CGPU 册 #CGPU-F0162 |
+//! | [`vch01_budgetpool`] | CGPU-F1121 H 域开工与显存预算池架构（显存管理域（F1121-F1280）开山单——**显存分配全面预算化**：所有显存分配走预算池，**三级池闭集**（进程池=各引擎会话/系统池=系统 UI/合成器/保留池=应急+驱动保留且不可为零）；**无预算即无分配**——超配额显性拒绝不给满不静默降质（降质是上层策略对拒绝的反应），恰好配额边界放行/+1 拒绝双向精确；**Σ配额≤总显存守恒**构造期一次验证（checked 防回绕）破坏即拒绝构造；**账实守恒贯穿全生命周期**——used 逐字节记账/重复释放拒绝/释放即时归还/audit 对账不齐立案（泄漏防线与显存遥测的事实来源）；峰值记账不随回退抹除；水位四档 O(1)（80%/95% 阈值判据侧写死对拍）；**C 域 F0338 显存维度兑现声明+落地双面**——三条款闭集冻结且每条有可观察池侧行为兑现点（分配前预算校验=拒绝路径/超用告警=水位联动源/回收归还=release 即时回退），指纹 FNV 版本混入可对账；**G 域联动**三厂商闭集差异消费面——F0964/F0852 表未冻结前一律 Unknown 保守缺省不假宣称；显存哲学三条公理字面量冻结（有界才能稳定/无界即事故复用 E04/预算先行）；七主题闭集枚举域界宣言；诊断码独占 0x50xx 六码） | CGPU 册 #CGPU-F1121 |
+//! | [`vch01_budgetpool_checks`] | CGPU-F1121 域自检（锚点六条判据映射 26 项七族：七主题 2/哲学 2/三级池 8/守恒 4/C 域兑现 4/G 域联动 2/判据自检 4；**判据侧独立重算**——七主题与公理与条款与阈值字面量写死、守恒恰边界双向（Σ==total 放行/+1 拒）、水位 79.9/80/95 具体字节两侧重演、指纹独立 FNV 对拍、C 域每条款池侧行为直证不做空头支票、码段判据 != 防自判死） | CGPU 册 #CGPU-F1121 |
 //! | [`ved14_traverse`] | F0614 图层渲染遍历器 | VE 册 #VE-F0614 |
 //! | [`ved15_cache`] | F0615 图层缓存策略 | VE 册 #VE-F0615 |
 //! | [`ved16_scale`] | F0616 大层数性能（虚拟化与扁平化） | VE 册 #VE-F0616 |
@@ -741,6 +743,8 @@ pub mod vcb01_framegraph;
 pub mod vcb01_framegraph_checks;
 pub mod vcb02_depderive;
 pub mod vcb02_depderive_checks;
+pub mod vch01_budgetpool;
+pub mod vch01_budgetpool_checks;
 pub mod vef16_gridstat;
 pub mod vef16_checks;
 pub mod vef18_geofuzz;
@@ -850,6 +854,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F6201", veae01_inputarch_checks::run_veae01_checks()),
 ("CGPU-F0161", vcb01_framegraph_checks::run_vcb01_checks()),
 ("CGPU-F0162", vcb02_depderive_checks::run_vcb02_checks()),
+("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks()),
         ("VE-F4602", vew02_manifest::run_vew02_checks()),
         ("VE-F4603", vew03_loader::run_vew03_checks()),
         ("VE-F4604", vew04_sandbox::run_vew04_checks()),
