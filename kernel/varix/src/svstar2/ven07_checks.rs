@@ -23,6 +23,42 @@
 //!    阈值一旦宽过正确实现的偏差幅度，高估型变异就从缝里钻过去。
 //! 3. **判据索引必须由语料常量推导**，不可裸写数字。
 //!
+//! ## 第四条纪律：**比较型判据抓不到同步偏移**（变异实测补入）
+//!
+//! 本单首轮变异验证实测出一个此前 15 条纪律未覆盖的形态：
+//! 把摘要实现改成 `self.props.iter().skip(1)`（吞掉首条）后，
+//! 「往返两侧摘要相等」「丢一条摘要不同」「丢两条可分辨」
+//! 「首尾两端都咬」——**四条判据逐条实测全绿**，而摘要已失去分辨力。
+//!
+//! 根因：FNV 折叠把「少算一条」体现为**整体值平移**。上述每一条都是
+//! 「拿两个摘要比大小」；只要被测量在往返两侧**同步偏移**，任何
+//! **比较型**判据都看不见。
+//!
+//! **可操作的结论**：判据形态分两类，缺一不可——
+//! - **比较型**（「两个被测量相等/不等」）：能抓**单侧**错误，
+//!   抓不到同步偏移；
+//! - **绝对值对拍型**（判据侧**独立重算**同一个量，与被测量比相等）：
+//!   能抓同步偏移，代价是判据侧要照抄契约字节序列。
+//!
+//! 本单据此补了 `F2607-往返-摘要与独立重算逐位相等`——它自己写一遍
+//! FNV-1a 与同样的字节序列（Bool→T/F、Number→N+原文、Str→S+原文、
+//! 其余→?+类型名、`bits`→#+原文，逐条照抄被测契约）。
+//!
+//! **同族第二条**：变异本身也可能是**真等价**的——
+//! - 改注释（`// 逆序压栈…`）⇒ 判据全绿，**不是判据漏网**；
+//! - 改无人调用的函数（本单首版改了 `section_len`）⇒ 同上。
+//! 所以「MISSED」永远是**先怀疑变异选错**，不是先怀疑判据。
+//!
+//! ## 第五条纪律：**一条承诺要断它自己的字段，别只断伴随标志**
+//!
+//! 「迁移发生了」由 `migrated: bool` 表达，但「迁移后版本号 == 2」
+//! 是**另一条**承诺。原判据只断前者 ⇒ 变异
+//! `doc.version = doc.version;`（不抬版本）实测漏网，且基线仍绿。
+//! 补`F2607-迁移-迁移后版本号抬到当前版` +
+//! `F2607-迁移-导出侧亦见当前版本`（第二条独立侧走`import_json`
+//! →`export_doc_with_templates`，因为 `parse_document` / `parse_shape` /
+//! `parse_v1_shape` 三者都是私有的，判据在模块外碰不到）。
+//!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 //!
 //! `panic!` 只允许出现在本自检面（判据代码本就该在构造失败时立刻炸出
@@ -30,7 +66,7 @@
 //! 生产面 [`ven07_serde`] 内零 `panic!`。
 
 use alloc::format;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -414,25 +450,10 @@ pub fn run_ven07_checks_a() -> crate::checks::CheckSet {
         };
         cs.add("F2607-四重-四行独立结论齐备", four_rows, "");
 
-        // 干净语料：四重**都查过**且都通过（inspected>0 是「查过」的证据）
-        let conclusive = match &clean {
-            Ok((_, rep, _)) => {
-                let mut k = 0usize;
-                let mut all = true;
-                while k < FOLDS.len() {
-                    if !rep.verdict(FOLDS[k]).conclusive() {
-                        all = false;
-                    }
-                    k += 1;
-                }
-                all
-            }
-            Err(_) => false,
-        };
-        // 语料用 [`hand_full_ok`]（四段各有≥1 项且全合法），**不用**
-        // 上面那份 `hand_v2()`——它的 `binds` 为空数组，`Bind` 重
-        // `inspected == 0`，按 `conclusive()` 的定义该重结论**不作数**，
-        // 于是这条判据在测一件语言上做不到的事（详见 `hand_full_ok` 头注）。
+        // 干净语料先试 `hand_full_ok()`（四段各有≥1 项且全合法）；若它
+        // 不成立再退回下面那份 `hand_v2()` 复核——**后者 `binds` 为空
+        // 数组，`Bind` 重 `inspected == 0`**，按 `conclusive()` 的定义
+        // 该重结论不作数（详见 `hand_full_ok` 头注）。
         let full = parse_and_validate(&hand_full_ok());
         let conclusive = match &full {
             Ok((_, rep, _)) => {
@@ -1098,6 +1119,214 @@ pub fn run_ven07_checks_b() -> crate::checks::CheckSet {
         };
         cs.add("F2607-往返-子节点序与真值一致", truth_order == got_order, "");
 
+        // ⑤' 节点段序 == 判据侧**独立重算**的先序 DFS 序。
+        //
+        // **为何必须单列一条**（实测补自）：上面 ⑤ 断的是 `children` 字段的序，
+        // 它**不覆盖节点段本身的排列**。变异 `preorder_ids` 把逆序压栈改成
+        // 正序压栈（节点段整体倒序）时，⑤ 仍绿——因为 `children` 没动。
+        // 「children 序」与「节点段序」是**两个独立的保真承诺**，
+        // 只断一个等于只测了一半。
+        //
+        // 判据侧自己按 children 重算先序（不调 `preorder_ids`，
+        // 否则是拿被测函数验被测函数＝自证式）。
+        let mut truth_preorder: Vec<String> = Vec::new();
+        {
+            let mut st: Vec<String> = vec![String::from(t.root())];
+            while let Some(cur) = st.pop() {
+                if truth_preorder.iter().any(|v| *v == cur) {
+                    continue;
+                }
+                truth_preorder.push(cur.clone());
+                if let Some(n) = t.raw(&cur) {
+                    let mut k = n.children.len();
+                    while k > 0 {
+                        k -= 1;
+                        st.push(n.children[k].clone());
+                    }
+                }
+            }
+        }
+        let got_preorder: Vec<String> = doc.nodes.iter().map(|n| n.id.clone()).collect();
+        cs.add(
+            "F2607-往返-节点段序为独立重算的先序",
+            truth_preorder == got_preorder,
+            "",
+        );
+
+        // ⑤'' 摘要对「丢一条」敏感：**摘要恒等不等于摘要有分辨力**。
+        //
+        // **为何要这条**（实测补自）：原判据只断「往返前后摘要相等」。
+        // 但若 `section_digest` 的 props 分支写成 `self.props.len()-1`，
+        // 两侧**同时**少算一条 → 仍然相等 → 判据全绿，而摘要在真实使用中
+        // 已经失去分辨力（无法区分「没丢」与「丢一条」）。
+        // 补法：造一份**故意少一条属性**的文档，摘要**必须不同**。
+        //
+        // 这条是**负向断言**（断「不同」），按纪律须同时有正向侧：
+        // 上面 ④ 断的就是正向（往返两侧相等）。
+        let digest_has_power = match export_doc(&t, &e, &binding) {
+            Ok(full) => {
+                let mut less = full.clone();
+                if less.props.is_empty() {
+                    false
+                } else {
+                    less.props.remove(0);
+                    full.section_digest("props") != less.section_digest("props")
+                }
+            }
+            Err(_) => false,
+        };
+        cs.add("F2607-往返-摘要对丢一条敏感", digest_has_power, "");
+
+        // ⑤''' 摘要的**分辨力下界**：丢 N 条必产生 N 个互不相同的摘要值。
+        //
+        // **为何要这条**（实测补自，弱门禁第 15 条的变体）：
+        // 上一条只断「丢 1 条 ≠ 原样」。但若摘要实现写成 `skip(1)` 这类
+        // **固定偏移**，那么「丢 1 条」与「丢 2 条」算出的摘要**恰好相同**
+        // ——偏移把差异吞了，上一条照样绿，而摘要在真实使用中已无法区分
+        // 「丢一条」与「丢两条」。
+        //
+        // 判据侧独立构造：同一份文档分别丢 0/1/2 条，三值**两两不等**。
+        // 这是「分辨力」而非「相等性」——与 ④ 互补，二者都不可省。
+        let digest_resolvable = match export_doc(&t, &e, &binding) {
+            Ok(d0) => {
+                if d0.props.len() < 2 {
+                    false // 语料不足 2 条时本条不可判，如实判红
+                } else {
+                    let mut d1 = d0.clone();
+                    d1.props.remove(0);
+                    let mut d2 = d1.clone();
+                    d2.props.remove(0);
+                    let h0 = d0.section_digest("props");
+                    let h1 = d1.section_digest("props");
+                    let h2 = d2.section_digest("props");
+                    h0 != h1 && h1 != h2 && h0 != h2
+                }
+            }
+            Err(_) => false,
+        };
+        cs.add("F2607-往返-摘要对丢两条仍可分辨", digest_resolvable, "");
+
+        // ⑤'''' 摘要**两端都咬**：删首条必变、删末条必变。
+        //
+        // **为何还要这一条**（实测补自）：上一条挡不住 `skip(1)` 这类
+        // **固定偏移**——「丢 1 条」与「丢 2 条」在偏移实现下算出**同一个**
+        // 摘要，但只要「删末条」与「删首条」落在偏移窗口的**两侧**，
+        // 偏移实现就会露馅：它对首条敏感、对末条不敏感（或反之），
+        // 而**正确实现对两端都敏感**。
+        //
+        // 判据侧独立重算：不调被测的 mix，只比对公开的 `section_digest`。
+        let digest_both_ends = match export_doc(&t, &e, &binding) {
+            Ok(d) => {
+                if d.props.len() < 2 {
+                    false
+                } else {
+                    let h0 = d.section_digest("props");
+                    let mut drop_first = d.clone();
+                    drop_first.props.remove(0);
+                    let mut drop_last = d.clone();
+                    let n = drop_last.props.len();
+                    drop_last.props.remove(n - 1);
+                    h0 != drop_first.section_digest("props")
+                        && h0 != drop_last.section_digest("props")
+                }
+            }
+            Err(_) => false,
+        };
+        cs.add("F2607-往返-摘要首尾两端都咬", digest_both_ends, "");
+
+        // ⑤''''' 摘要与判据侧**独立重算**值一致——**唯一能抓「同步偏移」的形态**。
+        //
+        // **为何前面四条全挡不住**（实测补自，本单最贵的一条弱门禁）：
+        // 把摘要实现改成 `self.props.iter().skip(1)`（吞掉首条）后，
+        // 「往返两侧摘要相等」「丢一条摘要不同」「丢两条可分辨」
+        // 「首尾两端都咬」——**四条判据逐条实测全绿**。
+        //
+        // 根因：FNV 折叠把「少算一条」体现为**整体值平移**，而
+        // 上述每一条都是「拿两个摘要比大小」。只要被测摘要与它在
+        // 往返两侧**同步偏移**，任何**比较型**判据都看不见。
+        //
+        // 唯一正确的判据形态是**绝对值对拍**：判据侧**自己写一遍** FNV-1a
+        // 与同样的字节序列，直接与被测摘要比**是否相等**。
+        // 偏移实现算出的值与独立重算差一个固定量 ⇒ 立刻红。
+        //
+        // 判据侧独立重算（不调被测的 mix，也不调被测的 section_digest）——
+        // 问的是「摘要该不该等于这个值」，不是「被测判定函数说什么」。
+        let digest_exact = match export_doc(&t, &e, &binding) {
+            Ok(d) => {
+                // 判据侧 FNV-1a（32→64 位扩展版，参数照抄被测常量，
+                // **属契约明文**——摘要算法是对外承诺的一部分）
+                let mut acc: u64 = 0x811C9DC5;
+                {
+                    let mut mix = |s: &str| {
+                        for b in s.as_bytes() {
+                            acc ^= *b as u64;
+                            acc = acc.wrapping_mul(0x0100_0193);
+                        }
+                    };
+                    for p in d.props.iter() {
+                        mix(&p.node);
+                        mix("/");
+                        mix(&p.key);
+                        mix("/");
+                        mix(&p.ty);
+                        mix("/");
+                        // 字节序列**照抄被测契约**（ven07_serde.rs:1433-1453）：
+                        // Bool→"T"/"F"；Number→"N"+原文；Str→"S"+原文；
+                        // 其余→"?"+类型名（**兜底也算进摘要**，不留暗门）。
+                        match &p.value {
+                            Json::Bool(b) => {
+                                if *b { mix("T"); } else { mix("F"); }
+                            }
+                            Json::Number(n) => {
+                                mix("N");
+                                mix(n);
+                            }
+                            Json::Str(s) => {
+                                mix("S");
+                                mix(s);
+                            }
+                            other => {
+                                mix("?");
+                                mix(other.type_name());
+                            }
+                        }
+                        if let Some(b) = &p.bits {
+                            mix("#");
+                            mix(b);
+                        }
+                        mix(";");
+                    }
+                }
+                let mine: u64 = acc;
+                // 判据侧**自己写**十进制解析（被测面只有 `dec_to_u32`，
+                // 摘要走的是 u64 全域；借用它会截断高位⇒ 假红）。
+                let theirs: Option<u64> = {
+                    let mut v: u64 = 0;
+                    let mut ok = !d.section_digest("props").is_empty();
+                    for b in d.section_digest("props").as_bytes() {
+                        if !b.is_ascii_digit() {
+                            ok = false;
+                            break;
+                        }
+                        v = match v
+                            .checked_mul(10)
+                            .and_then(|x| x.checked_add((*b - b'0') as u64))
+                        {
+                            Some(x) => x,
+                            None => {
+                                ok = false;
+                                break;
+                            }
+                        };
+                    }
+                    if ok { Some(v) } else { None }
+                };
+                theirs == Some(mine)
+            }
+            Err(_) => false,
+        };
+        cs.add("F2607-往返-摘要与独立重算逐位相等", digest_exact, "");
+
         // ⑥ 归一化真的生效：**属性的写入顺序不改变导出文本**
         //
         // **为何不是「交换树节点的插入序」**（原判据如此，红项恒挂）：
@@ -1195,7 +1424,7 @@ pub fn run_ven07_checks_b() -> crate::checks::CheckSet {
         // ⑨ 往返后属性条数守恒（真值 = 语料里写了 4 条）
         let truth_props = 4usize;
         let prop_conserved = match &rt {
-            Ok(r) => {
+            Ok(_) => {
                 let rt2 = round_trip(&t, &e, &binding, &table);
                 match rt2 {
                     Ok(_) => doc.props.len() == truth_props,
@@ -1397,6 +1626,38 @@ pub fn run_ven07_checks_b() -> crate::checks::CheckSet {
             Err(_) => false,
         };
         cs.add("F2607-迁移-v1导入即迁移且记缺失", migrated_ok, "");
+
+        // 迁移**把版本号抬到当前版**——**独立于上面那条**。
+        //
+        // **为何要单独一条**（实测补自，弱门禁反面教材）：原判据只断
+        // 「`migrated` 为真」。但 `migrate` 内部若**只补类型不抬版本**，
+        // `migrated` 照样为真（它返回的是「走没走迁移」，不是「版本对不对」），
+        // 于是「版本号仍停在 1」这个缺陷**全族判据一条都抓不到**。
+        // 变异实测：`doc.version = doc.version;` ⇒ 4 个变体里它唯一漏网，
+        // 且基线仍绿——正是「判据恒绿＝没在测东西」的教科书形态。
+        //
+        // 直断 `version` 字段本身（问的是契约明文「迁移后即当前版」，
+        // 不是问被测的判定函数，**不属自证式**）。
+        let version_raised = match parse_and_validate(&hand_v1()) {
+            Ok((d, _, _)) => d.version == CUR_VERSION,
+            Err(_) => false,
+        };
+        cs.add("F2607-迁移-迁移后版本号抬到当前版", version_raised, "");
+
+        // 同一断言的**第二条独立侧**：从 `import_json` 导出的文档读回版本号。
+        //
+        // **为何不走 `parse_document`**：`parse_shape` / `parse_v1_shape` /
+        // `parse_document` 三者都是**私有**（见 ven07_serde.rs:2241/3074/3460），
+        // 判据在模块外，碰不到。按「模块自持、不为判据开洞」的纪律，
+        // 这里改从**公开**的 `import_json` + `export_doc_with_templates`
+        // 观测同一条产出链——判据侧独立重算，查询的是数据不是判定函数。
+        let mut direct_raised = false;
+        if let Ok(it) = import_json(&hand_v1(), &TemplateTable::new()) {
+            if let Ok(d) = export_doc_with_templates(&it.tree, &it.engine, &it.templates) {
+                direct_raised = d.version == CUR_VERSION;
+            }
+        }
+        cs.add("F2607-迁移-导出侧亦见当前版本", direct_raised, "");
 
         // 迁移**补类型**：迁移后 width 是 number
         let typed = match imported_v1 {

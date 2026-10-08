@@ -259,11 +259,11 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::svstar2::ven02_tree::{
-    ControlNode, ControlTree, MAX_TREE_DEPTH, PROPERTY_KEYS, PropertyKey, SingleParentPolicy,
-    create_node, insert, parse_bind_path, resolve_bind_path,
+    ControlTree, MAX_TREE_DEPTH, PROPERTY_KEYS, PropertyKey, SingleParentPolicy,
+    insert, parse_bind_path, resolve_bind_path,
 };
-use crate::svstar2::ven04_prop::{PropType, PropValue, prop_slot, prop_specs};
-use crate::svstar2::ven05_dual::{DualTree, TemplateBinding, TemplateTable};
+use crate::svstar2::ven04_prop::{PropType, PropValue, prop_specs};
+use crate::svstar2::ven05_dual::{TemplateBinding, TemplateTable};
 
 // ---------------------------------------------------------------------------
 // 一、诊断面
@@ -3419,12 +3419,12 @@ pub fn import_json(
     table: &TemplateTable,
 ) -> SerdeOutcome<ImportedTree> {
     let raw = parse_json(src)?;
-    let (mut doc, mut st) = parse_document(&raw);
+    let (mut doc, st) = parse_document(&raw);
+    let migrated;
     // 版本闸：两端都显性拒绝（见 [`gate_version`]）
     gate_version(doc.version)?;
     // v1 → v2 迁移
-    let mut migrated = false;
-    if doc.version < CUR_VERSION {
+    {
         migrated = migrate(&mut doc)?;
     }
     // 四重
