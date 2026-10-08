@@ -48,6 +48,8 @@
 //! | [`vcv01_realverify_checks`] | CGPU-F3361 域自检（13 项六族：RECEIPT2 七件逐件对账+缺件错名反向必拒 / POSITION2 两条款逐字对拍+主证据篡改反向必拒 / PIPE2 四段恰一步全过+跳段回退双向拒与报告终端闸 / FULFILL3 兑现结构核对+映射表逐行独立对拍+恰阈值双向与表外拒 / CODE2 码段 0x5B 独占 !=0x50..0x5C 防自判死+码互异原因非空 / META2 域守恒独立重算+判据条数对账） |
 
 //! vco04_priorcon — CGPU-F2244 降级优先级与冲突（四级序闭集安全>合同>体验>资源rank单调判据重算/优先级复用F1496四层模式对照表逐字/维度四闭集帧率画质延迟功耗归层映射/六对冲突显性消解规则R1~R6同层平局交互响应优先/裁决自检winners秩不劣于败者/码段0x5Axx五码/14项域自检）
+//! | [`vcw01_sdkdoc`] | CGPU-F3521 | W 域开工与 SDK 文档总架构（签收 V10 移交包 F3520 七件逐件对账缺件即空头签收拒；SDK 文档定位两条款字面量冻结——十年接口的说明书冻结签名才进参考+文档即契约漂移即缺陷；四段单向流水线 参考→教程→质量→站点 跳段/回退/未过质量关即发布显性码拒；V10 预告兑现——验收判据入文档示例映射表与 V 域 vcv01 映射表跨单元同源对拍表外判据拒；W_DOMAIN_TOTAL 160 守恒；0x5Cxx 六码独占） |
+//! | [`vcw01_sdkdoc_checks`] | CGPU-F3521 域自检（13 项六族：RECEIPT2 七件逐件对账+缺件错名反向必拒 / POSITION2 两条款逐字对拍+口径篡改反向必拒 / PIPE2 四段恰一步全过+跳段回退双向拒与发布终端闸 / FULFILL3 兑现结构核对+映射表逐行独立对拍+判据id与V域映射表跨单元同源 / CODE2 码段 0x5C 独占 !=0x50..0x5D 防自判死+码互异原因非空 / META2 域守恒独立重算+判据条数对账） |
 pub mod cga01_simdprim;
 pub mod cga01_simdprim_checks;
 pub mod cga02_threadpool;
@@ -94,6 +96,8 @@ pub mod vcq02_metrics;
 pub mod vcq02_metrics_checks;
 pub mod vcv01_realverify;
 pub mod vcv01_realverify_checks;
+pub mod vcw01_sdkdoc;
+pub mod vcw01_sdkdoc_checks;
 pub mod vco04_priorcon;
 pub mod vco04_priorcon_checks;
 
@@ -150,6 +154,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         crate::checks::CheckSet::merge(
             vcv01_realverify_checks::run_vcv01_checks(),
             vco04_priorcon_checks::run_vco04_checks(),
+            vcw01_sdkdoc_checks::run_vcw01_checks(),
         ),
         ),
         ),
