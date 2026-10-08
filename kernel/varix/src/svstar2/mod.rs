@@ -304,6 +304,8 @@
 //! | [`veab04_mixbus_checks`] | F5604 域自检（判据四条逐条映射：总线树构造建树与深度上限超限拒绝、兜底断裂/孤声/空树三路全遥测、成环拒绝与合法重挂深度修正双向验证、导入导出往返等价+树外目标逐条拒绝；判据侧独立重算——深度上限/警示比/主总线编号字面量写死、stamp 独立重排全等） | VE 册 #VE-F5604 |
 //! | [`vev05_config`] | F4405 显示器配置文件（每屏一档**三节封闭**：能力节/校准节/偏好节不串；**开放格式**分节键值导出可回导+脱敏可选校准节整节占位；**版本链**快照式变更留痕、一键回退 O(1) 直达不重放、回退亦留痕历史只增不改；**三查校验** O(字段数) 字段/范围/引用三类分立、每错三要素提示、校验不过拒绝生效；导入冲突逐项裁决清单三态显性；对接 F4402 台账上游+F4403 短码引用域，F4407 同步/F4422 持久前向声明） | VE 册 #VE-F4405 |
 //! | [`vev05_checks`] | F4405 域自检（判据五条逐条映射共 23 项五组；**判据侧独立重算**——KEY_SPECS 十条白名单与短码四域与脱敏占位符字面量写死、开放格式以导出回导整档相等断言、回退快照逐字段相等、条数离账自证） | VE 册 #VE-F4405 |
+//! | [`vev06_csconv`] | F4406 色彩空间转换引擎（**空间矩阵库** XYZ 桥三空间 sRGB/Display P3/Rec2020 正逆双定位矩阵、矩阵缺失拒绝转换不臆造 AdobeRgb→None；**双精度**同路径双定位——快速万分位/高精亿分位矩阵+十亿分点、色卡往返实测快速超 8bit 半级承诺物理必然、高精达承诺；**往返断言** O(色卡数) 8 卡最大误差对照容差 39=10000/255、超差强制高精立案；**缓存** FNV 定槽 32 槽条目存转换输出、版本戳失配全表作废非 LRU；**显式缺省**策略结构体 is_default 位不静默 Custom→sRGB；对接 F4403 上游、F4444/F4453 前向声明） | VE 册 #VE-F4406 |
+//! | [`vev06_checks`] | F4406 域自检（判据五条逐条映射共 27 项五组；**判据侧独立重算**——往返误差判据侧逐字复算对账、矩阵正逆与高精元素字面量抽查、容差 39 半级换算自洽、红点跨空间期望 [209,8,4] 判据侧独立模拟、条数离账自证） | VE 册 #VE-F4406 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -727,6 +729,8 @@ pub mod veab04_mixbus;
 pub mod veab04_mixbus_checks;
 pub mod vev05_config;
 pub mod vev05_checks;
+pub mod vev06_csconv;
+pub mod vev06_checks;
 pub mod vew01_sdk_arch;
 /// VE-AB · AB01 批次 · AB 域开工与音频总架构（VE-F5601）
 ///
@@ -1048,6 +1052,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4404", vev04_checks::run_vev04_checks()),
         ("VE-F5604", veab04_mixbus_checks::run_veab04_checks()),
         ("VE-F4405", vev05_checks::run_vev05_checks()),
+        ("VE-F4406", vev06_checks::run_vev06_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
         ("VE-F3203", veq03_handle::run_veq03_checks()),
