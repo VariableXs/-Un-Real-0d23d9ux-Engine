@@ -116,6 +116,8 @@
 //! | [`veb20_checks`] | F0220 域自检（判据逐条映射锚点五条，108 项分 a/b/c 三族；变异双向验证 20/20 全捕获） | VE 册 #VE-F0220 |
 //! | [`veb21_ident`] | F0221 Intel 设备识别与代际分型（PCI DID 逐条精确入表覆盖 Gen9 SKL/KBL·Gen9.5 CFL/CML·Gen11 ICL·Xe TGL/RKL/DG1·Xe2 MTL/ARL 共 70 条，**不用区间也不用 >>8 分桶**——0x5902 与 0x5912、0x3E90 与 0x3E92 各只差一位十六进制，分桶会把GT1/GT2 混成一桶；**厂商号先判**否则别家同号设备被误认成Intel 核显；识别后挂代际档案（命令编码标签/支持特性位位掩码/已知问题表引用），五代档案 slot 与数组下标一致、特性位单调超集；**能力探针独立于 DID 表**（DID 说「你是谁」、探针说「你现在能干什么」，二者互不推导，探针失败即失败不由 DID 兜底），四槽为 GT 尺寸 EU 数·缓存层级·显示管道数·媒体引擎存在性，五类越界值一律拒绝且**边界合法值不被误拒**；**GT 尺寸是分型硬约束**——EU 数低于表项 GT 档下限时降级到 Gen9 基线档（功能下限）而非二选一，连基线档下限都不到才明确失败；分型只有三档（Gen9/9.5/11 共用基线档、Xe 标准档、Xe2 最新档）——五代代际对三档行为；**未知 DID 按 class 显示控制器降级探测并显性提示未认证**，未认证时特性位**强制清零且不调探针不给能力承诺**（静默套用最新档是本域最危险错误：未验证编码路径表现为随机花屏而非报错）；**识别 ≤50ms 用确定性操作计数而非墙钟**（裸机 rdtsc 未校准且跨核不同步），计数口径常量显式可审计且判据侧独立重算逐个对拍，防「改成 O(1) 分桶偷跑」；已知问题表下标 0 是占位故引用从 1 起，越界回落不 panic） | VE 册 #VE-F0221 |
 //! | [`veb21_checks`] | F0221 域自检（判据逐条映射锚点五条判据 + 无隐私，41 项分六族：DID 覆盖 7 / 档案挂接 8 / 能力探针 12 / 降级路径 6 / 性能 6 / 无障碍 2；**判据侧独立重算**——期望机型清单是独立写死的 23 个 DID 字面量不从被测表导出、比较次数用判据侧独立重写的扫描口径对拍、EU 数区间与下限/上限契约字面量均判据侧写死；变异双向验证 32/32 全捕获） | VE 册 #VE-F0221 |
+//! | [`veb22_gtt`] | F0222 Intel 显存管理对接 GTT（GGTT 与 ppGTT **两表分池**，跨表批写在提交口按 TableMismatch 拦截；批写两段式**先验证后落笔**——任一条非法整批拒绝零写入，「整批回滚」由从未半提交结构性保证；aperture 耗尽走 LRU 驱逐——只逐 refcount==0 且非 pending 的绑定、last_use 最旧优先、重试上限内凑不齐即明确失败不无限驱逐；驱逐决策带冷却窗口限频且 defer 留痕可判据；引用计数全生命周期契约——checked_add 防回绕、不越零、refcount>0 拒绝解绑；大页 4K/2M 分级——Auto 降级可观测记账、Force2m 不满足专属码拒绝不静默降级、代际门控对接 F0221 GenTier 基线档 4K only；unbind PTE 立即清零、区间进 pending 等 fence 签到方可复用——A 域围栏契约兑现点，pending 满最旧强收如实记账；自建诊断码独占 0x2Fxx 段） | VE 册 #VE-F0222 |
+//! | [`veb22_checks`] | F0222 域自检（判据逐条映射锚点五条判据：TBL 7 / BATCH 6 / EVICT 8 / REF 7 / PAGE 7 / FENCE 2 / PERF-A11Y 5 共 42 项七族；**判据侧独立重算**——页数 ceil 口径与 PTE 编码字面量均判据侧独立实现不向被测问答案、LRU 序判据侧 tick 台账重演、字节账全表重扫累加对拍、判据侧口径自检先行防判据自身写错） | VE 册 #VE-F0222 |
 //! | [`ven02_tree`] | F2602 控件树模型（四要素/三不变量/三操作原子事务/M04 绑定路径解析；自 F2603 迁入的 Rust 权威实现） | VE 册 #VE-F2602 |
 //! | [`ven03_ctype`] | F2603 控件类型体系（六类最小集/扩展三件套/类型注册制/内核-上层分层边界） | VE 册 #VE-F2603 |
 //! | [`ven03_checks`] | F2602/F2603 域自检（判据逐条映射，55 项分三批落集） | VE 册 #VE-F2603 |
@@ -522,6 +524,8 @@ pub mod veb20_closeout;
 pub mod veb20_checks;
 pub mod veb21_ident;
 pub mod veb21_checks;
+pub mod veb22_gtt;
+pub mod veb22_checks;
 pub mod ven02_tree;
 pub mod ven03_ctype;
 pub mod ven03_checks;
@@ -828,6 +832,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0220-b", veb20_checks::run_veb20_checks_b_standalone()),
         ("VE-F0220-c", veb20_checks::run_veb20_checks_c_standalone()),
         ("VE-F0221", veb21_checks::run_veb21_checks()),
+        ("VE-F0222", veb22_checks::run_veb22_checks()),
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F2205", vel05_checks::run_vel05_all_checks()),
