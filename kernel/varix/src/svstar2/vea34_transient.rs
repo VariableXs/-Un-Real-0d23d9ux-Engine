@@ -1274,6 +1274,62 @@ pub fn run_vea34_checks() -> CheckSet {
         );
     }
 
+// --- 判据 9b：最近秩的**进位**语义（n 不整除时 floor≠ceil） -----------
+    //
+    // 判据 9 用 n=100，恰因 `0.95×100 = 95` 是整数 => `ceil(95)==floor(95)`，
+    // 于是「向上取整」这个动作在语料里**不可观测**：把 `(95*n+99)/100`
+    // 改成 `(95*n)/100` 结果完全相同（变异 M04 存活）。真正的 P95 定义是
+    // **最近秩 ceil(0.95n)**，只有 n 不整除 100 时两口径才分道扬镳。
+    //
+    // 取 **n=21**：`0.95×21 = 19.95` => ceil=20、floor=19，差一位。
+    // 语料取 19 笔便宜(10) + 2 笔昂贵(800)：升序后第 18 位=10、第 19 位=800，
+    // 两个口径分别取到 800（ceil，零基 19）与 10（floor，零基 18）——
+    // **取值不同**，故口径写错必然被本条抓到。
+    {
+        // 判据侧独立重算升序语料与两口径秩（不向被测函数问答案）
+        const N_CHEAP: usize = 19;
+        const N_DEAR: usize = 2;
+        let mut t = TimingLedger::new();
+        let mut i = 0u32;
+        while (i as usize) < N_CHEAP {
+            t.record(10, i);
+            i += 1;
+        }
+        i = 0;
+        while (i as usize) < N_DEAR {
+            t.record(800, 500 + i);
+            i += 1;
+        }
+        let n = t.sample_count();
+        let rank_ceil = (95 * n + 99) / 100; // ceil(19.95) = 20
+        let rank_floor = (95 * n) / 100; // floor(19.95) = 19
+        // 独立重算升序取值：前 19 位 10、后 2 位 800
+        let value_at = |r: usize| -> u32 {
+            if r < N_CHEAP {
+                10
+            } else {
+                800
+            }
+        };
+        let expect_ceil = value_at(rank_ceil - 1); // 秩 20 => 800
+        let expect_floor = value_at(rank_floor - 1); // 秩 19 => 10
+        let p95 = t.p95();
+        s.add(
+            "A34-P95-最近秩取ceil在n不整除时与floor分道",
+            // 前置：两口径确实分道且取值确实不同（否则本条是恒真门禁）
+            rank_ceil != rank_floor
+                && expect_ceil != expect_floor
+                && n == 21
+                && rank_ceil == 20
+                && rank_floor == 19
+                && expect_ceil == 800
+                && expect_floor == 10
+                // 被测取 ceil 口径 => 800；若是 floor 口径会给 10，本条转红
+                && p95 == 800,
+            "n=21（19×10 + 2×800）：ceil(0.95n)=20 => P95=800；floor=19 会给 10，两口径取值不同故可判别",
+        );
+    }
+
     // --- 判据 10：P95 承诺与达标路径（不超标时不得误报） -------------------
     {
         let mut t = TimingLedger::new();
@@ -1443,6 +1499,53 @@ pub fn run_vea34_checks() -> CheckSet {
         );
     }
 
+    // --- 判据 15b：越界归还须**对所有越界值**拒绝（夹逼对钉死界位置） -----
+    //
+    // 判据 15 只钉了 `u16::MAX` 一个越界值，而 `u16::MAX % 64 == 63`——
+    // 恰好落在**合法且空闲**的槽 63 上。变异 M07（把越界检查换成取模
+    // `% TRANSIENT_SLOTS`）于是被「槽 63 本来空闲」这一巧合掩盖：
+    // `give_back` 走到 `if self.free[i] { return false }` 分支，**碰巧**
+    // 也返回 false，门禁假绿。
+    //
+    // 正解：**先把全部槽位占满**，使取模落点必然是「已占用」——此时若
+    // 越界检查失效，取模实现会把已占用槽错误标为空闲并污染 free_count，
+    // 与正确实现（拒绝、空闲数不变）分道扬镳。
+    {
+        let mut p = TransientPool::new();
+        let mut i = 0usize;
+        while i < TRANSIENT_SLOTS {
+            p.take();
+            i += 1;
+        }
+        let full_count = p.free_count(); // == 0
+        let none_when_full = p.take().is_none(); // 证明「占满」真占满
+        // 三个越界值：哨兵 u16::MAX、恰等于槽数 64、64+1
+        let o1 = p.give_back(u16::MAX);
+        let c1 = p.free_count();
+        let o2 = p.give_back(TRANSIENT_SLOTS as u16);
+        let c2 = p.free_count();
+        let o3 = p.give_back(TRANSIENT_SLOTS as u16 + 1);
+        let c3 = p.free_count();
+        // 反证口径：占满状态下归还**合法**槽必须成功（证非「恒返回 false」）
+        let mut all = TransientPool::new();
+        let mut k = 0usize;
+        while k < TRANSIENT_SLOTS {
+            all.take();
+            k += 1;
+        }
+        let legal_ok = all.give_back(0) && all.free_count() == 1;
+        s.add(
+            "A34-池-越界归还对任意越界值均拒绝且不污染空闲数",
+            full_count == 0
+                && none_when_full
+                && !o1 && !o2 && !o3
+                // 取模实现会把已占用槽标空闲 ⇒ 空闲数上涨，三步须恒为 0
+                && c1 == 0 && c2 == 0 && c3 == 0
+                && legal_ok,
+            "池占满时 u16::MAX/64/65 三个越界值均被拒且空闲数恒为 0；占满态归还合法槽仍成功（证非恒假）",
+        );
+    }
+
     // --- 判据 16：池满判定与槽位取尽的边界（夹逼对） -----------------------
     {
         let mut p = TransientPool::new();
@@ -1458,6 +1561,53 @@ pub fn run_vea34_checks() -> CheckSet {
             "A34-池-夹逼对钉死满池位置",
             not_full && last.is_some() && now_full,
             "取到 TRANSIENT_SLOTS-1 个时未满，取走最后一个时恰好满且再取为空",
+        );
+    }
+
+    // --- 判据 16b：持久票据**不入 live**（封帧不得释放持久占用） ---------
+    //
+    // 变异 M11：把持久路径的 `self.live.push(t)` 加回去。该变异**不产生**
+    // 任何错误码——`must_release_in_frame()` 对持久票据为 false，故封帧
+    // 只走 `else` 分支执行 `persistent_reserved -= t.bytes`，
+    // 于是**持有者仍在用的持久显存被悄悄释放**，而 `live_count()` 也从 0
+    // 变成 1。症状是静默的显存越界（下一帧写已释放的块），不报错、
+    // 不误判泄漏，面板一切正常——故此前无判据能抓到它。
+    //
+    // 本条钉两件事：① 持久分配后 `live_count()==0`（不入追踪）；
+    // ② 封帧后 `persistent_reserved` **保持不变**（持久占用不被释放）。
+    {
+        let mut a = TransientAllocator::new(1000);
+        let req = AllocRequest::persistent(4242, 8192, Liveness::new(10, 9000));
+        let o = a.allocate(&req, 7);
+        let not_tracked = a.live_count() == 0;
+        let reserved_before = a.persistent_reserved();
+        // 封帧：持久票据本不在 live，故不应有任何回收动作
+        let sealed = a.seal_frame();
+        let reserved_after = a.persistent_reserved();
+        // 瞬态对照：同一分配器上分配一笔帧内瞬态，封帧**应当**被回收
+        let mut b = TransientAllocator::new(1000);
+        let tr = AllocRequest::transient(1, 4096, Liveness::new(10, 20));
+        b.allocate(&tr, 5);
+        let b_live_before = b.live_count();
+        let b_sealed = b.seal_frame();
+        s.add(
+            "A34-持久票据-不入live且封帧不释放持久占用",
+            o.kind == OutKind::PersistentHit
+                // ① 持久票据不进 live 追踪
+                && not_tracked
+                // ② 封帧对持久占用零动作：无 SealOutcome、无leak、无强制回收
+                && sealed.len() == 0
+                && reserved_before == 8192
+                && reserved_after == 8192
+                && a.leaks() == 0
+                && a.forced_reclaimed() == 0
+                // ③ 反向对照：瞬态票据确实入 live 且封帧被回收
+                //（证明 ①② 不是「封帧什么都不做」的恒真门禁）
+                && b_live_before == 1
+                && b_sealed.len() == 1
+                && b.live_count() == 0
+                && b.transient.free_count() == TRANSIENT_SLOTS,
+            "持久票据不入 live，封帧不释放其持久占用且不误报泄漏；瞬态票据入 live 并在封帧被回收（反向对照）",
         );
     }
 
