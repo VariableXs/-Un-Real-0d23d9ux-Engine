@@ -62,6 +62,8 @@
 //! | [`vcw02_infoarch`] | CGPU-F3522 | 文档信息架构（承接 F3521 站点结构图——导航树是它的实现；四分区闭集 参考/教程/指南/FAQ 每节点恰一分区表外拒+每分区根≥1；导航树唯一事实源——导航表由树 DFS 前序展开生成不手写 表行数恒等树节点数同源+两次展开逐行相同确定性；树结构五律机检 路径非空/前缀律孤儿拒/路径全局唯一/标题非空/分区覆盖 违律逐条专属码；F3521_LINK 站点结构图跨单元对拍；0x5C07~0x5C0C 续段与 vcw01 六码不重叠 cgm02 续段先例） |
 //! | [`vcw02_infoarch_checks`] | CGPU-F3522 域自检（13 项六族：SECTION2 四分区闭集枚举+表外分区反向必拒 / TREE3 五律逐条+违规反向必拒+确定性两次展开逐行相同 / TABLE3 导航表行数恒等树节点数+逐行对拍树展开+手写漂移架构不可能 / LINK2 F3521_LINK 跨单元对拍 vcw01 HANDOVER_ITEMS 在账+断链反向必拒 / CODE2 码段 0x5C07~0C 独占与 vcw01 不重叠+码互异原因非空 / META1 判据条数对账） |
 //! vco06_executor — CGPU-F2246 降级执行器（统一接口冻结v1——ExecAction五元组只增不改/执行域四闭集与F2244四维对齐/执行语义建议vs强制复用/失败处置三态留痕跳过-重试恰一次-升级立案/回执账对账序号递增标记自洽/码段0x5Cxx五码/14项域自检）
+//! | [`vcw03_genpipeline`] | CGPU-F3523 | 文档生成管线（承接 F3522 信息架构——生成的文档页必须挂进导航树 页面在树上不在树外；管线四段单向 抽取→归一→渲染→产出 跳段/回退/终端再推进显性码拒+产出终端闸无自动生成印记即发布拒——手写混入即拒；文档是注释源的自动派生物不手写——AUTO_BANNER 印记+行数同源公式+两次生成逐行相同确定性 手写漂移架构不可能；源注释三律机检 标题非空/正文逐行非空/源路径唯一；0x5C0D~0x5C12 续段与 vcw01/vcw02 十二码不重叠 cgm02 续段先例） |
+//! | [`vcw03_genpipeline_checks`] | CGPU-F3523 域自检（13 项六族：GEN3 印记逐字双向对拍+行数三方同源判据侧独立重算+确定性排序首末条与渲染标题行逐字 / PIPE3 四段名对拍+违序三向语料逐条拒+发布终端闸三态 / SRC2 在账源抽取全过+三律反向语料专属码分账 / LINK2 源路径全在 vcw02 导航树路径集合跨单元对拍+域守恒 160 / CODE2 码段 0x5C0D~12 连续与前十十二码不重叠+码互异原因非空 / META1 判据条数对账） |
 pub mod cga01_simdprim;
 pub mod cga01_simdprim_checks;
 pub mod cga02_threadpool;
@@ -118,6 +120,8 @@ pub mod vcv01_realverify;
 pub mod vcv01_realverify_checks;
 pub mod vcw02_infoarch;
 pub mod vcw02_infoarch_checks;
+pub mod vcw03_genpipeline;
+pub mod vcw03_genpipeline_checks;
 pub mod vcw01_sdkdoc;
 pub mod vcw01_sdkdoc_checks;
 pub mod vco04_priorcon;
@@ -203,6 +207,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     ),
         crate::checks::CheckSet::merge(
         vco06_executor_checks::run_vco06_checks(),
+        vcw03_genpipeline_checks::run_vcw03_checks(),
         cgp05_tiers_checks::run_cgp05_checks()
     )
     )
