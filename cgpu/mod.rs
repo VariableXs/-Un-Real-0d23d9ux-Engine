@@ -16,12 +16,6 @@ pub mod vcl01_virtualarch;
 pub mod vcl01_virtualarch_checks;
 pub mod vcq01_reliability;
 pub mod vcq01_reliability_checks;
-pub mod cgm01_display;
-pub mod cgm01_display_checks;
-//! cgm01_display —— CGPU-F1921 M 域开工与显示输出总架构（最后一厘米三条款/L 域 F1917 签收七件/五主题十组映射覆盖守恒/五段单向流水线/F1768 贯通+V 域协同/呈现预算合同终端/风险四条预案/0x54xx 七码）
-pub mod cgm02_display;
-pub mod cgm02_display_checks;
-//! cgm02_display —— CGPU-F1922 显示枚举与热插拔（枚举能力快照 id+EDID 指纹+seq 三件齐/去抖 leading-edge 恰端点/竞态=缺陷红线序列号恰一+快照新鲜度/三态单向状态机 mode-set 幂等/批量固定序去重重跑一致/0x5408~0x540C 域段续占互异）
 //! vcq01_reliability — CGPU-F2561 Q 域开工与可靠性总架构（恢复起点哲学三条款/P 域移交包 F2557 七件签收/五主题十组映射/五段单向流水线/O 域交接+混沌设施复用/不可恢复=最高缺陷红线+立案码/风险四条预案互异/0x56xx 六码/19 项域自检）
 //! vcl01_virtualarch — CGPU-F1761 L 域开工与虚拟化总架构（域使命三条款平等声明/八主题十组映射/K 域签收+I09 预留兑现/五段单向流水线/复用不重建 1601→1763+1466→1776/模式×合同等级表/场景四族/风险四条预案互异/0x53xx 五码/22 项域自检）
 //! cga02_threadpool —— CGPU-F0002 渲染线程池与工作窃取调度器（池规模核数减二/合成器专核隔离/同层优先窃取偷头不偷尾/瓦片独立缓冲确定性归并乱序逐像素一致/协作式 2ms 让位抢占三档优先/均衡≤5%/遥测三面/窃取开销≤3%账面/0x39xx 域码段）
@@ -44,8 +38,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         crate::checks::CheckSet::merge(
             vcl01_virtualarch_checks::run_vcl01_checks(),
             vcq01_reliability_checks::run_vcq01_checks(),
-            cgm01_display_checks::run_cgm01_checks(),
-            cgm02_display_checks::run_cgm02_checks(),
         ),
         ),
         ),
