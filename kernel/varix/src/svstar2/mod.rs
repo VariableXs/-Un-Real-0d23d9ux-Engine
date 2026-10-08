@@ -106,6 +106,8 @@
 //! | [`vem07_checks`] | F2407 域自检（判据逐条映射，126 项分 a/b/c 三族） | VE 册 #VE-F2407 |
 //! | [`vem08_debug`] | F2408 动画调试数据（曲线可视按需拾取+端点钉死LOD抽稀/ 定容环形值流 / 权重热力三冗余 + 三统计量口径唯一 + F1946 调优协议实测工作单元 + F1764 信封 M 段四类型漂移拦截 + 发行版剔除零成本） | VE 册 #VE-F2408 |
 //! | [`vem08_checks`] | F2408 域自检（判据逐条映射，分 a/b/c 三族；剔除判据双向验证） | VE 册 #VE-F2408 |
+//! | [`vem09_import`] | F2409 动画导入（glTF 四通道映射 translation→位置/rotation→四元数（slerp 标记）/scale→缩放/weights→形态键并行轨，三重校验 = 引用完整性+采样合法性+曲线异常；**映射表声明摘要恒取规格基准** ⇒ 没有正确基线的表从建立起就是红的；抽帧端点钉死+误差对最终保留集重算；保真默认逐帧落地、精简须给正有限阈值；结构化报告三要素+零指纹，诊断码独占 0x2Cxx） | VE 册 #VE-F2409 |
+//! | [`vem09_checks`] | F2409 域自检（判据逐条映射 166 项，分 a/b/c/d 四族；变异双向验证 19/19 全捕获） | VE 册 #VE-F2409 |
 //! | [`veb18_compat`] | F0218 QEMU 版本兼容矩阵（版本行×特性×预期值；五登记行升序 + 尾部回退 O(1) 查表 + 探测记录入诊断快照；未知版本按回退行预期并标未认证、矩阵与实测冲突以实测为准并留档待修、探测失败走全行交集保守预期并告警；下游 F0215 按矩阵跳 N/A、F0216 宣告引用最低支持版本） | VE 册 #VE-F0218 |
 //! | [`veb18_checks`] | F0218 域自检（判据逐条映射，46 项分 a/b/c 三族；变异双向验证 23/23全捕获） | VE 册 #VE-F0218 |
 //! | [`veb19_debugchan`] | F0219 virtio 主客联调通道（宿主注入逐帧日志开关/强制刷新/快照导出，客户事件回传；通道独立于渲染数据面渲染路径零指令且结构上不持有渲染状态引用；配额按**字节当量**而非条数（快照 4096 对日志开关 12，差两个数量级以上，按条限流会让贵消息挤掉便宜消息）；限流但**安全类消息永不被丢**（丢掉的是最后的证据）且旁路不占配额但单独计数；通道不通降级仅宿主侧并回执告知，**降级只改送到哪一侧不改命令合法性故校验排在其前**；非法命令拒绝并回执专属原因码（参数个数/参数值/参数语义/未知类型四类）；限流丢弃必留回执且回执环形缓冲有界；周期间配额账本与全程累计账本分离；线上编码显式映射不用 enum as u8） | VE 册 #VE-F0219 |
@@ -490,6 +492,8 @@ pub mod vem07_perf;
 pub mod vem07_checks;
 pub mod vem08_debug;
 pub mod vem08_checks;
+pub mod vem09_import;
+pub mod vem09_checks;
 pub mod veb18_compat;
 pub mod veb18_checks;
 pub mod veb19_debugchan;
@@ -624,7 +628,7 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 181] = [
+    let blocks: [(&'static str, CheckSet); 214] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
@@ -777,6 +781,10 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2408-a", vem08_checks::run_vem08_checks_a_standalone()),
         ("VE-F2408-b", vem08_checks::run_vem08_checks_b_standalone()),
         ("VE-F2408-c", vem08_checks::run_vem08_checks_c_standalone()),
+        ("VE-F2409-a", vem09_checks::run_vem09_checks_a_standalone()),
+        ("VE-F2409-b", vem09_checks::run_vem09_checks_b_standalone()),
+        ("VE-F2409-c", vem09_checks::run_vem09_checks_c_standalone()),
+        ("VE-F2409-d", vem09_checks::run_vem09_checks_d_standalone()),
         ("VE-F0218-a", veb18_checks::run_veb18_checks_a_standalone()),
         ("VE-F0218-b", veb18_checks::run_veb18_checks_b_standalone()),
         ("VE-F0218-c", veb18_checks::run_veb18_checks_c_standalone()),
