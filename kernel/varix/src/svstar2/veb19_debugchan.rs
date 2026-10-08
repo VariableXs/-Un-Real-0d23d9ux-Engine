@@ -53,6 +53,21 @@
 //!   校验重算**按实现的两阶段拆开**（值域 / 语义），合成一个函数就丢了
 //!   阶段信息——「值合法但语义非法」这类判断在合成函数里表达不出来。
 //!
+//! ## 自检与弱门禁自律
+//!
+//! 判据共 **17 条**（`run_veb19_checks`），变异双向验证 **9/9 全捕获**。
+//!
+//! 两条最容易被自己骗到的判据，已专门用反例钉住：
+//!
+//! - **判据侧重算不能顶替被测**（判据 17）：`MsgKind::cost` 曾是**零调用点**
+//!   ——`bytes()` 转发判据侧的 `ref_cost`，生产路径压根不碰自己的基价函数，
+//!   于是把它改成恒返回 1（退化成按条计费）没有任何判据变红。现在
+//!   `bytes()` 走被测 `cost`，判据再把两侧**逐类型逐参数数对拍**。
+//! - **语料不得由常量导出**（判据 16）：`MAX_PARAMS` / `MAX_PARAM_VALUE`
+//!   的越界语料若写成 `(0..(MAX_PARAMS + 1))`，常量一放宽语料同步放宽，
+//!   被测与判据一起挪到新边界，结论恒为「越界被拒」。故判据 16 **绕开常量**
+//!   直接写死 9/8 与 1048577/1048576，两个方向都用 `==` 不用 `>=`。
+//!
 //! ## 与相邻条的分工（易混，故写明）
 //!
 //! - **F0217（`veb17_suspend`）管设备态快照与恢复**，本条管**调试消息的
@@ -379,9 +394,18 @@ impl DebugMsg {
         Ok(())
     }
 
-    /// 字节当量（转发判据侧的独立重算，避免两处公式各写一遍走偏）。
+    /// 字节当量 = **本类型基价（[`MsgKind::cost`]） + 每参数 4 字节**。
+    ///
+    /// 基价取自被测的 [`MsgKind::cost`]，**不是**判据侧的 [`ref_cost`]：
+    /// 早先这里转发 `ref_cost`，等于让生产路径绕开自己的基价函数去用判据
+    /// 的重算版——[`MsgKind::cost`] 因此**零调用点**，把它改成恒返回 1
+    /// 也不会有任何判据变红（变异 M11 漏网）。判据侧的独立重算仍在
+    /// 判据里与本方法**对拍**（`bytes()` 必须逐条等于 `ref_cost`），
+    /// 既保证生产路径走真基价，又不牺牲判据的独立性。
     pub fn bytes(&self) -> u32 {
-        ref_cost(self.kind, self.params.len())
+        self.kind
+            .cost()
+            .saturating_add((self.params.len() as u32).saturating_mul(4))
     }
 
     /// 一行审计摘要。
@@ -1359,6 +1383,45 @@ pub fn run_veb19_checks() -> CheckSet {
                 && v_over.validate() == Err(Reject::ParamValue)
                 && v_at.validate() == Ok(()),
             "MAX_PARAMS==8 / MAX_PARAM_VALUE==1048576 被字面量钉死；9 参数与 1048577 必拒、8 参数与 1048576 必收",
+        );
+    }
+
+    // --- 判据 17：生产基价真被生产路径使用，且与判据侧重算逐条对拍 ----------
+    //
+    // 变异 M11（`MsgKind::cost` 改成恒返回 1）曾**存活**：根因是
+    // `DebugMsg::bytes()` 早先转发判据侧的 `ref_cost`，于是生产路径
+    // 从不调用被测的 `MsgKind::cost`——那条判据改与不改行为完全一致，
+    // 而判据 5 又只问 `ref_cost`，问到的是判据自己（自证式）。
+    //
+    // 本条把两侧**摆到同一个台面上对拍**：`bytes()`（走被测 `cost`）
+    // 必须逐类型逐参数数等于 `ref_cost`（判据侧独立重算）。
+    // `cost` 被改成恒 1 时，快照/日志两类不再相等 ⇒ 本条立刻红。
+    // 参数数取0..=3，跨越「有参数/无参数」两态，避免只在一个点上相等。
+    {
+        let mut agree = true;
+        let mut nonuniform = false;
+        let mut i = 0usize;
+        let mut first_cost: Option<u32> = None;
+        while i < MSG_KIND_COUNT {
+            let k = MsgKind::ALL[i];
+            let mut np = 0usize;
+            while np <= 3 {
+                let m = DebugMsg::new(k, alloc::vec![0u32; np]);
+                // 被测路径（走 cost）与判据侧重算必须逐条相等
+                agree &= m.bytes() == ref_cost(k, np);
+                np += 1;
+            }
+            // 基价本身必须随类型而异：恒返回同一值即「按条计费」
+            match first_cost {
+                None => first_cost = Some(k.cost()),
+                Some(c) => nonuniform |= k.cost() != c,
+            }
+            i += 1;
+        }
+        s.add(
+            "B19-配额-生产基价真被使用且与独立重算对拍",
+            agree && nonuniform,
+            "bytes() 走被测 MsgKind::cost，须逐类型逐参数数等于判据侧 ref_cost；且各类型基价必须互异（恒定即退化成按条计费）",
         );
     }
 
