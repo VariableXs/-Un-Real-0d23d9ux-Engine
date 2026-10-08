@@ -222,6 +222,8 @@
 //! | [`veu08_checks`] | F4008 域自检（六族判据：膨胀/密度/折行/策略/单源/错误路径） | VE 册 #VE-F4008 |
 //! | [`veu09_ime`] | F4009 输入法协同（IME×i18n：组合期不改内容不变量/组合期命令键禁令/候选窗三轴跟随夹取/方向×插入点契约前向声明/语言→输入法切换联动台账） | VE 册 #VE-F4009 |
 //! | [`veu09_checks`] | F4009 域自检（六组判据：组合期单源/候选跟随/方向联动/切换断言/IME 协同/判据自检） | VE 册 #VE-F4009 |
+//! | [`veu11_debug`] | F4011 国际化调试器（Locale/方向/格式**五列仪表** O(列) 同 Locale 方向分歧立案；**伪本地化引擎**伪字符包裹+字符映射+40% 膨胀模拟，膨胀比校准窗口失真即拒；**硬编码检出漏报红线注入审计实测**——无标记必立案、带标记非语料=规则漏检版本号+1 留痕；**方向可视化复用单源**（F4023 兑现点注入方向段+复用 F4010 is_mixed_direction）边界红线关闭标记实测必立案；**家族二十七成员复述单源**契约哈希 O(1) 对账（F2815 家族范式）；**零常态**打开才采样关闭态恒 0；诊断码独占 0x37xx 段 9 码） | VE 册 #VE-F4011 |
+//! | [`veu11_checks`] | F4011 域自检（判据逐条映射锚点六条判据：PSD 6 / HC 5 / DIR 5 / FAM 5 / ZERO 3 / INS 3 / ERR 5 共 32 项七族；**判据侧独立重算**——FNV 与膨胀比窗口字面量独立写死、漏报红线注入已知硬编码串实测必触发、边界红线关闭标记实测必立案、27 成员复述判据侧全扫、立案簿满第 65 案如实拒） | VE 册 #VE-F4011 |
 //! | [`vec14_include`] | F0414 include 解析与循环防护（搜索序显性+ 环检测输出环 + 包含图 + 缓存裁定） | VE 册 #VE-F0414 |
 //! | [`vec15_encoding`] | F0415 源码编码处理（BOM 最长匹配优先 + UTF-8 假定显式留痕 + 非法字节五类分立报错 + 单遍转换到位） | VE 册 #VE-F0415 |
 //! | [`vec16_report`] | F0416 词法错误报告（四族查表归类 + 三要素带规则引用 + 双侧定位 + 三级分级） | VE 册 #VE-F0416 |
@@ -663,6 +665,8 @@ pub mod veu08_checks;
 pub mod veu08_density;
 pub mod veu09_checks;
 pub mod veu09_ime;
+pub mod veu11_debug;
+pub mod veu11_checks;
 pub mod vev01_arch;
 pub mod vev01_checks;
 pub mod vev02_checks;
@@ -940,6 +944,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4205", veu05_flow_checks::run_veu05_flow_checks()),
         ("VE-F4008", veu08_checks::run_veu08_checks()),
         ("VE-F4009", veu09_checks::run_veu09_checks()),
+        ("VE-F4011", veu11_checks::run_veu11_checks()),
         ("VE-F4401", vev01_checks::run_vev01_checks()),
         ("VE-F4402-a", vev02_checks::run_vev02_checks_a()),
         ("VE-F4402-b", vev02_checks::run_vev02_checks_b()),
