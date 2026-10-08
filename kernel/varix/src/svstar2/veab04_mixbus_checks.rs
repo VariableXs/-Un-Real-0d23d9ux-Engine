@@ -94,9 +94,9 @@ pub fn run_veab04_checks() -> crate::checks::CheckSet {
     let _ = table.bind(1, music_id, &tree);
     let _ = table.bind(2, sfx_id, &tree);
     let ok_route = table.route(1, &tree);
-    // 断裂：绑定的总线从树里消失（模拟：新建一棵没有 music_id 的树）。
-    let mut broken_tree = BusTree::new();
-    let _ = broken_tree.create_bus(BusId(MASTER_BUS_ID), "别的总线");
+    // 断裂：绑定的总线从树里消失（模拟：一棵只有主总线的新树——不含 music_id，
+    // 也不再建新总线以免 next_id 从 1 重发撞上主树的 music_id）。
+    let broken_tree = BusTree::new();
     let broken_route = table.route(1, &broken_tree);
     let orphan_route = table.route(42, &tree);
     let events = table.fallback_events();
@@ -184,8 +184,9 @@ pub fn run_veab04_checks() -> crate::checks::CheckSet {
             break;
         }
     }
-    let mut tree4 = BusTree::new();
-    let m1 = tree4.create_bus(BusId(MASTER_BUS_ID), "深枝根");
+    // 深枝建在同一棵 tree3：链已占 7 层，深枝根(深度1，子树最深到 5)挂到
+    // 链尾(深度7)后子树底部深度 = 7+1+4 = 12 > 8 → 整树把关拒绝。
+    let m1 = tree3.create_bus(BusId(MASTER_BUS_ID), "深枝根");
     let m1_id = match m1 {
         Ok(id) => id,
         Err(_) => BusId(9987),
@@ -193,16 +194,14 @@ pub fn run_veab04_checks() -> crate::checks::CheckSet {
     let mut cursor4 = m1_id;
     let mut built4 = 0u32;
     while built4 < 4 {
-        if let Ok(id) = tree4.create_bus(cursor4, "深枝") {
+        if let Ok(id) = tree3.create_bus(cursor4, "深枝") {
             cursor4 = id;
             built4 += 1;
         } else {
             break;
         }
     }
-    let deep_branch = cursor4; // 深度为 5 的枝（MAX_TREE_DEPTH=8 内）
-    // 把深枝根(深度1，子树最深到 5)挂到链尾：链已用 MAX-1 层，
-    // 挂入后子树底部将超 8 → 拒绝。
+    let deep_branch = cursor4; // 深度为 5 的枝尾（MAX_TREE_DEPTH=8 内）
     let tail = match chain.get(chain.len() - 1) {
         Some(t) => *t,
         None => BusId(MASTER_BUS_ID),
@@ -212,8 +211,9 @@ pub fn run_veab04_checks() -> crate::checks::CheckSet {
         "AB04-重挂超限-子树随迁整树把关",
         over == Err(BusErr::DepthExceeded)
             && chain.len() == MAX_TREE_DEPTH
-            && tree3.node(deep_branch).is_none(),
-        "重挂不只看新父深度——子树随迁后的最深边界一起把关（超界 DepthExceeded，两树互不污染）",
+            && tree3.node(deep_branch).is_some()
+            && tree3.node(m1_id).map(|n| n.depth).unwrap_or(999) == 1,
+        "重挂不只看新父深度——子树随迁后的最深边界一起把关（超界 DepthExceeded，拒绝后树保持原状）",
     );
 
     // —— 批量导入导出：往返等价 + 非法条目逐条拒绝 ——
@@ -250,7 +250,8 @@ pub fn run_veab04_checks() -> crate::checks::CheckSet {
     let line_ok = table3.route(30, &tree);
     let line = table3.route_line(30, &line_ok, &tree);
     let mut table4 = RouteTable::new();
-    let line_fb = table4.route_line(31, &table4.route(31, &tree), &tree);
+    let outcome_fb = table4.route(31, &tree);
+    let line_fb = table4.route_line(31, &outcome_fb, &tree);
     s.add(
         "AB04-路由可查-读屏单行",
         line.contains("声音30") && line.contains("音乐子总线") && !line.contains("兜底")

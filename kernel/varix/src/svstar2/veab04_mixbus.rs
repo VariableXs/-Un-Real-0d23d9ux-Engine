@@ -43,6 +43,7 @@
 
 use alloc::format;
 use alloc::string::{String, ToString};
+use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -152,11 +153,11 @@ impl BusTree {
 
     /// 建总线（挂到父；深度超限即拒绝——判据一「超过即拒绝建树」）。
     pub fn create_bus(&mut self, parent: BusId, name: &str) -> Result<BusId, BusErr> {
-        let p = match self.node(parent) {
-            Some(n) => n,
+        let p_depth = match self.node(parent) {
+            Some(n) => n.depth,
             None => return Err(BusErr::OrphanParent),
         };
-        if p.depth + 1 > MAX_TREE_DEPTH {
+        if p_depth + 1 > MAX_TREE_DEPTH {
             return Err(BusErr::DepthExceeded);
         }
         if self.nodes.len() >= MAX_BUSES {
@@ -168,7 +169,7 @@ impl BusTree {
             id,
             name: name.to_string(),
             parent: Some(parent),
-            depth: p.depth + 1,
+            depth: p_depth + 1,
         });
         Ok(id)
     }
@@ -493,14 +494,6 @@ impl RouteTable {
         out
     }
 
-    /// 导入报告（逐条校验：部分成功是合法结局）。
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct ImportReport {
-        /// 通过并写入的条数。
-        pub accepted: usize,
-        /// 拒绝清单（voice, 原因）。
-        pub rejected: Vec<(u16, BusErr)>,
-    }
 
     /// 批量导入（逐条对树校验；目标不在树内拒绝并留原因）。
     pub fn import_routes(&mut self, routes: &[(u16, BusId)], tree: &BusTree) -> ImportReport {
@@ -571,6 +564,15 @@ impl RouteTable {
     pub const fn tick(&self) -> u64 {
         self.tick
     }
+}
+
+/// 导入报告（逐条校验：部分成功是合法结局）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportReport {
+    /// 通过并写入的条数。
+    pub accepted: usize,
+    /// 拒绝清单（voice, 原因）。
+    pub rejected: Vec<(u16, BusErr)>,
 }
 
 impl Default for RouteTable {
