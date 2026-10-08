@@ -156,6 +156,8 @@
 //! | [`vep05_checks`] | F3005 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3005 |
 //! | [`vep07_compose`] | F3007 动效组合与编排图（三模式编译规则+compose DSL 冻结+属性冲突仲裁+整体 reduce 坍缩+图单源） | VE 册 #VE-F3007 |
 //! | [`vep07_checks`] | F3007 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3007 |
+//! | [`vep08_entry`] | F3008 入场动效族（六型基础+组合变体+触发器三类分型+首帧起始态原子应用/闪烁 P1 红线+stagger 30–60ms 令牌钳制均布+默认参数单源取令牌+reduce 终态双零直达+F2713 离屏延迟触发） | VE 册 #VE-F3008 |
+//! | [`vep08_checks`] | F3008 域自检（判据逐条映射，分两批落集） | VE 册 #VE-F3008 |
 //! | [`veq01_pipeline`] | F3201 Q 域资源管线总架构（六段签名+十项映射+收敛红线） | VE 册 #VE-F3201 |
 //! | [`veq02_graph`] | F3202 资源模型与引用图（五要素+四用途单源+32MB 红线） | VE 册 #VE-F3202 |
 //! | [`veq03_handle`] | F3203 资源句柄与生命周期（类型化句柄+五态弧表+计数与图双源对账+分代GC与误收P1红线） | VE 册 #VE-F3203 |
@@ -584,6 +586,8 @@ pub mod vep04_stack;
 pub mod vep05_checks;
 pub mod vep05_orch;
 pub mod vep07_checks;
+pub mod vep08_entry;
+pub mod vep08_checks;
 pub mod vep07_compose;
 pub mod veq01_checks;
 pub mod veq01_pipeline;
@@ -906,6 +910,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3005-b", vep05_checks::run_vep05_checks_b()),
         ("VE-F3007-a", vep07_checks::run_vep07_checks_a()),
         ("VE-F3007-b", vep07_checks::run_vep07_checks_b()),
+("VE-F3008-a", vep08_checks::run_vep08_checks_a()),
+("VE-F3008-b", vep08_checks::run_vep08_checks_b()),
         ("VE-F4002", vei02_checks::run_vei02_checks()),
         ("VE-F4003", vei03_checks::run_vei03_checks()),
         ("VE-F4004", vei04_checks::run_vei04_checks()),
