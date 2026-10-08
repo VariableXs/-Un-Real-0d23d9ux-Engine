@@ -120,6 +120,8 @@
 //! | [`veb22_checks`] | F0222 域自检（判据逐条映射锚点五条判据：TBL 7 / BATCH 6 / EVICT 8 / REF 7 / PAGE 7 / FENCE 2 / PERF-A11Y 5 共 42 项七族；**判据侧独立重算**——页数 ceil 口径与 PTE 编码字面量均判据侧独立实现不向被测问答案、LRU 序判据侧 tick 台账重演、字节账全表重扫累加对拍、判据侧口径自检先行防判据自身写错） | VE 册 #VE-F0222 |
 //! | [`veb23_cmdenc`] | F0223 Intel 命令流编码器（MI 族 BB_START/SEMAPHORE_WAIT/STORE_DATA/NOOP 与 3D 族 VF/视口/混合/深度/RT 集合全编码；**代际分派唯一映射** GenTier→GenVariant 无默认回退——Xe 起 3D 头带 ext dword、视口上限 16→32、Scope 位 Xe2 独有、内存轮询 Xe 独有，拿错代际表=输出另一条命令；**地址空间 32 位契约**与 F0222 aperture 模型一致，超界专属码拒绝不静默截断；**8 字节对齐是发射路径的一部分**——奇 dword 显式补 NOOP；patching=重定位单 dword 精确收集、finalize 先全解析后落笔零半提交；吞吐用**确定性 dword 计数**不用墙钟，空会话产出 0 基线可判据；诊断码独占 0x32xx 段 13 码） | VE 册 #VE-F0223 |
 //! | [`veb23_checks`] | F0223 域自检（判据逐条映射锚点五条判据：MI 7 / 3D 7 / GEN 5 / AP 8 / THRU 5 / ERR 6 / A11Y-PRIV 3 共 41 项七族；**判据侧独立参照编码器**——预期 dword 序列按字面量独立展开不向被测问答案、代际差异「恰为 ext dword」防整体错位型变异、重定位收集→回填闭环与零半提交对拍、吞吐基线自证与预算字面量写死） | VE 册 #VE-F0223 |
+//! | [`veb24_submit`] | F0224 Intel 提交通路与 EXECLISTS（每引擎 2 口 ELSP **队头成对直入** O(1) 不做队列扫描，软件队列按引擎分离防头阻塞；**超时语义有终态**——超阈重置回退队列头+围栏联动谓词送达（F0228 兑现点），同一上下文重置超限即弃用不无限重试；**hung 是引擎级窗口连击判定**只重置该引擎不牵连健康引擎；批缓冲**池化复用**池满如实丢弃记账；批缓冲布局**帧头×命令流×尾哨兵**三段提交时校验损坏即拒；完成签到按端口直寻 O(1) 事件驱动，围栏信号点显式化；诊断码独占 0x34xx 段 8 码） | VE 册 #VE-F0224 |
+//! | [`veb24_checks`] | F0224 域自检（判据逐条映射锚点五条判据：ELSP 7 / TMO 6 / POOL 3 / HUNG 4 / FENCE 3 / ERR 5 / A11Y-PERF 4 共 32 项七族；**判据侧独立重算**——阈值/上限六常量判据侧写死、超时阈值边界 64/65 逐 tick 重演、hung「只打该引擎」双引擎对照组、FIFO 次序判据侧重演、围栏联动钩子记录器直证送达） | VE 册 #VE-F0224 |
 //! | [`ven02_tree`] | F2602 控件树模型（四要素/三不变量/三操作原子事务/M04 绑定路径解析；自 F2603 迁入的 Rust 权威实现） | VE 册 #VE-F2602 |
 //! | [`ven03_ctype`] | F2603 控件类型体系（六类最小集/扩展三件套/类型注册制/内核-上层分层边界） | VE 册 #VE-F2603 |
 //! | [`ven03_checks`] | F2602/F2603 域自检（判据逐条映射，55 项分三批落集） | VE 册 #VE-F2603 |
@@ -534,6 +536,8 @@ pub mod veb22_gtt;
 pub mod veb22_checks;
 pub mod veb23_cmdenc;
 pub mod veb23_checks;
+pub mod veb24_submit;
+pub mod veb24_checks;
 pub mod ven02_tree;
 pub mod ven03_ctype;
 pub mod ven03_checks;
@@ -845,6 +849,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0221", veb21_checks::run_veb21_checks()),
         ("VE-F0222", veb22_checks::run_veb22_checks()),
         ("VE-F0223", veb23_checks::run_veb23_checks()),
+        ("VE-F0224", veb24_checks::run_veb24_checks()),
         ("VE-F2203", vel03_checks::run_vel03_all_checks()),
         ("VE-F2204", vel04_checks::run_vel04_all_checks()),
         ("VE-F2205", vel05_checks::run_vel05_all_checks()),
