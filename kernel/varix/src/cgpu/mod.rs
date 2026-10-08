@@ -21,8 +21,12 @@ pub mod vcq01_reliability_checks;
 //! cga02_threadpool —— CGPU-F0002 渲染线程池与工作窃取调度器（池规模核数减二/合成器专核隔离/同层优先窃取偷头不偷尾/瓦片独立缓冲确定性归并乱序逐像素一致/协作式 2ms 让位抢占三档优先/均衡≤5%/遥测三面/窃取开销≤3%账面/0x39xx 域码段）
 //! vcj01_powerarch — CGPU-F1441 J 域开工与功耗架构总览（域使命/五主题十组/三处核验/五段流水线/边界/采样不耗样本/风险回退/0x52xx）
 
+//! cgm03_edid —— CGPU-F1923 显示能力查询 EDID（EDID1.4 基块解析+DTD 12 位拼装+刷新 60000mHz 手算对账/CTA 扩展 Y444·Y422·HDR 0xE6/损坏三向显性码拒+截断降级读出/能力缓存双键失效重读/投影纯裁剪诚实红线/覆盖白名单台账表外拒/0x540D~0x5412 续占）
+pub mod cgm03_edid;
+pub mod cgm03_edid_checks;
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
+    crate::checks::CheckSet::merge(
 
     crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
@@ -41,5 +45,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ),
         ),
         ),
+    )
+        cgm03_edid_checks::run_cgm03_checks(),
     )
 }
