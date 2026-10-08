@@ -67,6 +67,8 @@
 //! | [`veab01_audioarch`] | F5601 AB 域开工与音频总架构（四层架构/音频三律/AA域十件承接追补） | VE 册 #VE-F5601 |
 //! | [`veab02_audioout`] | F5602 音频设备与输出管理（设备表枚举/热切换无缝续播——**续播位连续=无缝的可断言面**；切换时长预算 150ms 钉死**超预算即缺陷**独立对账；**淡出保护 20ms 钉死**为状态机强制首相位——跳淡出错序拒绝（爆音红线）；默认设备**锁定优先于跟随**+锁定失效显性回落（不静默解除）；延迟档位三档实测建档+空间音频按档位补偿；三路降级：设备消失→紧急无缝切换/爆音→淡出/无设备→静音态提示显性） | VE 册 #VE-F5602 |
 //! | [`veab02_audioout_checks`] | F5602 域自检（32 项四组：设备表+建档分档边界 9/选举四向+锁定失效 6/切换状态机全路径+预算边界+紧急路径 11/读屏+判据元 6；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F5602 |
+//! | [`veae01_inputarch`] | F6201 输入域总架构（四层：设备抽象/事件/映射/消费——依赖方向 16 对独立重算+**耦合违规拒绝注册**+越权审计留痕（拒绝+记账双动作）；**输入三律**可达/一致/可重绑——声明闭集+判定码 1/2/3 与 **U 域词典第十章同源同判**（前向契约位不复制口径）+**违例整改闭环**（违规史不可抹）；**输入如呼吸**域本色可机检化=**通道零丢帧账**（dropped 恒 0 判据钉死+三账守恒——卡一帧=假一帧）；AD10 承接契约位） | VE 册 #VE-F6201 |
+//! | [`veae01_inputarch_checks`] | F6201 域自检（27 项四组：架构层序+耦合拦截+审计 8/三律声明+同源码+整改闭环 9/通道零丢帧+守恒+红项可达 4/读屏+判据元 6；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F6201 |
 //! | [`ved14_traverse`] | F0614 图层渲染遍历器 | VE 册 #VE-F0614 |
 //! | [`ved15_cache`] | F0615 图层缓存策略 | VE 册 #VE-F0615 |
 //! | [`ved16_scale`] | F0616 大层数性能（虚拟化与扁平化） | VE 册 #VE-F0616 |
@@ -715,6 +717,8 @@ pub mod veab01_audioarch;
 pub mod veab01_audioarch_checks;
 pub mod veab02_audioout;
 pub mod veab02_audioout_checks;
+pub mod veae01_inputarch;
+pub mod veae01_inputarch_checks;
 pub mod vef16_gridstat;
 pub mod vef16_checks;
 pub mod vef18_geofuzz;
@@ -815,6 +819,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4601", vew01_sdk_arch::run_vew01_checks()),
         ("VE-F5601", veab01_audioarch_checks::run_veab01_checks()),
 ("VE-F5602", veab02_audioout_checks::run_veab02_checks()),
+("VE-F6201", veae01_inputarch_checks::run_veae01_checks()),
         ("VE-F4602", vew02_manifest::run_vew02_checks()),
         ("VE-F4603", vew03_loader::run_vew03_checks()),
         ("VE-F4604", vew04_sandbox::run_vew04_checks()),
