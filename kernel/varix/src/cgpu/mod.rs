@@ -21,6 +21,8 @@
 //! | [`cgp01_adaptivearch_checks`] | CGPU-F2401 域自检（锚点判据十条映射八组；判据侧字面量写死对拍） |
 //! | [`cgp02_unifiedmodel`] | CGPU-F2402 | 遥测统一模型（六元组 Metric 与五元组同构加一档；三级命名前缀校验表外拒绝；隐私三档闭集 is_readable_by；值闭集 Ppm 饱和不越界；schema 版本化三站升级只增不回滚；维度注册同名复用同 ID 未注册拒绝） |
 //! | [`cgp02_unifiedmodel_checks`] | CGPU-F2402 域自检（判据三组映射：六元组字段与升级链字面量对账+is_readable_by 双向；值闭集恰边界双向+隐私三档；注册同 ID 复用+表外拒绝；stamp 独立重排全等） |
+//! | [`cgp07_jmerge`] | CGPU-F2407 | 遥测与 J 域收口（**J08 指标全量并入**——J08_METRICS 六条列账 id/单位/采样等级/口径一行、逐条转 F2402 六元组形状注册进 P 域统一模型收编落地可机检 verify_merged；**幂等收编**重复执行已在册跳过不发新 ID 可重放；**单向收编** P 收编 J 零反向依赖、收编以 F2401 收编闸 J08 列名为限表外不臆造、表内 id 前缀全 j08. 校验；**收编复用** F2402 六元组形状与 SCHEMA_VERSION=3 不改形状、F2401 收编闸列名、F1558 采样等级 L0/L1/L2 口径；零panic面零IO零墙钟） |
+//! | [`cgp07_jmerge_checks`] | CGPU-F2407 域自检（锚点一组判据映射：首次收编 6 条全量 merged=6 skipped=0+verify 通过/形状逐字段对拍 die_temp 条/幂等重放 merged=0 skipped=6/核验器反向缺条时红防恒绿/表内 id 前缀全 j08. 校验；复用清单三条含 F2402/F2401/F1558 逐条 grep；schema 同步=3 与表数=6 独立写死对拍；stamp 三条独立重排全等） |
 //! | [`vco01_degrade`] | CGPU-F2241 | O 域开工与降级链总架构（优雅降级哲学三条款字面量冻结；N 域移交包签收四字段+指纹 FNV 钉死；官方五主题十组映射守恒 160；架构五段单向流水线跳段/回退显性码拒；历史汇总五行+统一编排声明收编双向闸；双不变量底线闸恰端点钉死；风险四条预案互异；码段 0x55xx 独占） |
 //! | [`vco01_degrade_checks`] | CGPU-F2241 域自检（16 条判据两族；哲学三条款+历史五行+风险四名+组名判据侧独立写死对拍、指纹独立 FNV 双源对账、五段全序列推进+跳/退/原地显性码拒、码段 0x55 独占、零 panic 双面自扫） |
 //! | [`cgr01_secure`] | CGPU-F2721 | R 域开工与安全渲染总架构（Q10 移交包签收七件逐项登记缺项即域未开工/不可信内容渲染防线定位两条款字面量冻结——防线管渲染路径恶意与异常内容、不管业务正确性/验证→隔离→降级→恢复四段单向流水线跳段回退拒绝——未隔离即恢复=污染回流/Q10 兑现结构化确认非空头支票/诊断码独占 0x5701~0x5706） |
@@ -58,6 +60,8 @@ pub mod cgp01_adaptivearch;
 pub mod cgp01_adaptivearch_checks;
 pub mod cgp02_unifiedmodel;
 pub mod cgp02_unifiedmodel_checks;
+pub mod cgp07_jmerge;
+pub mod cgp07_jmerge_checks;
 pub mod vco01_degrade;
 pub mod vco01_degrade_checks;
 pub mod cgr01_secure;
@@ -66,70 +70,71 @@ pub mod cgr02_threatmodel;
 pub mod cgr02_threatmodel_checks;
 pub mod vco03_triggersrc;
 pub mod vco03_triggersrc_checks;
+pub mod cgd03_frameledger_checks;
 //! vco03_triggersrc — CGPU-F2243 降级触发源汇总（七类触发源闭集帧超时/热档/续航档/CGPU 档位/弱网/资源紧张/场景切换/源注册追加式可扩展重复拒/源融合复用 F1459 主源 severity 最高平局取注册序最早确定性/贡献源账升序留痕/0x59xx 五码/12 项域自检）
 
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
-/// 结构：19 个在账判据集两两 merge 平衡树，新单入账在此追加。
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
-
     crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
         crate::checks::CheckSet::merge(
+        cga01_simdprim_checks::run_cga01_checks(),
+        cga02_threadpool_checks::run_cga02_checks()
+    ),
         crate::checks::CheckSet::merge(
-            cga01_simdprim_checks::run_cga01_checks(),
-            cga02_threadpool_checks::run_cga02_checks(),
-        ),
+        cge01_domain_checks::run_cge01_checks(),
         crate::checks::CheckSet::merge(
-            cge01_domain_checks::run_cge01_checks(),
-        crate::checks::CheckSet::merge(
-            cge02_lifecycle_checks::run_cge02_checks(),
-            cgi01_bandwidth_checks::run_cgi01_checks(),
-        ),
-        ),
-        ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-            cgm01_display_checks::run_cgm01_checks(),
-            cgm02_display_checks::run_cgm02_checks(),
-        ),
-        crate::checks::CheckSet::merge(
-            vcj01_powerarch_checks::run_vcj01_checks(),
-        crate::checks::CheckSet::merge(
-            vcl01_virtualarch_checks::run_vcl01_checks(),
-            vcq01_reliability_checks::run_vcq01_checks(),
-        ),
-        ),
-        ),
-        ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-            vcq02_metrics_checks::run_vcq02_checks(),
-            cgd02_frametimer_checks::run_cgd02_checks(),
-        ),
-        crate::checks::CheckSet::merge(
-            cgd03_frameledger_checks::run_cgd03_checks(),
-        crate::checks::CheckSet::merge(
-            cgp01_adaptivearch_checks::run_cgp01_checks(),
-            cgp02_unifiedmodel_checks::run_cgp02_checks(),
-        ),
-        ),
-        ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-            vco01_degrade_checks::run_vco01_checks(),
-            cgr01_secure_checks::run_cgr01_checks(),
-        ),
-        crate::checks::CheckSet::merge(
-            cgr02_threatmodel_checks::run_cgr02_checks(),
-        crate::checks::CheckSet::merge(
-            cgm03_edid_checks::run_cgm03_checks(),
-            vco03_triggersrc_checks::run_vco03_checks(),
-        ),
-        ),
-        ),
-        ),
-        ),
+        cge02_lifecycle_checks::run_cge02_checks(),
+        cgi01_bandwidth_checks::run_cgi01_checks()
     )
+    )
+    ),
+        crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
+        cgm01_display_checks::run_cgm01_checks(),
+        cgm02_display_checks::run_cgm02_checks()
+    ),
+        crate::checks::CheckSet::merge(
+        vcj01_powerarch_checks::run_vcj01_checks(),
+        crate::checks::CheckSet::merge(
+        vcl01_virtualarch_checks::run_vcl01_checks(),
+        vcq01_reliability_checks::run_vcq01_checks()
+    )
+    )
+    )
+    ),
+        crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
+        vcq02_metrics_checks::run_vcq02_checks(),
+        cgd02_frametimer_checks::run_cgd02_checks()
+    ),
+        crate::checks::CheckSet::merge(
+        cgd03_frameledger_checks::run_cgd03_checks(),
+        crate::checks::CheckSet::merge(
+        cgp01_adaptivearch_checks::run_cgp01_checks(),
+        cgp02_unifiedmodel_checks::run_cgp02_checks()
+    )
+    )
+    ),
+        crate::checks::CheckSet::merge(
+        crate::checks::CheckSet::merge(
+        vco01_degrade_checks::run_vco01_checks(),
+        crate::checks::CheckSet::merge(
+        cgr01_secure_checks::run_cgr01_checks(),
+        cgr02_threatmodel_checks::run_cgr02_checks()
+    )
+    ),
+        crate::checks::CheckSet::merge(
+        cgm03_edid_checks::run_cgm03_checks(),
+        crate::checks::CheckSet::merge(
+        vco03_triggersrc_checks::run_vco03_checks(),
+        cgp07_jmerge_checks::run_cgp07_checks()
+    )
+    )
+    )
+    )
+    )
+}
 }
