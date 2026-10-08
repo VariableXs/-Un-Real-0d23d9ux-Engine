@@ -280,6 +280,8 @@
 //! | [`veb227_mediacaps`] | F0227 Intel 媒体引擎能力位（**缺席与读取失败是两种病两种治法**：实例数 0 标记缺席不假设存在（把缺席当未测是能力位撒谎第一形式）、读取失败按代际保守下限并标注 ConservativeFloor（Gen9 下限里 H264 确定有的，读失败说没有是撒谎第二形式）、未知编解码不宣称（宣称是枚举出来的不是缺省出来的）；能力矩阵九格按 GenTier 查表且**口径逐字同源 F0221「Baseline 新特性位一律不给」**——基线档不给 AV1，按最优批给承诺等于让下位机用户踩空；下限表独立重排九格逐格对账、宣称不得超表；探测一次性重复拒绝（能力读数不许抖动）、查询 O(1) 常驻缓存；只读视图无写入口且范围红线随视图走——不做编解码本体，能力位虚报让媒体栈在不存在能力上建大厦、本体混入让探测路径背上编解码复杂度，两头堵死） | VE 册 #VE-F0227 |
 //! | [`vev03_color`] | F4403 色彩管理引擎总成（**四模块**：配置解析 O(配置)/变换调度 O(1) 查表/变换缓存 FNV 定槽 64 槽版本戳失效/异常回退缺省 sRGB——**按需激活**无校准走缺省 sRGB **并标注不静默**（DefaultNote 契约输出可查可读屏，HDR 屏标注加粗不改路径）；**意图仲裁** INTENT_PRIORITY 单源表色度精确>感知>饱和度与请求顺序无关；缓存版本戳失配即整槽作废非 LRU） | VE 册 #VE-F4403 |
 //! | [`vev03_checks`] | F4403 域自检（判据五条逐条映射：四模块/按需激活/缺省标注/意图仲裁/判据共 40 项五组；**判据侧独立重算**——FNV 定槽判据侧逐字重写五键对账、优先级表与闭集与四码字面量写死、激活表全扫计数对账、判据条数离账自证） | VE 册 #VE-F4403 |
+//! | [`vev04_hdr`] | F4404 HDR 管线（**四段**：能力探测双源对账 O(1)——快照×EDID 失准以 EDID 声明为准选边并标注；元数据抽象层 HDR10 静态与动态类归一毫尼特整数零浮点缺失静态回退；色调映射整数 Reinhard 曲线表三档可调 O(像素批次) 渐近不超目标白；SDR 同屏混合 O(1) 混合过曝亮度钳制 203 nit 参考白留痕计数；读屏播报失准>钳制>正常>SDR 四态域本色；对接 F4402 能力上游，F4409/F4426 前向声明） | VE 册 #VE-F4404 |
+//! | [`vev04_checks`] | F4404 域自检（判据五条逐条映射共 29 项五组；**判据侧独立重算**——Reinhard 判据侧逐字重写六点对账、曲线表膝点/分档阈值/203nit/缺省CLL 字面量写死、探测真值表四组合全枚举、钳制边界两侧同查、条数离账自证） | VE 册 #VE-F4404 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -697,6 +699,8 @@ pub mod vev02_checks;
 pub mod vev02_monitor;
 pub mod vev03_color;
 pub mod vev03_checks;
+pub mod vev04_hdr;
+pub mod vev04_checks;
 pub mod vew01_sdk_arch;
 /// VE-AB · AB01 批次 · AB 域开工与音频总架构（VE-F5601）
 ///
@@ -991,6 +995,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4402-a", vev02_checks::run_vev02_checks_a()),
         ("VE-F4402-b", vev02_checks::run_vev02_checks_b()),
         ("VE-F4403", vev03_checks::run_vev03_checks()),
+        ("VE-F4404", vev04_checks::run_vev04_checks()),
         ("VE-F3201", veq01_pipeline::run_veq01_checks()),
         ("VE-F3202", veq02_graph::run_veq02_checks()),
         ("VE-F3203", veq03_handle::run_veq03_checks()),
