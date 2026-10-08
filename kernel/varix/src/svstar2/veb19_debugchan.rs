@@ -1323,5 +1323,44 @@ pub fn run_veb19_checks() -> CheckSet {
         );
     }
 
+    // --- 判据 16：两个上界常量**用字面量钉死**（不让判据跟着常量一起漂）---
+    //
+    // 变异 M06（`MAX_PARAMS` 8→16）与 M07（`MAX_PARAM_VALUE` 2^20→2^30）
+    // 在判据 3/4 下**双双存活**，根因不是判据漏写，而是同源驱动恒真：
+    // 那两条判据的语料全由常量表达式导出——`(0..(MAX_PARAMS + 1))`、
+    // `MAX_PARAM_VALUE + 1`。常量一放宽，语料同步放宽，被测与判据
+    // 一起挪到新边界上，结论恒为「越界被拒」⇒ 谓词改了等于没改。
+    //
+    // 一个从不被观察的阈值和一个错的阈值在行为上无法区分，所以本条
+    // **绕开常量**、直接写死数值：9 个参数必拒、8 个必收；
+    // 参数值 1048577 必拒、1048576 必收。两向都断，且用 `==` 不用 `>=`
+    // （放宽常量时 1048576 仍会被判据抓到，不会被「至少」蒙过去）。
+    {
+        // 字面量 9/8：对应上界 8，**不引用 MAX_PARAMS**
+        let nine: Vec<u32> = (0..9u32).collect();
+        let eight: Vec<u32> = (0..8u32).collect();
+        let m9 = DebugMsg::new(MsgKind::Flush, nine);
+        let m8 = DebugMsg::new(MsgKind::Flush, eight);
+        // 字面量 1048577/1048576：对应上界 1<<20，**不引用 MAX_PARAM_VALUE**
+        // 用 GuestEvent（两参数、无布尔语义门）测值域，否则测到的是语义结果
+        let v_over = DebugMsg::new(MsgKind::GuestEvent, alloc::vec![0u32, 1048577u32]);
+        let v_at = DebugMsg::new(MsgKind::GuestEvent, alloc::vec![0u32, 1048576u32]);
+        s.add(
+            "B19-常量-两个上界以字面量钉死不随常量漂移",
+            // 上界本身的值也要钉死：常量被改成 16 或 2^30 时本条立刻红，
+            // 防止「放宽常量 + 判据跟着放宽」的同源漂移成为合法改动
+            MAX_PARAMS == 8
+                && MAX_PARAM_VALUE == 1048576
+                // 9 个参数（越界一档）必拒，且原因是「个数」不是别的
+                && m9.validate() == Err(Reject::ParamCount)
+                // 恰好 8 个（在界上）必收——否则上界被写成 >= 就是误杀
+                && m8.validate() == Ok(())
+                // 值域两侧同理
+                && v_over.validate() == Err(Reject::ParamValue)
+                && v_at.validate() == Ok(()),
+            "MAX_PARAMS==8 / MAX_PARAM_VALUE==1048576 被字面量钉死；9 参数与 1048577 必拒、8 参数与 1048576 必收",
+        );
+    }
+
     s
 }
