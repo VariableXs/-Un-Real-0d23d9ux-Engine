@@ -71,7 +71,11 @@ pub mod cgr02_threatmodel_checks;
 pub mod vco03_triggersrc;
 pub mod vco03_triggersrc_checks;
 pub mod cgd03_frameledger_checks;
+pub mod vcw04_apiref;
+pub mod vcw04_apiref_checks;
 //! vco03_triggersrc — CGPU-F2243 降级触发源汇总（七类触发源闭集帧超时/热档/续航档/CGPU 档位/弱网/资源紧张/场景切换/源注册追加式可扩展重复拒/源融合复用 F1459 主源 severity 最高平局取注册序最早确定性/贡献源账升序留痕/0x59xx 五码/12 项域自检）
+//! | [`vcw04_apiref`] | CGPU-F3524 | API 参考自动生成（承接 F3523 生成管线——参考页同样是自动派生物不手写 印记 pub use 同一常量不重写；双步架构 注释抽取→页面渲染 单向跳步/回退显性码拒 抽取产物是两步间唯一通道；冻结闸兑现 vcw01 条款——frozen 显性在账未冻结入参考 NOT_FROZEN 拒 条款是代码路径不是口号；参考页行数同源公式 1+Σ(标题+参数+返回+分隔)+两次渲染逐行相同；WqCode 0x5C13~0x5C18 续段与前三单十八码不重叠） |
+//! | [`vcw04_apiref_checks`] | CGPU-F3524 域自检（13 项六族：STEP2 双步名序对拍+违序双向拒 / EXTRACT3 冻结签名全过字段逐项对拍+未冻结闸单条与批量拒+反向语料专属码分账 / RENDER3 行数三方同源+确定性与标题行逐字+印记与 F3523 管线同源 / LINK2 冻结条款兑现跨单元对拍 vcw01 POSITION_CLAUSES+域守恒 160 / CODE2 码段 0x5C13~18 连续与前三单十八码不重叠+码互异原因非空 / META1 判据条数对账） |
 
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
@@ -130,6 +134,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         cgm03_edid_checks::run_cgm03_checks(),
         crate::checks::CheckSet::merge(
         vco03_triggersrc_checks::run_vco03_checks(),
+        vcw04_apiref_checks::run_vcw04_checks(),
         cgp07_jmerge_checks::run_cgp07_checks()
     )
     )
