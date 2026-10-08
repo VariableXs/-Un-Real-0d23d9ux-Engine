@@ -1,0 +1,24 @@
+/* ============================================================
+ * AI-17 · Z-06 系统光标对齐（Cursor Alignment）
+ * 光标语义审计后的统一工具类：语义与 Windows 系统逐项一致。
+ * 走查规则：可点击 = pointer；可拖动 = grab（拖动中 grabbing）；
+ * 文本 = text；busy = progress（进度可取消）/ wait；禁止 = not-allowed；
+ * 各方向 resize = 系统对应；手型永远不出现在不可点击处。
+ * ============================================================ */
+
+.cursor-clickable { cursor: pointer; }
+.cursor-grab { cursor: grab; }
+.cursor-grabbing { cursor: grabbing !important; }
+.cursor-text { cursor: text; }
+.cursor-busy { cursor: progress; }
+.cursor-wait { cursor: wait; }
+.cursor-blocked { cursor: not-allowed; }
+.cursor-move { cursor: move; }
+.cursor-resize-ns { cursor: ns-resize; }
+.cursor-resize-ew { cursor: ew-resize; }
+.cursor-resize-nesw { cursor: nesw-resize; }
+.cursor-resize-nwse { cursor: nwse-resize; }
+.cursor-col { cursor: col-resize; }
+.cursor-row { cursor: row-resize; }
+/* 纯展示区：显式声明默认光标，杜绝继承漂移 */
+.cursor-plain { cursor: default; }

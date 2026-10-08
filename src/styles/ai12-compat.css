@@ -1,0 +1,90 @@
+/* AI-12 兼容纵深组 — 设置页「兼容性」标签（Z-15…Z-21、M-37…M-45） */
+
+.cp-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cp-desc,
+.cp-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.cp-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+}
+
+.cp-group h4 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.cp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cp-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cp-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.cp-query {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.cp-query:focus {
+  border-color: var(--accent);
+}
+
+.cp-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+}
+
+.cp-tier {
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.cp-hit-name {
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Z-21 慢速档 / Z-20 宿主档运行时标记（供其他消费方按需降级） */
+:root[data-slow-tier="2"] .cp-tab,
+:root[data-slow-tier="3"] .cp-tab {
+  animation: none;
+}

@@ -1,0 +1,119 @@
+//! L3 shell — 桌面环境系统集成（M5/M6/M7/M8）：
+//! - tray.rs     OS 托盘图标 + 菜单（打开桌面/软件/系统窗口/退出）
+//! - hardware.rs 蓝牙/Wi-Fi/音频/摄像头/麦克风（Windows API，只读 + 音量控制）
+//! - explorer.rs 文件管理器（全盘浏览 + 受控写操作 + 删除入回收站）
+//! - recycle.rs  全局回收站（数据库软删除 + 工作区 .trash + fs recycle 聚合）
+//! - launcher.rs 第三方软件启动器 + 便携性三级分级（🟢/🟡/🔴）
+//! - usb.rs      U 盘完全便携：打包/SHA-256 校验/拔出保护
+//! - netconsent.rs 联网确认策略存储（默认零联网；任何联网前必须用户明确授权）
+//! - xflow.rs    跨软件数据流：跨窗口拖拽光标跟踪（批次 C 规格 5.7）
+
+pub mod ai;
+pub mod applog;
+pub mod appman;
+pub mod browsers;
+pub mod code;
+pub mod embed;
+pub mod envs;
+pub mod ecosystem;
+pub mod diagnostic;
+pub mod explorer;
+pub mod ext_plugin;
+pub mod extensions;
+pub mod audioime;
+pub mod fsindex;
+// 跨域文件级双向同步（双域总案 ③-a）：SHARED 卷单一事实源 + 秒级变更通知
+pub mod filesync;
+// 双域引导配置（需求 2）：Variable 侧读写 SHARED 卷的 boot-select.json
+pub mod dualboot;
+// 阶段 6（三体 AI-2）：隐形 Windows 引擎编排底座——五态状态机/心跳/幂等拉起
+pub mod engine;
+// 阶段 6（三体 AI-2）：引擎热数据 ramcache——只缓不落盘/关机即清/一致性失效
+pub mod ramcache;
+// 阶段 6（三体 AI-2）：引擎画面流通道 v1——传输抽象冻结+mstsc RDP v1 实现
+pub mod engine_stream;
+pub mod sysmaint;
+pub mod imwatch;
+pub mod installer;
+pub mod isolation;
+pub mod hardware;
+pub mod kbdhook;
+pub mod mousefeel;
+pub mod git_panel;
+pub mod launcher;
+pub mod netconsent;
+pub mod network;
+pub mod privacy;
+pub mod privacy_shield;
+pub use privacy_shield::privacy_shield_log;
+pub mod print;
+pub mod recovery;
+pub mod recycle;
+pub mod search;
+pub mod security;
+pub mod shellmode;
+pub mod shell_watch;
+pub mod single_instance;
+pub mod sysenv;
+pub mod taskman;
+pub mod tools;
+pub mod sysinfo;
+pub mod taskbar_win;
+pub mod taskbar_yield;
+pub mod terminal;
+pub mod toolchains;
+pub mod compat;
+pub mod we_wallpaper;
+pub mod compat_probe;
+pub mod shared_apps;
+// M1（R9）：旧的 L2 容器包裹引擎（`container.rs`，Variable 自建 WS_POPUP 宿主
+// + SetParent/WS_CHILD）已随拥有式嵌入整体下线并删除 —— 第三方窗口必须保持
+// 完整原生顶层窗，任何 WS_CHILD 化的写法都与 M1 目标直接冲突。
+// M3：`capture.rs`（WGC 抓屏采集 + L3 输入转发）已随 L3 层级归入拥有式嵌入
+// 整体删除 —— 不再有任何抓屏采集通路；窗口还原/唤醒辅助迁入 embed::win。
+pub mod directshell;
+pub mod tray;
+pub mod usb;
+pub mod wallpaper;
+pub mod winman;
+pub mod xflow;
+// AI-09 文件操作组（M-21/Z-29..Z-35/M-19..M-27）
+pub mod fileops;
+// AI-10 文件管理与数据安全组（U-16/U-25…U-36/N-31/V-31）
+pub mod versions;
+pub mod tags;
+pub mod transfer;
+pub mod archive;
+pub mod lineage;
+pub mod panic;
+pub mod trust;
+pub mod incognito;
+pub mod insights;
+// AI-07 效率中枢组（N-15 剪贴板历史后端 / N-18 宏引擎护栏与触发器）
+pub mod cliphist;
+pub mod macros;
+// AI-13 性能与长跑组（U-20 内存守护 / U-22 IO 治理 / M-46 日志轮转 / M-47 迁移预检 /
+// M-48 DB 紧凑 / N-35 分身 / N-36 接力 / M-53 崩溃转储 / M-54 CPU 配额 / U-19 boot 阶段）
+pub mod perf;
+// AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）
+pub mod openhub;
+// 系统探测与电源（lib.rs 已注册命令；模块文件曾被并发回滚，此处补声明）
+pub mod sysprobe;
+pub mod winpower;
+// AI-15 开放工具组（M-57/59/63、V-89/90 出站桥与安全扫描；V-81 winget；V-82 环境变量；
+// V-83/V-86 计划任务与启动延迟；V-84/85 关联快照与卸载善后；V-87 服务依赖图）
+pub mod opentools;
+pub mod winget;
+pub mod envedit;
+pub mod workshop;
+pub mod assocguard;
+pub mod svcgraph;
+// AI-19 无障碍与本地化组（M-73 系统辅助功能桥 / M-74 高对比度探针）
+pub mod a11y;
+// AI-16 启动与声音通知组（Z-43 音量记忆 / Z-45 方案校验 / Z-46 通信设备 /
+// Z-47 通知存档 / Z-48 麦克风指示 / Z-49 提醒中心）
+pub mod soundnotify;
+// AI-20 质量门禁与收官组（V-93 偏好搬家只读读取 / V-99 依赖诚实声明探针）
+pub mod quality;
+// SINGULARITY-100 奇点计划（Q-01..Q-100：硬件脉搏/临时账本/检疫/审计/批量属性/冰山）
+pub mod singularity;

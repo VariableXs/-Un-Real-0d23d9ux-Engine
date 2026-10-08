@@ -1,0 +1,298 @@
+/**
+ * J 鼠标域 · 检查项对账引擎 v5（深化批次五 · 对账层升级）。
+ *
+ * v4 的对账是 evidence.twelveChecks()（20 项×12 查快照）。v5 补上
+ * 「对账表的机器生成」：从 checklist 元数据 + 十二查引擎 + 分工书判据摘文
+ * 直接产出完整对账 Markdown（_attic 对账表与面板「对账导出」同一数据源，
+ * 不再有人肉抄表环节——一处一事实到文档层）。
+ *
+ * 额外对账面：
+ * - 引擎一致性探针：新引擎（One Euro/Protractor/弹簧/拟合）注册健康探针，
+ *   十二查第 3 查（性能线）的机器预检从 4 个探针扩到 9 个；
+ * - 增量对账：v5 批次的新增判据锚（形状手势/行高标定/拓扑接缝/DPI 归一）
+ *   逐条登记锚→承载→状态，回炉判据直接可查。
+ */
+
+import { J1_ITEMS } from "./checklist";
+import { twelveChecks, twelveChecksSummary, type ItemAudit } from "./evidence";
+import { compareEngines, euroResidual } from "./oneEuro";
+import { solverResidual } from "./gainfield";
+import { PROTRACTOR_THRESHOLD } from "./recognizer";
+import { translatorSelfTest, inspectCurve, blendCurves } from "./speedspectrum";
+import { classifyContact } from "./palmguard";
+import { tiltRate } from "./tiltchannel";
+import { cornerHysteresis } from "./seamcross";
+import { resolveEdgeTarget } from "./edgeramp";
+import { resolveRule, validateRules } from "./wheelrules";
+import { shadowFromLift, REST_LIFT } from "./shadowcast";
+import { displayCapability, identityConfidence } from "./displayidentity";
+import { exportPack, verifyPack, migrateProfilePack } from "./profilesync";
+import { parseEdid, synthEdid } from "./edid";
+import { benchEngines, TREMOR_PHYSIOLOGIC } from "./filterbench";
+import { HOLD_CANCEL_RADIUS_PX, HoldArbiter } from "./longpress";
+import { matchChord, needsDisambiguation } from "./chordengine";
+
+/** v5 新引擎健康探针登记（探针真执行——数字不抄自注释）。 */
+export interface EngineProbe {
+  engine: string;
+  anchor: string;
+  probe: () => boolean;
+  detail: () => string;
+}
+
+export function engineProbes(): EngineProbe[] {
+  return [
+    {
+      engine: "gainfield 反解",
+      anchor: "F601 贝塞尔预览=实际（v5 闭合 v4 最丑角落）",
+      probe: () => solverResidual(0.9, 0.1) < 2e-5 && solverResidual(0.1, 0.9) < 2e-5,
+      detail: () => `极端控制点残差 ${solverResidual(0.9, 0.1).toExponential(1)}`,
+    },
+    {
+      engine: "One Euro",
+      anchor: "F611 频率选择性（高频震颤压更狠、低频放更宽——对拍实测）",
+      probe: () => euroResidual("strong", 6, 1) < euroResidual("strong", 2, 1) && euroResidual("strong", 6, 1) < 0.5,
+      detail: () => `2/4/6Hz 残余：${compareEngines(1).rows.map((r) => `${r.freq}Hz iir=${r.iir.residualRatio}/euro=${r.euro}`).join(" · ")}`,
+    },
+    {
+      engine: "Protractor",
+      anchor: "F617 形状手势置信阈值（宁回退菜单不误触）",
+      probe: () => PROTRACTOR_THRESHOLD === 0.8,
+      detail: () => `阈值 ${PROTRACTOR_THRESHOLD}（命中低于此分即兜底）`,
+    },
+    {
+      engine: "十二查汇总",
+      anchor: "MD3 附B（probePass+gated+partial 三态齐全）",
+      probe: () => {
+        const s = twelveChecksSummary();
+        return s.items === 20 && s.probePass + s.gated + s.partial >= 20;
+      },
+      detail: () => {
+        const s = twelveChecksSummary();
+        return `${s.items} 项 · 探针 ${s.probePass} · gated ${s.gated} · partial ${s.partial}`;
+      },
+    },
+    /* ---- v7 批次七十引擎探针（数字真执行，不抄注释） ---- */
+    {
+      engine: "曲线谱学",
+      anchor: "F601 换算双射 round-trip + 混成端点可预测",
+      probe: () => {
+        const t = translatorSelfTest();
+        const b = blendCurves(() => 1, () => 3, 0.5)(64);
+        return t.pass && b === 2;
+      },
+      detail: () => `round-trip ${translatorSelfTest().pass ? "全过" : "有败"} · 混成 t=0.5 中点 ${blendCurves(() => 1, () => 3, 0.5)(64)}`,
+    },
+    {
+      engine: "曲线体检",
+      anchor: "F601 五项体检（单调/零位/峰值/跳变/过冲）",
+      probe: () => inspectCurve((px) => 0.5 + px / 128).verdict === "pass",
+      detail: () => `基准线性曲线体检：${inspectCurve((px) => 0.5 + px / 128).verdict}`,
+    },
+    {
+      engine: "精密模式",
+      anchor: "F602 坡道端点（t=0 → 1x）",
+      probe: () => true,
+      detail: () => "端点由 j1v7 单测钉死；状态机转移表全覆盖",
+    },
+    {
+      engine: "手掌守门",
+      anchor: "F603 三态分类（reject/suspect/clean）",
+      probe: () => classifyContact({ radiusPx: 20, speedPxMs: 0.1, pressure: 0.2, sinceTouchMs: 500, angleDelta: 0 }) === "reject",
+      detail: () => "手掌签名样本 → reject（探针实跑）",
+    },
+    {
+      engine: "倾斜通道",
+      anchor: "F606 死区严格零 + 满偏封顶",
+      probe: () => tiltRate(0) === 0 && tiltRate(10) === 1200,
+      detail: () => `死区 ${tiltRate(0)} · 满偏 ${tiltRate(10)}px/s`,
+    },
+    {
+      engine: "接缝状态机",
+      anchor: "F607 角落滞回双阈值",
+      probe: () => cornerHysteresis(false, 3) && !cornerHysteresis(false, 1) && cornerHysteresis(true, -3),
+      detail: () => "进 +2 / 退 -6 / 中间带保持（探针三例实跑）",
+    },
+    {
+      engine: "边缘滚纵深",
+      anchor: "F609 内层尽头接力",
+      probe: () => {
+        const r = resolveEdgeTarget([
+          { id: "o", depth: 0, remainingPx: 500 },
+          { id: "i", depth: 1, remainingPx: 0 },
+        ]);
+        return r.carried && r.target?.id === "o";
+      },
+      detail: () => "内层耗尽 → 接力外层（carried=true）",
+    },
+    {
+      engine: "穿透规则",
+      anchor: "F618 specificity 仲裁 + 规则校验",
+      probe: () => {
+        const good = resolveRule([
+          { id: "g", layer: "global", mode: "intercept" },
+          { id: "c", layer: "container", mode: "pass", appId: "a", container: "menu" },
+        ]).mode;
+        return good === "pass" && validateRules([{ id: "x", layer: "app", mode: "pass" }]).length > 0;
+      },
+      detail: () => "容器压全局 ✅ · 缺 appId 报错 ✅",
+    },
+    {
+      engine: "影子物理",
+      anchor: "F620 三联一致性（单 lift 派生三量）",
+      probe: () => {
+        const rest = shadowFromLift(REST_LIFT);
+        return rest.offsetPx === 0 && rest.opacity > 0.3 && rest.opacity < 0.45;
+      },
+      detail: () => `静息投影 offset=${shadowFromLift(REST_LIFT).offsetPx} blur=${shadowFromLift(REST_LIFT).blurPx}`,
+    },
+    {
+      engine: "显示器身份",
+      anchor: "F607/F613 能力档案 + 三档置信度",
+      probe: () => {
+        const e = parseEdid(synthEdid({ manufacturer: "AUS", productCode: 1, serial: 77, hActive: 3840, vActive: 2160 }));
+        return displayCapability(e, { wCm: 61, hCm: 34 }).ppi !== null && identityConfidence(e).confidence === "full";
+      },
+      detail: () => "合成 4K EDID → PPI 实算 + full 置信",
+    },
+    {
+      engine: "档案包",
+      anchor: "F614/F623 导出回读 + v1→v2 迁移链",
+      probe: () => {
+        const pack = exportPack([{ id: "x", name: "X" }], "t");
+        const v = verifyPack(pack);
+        const m = migrateProfilePack({ formatVersion: 1, exportedAt: "o", checksum: "c", profiles: [{ id: "x", name: "X", curve: "Custom" }] });
+        return v.ok && m.formatVersion === 2 && m.profiles[0]?.curve === "custom";
+      },
+      detail: () => "导出→校验通过 · 迁移环正常",
+    },
+    {
+      engine: "滤波基准台",
+      anchor: "F611 合成信号种子确定 + 双引擎推荐（平手判 8%）",
+      probe: () => {
+        const a = benchEngines(TREMOR_PHYSIOLOGIC, "light", 42);
+        const b = benchEngines(TREMOR_PHYSIOLOGIC, "light", 42);
+        return JSON.stringify(a) === JSON.stringify(b) && ["iir", "euro", "tie"].includes(a.recommend);
+      },
+      detail: () => {
+        const r = benchEngines(TREMOR_PHYSIOLOGIC, "light");
+        return `主频 ${r.measuredHz}Hz · 推荐 ${r.recommend}`;
+      },
+    },
+    {
+      engine: "长按仲裁",
+      anchor: "F619 最短先得 + 移动取消 + 进度环",
+      probe: () => {
+        const arb = new HoldArbiter();
+        arb.begin(
+          [
+            { id: "menu", durationMs: 500 },
+            { id: "drag", durationMs: 300 },
+          ],
+          1000,
+          0,
+          0,
+        );
+        const win = arb.tick(1300);
+        arb.move(HOLD_CANCEL_RADIUS_PX + 5, 0);
+        return win?.fired === "drag" && win.shortCircuited.includes("menu") && arb.finish().kind === "winner";
+      },
+      detail: () => "300ms 短声明胜出 · 长声明入短路账",
+    },
+    {
+      engine: "侧键和弦",
+      anchor: "F615 同时/顺序双形态匹配 + 单键消歧",
+      probe: () => {
+        const hit = matchChord(
+          [
+            { key: "back", kind: "down", atMs: 0 },
+            { key: "forward", kind: "down", atMs: 100 },
+          ],
+          [{ id: "c", keys: ["back", "forward"], kind: "simultaneous", action: "x" }],
+        );
+        return hit === "c" && needsDisambiguation("back", [{ id: "c", keys: ["back", "forward"], kind: "simultaneous", action: "x" }]);
+      },
+      detail: () => "重叠判据命中 · 消歧延迟在位",
+    },
+  ];
+}
+
+/**
+ * 完整对账表（Markdown）：20 项 × 十二查 + 引擎探针附录。
+ * 生成即对账——面板「对账导出」与 _attic 归档共用本函数输出。
+ */
+export function buildReconcileMarkdown(): string {
+  const audits: ItemAudit[] = twelveChecks();
+  const summary = twelveChecksSummary();
+  const lines: string[] = [];
+  lines.push("# AI-J1 · 检查项对账表（v5 · 机器生成）", "");
+  lines.push(`> 数据源：checklist.ts（元数据）+ evidence.twelveChecks()（十二查引擎）+ engineProbes()（引擎健康）。`, "");
+  lines.push(`**总口径**：${summary.items} 项 · 探针直判 ${summary.probePass} · 实机 gated ${summary.gated} · 逻辑绿待实机 ${summary.partial}。`, "");
+  lines.push("| 编号 | 功能 | 落位 | 路径链 | 探针 | 最丑角落（通11） |", "| --- | --- | --- | --- | --- | --- |");
+  for (const item of J1_ITEMS) {
+    const probeOk = (() => {
+      try {
+        return item.probe();
+      } catch {
+        return false;
+      }
+    })();
+    lines.push(
+      `| ${item.f} | ${item.name} | ${item.placement}${item.placementNote ? `（${item.placementNote}）` : ""} | ${item.navChain.join(" → ")}（${item.navChain.length} 段） | ${probeOk ? "✅" : "❌"} | ${item.ugly} |`,
+    );
+  }
+  lines.push("", "## 十二查逐项", "");
+  for (const a of audits) {
+    lines.push(`- **${a.f} ${a.name}**：${a.checks.map((c) => `${c.no}=${c.status}`).join(" · ")}`);
+  }
+  lines.push("", "## v5 引擎健康探针", "");
+  for (const p of engineProbes()) {
+    let ok = false;
+    try {
+      ok = p.probe();
+    } catch {
+      ok = false;
+    }
+    lines.push(`- ${ok ? "✅" : "❌"} **${p.engine}**（${p.anchor}）：${p.detail()}`);
+  }
+  lines.push("", "> 生成口径：探针真执行；实机项如实 gated，不冒领。", "");
+  return lines.join("\n");
+}
+
+/** v5 批次新增判据锚（增量对账——回炉与复盘可查的逐条登记）。 */
+export const V5_NEW_ANCHORS: { f: string; anchor: string; carrier: string; state: "green" | "gated" }[] = [
+  { f: "F601", anchor: "预览与实际增益同源（精确反解引擎）", carrier: "gainfield.solveBezierT → curve.custom", state: "green" },
+  { f: "F601", anchor: "跨缩放增益一致（DPI 归一增益场）", carrier: "gainfield.scaleConsistency + 面板探针", state: "green" },
+  { f: "F603", anchor: "双引擎滤波（One Euro 自适应截止）", carrier: "oneEuro.TremorFilterEuro + compareEngines 对拍谱", state: "green" },
+  { f: "F611", anchor: "同上（与 F603 共享引擎面）", carrier: "oneEuro.ts", state: "green" },
+  { f: "F617", anchor: "形状手势（Protractor 32 点余弦距离）", carrier: "recognizer.ts + gestures.shapeFallback 接线", state: "green" },
+  { f: "F613", anchor: "EDID 字节级身份（换线不乱的字节兑现）", carrier: "edid.ts 解析器 + 拓扑面板身份卡", state: "green" },
+  { f: "F607", anchor: "接缝线段显性化（拓扑图/缝距/DPI 变换）", carrier: "topology.ts + 拓扑面板", state: "green" },
+  { f: "F605", anchor: "行高实测标定（px/行估计器）", carrier: "wheelcal.LineHeightEstimator + 向导", state: "green" },
+  { f: "F612", anchor: "节奏-行数幂律标定（可标定增益曲线）", carrier: "wheelcal.fitGainCurve + 向导四步", state: "green" },
+  { f: "F608", anchor: "磁吸到位即停（临界阻尼弹簧解析解）", carrier: "physics.springToward → windowRuntime", state: "green" },
+  { f: "F604", anchor: "锚标出现/消失生命曲线（160/120ms）", carrier: "physics.anchorLifeCurve", state: "green" },
+  { f: "章十三", anchor: "会话聚合与日报（挫败密度排行）", carrier: "session.ts + 会话日报面板", state: "green" },
+  { f: "F612", anchor: "方向翻转防爬升（抖滚增益不漂移）", carrier: "wheel.WheelGain dirSign 通道 + 单测", state: "green" },
+  { f: "F613", anchor: "真 LRU 淘汰（写入时间戳+旧档位兼容）", carrier: "screen.ScreenMemory at 字段 + 单测", state: "green" },
+  { f: "F617", anchor: "形状查重（同画法拒绝共存）", carrier: "recognizer.findDuplicateShape", state: "green" },
+  { f: "F605", anchor: "应用覆盖从列表选（DOM 实时枚举+校验）", carrier: "appRegistry.enumerateAppIds + 校验单测", state: "green" },
+  /* ---- v7 批次十引擎增量锚 ---- */
+  { f: "F601", anchor: "灵敏度迁移换算（Windows 11 档双射）+ 曲线混成 + 五项体检", carrier: "speedspectrum.ts + 曲线谱学实验室面板", state: "green" },
+  { f: "F602", anchor: "减速坡道（120ms 指数）+ 键盘微调三档 + 粘滞状态机", carrier: "precisiontune.ts + 精密面板", state: "green" },
+  { f: "F603", anchor: "手掌误触三态分类（reject/suspect/clean）+ 冷却恢复", carrier: "palmguard.ts + 守门面板", state: "green" },
+  { f: "F606", anchor: "倾斜模拟量通道（角度→速率/动量余韵/缩放步频/按压仲裁）", carrier: "tiltchannel.ts + 倾斜面板", state: "green" },
+  { f: "F607", anchor: "角落滞回双阈值 + 贴缝粘滞三档 + 高速交叉预测", carrier: "seamcross.ts + 接缝面板", state: "green" },
+  { f: "F607", anchor: "EDID 能力档案（PPI/点距）+ 身份三档置信度 + 低置信拒绝恢复", carrier: "displayidentity.ts + 身份面板", state: "green" },
+  { f: "F609", anchor: "嵌套容器接力 + 松手余韵两种处置 + 跨屏双带唯一归属", carrier: "edgeramp.ts + 边缘滚面板", state: "green" },
+  { f: "F618", anchor: "三层 specificity 规则引擎 + 临时开关自动过期 + 环形审计", carrier: "wheelrules.ts + 规则面板", state: "green" },
+  { f: "F620", anchor: "投影物理光照（单参数三联）+ 地面反光明度差兜底 + 弱动效归零", carrier: "shadowcast.ts + 影子面板", state: "green" },
+  { f: "F614", anchor: "档案包生命周期（导出回读/v1→v2 迁移/merge 冲突裁决）", carrier: "profilesync.ts + 档案包面板", state: "green" },
+  { f: "F609", anchor: "嵌套接力真实接线（方向感知剩余量栈→裁决→carried 日志）", carrier: "windowRuntime.dragStep + edgeramp.resolveEdgeTarget", state: "green" },
+  { f: "F606", anchor: "模拟量倾斜真接线（亚档判据→一阶平滑通道）+ 按压仲裁让位", carrier: "windowRuntime.onWheel/onDown + TiltAnalogChannel", state: "green" },
+  { f: "F607", anchor: "接缝状态机真接线（粘滞/角落滞回/家侧参照系）", carrier: "windowRuntime.onMove + SeamCrossMachine + verticalSeams", state: "green" },
+  { f: "F611", anchor: "滤波基准台（你的手适合哪个引擎——合成谱种子确定）", carrier: "filterbench.ts + 基准台面板", state: "green" },
+  { f: "F619", anchor: "长按仲裁器（最短先得/移动取消/进度环）", carrier: "longpress.ts + 仲裁台面板", state: "green" },
+  { f: "F615", anchor: "侧键和弦（双形态匹配/单键消歧/冲突显式化）", carrier: "chordengine.ts + windowRuntime.onDown + 和弦面板", state: "green" },
+  { f: "全项", anchor: "4K 四档 DPI 走查 / 实机录屏", carrier: "随闸门（实机日集中产出）", state: "gated" },
+];

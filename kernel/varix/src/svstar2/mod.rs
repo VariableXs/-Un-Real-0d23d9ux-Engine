@@ -242,8 +242,6 @@
 //! | [`vef25_math`] | F1622 变换数学系统（Lane4 SIMD 就绪四通道 + Mat4 列 lane 存储——乘法直写口径/伴随求逆 O(常数)/转置对合；齐次透视除法 w 近零恰端点拒绝 + 投影结构核对末行齐次位；TRS 分解均匀缩放唯一解、非均匀歧义 NONUNIFORM 显性拒绝；NaN/Inf 双入口拒绝污染不进管线；牛顿迭代纯乘除开方——no_std 无 sqrt 依赖；0x42xx 五码独占互异） | VE 册 #VE-F1622 |
 //! | [`vef26_vfetch`] | F1623 顶点拉取优化（F1609 重排的**运行时落地端口** prefetch_reorder 委托 meshbatch 不复制算法——进管线一次重排每帧吃现成收益；LRU 命中率模拟器=验收量尺（纯函数整数运算，F1619 确定性纪律的量尺延续：量尺不确定测量就是玄学）；实例布局 AoS/SoA 双模式可配语义等价（布局是拉取策略不是数据变形）；FetchLedger 实时快照（F1630 调试数据消费点）；收益入册用命中率差+未命中操作计数（无墙钟不伪造毫秒数），跨缓存大小不可直比口径在册） | VE 册 #VE-F1623 |
 //! | [`vef26_vfetch_checks`] | F1623 域自检（14 项六族：命中 4=重排提升≥100‰下限+缓存=1 边界实测+模拟器双跑确定+零缓存拒绝 / 布局 3=闭集在册+逐字段语义等价+28B 口径跨度分账 / 统计 2=账本累计+命中率独立重算 / 度量 2=五字段齐备+操作计数同源对拍 / 码段 1=0x43 独占+码互异 / 判据 2=实挂条数实取+名字互异） | VE 册 #VE-F1623 |
-//! | [`vef28_doubleside_gs`] | F1625 双侧渲染与几何着色探测（双面渲染语义——剔除开关三态 none/back/front + **双面光照法线翻转**成对语义（cull none 时背面法线取反，开双面不翻法线=伪双面）；**跨后端一致锚为我方统一绕序 CCW=正面**——D3D12 原生默认 CW=正面的差异封装进 3×3 翻译表九格（winding_flip），上层不见后端暗差异（F1626 约定承接同一纪律）；GS 能力探测走**静态能力表**不走假设（F1208 探测纪律范式：探测→能力表→降级→诚实标注），Metal 不支持传统 GS——表驱动降级给实例化展开替代路径；**诚实标注与矩阵同源**——6 条标注逐条由翻译表/能力矩阵派生生成，verify_annotation 与矩阵矛盾即 0x4C04 拒（「矩阵驱动而非假设」机制化）；零 panic 面；诊断码独占 0x4Cxx 六码） | VE 册 #VE-F1625 |
-//! | [`vef28_doubleside_gs_checks`] | F1625 域自检（16 项四族：双面语义 4=剔除 wire 封闭+域外双向拒+翻译表九格逐格对拍（判据侧 EXP_FLIP 写死）+法线翻转手算（背面取反/零向量双向拒）+统一锚 CCW=正面 与 F1626 承接逐字 / GS 探测 4=能力矩阵封闭含 Metal=None 锚点原文对拍+Metal 降级替代路径非空+支持后端原生直通与防御位+后端绕序 wire 域外拒 / 诚实标注 4=条数同源 6=3×2 全过裁决+声明非空含后端名+GS 标注与矩阵逐行同源（None 行含降级全文）+反向语料矛盾标注双向必拒 / 判据自检 4=码段 0x4C 独占 !=0x40..0x4D,0x50+码互异原因非空+六码恰落 4C01..4C06+条数对账） | VE 册 #VE-F1625 |
 //! | [`vef54_aaarch`] | F5401 AA 域网络总架构（传输→会话→复制→玩法四层 + 层间接口逐条冻结不可解冻 + 层间失配只对拍不补偿 + Z 域移交包承接面三落点回溯绑源 + 带宽预算突发上界与帧预算双闸 + 公平判定与时钟负载无关） | VE 册 #VE-F5401 |
 //! | [`vef54_checks`] | F5401 域自检（判据逐条映射，43 项分 a/b/c 三族；变异双向验证 15/17 捕获 + 2 项等价变异留痕） | VE 册 #VE-F5401 |
 //! | [`vef55_netmodel`] | F5402 网络分层模型（四层职责册**每层单句**与 F5401 Layer 单源逐位对账；**跨层直调禁止**——依赖（F5401 allowed_deps 编译期）与调用（本条运行期相邻下传）两条纪律正交：越层直调拦截+**归位**改道逐层下传链、向上调用拒绝无归位（反向依赖不给路径）；层职责漂移**对拍修正**（DutyAct 行为归属投影，修正目标=职责册单源）；层间契约**版本拦截**（F5401 冻结之上不静默兼容旧版）；拦截器四路记账 O(1) 每调用） | VE 册 #VE-F5402 |
@@ -791,8 +789,6 @@ pub mod vef22_checks;
 pub mod vef25_math;
 pub mod vef26_vfetch;
 pub mod vef26_vfetch_checks;
-pub mod vef28_doubleside_gs;
-pub mod vef28_doubleside_gs_checks;
 pub mod vead03_materials;
 pub mod vead03_checks;
 pub mod vc61_goverview;
@@ -951,7 +947,6 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1619", vef22_checks::run_vef22_checks()),
         ("VE-F1622", vef25_math::run_vef25_checks()),
         ("VE-F1623", vef26_vfetch_checks::run_vef26_checks()),
-        ("VE-F1625", vef28_doubleside_gs_checks::run_vef28_checks()),
         ("VE-F6003", vead03_checks::run_vead03_checks()),
         ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks()),
         ("VE-F5201", vez01_vfxarch_checks::run_vez01_checks()),

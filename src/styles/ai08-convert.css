@@ -1,0 +1,220 @@
+/* ============================================================
+   Z-26 换算中心（AI-08 基础工具组）
+   类名前缀 cv-，设计语言沿用 tools.css / global.css 的变量与控件基线。
+   ============================================================ */
+
+.cv-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+/* ---------- 标签页 ---------- */
+.cv-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex: none;
+}
+
+.cv-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+}
+
+.cv-tab:hover {
+  color: var(--fg, #fff);
+}
+
+.cv-tab.active {
+  color: var(--fg, #fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 面板主体 ---------- */
+.cv-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  gap: 10px;
+}
+
+/* ---------- 单位换算 ---------- */
+.cv-unit-cat-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex: none;
+}
+
+.cv-unit-grid {
+  display: grid;
+  grid-template-columns: 1fr 30px 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.cv-unit-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cv-unit-val {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-swap {
+  align-self: center;
+  margin-top: 14px; /* 与上方数值输入框对齐（下拉在下） */
+}
+
+.cv-unit-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cv-unit-result-num {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent, #7aa2f7);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* ---------- 进制转换（程序员模式） ---------- */
+.cv-radix-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cv-radix-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cv-radix-label {
+  flex: none;
+  width: 36px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  font-family: var(--mono, ui-monospace, monospace);
+}
+
+.cv-radix-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-radix-input.invalid {
+  border-color: var(--danger, #e07f7f);
+}
+
+.cv-radix-error {
+  font-size: 12px;
+  color: var(--danger, #e07f7f);
+}
+
+/* ---------- 汇率换算 ---------- */
+.cv-rate-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cv-rate-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cv-rate-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cv-rate-cur {
+  width: 70px;
+  flex: none;
+  font-family: var(--mono, ui-monospace, monospace);
+  text-transform: uppercase;
+}
+
+.cv-rate-val {
+  width: 100px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-rate-conv {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.cv-rate-conv input,
+.cv-rate-conv select {
+  min-width: 0;
+}
+
+.cv-rate-amount {
+  grid-column: span 2;
+  font-size: 15px;
+}
+
+.cv-rate-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cv-rate-result-num {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent, #7aa2f7);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.cv-rate-meta {
+  flex: none;
+}
