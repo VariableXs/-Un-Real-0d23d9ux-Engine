@@ -1,0 +1,50 @@
+[package]
+name = "varix-autopilot"
+version = "1.0.0"
+description = "对话自动化控制台 · 识别对话/模型/工作目录 · 安全填入并发送"
+authors = ["Variable + REN"]
+edition = "2021"
+rust-version = "1.90"
+
+[lib]
+name = "varix_autopilot_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# ── Tauri 运行时 ─────────────────────────────────────────────
+# ★ devtools feature：开启后可用 window.open_devtools() 打开真机调试面板 ★
+# 这是外部合成点击失效后的唯一自测出路（WebView2 不认合成事件）。
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+
+# ── 异步运行时 ──────────────────────────────────────────────
+# 为什么用tokio：CDP 的 WebSocket 是长连接 + Input.insertText 需要
+# 带超时的请求-响应配对，单线程阻塞模型处理不了。
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "io-util"] }
+tokio-tungstenite = "0.30"
+futures-util = "0.3"
+
+# ── 序列化 ──────────────────────────────────────────────────
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# ── 工具 ────────────────────────────────────────────────────
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+# 体积优先：opt-level="z" + LTO + 剥离符号 + panic=abort
+# 目标是单 exe 尽量小。代价是运行时略慢——
+# 对这个软件可接受（每 1.5 秒一次快照，不是热路径）。
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+incremental = false

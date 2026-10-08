@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VarixAutoPilot · 对话自动化控制台</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   VarixAutoPilot · 4K 视觉层
+
+   视觉语言取自 D:\2\14\UI\与你相恋到生命尽头（日式动画官网），
+   但**配色与质感按工具属性重做**——那个站是氛围优先的宣传页，
+   这里是常驻使用的工程工具，要的是"高密度 + 可读 + 有质感"。
+
+   移植的三条核心手法：
+   ① **vw 流式变量体系**（--sp-*）—— 4K 的正确做法不是像素翻倍，
+      而是让版式随视口等比生长。1920 与 3840 下比例一致。
+   ② **灰度噪点纹理 + mix-blend** —— 制造质感，不靠颜色堆砌。
+   ③ **SVG mask 抠图 + 双层背景** —— 深度与层次。
+
+   四场景调性（见 body[data-scene]）：
+   空闲=冷调呼吸 / 忙=琥珀扫描 / 告警=红脉动 / 发送=白闪涟漪
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ══ 4K 流式体系：★ 关键修正 ★
+     早先用 `min(Xvw, Ypx)`，实测在 3840×2160 下整页只有 1080p 大小
+     （截图证据：右侧大片空白、header 仅 59px）——
+     原因很直接：**上限 px 成了天花板**。vw 算到 82px，被 16px 的 min 夹死。
+     来源站那套 `min()` 是为 1920 基准的网页设计的，
+     直接抄到「要在 4K 上放大」的桌面应用上就是错的。
+
+     正解：**以 1920×1080 为基准的等比缩放**，不设上限：
+       val(Npx) = N × (100vw / 1920) ，并用 clamp 夹住下限，
+       防止超宽屏下无限放大导致布局散架。
+     这样 1920 → 1×，2560 → 1.33×，3840 → 2×，版式严格等比。 */
+  /* 缩放因子。★ 为什么不用 clamp()★
+     实测 clamp(1, calc(100vw/1920), 2.6) 嵌在 calc() 里被部分解析路径
+     判为无效，导致 var(--sp-16) 整条声明作废（header padding 实测 0px）。
+     正解：clamp 的三个参数**直接写表达式**，不套 calc()——规范允许，
+     且各引擎都能解。同时把 max 提到 3.0，覆盖 4K（2×）与 5K（2.5×）。 */
+  /* ★ 必须是「带 px 单位的比例值」★
+     踩过的坑：早先写 `--kmax: clamp(1, 100vw/1920, 3)`（无单位），
+     于是 `calc(12 * var(--kpx))` 算出的是**无单位数 12**，
+     赋给 width 时浏览器把它当百分比倍数处理 → 实测得到 1920px。
+     结果整页所有间距全部作废（header padding 实测 0px），
+     而规则解析又是「成功」的 —— 这种「解析成功但值全错」最难查。
+
+     正解：--kpx 是一个 **px 值**（1920视口下 = 1px，3840 下 = 2px），
+     `calc(12 * var(--kpx))` 就得到 12px / 24px，符合直觉。 */
+  --kpx: clamp(1px, 100vw / 1920, 3px);
+
+  /* 间距：8px 栅格，全部随 --kmax 等比 */
+  --sp-1:  calc(1 * var(--kpx));
+  --sp-2:  calc(2 * var(--kpx));
+  --sp-4:  calc(4 * var(--kpx));
+  --sp-6:  calc(6 * var(--kpx));
+  --sp-8:  calc(8 * var(--kpx));
+  --sp-10: calc(10 * var(--kpx));
+  --sp-12: calc(12 * var(--kpx));
+  --sp-14: calc(14 * var(--kpx));
+  --sp-16: calc(16 * var(--kpx));
+  --sp-20: calc(20 * var(--kpx));
+  --sp-24: calc(24 * var(--kpx));
+  --sp-32: calc(32 * var(--kpx));
+  --sp-40: calc(40 * var(--kpx));
+  --sp-48: calc(48 * var(--kpx));
+
+  /* 字号：4K 下必须放大，否则 15px 在 27" 屏上物理上只有 7.8pt，看不清 */
+  --fs-xs:  calc(12 * var(--kpx));
+  --fs-sm:  calc(14 * var(--kpx));
+  --fs-md:  calc(16 * var(--kpx));
+  --fs-lg:  calc(20 * var(--kpx));
+  --fs-xl:  calc(26 * var(--kpx));
+  --fs-2xl: calc(34 * var(--kpx));
+
+  --r-sm: calc(6 * var(--kpx));
+  --r-md: calc(10 * var(--kpx));
+  --r-lg: calc(16 * var(--kpx));
+
+  /* ── 色板：冷调仪器风 ───────────────────────────────────────── */
+  --bg:        #070a10;
+  --bg-deep:   #04060a;
+  --panel:     #0d1219;
+  --panel-2:   #131a24;
+  --line:      #1e2a38;
+  --line-hi:   #2b3b4d;
+  --fg:        #dce6f2;
+  --fg-2:      #8a9bb0;
+  --fg-3:      #55677d;
+
+  --accent:    #5b9cff;
+  --accent-2:  #7c5cff;
+  --ok:        #3ecf8e;
+  --warn:      #e8a33d;
+  --err:       #ff5c5c;
+  --idle:      #4a5a6e;
+
+  --scene:      var(--accent);
+  --scene-glow: rgba(91, 156, 255, .16);
+
+  --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --sans: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --serif: "Cormorant Infant", "Songti SC", Georgia, serif;
+}
+
+/* ═══ 场景调性 ═══ */
+body[data-scene="idle"]    { --scene: var(--accent); --scene-glow: rgba(91,156,255,.16); }
+body[data-scene="busy"]    { --scene: var(--warn);   --scene-glow: rgba(232,163,61,.20); }
+body[data-scene="alarm"]   { --scene: var(--err);    --scene-glow: rgba(255,92,92,.22); }
+body[data-scene="sent"]    { --scene: var(--ok);     --scene-glow: rgba(62,207,142,.24); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: var(--fs-sm)/1.55 var(--sans);
+  display: flex; flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══ 背景层：灰度噪点纹理 + 场景光晕（来源站手法 ②） ═══ */
+#bg-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+/* 噪点：用 SVG feTurbulence 生成，零外部资源、可离线、体积 0 */
+#bg-layer::before {
+  content: ''; position: absolute; inset: -20%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='.42'/%3E%3C/svg%3E");
+  filter: grayscale(1) blur(.5px);
+  opacity: .05;
+  mix-blend-mode: overlay;
+}
+/* 场景光晕：呼吸动画（GPU 合成，4K 下只动 opacity） */
+#bg-layer::after {
+  content: ''; position: absolute;
+  width: 70vmax; height: 70vmax; left: 50%; top: 42%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, var(--scene-glow) 0%, transparent 62%);
+  animation: breathe 7s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { opacity: .55; }
+  50%      { opacity: 1; }
+}
+/* 忙：加扫描线（来源站手法的工程化转译） */
+body[data-scene="busy"] #bg-layer { background-image:
+  repeating-linear-gradient(0deg, transparent 0 3px, rgba(232,163,61,.05) 3px 4px);
+  animation: scan 1.1s linear infinite;
+}
+@keyframes scan { to { background-position: 0 44px; } }
+
+/* ═══ 顶栏 ═══ */
+header {
+  position: relative; z-index: 2;
+  display: flex; align-items: center; gap: var(--sp-20);
+  padding: var(--sp-12) var(--sp-20);
+  background: linear-gradient(180deg, rgba(19,26,36,.94), rgba(13,18,25,.82));
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(var(--sp-10));
+  flex: 0 0 auto;
+}
+.brand { display: flex; align-items: center; gap: var(--sp-10); }
+.brand svg { width: var(--sp-24); height: var(--sp-24); }
+/* 品牌字用衬线，制造质感（来源站 --font-en 的转译） */
+.brand h1 {
+  font: 600 var(--fs-md)/1 var(--serif);
+  letter-spacing: .06em; color: var(--fg);
+}
+.brand h1 em { font-style: normal; color: var(--scene); }
+
+.stats { display: flex; gap: var(--sp-16); flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.stat .k {
+  font-size: var(--fs-xs); color: var(--fg-3);
+  text-transform: uppercase; letter-spacing: .12em;
+}
+.stat .v {
+  font: 600 var(--fs-sm)/1.2 var(--mono); color: var(--fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 26ch;
+  min-width: 0;                 /* 同理：flex 子项默认不收缩 */
+}
+.stat .v.path { color: var(--accent); }
+
+.conn { margin-left: auto; display: flex; align-items: center; gap: var(--sp-8);
+        font-size: var(--fs-xs); color: var(--fg-2); white-space: nowrap; }
+.dot { width: var(--sp-8); height: var(--sp-8); border-radius: 50%;
+       box-shadow: 0 0 0 3px color-mix(in srgb, var(--scene) 22%, transparent); }
+.dot.ok { background: var(--ok); animation: pulse 2.4s ease-in-out infinite; }
+.dot.err { background: var(--err); }
+.dot.idle { background: var(--idle); }
+@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.45 } }
+
+/* ═══ 主区 ═══ */
+main { position: relative; z-index: 1; flex: 1 1 auto; display: grid;
+       grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); min-height: 0; }
+/* ★★★ 两栏都必须能独立滚动 ★★★
+   实测（tools/check_buttons.mjs，5 个尺寸逐个量 getBoundingClientRect）：
+     1818x1102 → 按钮落在 y=1300..1631（视口只有 1102 高）⇒ 5 个越界
+     1454x882  → 7 个越界
+     1280x800  → **13 个按钮全部越界**（0 个可见）
+   根因：右栏是 flex column + min-height:0，内容（模板 / 队列 /
+   循环 + 内容来源 + 日志）竖着堆起来**超过视口高度**，
+   而它自己不滚 ⇒ 溢出部分永久不可达。
+   这正是Variable 说的「所有按钮点了没反应」——
+   **不是按钮坏了，是按钮在屏幕外，点不到。**
+
+   正解：给两栏 overflow-y:auto，让内容超出时栏内滚动。 */
+.col { display: flex; flex-direction: column; min-height: 0; min-width: 0;
+       overflow-y: auto; overflow-x: hidden; }
+.col.left { border-right: 1px solid var(--line); }
+/* 滚动条样式统一，别让默认粗条割裂密度 */
+.col::-webkit-scrollbar { width: calc(9 * var(--kpx)); }
+.col::-webkit-scrollbar-track { background: transparent; }
+.col::-webkit-scrollbar-thumb {
+  background: var(--line-hi); border-radius: 99px;
+  border: calc(2 * var(--kpx)) solid transparent; background-clip: padding-box;
+}
+.col::-webkit-scrollbar-thumb:hover { background: var(--fg-3); background-clip: padding-box; }
+
+/* ★★ 右栏（第 2 个 .col）必须有最小宽度 ★★
+   实测（窗口 1454×882）：左栏吃掉 ~930px，右栏只剩 ~520px；
+   按钮行（2 个勾选 + 4 个按钮 + 一个 grow）在那宽度下排不开，
+   `.row` 有 flex-wrap 也会把末尾按钮推到可视区外
+   ⇒ 症状是「所有按钮点了没反应」（其实按钮在屏幕外，点不到）。
+
+   正解：给右栏一个 px 下限 + 窄宽时按钮均分宽度。 */
+main > .col:not(.left) { min-width: calc(430 * var(--kpx)); }
+main > .col:not(.left) .row { gap: var(--sp-6); }
+@media (max-width: 1860px) {
+  main > .col:not(.left) .row > button { flex: 1 1 auto; }
+}
+
+/* ★ 窄窗口改为上下堆叠 ★
+   两栏并排在<1400px 时右栏必然被压扁，而「选对话」与「填内容」
+   是有先后依赖的两步，分屏反而都不好用。堆叠后各自可滚。 */
+/* ★ 断点必须是「两栏真正需要堆叠」的宽度 ★
+   实测踩坑：原本设1400px，但窗口 1618 时 WebView 视口只有 1594
+   （窗口有边框/内边距），于是 1594 > 1400 不该堆叠却堆了——
+   界面变成「对话列表挤在上半屏、右栏挤在下半屏」，
+   按钮行被推到屏幕外，表现为「点了没反应」。
+
+   两栏各需 ≥340（左）+430（右）= 770px 才不压扁，
+   而默认窗口 1600 ⇒ 视口约 1576，远超 ⇒ 永远并排。
+   堆叠只留给真·小窗（视口 < 1100），那里堆叠反而是对的。 */
+@media (max-width: 1100px) {
+  main { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0,1fr) minmax(0,1fr); }
+  .col.left { border-right: none; border-bottom: 1px solid var(--line); }
+}
+
+.bar {
+  display: flex; align-items: center; gap: var(--sp-10);
+  padding: var(--sp-8) var(--sp-16);
+  font-size: var(--fs-xs); color: var(--fg-3);
+  text-transform: uppercase; letter-spacing: .14em;
+  background: rgba(10,14,20,.6);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.bar .grow { flex: 1; }
+.scroll { overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+
+/* 滚动条：细、低调、不抢戏 */
+.scroll::-webkit-scrollbar { width: var(--sp-8); }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--line-hi); border-radius: 99px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+.scroll::-webkit-scrollbar-thumb:hover { background: var(--fg-3); background-clip: content-box; }
+
+/* ═══ 对话卡片 ═══ */
+.conv {
+  position: relative;
+  display: grid; grid-template-columns: minmax(0,1fr) auto;
+  gap: var(--sp-2) var(--sp-10);
+  padding: var(--sp-10) var(--sp-16);
+  border-bottom: 1px solid rgba(30,42,56,.6);
+  cursor: default;
+  transition: background .18s ease;
+}
+.conv:hover { background: rgba(19,26,36,.55); }
+.conv.sel { background: rgba(91,156,255,.07); }
+/* 选中态：左侧强调条（来源站"当前贴图"隐喻的工程化转译） */
+.conv.sel::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--scene);
+  box-shadow: 0 0 var(--sp-12) var(--scene);
+}
+/* 标题列：★ 必须 min-width:0 ★
+   `.conv` 是 grid，标题在第 1 列、时间在第 2 列（auto）。
+   grid 项默认 `min-width:auto`，内容比轨道宽时会**撑破轨道**，
+   于是 `text-overflow:ellipsis` 永远不触发——文字被硬切断，
+   没有任何"还有更多"的提示（实测：`...emit_` 后直接消失）。
+   `min-width:0` 允许它收缩到内容以下，省略号才生效。
+   同理 `.conv .meta` 里的路径也要，否则长路径会顶破卡片。 */
+.conv .t {
+  font-size: var(--fs-sm); font-weight: 500; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;                 /* ★ 关键：允许收缩，省略号才生效 ★ */
+  /* 用 flex 承载「当前」标签；ellipsis 只作用在文本节点上 */
+  display: flex; align-items: baseline; gap: var(--sp-6);
+}
+/*★ flex:1 是真正让省略号生效的那一步 ★
+  实测（Playwright 量盒）：.t 有 477px，但 .txt 只有 264px——
+  因为 flex 子项默认 flex:0 1 auto，按**内容宽度**收缩，
+  于是 .txt 自身「不溢出」，text-overflow 自然不触发，
+  文字被 .t 的 overflow:hidden 硬切断（父级切子级，不出省略号）。
+  flex:1 让 .txt 撑满剩余空间 ⇒ 内容超出 .txt 自己 ⇒ 省略号生效。 */
+.conv .t .txt {
+  flex: 1 1 auto;min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.conv.sel .t { color: #fff; }
+/* 「当前」标签不能被压掉 */
+.conv .t .tag { flex: 0 0 auto; }
+.conv .rt { font: var(--fs-xs)/1 var(--mono); color: var(--fg-3); white-space: nowrap; }
+.conv .meta {
+  grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sp-1);
+  font: var(--fs-xs)/1.45 var(--mono); color: var(--fg-2);
+  min-width: 0;                 /* 同理：长路径不顶破卡片 */
+}
+.conv .meta > span { min-width: 0; }
+.conv .meta b { color: var(--fg-3); font-weight: 400; margin-right: var(--sp-4); }
+.conv .meta .dir { color: var(--accent-2); word-break: break-all; }
+.tag {
+  display: inline-block; padding: 0 var(--sp-6); border-radius: 99px;
+  font: var(--fs-xs)/1.7 var(--mono);
+  border: 1px solid var(--line-hi); color: var(--fg-2);
+}
+/* ★ hidden 属性必须在这里被显式尊重 ★
+   坑（实测踩到）：`.tag { display:inline-block }` 会**覆盖** HTML `hidden`
+   属性的 UA 默认样式（`display:none`）——因为作者样式优先级高于 UA 样式。
+   于是 JS 里 `tag.hidden = true` 完全无效，7 张卡片全亮「当前」标签。
+   凡是打算用 `hidden` 控制显隐的元素，其 CSS 里都必须带 `[hidden]` 规则。 */
+[hidden] { display: none !important; }
+.tag.now { color: var(--scene); border-color: color-mix(in srgb, var(--scene) 45%, transparent); }
+.tag.bad { color: var(--warn); border-color: rgba(232,163,61,.35); }
+
+/* ═══ 表单 ═══ */
+.form { padding: var(--sp-16); display: flex; flex-direction: column;
+        gap: var(--sp-12); flex: 0 0 auto; }
+label { display: block; font-size: var(--fs-xs); color: var(--fg-3);
+        text-transform: uppercase; letter-spacing: .1em; margin-bottom: var(--sp-4); }
+input[type=text], textarea {
+  width: 100%; padding: var(--sp-8) var(--sp-10);
+  background: var(--bg-deep); color: var(--fg);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  font: var(--fs-sm)/1.5 var(--mono); resize: vertical;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+input:focus, textarea:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(91,156,255,.14);
+}
+textarea.tpl { min-height: clamp(120px, 18vh, 220px); }
+.row { display: flex; align-items: center; gap: var(--sp-10); flex-wrap: wrap; }
+.row .grow { flex: 1; }
+.sw { display: inline-flex; align-items: center; gap: var(--sp-6);
+      font-size: var(--fs-xs); color: var(--fg-2); cursor: pointer; user-select: none; }
+.sw input { accent-color: var(--accent); width: var(--sp-14); height: var(--sp-14); cursor: pointer; }
+
+button {
+  padding: var(--sp-8) var(--sp-16);
+  background: var(--panel-2); color: var(--fg);
+  border: 1px solid var(--line-hi); border-radius: var(--r-sm);
+  font: 500 var(--fs-sm)/1 var(--sans); cursor: pointer;
+  transition: all .16s cubic-bezier(.4,0,.2,1);
+}
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent);
+                              transform: translateY(-1px); }
+button:active:not(:disabled) { transform: translateY(0); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #05080d; font-weight: 600; }
+button.primary:hover:not(:disabled) { background: #7db0ff; border-color: #7db0ff; color: #05080d; }
+button.go { background: var(--ok); border-color: var(--ok); color: #04120a; font-weight: 600; }
+button.go:hover:not(:disabled) { background: #5ce0a8; border-color: #5ce0a8; color: #04120a; }
+
+/* 提示区：统一三要素错误呈现（发生了什么/为什么/怎么办） */
+.note { font-size: var(--fs-xs); line-height: 1.6; color: var(--fg-3); }
+.note .e-what { color: var(--err); font-weight: 600; display: block; }
+.note .e-why { color: var(--fg-2); display: block; margin-top: var(--sp-1); }
+.note .e-next { color: var(--accent); display: block; margin-top: var(--sp-1); }
+.note.ok { color: var(--ok); }
+.note.busy .e-what { color: var(--warn); }
+
+.preview {
+  margin: 0 var(--sp-16) var(--sp-12);
+  padding: var(--sp-12);
+  background: var(--bg-deep); border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font: var(--fs-xs)/1.65 var(--mono); color: var(--fg-2);
+  white-space: pre-wrap; overflow-y: auto;
+  flex: 1 1 auto; min-height: clamp(80px, 14vh, 200px);
+}
+.ph { color: var(--warn); background: rgba(232,163,61,.14);
+      padding: 0 3px; border-radius: 3px; }
+
+#log { padding: var(--sp-8) var(--sp-16); font: var(--fs-xs)/1.7 var(--mono); }
+#log div { white-space: pre-wrap; word-break: break-word; }
+#log .OK { color: var(--ok); } #log .ERR { color: var(--err); }
+#log .WARN { color: var(--warn); } #log .INFO { color: var(--accent); }
+
+/* ═══ 发送瞬间：白闪 + 涟漪（一次性动画） ═══ */
+#flash {
+  position: fixed; inset: 0; z-index: 99; pointer-events: none;
+  background: radial-gradient(circle at 70% 70%, rgba(62,207,142,.5), transparent 60%);
+  opacity: 0;
+}
+#flash.go { animation: flash .6s cubic-bezier(.2,.8,.3,1); }
+@keyframes flash {
+  0%   { opacity: 0; transform: scale(.85); }
+  25%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+
+/* ═══ 空态 ═══ */
+
+/* ═══ 待发队列 / 循环 / 内容来源 ═══ */
+.chip {
+  display: inline-block; padding: 0 var(--sp-8); border-radius: 99px;
+  font: var(--fs-xs)/1.8 var(--mono);
+  background: var(--panel-2); border: 1px solid var(--line-hi); color: var(--fg-2);
+}
+.chip.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.chip.busy { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+button.mini {
+  padding: 0 var(--sp-8); font-size: var(--fs-xs); line-height: 1.9;
+  border-radius: var(--r-sm);
+}
+button.warn { border-color: color-mix(in srgb, var(--warn) 50%, transparent); color: var(--warn); }
+
+/* ══════════════════════════════════════════════════════════════
+   打断发送按钮：琥珀渐变 = 有代价但有效
+   ★ 刻意不给绿色 —— 它会中断对方生成，视觉上要有「代价感」 ★
+   ══════════════════════════════════════════════════════════════ */
+button.warn#b-force {
+  background: linear-gradient(180deg, #b8791f 0%, #96610f 100%);
+  border: 1px solid #d99b32;
+  color: #fff6e6;
+  font-weight: 700;
+}
+button.warn#b-force:hover:not(:disabled) {
+  background: linear-gradient(180deg, #cc8630 0%, #a86a16 100%);
+  box-shadow: 0 0 0 1px #e8b357, 0 4px 14px rgba(190, 130, 30, .35);
+}
+button.warn#b-force:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ══════════════════════════════════════════════════════════════
+   端口不通横幅
+   ★ 为什么用红色：这是「完全不可用」，不是「降级」——
+     与「干跑模式」的琥珀色必须区分开，别混。
+   ★ 为什么常驻顶部：前置条件不满足时任何操作都会失败，
+     要让它第一眼就可见，而不是从错误信息里反推。
+   ══════════════════════════════════════════════════════════════ */
+.port-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  /* ★ flex: none 不可省 ★
+     body 是 flex column，<main> 占了 flex:1。
+     横幅若不写 flex:none 会被 flex 布局压缩，
+     表现为「横幅挤进右栏中间、只剩窄窄一条」。
+     —— 实测踩过：DOM 位置完全正确（</header> 之后、<main> 之前），
+     视觉上却还是错位。根因在这里，不在 HTML 结构。 */
+  flex: none;
+  margin: 8px 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(200, 50, 50, .13);
+  border: 1px solid rgba(220, 80, 80, .5);
+  color: #ffc0c0;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.port-banner[hidden] { display: none; }
+.port-banner .pb-icon {
+  flex: 0 0 20px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #d64545;
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
+.port-banner .pb-body { flex: 1; min-width: 0; }
+.port-banner b { color: #ff9d9d; }
+.port-banner .pb-why { color: #e8b0b0; margin-top: 3px; }
+.port-banner .pb-fix { color: #ffd0a0; margin-top: 5px; }
+.port-banner .pb-fix b { color: #ffc98a; }
+.port-banner .pb-close {
+  flex: 0 0 auto;
+  align-self: center;
+  background: rgba(255, 255, 255, .10);
+  border: 1px solid rgba(255, 255, 255, .22);
+  color: #ffd8d8;
+  border-radius: 5px;
+  padding: 3px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.port-banner .pb-close:hover { background: rgba(255, 255, 255, .18); }
+button.warn:hover:not(:disabled) { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+
+/* 队列是 Variable 明确要看的东西 ⇒ 放在显眼位置、给足高度 */
+.qlist {
+  flex: 0 0 auto; max-height: clamp(120px, 20vh, 220px); overflow-y: auto;
+  border-bottom: 1px solid var(--line);
+  /* 底色比别处稍亮，让它从日志/表单里「浮」出来 */
+  background: linear-gradient(180deg, rgba(24,34,46,.55), rgba(10,14,20,.4));
+}
+.qlist:has(.qi) { box-shadow: inset 2px 0 0 var(--accent); }
+.qi {
+  display: grid; grid-template-columns: auto minmax(0,1fr) auto auto;
+  gap: var(--sp-6) var(--sp-8); align-items: center;
+  padding: var(--sp-6) var(--sp-16);
+  border-bottom: 1px solid rgba(30,42,56,.5);
+  font-size: var(--fs-xs);
+}
+.qi:last-child { border-bottom: none; }
+.qi .rd {
+  font: var(--fs-xs)/1 var(--mono); color: var(--fg-3);
+  min-width: calc(26 * var(--kpx)); text-align: right;
+}
+.qi .pv { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qi .st { font: var(--fs-xs)/1 var(--mono); padding: 0 var(--sp-6); border-radius: 99px; }
+.qi .st.pending { color: var(--warn); }
+.qi .st.sending { color: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
+.qi .st.done { color: var(--ok); }
+.qi .st.failed { color: var(--err); }
+.qi .st.canceled { color: var(--fg-3); }
+.qi .x {
+  background: none; border: none; color: var(--fg-3); cursor: pointer;
+  padding: 0 var(--sp-4); font-size: var(--fs-sm); line-height: 1;
+}
+.qi .x:hover { color: var(--err); }
+
+.loopbox, .srcbox {
+  flex: 0 0 auto; padding: var(--sp-12) var(--sp-16);
+  display: flex; flex-direction: column; gap: var(--sp-10);
+  border-bottom: 1px solid var(--line); background: rgba(10,14,20,.45);
+}
+.lrow { display: flex; flex-direction: column; gap: var(--sp-4); }
+.lrow > label { margin: 0; }
+.lcol { display: flex; align-items: baseline; gap: var(--sp-8); }
+.tabs { display: inline-flex; gap: 0; border: 1px solid var(--line-hi); border-radius: var(--r-sm); overflow: hidden; }
+.tab {
+  padding: 0 var(--sp-10); border: none; border-radius: 0;
+  font-size: var(--fs-xs); line-height: 2; background: var(--panel);
+  color: var(--fg-2);
+}
+.tab.on { background: var(--accent); color: #05080d; font-weight: 600; }
+.looptxt { min-height: calc(66 * var(--kpx)); font-size: var(--fs-xs); }
+.hint-inline { font-size: var(--fs-xs); color: var(--fg-3); }
+select {
+  background: var(--bg-deep); color: var(--fg);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: var(--sp-6) var(--sp-8); font: var(--fs-xs)/1.6 var(--mono);
+}
+select:focus { outline: none; border-color: var(--accent); }
+input[type=number] {
+  background: var(--bg-deep); color: var(--fg);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: var(--sp-6); font: var(--fs-xs)/1.6 var(--mono);
+}
+input[type=number]:focus { outline: none; border-color: var(--accent); }
+/* ★ 尺寸必须给足 ★
+   早先写成 style="width:calc(9 * var(--kpx))"，而 --kpx 在 1920 视口下
+   正好 = 1px ⇒ 只有 9px 宽，数字被完全挤没（截图里是空块）。
+   改用 ch/em 基准：随字号缩放但有可读的最小值。 */
+.num { width: calc(9 * var(--fs-sm)); min-width: calc(56 * var(--kpx)); text-align: right; }
+.sel { width: calc(34 * var(--fs-sm)); min-width: calc(180 * var(--kpx)); }
+.sel.wide { width: calc(40 * var(--fs-sm)); }
+/* select 在部分 Windows 主题下会用系统配色盖掉 background，
+   所以显式设置 color-scheme，让滚动条/下拉与暗色一致 */
+select { color-scheme: dark; }
+select option { background: var(--panel); color: var(--fg); }
+
+/* 卡片可点选（Variable 明确要的功能） */
+.conv { cursor: pointer; }
+.conv.picked { outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -3px; }
+.conv .pick {
+  position: absolute; right: var(--sp-8); top: 50%; transform: translateY(-50%);
+  width: calc(18 * var(--kpx)); height: calc(18 * var(--kpx));
+  border-radius: 50%; border: 1px solid var(--line-hi);
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-xs); color: transparent; background: var(--bg-deep);
+}
+.conv.picked .pick { border-color: var(--accent); color: var(--accent); }
+
+.note.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.empty { padding: var(--sp-40) var(--sp-20); text-align: center;
+         color: var(--fg-3); font-size: var(--fs-sm); }
+
+/* ══════════════════════════════════════════════════════════════
+   内容来源指示器 + 干跑醒目条
+   ★ 要解决的问题：早先这些信息只在出错时以一行小字出现，
+   极易被忽略 ⇒「点了没反应」。现在常驻显示。★
+   ══════════════════════════════════════════════════════════════ */
+.src-note {
+  margin: 6px 0 2px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: rgba(127, 127, 127, .08);
+  border-left: 3px solid rgba(127, 127, 127, .35);
+  min-height: 20px;
+}
+.src-note .ok { color: #9aa4b2; }
+.src-note .bad {
+  color: #ff9a6c;
+  font-weight: 600;
+}
+.dry-note {
+  margin: 8px 0 0;
+  padding: 8px 11px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: rgba(255, 170, 60, .12);
+  border: 1px solid rgba(255, 170, 60, .42);
+  color: #ffc98a;
+}
+.dry-note b { color: #ffb457; }
+.dry-note u { text-decoration: underline; text-underline-offset: 2px; }
+</style>
+</head>
+<body data-scene="idle">
+<div id="bg-layer"></div>
+<div id="flash"></div>
+
+<header>
+  <div class="brand">
+    <!-- 品牌标记：外环+指针（环形缓冲）· 与应用图标同一套几何 -->
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="var(--scene)" stroke-width="2" opacity=".35"/>
+      <path d="M12 3a9 9 0 0 1 6.4 15.4" stroke="var(--scene)" stroke-width="2"
+            stroke-linecap="round"/>
+      <circle cx="12" cy="12" r="2.4" fill="var(--scene)"/>
+    </svg>
+    <h1>Varix<em>AutoPilot</em></h1>
+  </div>
+  
+  <div class="stats">
+    <div class="stat"><span class="k">对话</span><span class="v" id="s-conv">–</span></div>
+    <div class="stat"><span class="k">模型</span><span class="v" id="s-model">–</span></div>
+    <div class="stat"><span class="k">工作目录</span><span class="v path" id="s-cwd">–</span></div>
+    <div class="stat"><span class="k">状态</span><span class="v" id="s-send">–</span></div>
+    <div class="stat"><span class="k">版本</span><span class="v" id="s-ver">–</span></div>
+  </div>
+  <div class="conn"><span class="dot idle" id="s-dot"></span><span id="s-msg">连接中…</span></div>
+</header>
+  <!-- ══════════════════════════════════════════════════════════════
+       ★ 端口横幅：WorkBuddy 调试端口不通时出现
+       今晚最大的教训：端口不通在界面上完全不可见 ——
+       徽章照样显示「已连接」（那是 Tauri 连后端，不是连 WorkBuddy），
+       发送失败只报「等空闲」⇒ **端口问题被误报成忙闲问题**，白挖好几轮。
+       ★ 前置条件必须常驻可见，不能等发送失败才暴露 ★
+       ══════════════════════════════════════════════════════════════ -->
+  <div id="port-banner" class="port-banner" hidden>
+    <div class="pb-icon">!</div>
+    <div class="pb-body">
+      <b>连不上 WorkBuddy 调试端口 9222 —— 现在无法自动发送</b>
+      <div class="pb-why">
+        WorkBuddy 在运行，但它的调试端口没开。引擎靠这个端口连它去填输入框、点发送；
+        端口不通就什么都发不出去。
+        注意：端口<b>只在 WorkBuddy 启动时决定</b>，事后怎么点都没用，必须带参数重启。
+      </div>
+      <div class="pb-fix">
+        点桌面「<b>VarixAutoPilot 开端口.bat</b>」—— 它会提示你重启 WorkBuddy
+        （<b>会中断正在进行的对话</b>，需你确认）。不想中断就等对话结束再点。
+      </div>
+    </div>
+    <button class="pb-close" id="pb-close" type="button">知道了</button>
+  </div>
+
+<main>
+  <!-- 左：对话列表 -->
+  <div class="col left">
+    <div class="bar"><span>对话列表</span><span class="grow"></span><span id="conv-count"></span></div>
+    <div class="scroll" id="convs"></div>
+  </div>
+
+  <!-- 右：提示词与执行 -->
+  <div class="col">
+    <div class="bar"><span>提示词与执行</span></div>
+    <div class="form">
+      <div>
+        <label>变量 · 模板里的 {{键}} 会被替换</label>
+        <input type="text" id="v-task" placeholder="任务，例：VE-F0005 · 显存预算仲裁器">
+        <div style="height:var(--sp-8)"></div>
+        <textarea id="v-ctx" rows="2" placeholder="上下文，例：册/域/行数目标/前置/落点/门禁命令"></textarea>
+      </div>
+      <div>
+        <label>模板 · 支持任意 {{键}}；{{时间}} 由系统自动注入</label>
+        <textarea id="tpl" class="tpl"></textarea>
+      </div>
+      <div class="row">
+        <label class="sw"><input type="checkbox" id="o-new">先开新对话</label>
+        <label class="sw"><input type="checkbox" id="o-dry">只填不发（干跑）</label>
+        <span class="grow"></span>
+        <button id="b-preview">预览</button>
+        <button id="b-enqueue">加入待发</button>
+        <button class="primary" id="b-fill">填入</button>
+        <button class="go" id="b-send">填入并发送</button>
+        <!-- ★ 打断发送：忙时先停止对方生成，再发送 ★
+             为什么要有这个：另两个按钮在忙时都会「等」，
+             而等待没有上限、也没有进度，看起来就是「老是这样没反应」。
+             这个按钮把等待换成动作：先停止，立刻发。
+             界面上写明它会中断对方当前的生成，不暗箱操作。 -->
+        <button class="warn" id="b-force">打断发送（先停止对方）</button>
+        <!-- ★ 干跑醒目条 ★
+             「只填不发」勾着时，队列里的东西**永远不会被真发出去**——
+             而界面上原来只是一行小字，勾了很容易忘。
+             这里做成醒目的条，勾着就出现。 -->
+        <div id="dry-note" class="dry-note" hidden>
+          <b>干跑模式开着</b>：内容只会填进输入框，<u>不会真发</u>。
+          要真发请取消上面「只填不发（干跑）」的勾选，再点「填入并发送」。
+        </div>
+      </div>
+      <div class="note" id="hint"></div>
+    </div>
+    <label style="padding:0 var(--sp-16) var(--sp-6);margin:0">渲染预览</label>
+    <div class="preview" id="preview"></div>
+    <!-- ═══ 待发队列 ═══ -->
+    <div class="bar">
+      <span>待发队列</span>
+      <span class="grow"></span>
+      <span id="q-sum" class="chip"></span>
+      <button id="b-q-refresh" class="mini">刷新</button>
+      <button id="b-q-clear" class="mini">清已完成</button>
+    </div>
+    <div class="qlist" id="qlist">
+      <div class="empty">队列为空。点「加入待发」把内容排进来，或在下面设循环。</div>
+    </div>
+
+    <!-- ═══ 循环发布 ═══ -->
+    <div class="bar">
+      <span>循环发布</span>
+      <span class="grow"></span>
+      <span id="loop-state" class="chip"></span>
+    </div>
+    <div class="loopbox">
+      <!-- 首轮 / 后续轮：分别可编辑（Variable 明确要的功能） -->
+      <div class="lrow">
+        <div class="lcol">
+          <label>首轮内容</label>
+          <div class="tabs">
+            <button id="b-tab-first" class="tab on" data-lt="first">首轮</button>
+            <button id="b-tab-rest" class="tab" data-lt="rest">后续每轮</button>
+          </div>
+        </div>
+      </div>
+      <textarea id="loop-text" class="looptxt" rows="3" placeholder="循环要发的内容。&#10;首轮与后续轮可分别填写（后续轮会反复使用）"></textarea>
+
+      <div class="lrow">
+        <label>轮数</label>
+        <div class="row">
+          <input type="number" id="lp-rounds" class="num" min="0" max="99999" value="3"
+                 title="0 或勾选「无限」">
+          <label class="sw"><input type="checkbox" id="lp-inf">无限</label>
+          <span class="hint-inline">1 ～ 99999，或勾「无限」</span>
+        </div>
+      </div>
+
+      <div class="lrow">
+        <label>下一轮何时发</label>
+        <div class="row">
+          <select id="lp-trigger" class="sel">
+            <option value="idle">检测生成完毕（等空闲）</option>
+            <option value="interval">固定间隔</option>
+            <option value="hybrid">两者兼顾</option>
+          </select>
+          <input type="number" id="lp-interval" class="num" min="1" max="86400" value="30"
+                 title="间隔秒">
+          <span class="hint-inline">秒</span>
+        </div>
+      </div>
+
+      <div class="lrow">
+        <label>发给</label>
+        <div class="row">
+          <select id="lp-conv" class="sel wide">
+            <option value="">当前选中的对话</option>
+          </select>
+          <span class="hint-inline">点左侧卡片切换选中项</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="b-loop-start" class="primary">开始循环</button>
+        <button id="b-loop-stop" class="warn">停止</button>
+        <span class="hint-inline" id="loop-note"></span>
+      </div>
+    </div>
+
+    <!-- ═══ 内容来源 ═══ -->
+    <div class="bar"><span>内容来源</span></div>
+    <div class="srcbox">
+      <div class="lrow">
+        <label>自由文本（直接发这段字）</label>
+        <textarea id="free-text" rows="3" placeholder="直接写任意文字，绕过模板，入队/发送都用它。&#10;留空则用上面的模板"></textarea>
+        <div class="row">
+          <label class="sw"><input type="checkbox" id="o-free">用这段自由文本（不走模板）</label>
+        <!-- ★ 内容来源指示：勾了什么、会不会入不了队，一眼看见 ★
+             早先只有「出错时在 hint 区显示一行」，太容易被忽略，
+             表现就是「点了没反应」。这里常驻显示状态。 -->
+        <div id="src-note" class="src-note"></div>
+        </div>
+      </div>
+      <div class="lrow">
+        <label>MD / 文本文件</label>
+        <div class="row">
+          <input type="text" id="md-path" class="grow"
+                 placeholder="D:\...\提示词.md（也可以把文件拖到下面）">
+          <button id="b-md-read">读取</button>
+        </div>
+        <div id="md-info" class="note"></div>
+      </div>
+      <div class="lrow">
+        <label>技能（斜杠命令）</label>
+        <div class="row">
+          <button id="b-probe-skills">探测可用技能</button>
+          <select id="skill-pick" class="grow">
+            <option value="">— 先探测 —</option>
+          </select>
+          <button id="b-skill-append">插入到内容</button>
+        </div>
+        <div id="skill-info" class="note"></div>
+      </div>
+    </div>
+
+    <div class="bar"><span>日志</span></div>
+    <div class="scroll" id="logwrap" style="flex:0 0 clamp(84px,11vh,140px)">
+      <div id="log"></div>
+    </div>
+  </div>
+</main>
+
+<!-- ★ 内联硬探针：不依赖任何模块，直接调后端 diag ★
+     作用：区分「Tauri invoke 本身不通」与「某个模块没执行」。
+     排障期保留，稳定后可删。 -->
+<script>
+(async () => {
+  const mk = (m) => { try { return m; } catch (e) { return 'ERR:' + e; } };
+  console.log('[probe] 内联脚本已执行');
+  try {
+    const core = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+    if (!core || !core.invoke) {
+      document.title = 'PROBE:no-invoke';
+      console.log('[probe] window.__TAURI__=' + mk(typeof window.__TAURI__) + ' core=' + mk(typeof core));
+      return;
+    }
+    await core.invoke('diag', { msg: '内联探针：Tauri invoke 正常' });
+    console.log('[probe] diag 已调用');
+    document.title = 'PROBE:ok';
+  } catch (e) {
+    console.log('[probe] diag 失败: ' + e);
+    document.title = 'PROBE:fail';
+  }
+})();
+</script>
+<!-- ══════════════════════════════════════════════════════════════
+     ★ 真机自测入口（仅当设了 VARIAP_AUTOPILOT_SELFTEST=1 才生效）★
+     为什么需要：外部合成点击（mouse_event / SendInput / 键盘 Tab）
+     对 Tauri 的 WebView2 **无效**——症状是按钮有 hover 高亮但
+     onclick 不触发。真机自测只能走进程内路径。
+     它做两件事：
+       1. 调window.__VAP_SELFTEST__()，把关键状态与探针结果贴到页面上
+       2. 真实调用一次入队（等价于用户点「加入待发」）
+     ══════════════════════════════════════════════════════════════ -->
+<script>
+  // ★ 自测状态上报：把结果直接写进页面，任何时候都能看到 ★
+  window.__VAP_SELFTEST__ = function () {
+    const t = (id) => {
+      const e = document.getElementById(id);
+      if (!e) return '★元素缺失★';
+      return e.value !== undefined ? String(e.value).length + '字' : (e.textContent || '').slice(0, 20);
+    };
+    const line = [
+      'VAP=' + (window.VAP ? '有' : '★无★'),
+      'VAPUI=' + (window.VAPUI ? Object.keys(window.VAPUI).length + '键' : '★无★'),
+      'enqueueOne=' + (typeof window.enqueueOne),
+      'doPreview=' + (typeof window.doPreview),
+      'tpl=' + t('tpl'),
+      '队列=' + document.querySelectorAll('#qlist .qi').length,
+      '连接=' + ((document.getElementById('s-msg') || {}).textContent || '?'),
+    ].join(' · ');
+    const h = document.getElementById('hint');
+    if (h) { h.className = 'note'; h.textContent = '自测 · ' + line; }
+    return line;
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // ★ 自测 2：自动循环完整链路 ★
+  //
+  // 验证「入队 → 发送 → 队列空 → 自动补下一轮」——
+  // 也就是 Variable 要的「自动化循环化自动提交」。
+  //
+  // ★ 忙时的正确行为 ★
+  // worker 在忙时**不取队列项**（安全约束：发送键此刻语义是"停止"，
+  // 点下去会打断用户正在跑的活）。所以忙时队列项数不变是**正确行为**，
+  // 不是故障。续轮发生在「发完一条之后」，忙时看不到。
+  // 因此本自测在忙时只验证结构（循环已启动、内容已登记），
+  // 真发与续轮要等空闲。
+  // ══════════════════════════════════════════════════════════════
+  window.__VAP_LOOP_TEST__ = async function () {
+    const c = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+    const diag = (m) => (c ? c.invoke('diag', { msg: m }).catch(() => {}) : null);
+    const snap = () => ({
+      队列: document.querySelectorAll('#qlist .qi').length,
+      状态: (document.getElementById('loop-state') || {}).textContent || '',
+      说明: (document.getElementById('loop-note') || {}).textContent || '',
+      项: Array.from(document.querySelectorAll('#qlist .qi .st')).map((e) => e.textContent),
+    });
+
+    const log = (m) => { window.__VAP_SELFTEST__(); diag(m); };
+    await log('循环自测: 起点 ' + JSON.stringify(snap()));
+
+    // ① 填 3 轮
+    const rounds = document.getElementById('lp-rounds');
+    if (rounds) rounds.value = '3';
+    // ② 用自由文本（内容短、不会污染你的会话）
+    const ft = document.getElementById('free-text');
+    const cb = document.getElementById('o-free');
+    if (ft && cb) {
+      cb.checked = true;
+      ft.value = '【自动循环自测】第 N 轮 · 由 VarixAutoPilot 发出 · 内容可忽略';
+    }
+    await log('循环自测: 已填 3 轮 + 自由文本');
+
+    // ③ 启动循环
+    if (typeof window.startLoop !== 'function') {
+      await log('循环自测: ★ startLoop 不存在');
+      return;
+    }
+    await window.startLoop();
+    await new Promise((r) => setTimeout(r, 1200));
+    const s1 = snap();
+    await log('循环自测: 启动后 ' + JSON.stringify(s1));
+
+    // ④ 观察 20 秒：看队列是否变化
+    //    忙时项数不变 = 正确（worker 在等）；空闲时会看到 已发/补轮
+    for (let i = 1; i <= 4; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const s = snap();
+      await log('循环自测: 第 ' + (i * 5) + ' 秒 ' + JSON.stringify(s));
+      if (s.队列 === 0 && s.状态.indexOf('运行中') < 0) {
+        await log('循环自测: ★ 队列空且循环已停 —— 内容用尽或被清');
+        break;
+      }
+    }
+
+    // ⑤ 收尾：停止循环 + **恢复现场**
+    if (typeof window.stopLoop === 'function') {
+      await window.stopLoop();
+      await log('循环自测: 已停止');
+    }
+    // ★★★ 恢复现场 ★★★
+    // 实测事故（Variable 截图）：自测勾了 o-free 并写了文本，
+    // 退出前没恢复 ⇒ 勾选留在界面上而文本框是空的
+    // ⇒ 此后每次点「加入待发」都抛「自由文本框是空的」
+    // ⇒ **队列永远是 0 条**，表现为「点了没反应」。
+    // 而它只 hint 区显示一行小字，极易被忽略。
+    //
+    // 所以：自测**绝不留下任何状态**。跑前快照，跑后逐项还原。
+    if (cb) cb.checked = false;
+    if (ft) ft.value = '';
+    if (typeof window.__VAP_SRC_NOTE__ === 'function') window.__VAP_SRC_NOTE__();
+    await log('循环自测: 已恢复现场（取消 o-free、清空自由文本）');
+    await log('循环自测: 终态 ' + JSON.stringify(snap()));
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // ★ 真机点击验证（走与用户点击完全相同的代码路径）★
+  //
+  // 用途：证明「真机上按钮 onclick 到底通不通」。
+  // 做法：页面自己在启动后调 window.enqueueOne()——
+  //       与用户点击同一个函数、同一个 Tauri invoke。
+  //
+  // ★ 与用户手动点开的唯一区别：没有经过鼠标命中测试 ★
+  // 所以它能证明「函数+后端」通不通，
+  // 但**不能**证明「外部鼠标注入能触发 onclick」（那个已确诊无效）。
+  //
+  // ⚠ 必须恢复现场：上一轮自测勾了 o-free 没还原，
+  //   导致用户此后每次点「加入待发」都失败。教训已记。
+  // ══════════════════════════════════════════════════════════════
+  window.__VAP_CLICK_PROOF__ = async function () {
+    const c = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+    const diag = (m) => (c ? c.invoke('diag', { msg: m }).catch(() => {}) : null);
+    const snap = () => ({
+      队列: document.querySelectorAll('#qlist .qi').length,
+      qsum: (document.getElementById('q-sum') || {}).textContent || '',
+      hint: ((document.getElementById('hint') || {}).textContent || '').slice(0, 60),
+    });
+    // 跑前快照（用于恢复）
+    const before = {
+      oFree: document.getElementById('o-free')?.checked,
+      freeText: document.getElementById('free-text')?.value || '',
+      oDry: document.getElementById('o-dry')?.checked,
+    };
+    try {
+      const s0 = snap();
+      await diag('点击验证: 起点 ' + JSON.stringify(s0));
+      if (typeof window.enqueueOne !== 'function') {
+        await diag('点击验证: ★ enqueueOne 不存在');
+        return;
+      }
+      await window.enqueueOne();          // ★ 与用户点击同一个函数 ★
+      await new Promise((r) => setTimeout(r, 900));
+      const s1 = snap();
+      await diag('点击验证: 结果 ' + JSON.stringify(s1));
+      await diag('点击验证: ' + (s1.队列 > s0.队列 ? '★ 入队成功 ★' : '★ 队列未增加 ★'));
+    } catch (e) {
+      await diag('点击验证异常: ' + e);
+    } finally {
+      // ★ 无条件恢复现场 ★
+      const f = document.getElementById('o-free');
+      const t = document.getElementById('free-text');
+      const d = document.getElementById('o-dry');
+      if (f) f.checked = before.oFree;
+      if (t) t.value = before.freeText;
+      if (d) d.checked = before.oDry;
+      if (typeof window.__VAP_SRC_NOTE__ === 'function') window.__VAP_SRC_NOTE__();
+      await diag('点击验证: 已恢复现场');
+    }
+  };
+
+  // 启动后等界面就绪，再做自测
+  //
+  // ★ 默认不跑 ★
+  // 自测会往 WorkBuddy 真发内容，必须显式开启，否则会在用户不知情时打扰。
+  // 开启方式：启动前设 window.__VAP_SELFTEST_ARMED__ = true
+  //（由 VARIAP_AUTOPILOT_SELFTEST=1 启动时注入，见 lib.rs setup）
+  if (!window.__VAP_SELFTEST_ARMED__) {
+    // 未武装：只挂函数，不自动执行。仍可随时手动调 __VAP_SELFTEST__()
+    window.__VAP_SELFTEST_MANUAL__ = true;
+  } else {
+  setTimeout(async function () {
+    const c = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+    const diag = (m) => (c ? c.invoke('diag', { msg: m }).catch(() => {}) : null);
+    window.__VAP_SELFTEST__();
+    await diag('自测状态: ' + window.__VAP_SELFTEST__());
+    // 真点一次「加入待发」—— 走页面自己的 onclick，与用户点击等价
+    if (typeof window.enqueueOne === 'function') {
+      await diag('自测: 调用 enqueueOne()');
+      await window.enqueueOne();
+      await diag('自测: enqueueOne 已返回');
+      setTimeout(() => {
+        const n = document.querySelectorAll('#qlist .qi').length;
+        window.__VAP_SELFTEST__();
+        diag('自测结果: 队列 ' + n + ' 项');
+      }, 1200);
+      // ★ 入队验证完成后，接着验证「自动循环」★
+      // 顺序有意义：先证明单条入队 OK，再证明循环能续轮。
+      await new Promise((r) => setTimeout(r, 2500));
+      if (typeof window.__VAP_LOOP_TEST__ === 'function') {
+        await window.__VAP_LOOP_TEST__();
+      }
+    } else {
+      await diag('自测: enqueueOne 不存在');
+    }
+  }, 6500);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // ★ 点击验证自跑：不需要用户点、不需要外部鼠标 ★
+  // 外部合成点击对 WebView2 无效（已确诊），
+  // 所以「让工具点一下看反应」这个验证方式本身不成立。
+  // 这里用页面自己调 onclick —— 走的是与用户点击相同的函数。
+  // ══════════════════════════════════════════════════════════════
+  if (window.__VAP_CLICK_PROOF_ARMED__) {
+    setTimeout(() => window.__VAP_CLICK_PROOF__(), 3000);
+  }
+</script>
+<!-- ══════════════════════════════════════════════════════════════
+     ★ 点击落点日志（排障用，永久保留）★
+     把「点击有没有进 WebView」「落在哪个元素上」写进后端日志。
+     这样「点了没反应」就从猜测变成读日志。
+     ══════════════════════════════════════════════════════════════ -->
+<script>
+  (function () {
+    function report(msg) {
+      try {
+        const c = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+        if (c && c.invoke) c.invoke('diag', { msg: msg });
+      } catch (e) { /* 排障通道失败不影响界面 */ }
+    }
+    function tag(el) {
+      if (!el || !el.tagName) return '(无元素)';
+      let s = el.tagName.toLowerCase();
+      if (el.id) s += '#' + el.id;
+      const t = (el.innerText || el.textContent || '').trim().slice(0, 18);
+      return t ? s + '「' + t + '」' : s;
+    }
+    // 捕获阶段：先于元素自己的 handler
+    document.addEventListener(
+      'click',
+      function (e) {
+        const el = e.target;
+        report('点击 ·落点=' + tag(el)
+          + ' · 坐标=' + Math.round(e.clientX) + ',' + Math.round(e.clientY)
+          + ' · onclick=' + (typeof el.onclick === 'function' ? '有' : (el.getAttribute('onclick') || '无')));
+      },
+      true
+    );
+    // 指针按下也记一条：能区分「只移动没按下」与「按下了」
+    document.addEventListener(
+      'pointerdown',
+      function (e) { report('按下 · 落点=' + tag(e.target)); },
+      true
+    );
+    window.__VAP_CLICK_LOG__ = true;
+    report('点击日志已就绪');
+  })();
+</script>
+<script type="module" src="./app.js"></script>
+<script type="module" src="./loop_ui.js"></script>
+</body>
+</html>

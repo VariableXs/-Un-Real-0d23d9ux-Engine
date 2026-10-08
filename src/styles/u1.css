@@ -1,0 +1,116 @@
+/* I 通用域 · AI-U1（F401-F450）— 设置中心标签页 + 桌面运行时样式。
+   令牌消费纪律：颜色/圆角/阴影一律取 F151 主题令牌（--vx-*），本文件
+   不新造色值；密度对齐 F302 乙基线（高容量、深层级）。 */
+
+.u1-tab { display: flex; flex-direction: column; gap: 12px; }
+.u1-tab-intro { margin: 0; color: var(--vx-text-secondary, var(--vx-text-dim, #888)); font-size: 12px; }
+
+/* ---- 行与控件 ---- */
+.u1-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px;
+  padding: 10px 12px; border-radius: 8px; align-items: start;
+}
+.u1-row:nth-child(odd) { background: color-mix(in srgb, var(--vx-surface-raised, rgba(128,128,128,.06)) 60%, transparent); }
+.u1-name { font-size: 13px; font-weight: 600; }
+.u1-name .fno {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  color: var(--vx-accent, #4c8dff); margin-right: 6px; font-variant-numeric: tabular-nums;
+}
+.u1-desc { font-size: 11.5px; color: var(--vx-text-secondary, var(--vx-text-dim, #999)); margin-top: 2px; line-height: 1.5; }
+.u1-ctl { display: flex; align-items: center; gap: 8px; justify-self: end; }
+
+.u1-toggle {
+  position: relative; min-width: 52px; height: 26px; border-radius: 13px; border: 1px solid var(--vx-border, rgba(128,128,128,.3));
+  background: var(--vx-surface, rgba(128,128,128,.12)); color: var(--vx-text, #ddd); font-size: 11px;
+  display: inline-flex; align-items: center; padding: 0 8px; cursor: pointer; transition: background .15s ease;
+}
+.u1-toggle[data-on="true"] { background: var(--vx-accent, #4c8dff); border-color: transparent; }
+.u1-toggle-knob {
+  position: absolute; right: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--vx-text, #fff); opacity: .9; transition: transform .18s cubic-bezier(.2,.8,.2,1);
+}
+.u1-toggle[data-on="true"] .u1-toggle-knob { transform: translateX(-24px); }
+
+.u1-num { display: inline-flex; align-items: baseline; gap: 4px; }
+.u1-num input {
+  width: 76px; background: var(--vx-surface, rgba(128,128,128,.12)); color: var(--vx-text, #ddd);
+  border: 1px solid var(--vx-border, rgba(128,128,128,.3)); border-radius: 6px; padding: 4px 8px; font-size: 12px;
+}
+.u1-num-suffix { font-size: 11px; color: var(--vx-text-secondary, #999); }
+
+.u1-seg { display: inline-flex; border: 1px solid var(--vx-border, rgba(128,128,128,.3)); border-radius: 8px; overflow: hidden; }
+.u1-seg-btn {
+  padding: 4px 12px; font-size: 12px; background: transparent; color: var(--vx-text-secondary, #aaa);
+  border: none; cursor: pointer;
+}
+.u1-seg-btn[data-on="true"] { background: var(--vx-accent, #4c8dff); color: #fff; }
+
+.u1-ok { color: var(--vx-success, #46a758); font-size: 11.5px; }
+.u1-bad { color: var(--vx-danger, #e5484d); font-size: 11.5px; }
+.u1-link { background: none; border: none; color: var(--vx-accent, #4c8dff); font-size: 11px; cursor: pointer; padding: 0; }
+
+/* ---- 检查项对账表 ---- */
+.u1-ledger-summary { display: flex; gap: 16px; font-size: 12px; padding: 8px 10px; flex-wrap: wrap; }
+.u1-ledger { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.u1-ledger th, .u1-ledger td { text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--vx-border, rgba(128,128,128,.15)); }
+.u1-ledger th { color: var(--vx-text-secondary, #999); font-weight: 600; font-size: 10.5px; }
+.u1-ledger-tag { font-variant-numeric: tabular-nums; color: var(--vx-accent, #4c8dff); font-weight: 700; }
+.u1-ledger-mod { font-family: var(--vx-mono, ui-monospace, monospace); font-size: 10.5px; color: var(--vx-text-secondary, #999); }
+.u1-ledger-num { font-variant-numeric: tabular-nums; text-align: right; }
+.u1-ledger-note { font-size: 11px; color: var(--vx-text-secondary, #999); padding: 8px 10px; }
+.u1-ledger-note code { font-family: var(--vx-mono, ui-monospace, monospace); font-size: 10.5px; }
+
+/* ---- 桌面运行时（浮层/徽标/粘滞键） ---- */
+.u1-runtime { position: fixed; inset: auto auto 44px 12px; z-index: 2147482800; display: flex; gap: 8px; align-items: center; pointer-events: none; }
+.u1-runtime > * { pointer-events: auto; }
+.u1-dev-btn {
+  font-size: 10.5px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--vx-border, rgba(128,128,128,.3));
+  background: color-mix(in srgb, var(--vx-surface, rgba(20,20,20,.7)) 88%, transparent); color: var(--vx-text, #ddd); cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+.u1-dev-readout { font-size: 10px; color: var(--vx-text-secondary, #999); }
+
+.u1-flyout {
+  position: fixed; width: 280px; padding: 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--vx-surface, rgba(20,20,20,.78)) 88%, transparent);
+  border: 1px solid var(--vx-border, rgba(128,128,128,.25)); backdrop-filter: blur(18px);
+  box-shadow: var(--vx-shadow-flyout, 0 12px 32px rgba(0,0,0,.35));
+  display: flex; flex-direction: column; gap: 8px; z-index: 2147482810;
+}
+.u1-flyout-title { font-size: 12.5px; font-weight: 600; }
+.u1-flyout input[type="range"] { width: 100%; accent-color: var(--vx-accent, #4c8dff); }
+.u1-flyout-row { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; }
+
+.u1-ime-badge {
+  width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--vx-border, rgba(128,128,128,.3));
+  background: color-mix(in srgb, var(--vx-surface, rgba(20,20,20,.7)) 88%, transparent);
+  color: var(--vx-text, #ddd); font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.u1-ime-badge:hover { border-color: var(--vx-accent, #4c8dff); }
+
+.u1-sticky-badge {
+  font-size: 11px; padding: 3px 10px; border-radius: 12px;
+  background: color-mix(in srgb, var(--vx-accent, #4c8dff) 22%, transparent);
+  border: 1px solid var(--vx-accent, #4c8dff); color: var(--vx-text, #ddd);
+}
+.u1-sticky-confirm {
+  position: fixed; left: 50%; top: 72px; transform: translateX(-50%);
+  padding: 14px 18px; border-radius: 12px; text-align: center; font-size: 12.5px;
+  background: color-mix(in srgb, var(--vx-surface, rgba(20,20,20,.85)) 92%, transparent);
+  border: 1px solid var(--vx-border, rgba(128,128,128,.3)); backdrop-filter: blur(16px);
+  box-shadow: var(--vx-shadow-flyout, 0 12px 32px rgba(0,0,0,.35)); z-index: 2147482820;
+}
+.u1-sticky-confirm-hint { margin-top: 6px; font-size: 10.5px; color: var(--vx-text-secondary, #999); }
+
+.u1-start-layer { position: fixed; inset: 0; display: none; }
+.u1-start-layer[data-open="true"] { display: block; background: transparent; }
+
+.u1-visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ---- 减少动效（F245 全系统生效——本域遵属同谱） ---- */
+@media (prefers-reduced-motion: reduce) {
+  .u1-toggle-knob { transition: none; }
+  .u1-flyout, .u1-sticky-confirm { backdrop-filter: none; }
+}

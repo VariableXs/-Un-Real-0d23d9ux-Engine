@@ -1,0 +1,166 @@
+/* AI-08 · Z-28 运行对话框（类名前缀 rd-）
+   红线：居中浮层卡（modal 形态但非全屏遮罩，不挡桌面交互）。 */
+
+.rd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* 非全屏遮罩：容器不拦截指针，仅卡片本身可交互 */
+  pointer-events: none;
+  padding-top: 18vh;
+}
+
+.rd-card {
+  pointer-events: auto;
+  width: min(560px, calc(100vw - 48px));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+  padding: 12px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rd-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rd-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rd-close {
+  margin-left: auto;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.rd-close:hover {
+  color: var(--text);
+  background: rgba(127, 127, 127, 0.15);
+}
+
+.rd-input {
+  width: 100%;
+  font-size: 14px;
+  padding: 8px 10px;
+}
+
+.rd-cands {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(10, 14, 24, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 246px;
+  overflow-y: auto;
+}
+
+.rd-cand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12.5px;
+  min-width: 0;
+}
+
+.rd-cand.active {
+  background: rgba(127, 127, 127, 0.18);
+}
+
+.rd-cand-kind {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.rd-cand-kind.alias {
+  color: var(--accent);
+  border-color: rgba(127, 145, 216, 0.4);
+}
+
+.rd-cand-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rd-history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rd-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.rd-chip {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: rgba(127, 127, 127, 0.08);
+  color: var(--text);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rd-chip:hover {
+  border-color: var(--accent);
+}
+
+.rd-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rd-norecord {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.rd-norecord input {
+  accent-color: var(--accent);
+}
+
+.rd-hint {
+  white-space: nowrap;
+}

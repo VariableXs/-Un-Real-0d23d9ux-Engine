@@ -1,0 +1,1442 @@
+[2026年9月29日 上午6:54:25] [Log] BrowserWindow created
+------------------
+[2026年9月29日 上午6:54:25] [Log] BrowserWindow created
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-A1-B12.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390},{"name":"AURORA-10000-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\AURORA-10000-AI分工完成图.md","date":1789265250223},{"name":"Code Analysis3-独立软件与全系统部署总纲.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis3-独立软件与全系统部署总纲.md","date":1789229813670},{"name":"Code Analysis-AI分工完成图.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis-AI分工完成图.md","date":1789229782907},{"name":"Code Analysis2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis2.md","date":1789225893707},{"name":"AI20.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI20.md","date":1789225825655},{"name":"VARIX-M700-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-M700-AI分工完成图.md","date":1789220746585},{"name":"VARIX-M700-实施总步骤图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-M700-实施总步骤图.md","date":1789220741172},{"name":"VARIX-M600-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-M600-AI分工完成图.md","date":1789220732119}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-A1-B12.md"]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-28T22:54:26.200Z"]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-A1-B12.md - Typora"]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 上午6:54:26] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 上午6:54:27] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 上午6:54:27] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 上午6:54:33] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月29日 上午6:54:33] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月29日 上午6:54:34] [Log] [IPC] .invoke("quit") args: []
+------------------
+[2026年9月29日 上午6:54:34] [Log] [IPC] .handle("quit") result: 
+------------------
+[2026年9月29日 下午1:52:09] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午1:52:09] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-A2-B08.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-A2-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A2-B08.md","date":1790661129720},{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390},{"name":"AURORA-10000-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\AURORA-10000-AI分工完成图.md","date":1789265250223},{"name":"Code Analysis3-独立软件与全系统部署总纲.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis3-独立软件与全系统部署总纲.md","date":1789229813670},{"name":"Code Analysis-AI分工完成图.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis-AI分工完成图.md","date":1789229782907},{"name":"Code Analysis2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis2.md","date":1789225893707},{"name":"AI20.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI20.md","date":1789225825655},{"name":"VARIX-M700-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-M700-AI分工完成图.md","date":1789220746585},{"name":"VARIX-M700-实施总步骤图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-M700-实施总步骤图.md","date":1789220741172}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-A2-B08.md"]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-29T05:52:10.562Z"]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-A2-B08.md - Typora"]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 下午1:52:10] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 下午1:52:11] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 下午1:52:11] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 下午1:52:27] [Log] [IPC] .invoke("quit") args: []
+------------------
+[2026年9月29日 下午1:52:27] [Log] [IPC] .handle("quit") result: 
+------------------
+[2026年9月29日 下午1:52:27] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月29日 下午1:52:27] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月29日 下午1:53:23] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午1:53:23] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-A4-B24.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-A4-B24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A4-B24.md","date":1790661203635},{"name":"UNX-A2-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A2-B08.md","date":1790661129720},{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390},{"name":"AURORA-10000-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\AURORA-10000-AI分工完成图.md","date":1789265250223},{"name":"Code Analysis3-独立软件与全系统部署总纲.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis3-独立软件与全系统部署总纲.md","date":1789229813670},{"name":"Code Analysis-AI分工完成图.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis-AI分工完成图.md","date":1789229782907},{"name":"Code Analysis2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis2.md","date":1789225893707},{"name":"AI20.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI20.md","date":1789225825655},{"name":"VARIX-M700-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-M700-AI分工完成图.md","date":1789220746585}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-A4-B24.md"]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-29T05:53:24.422Z"]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-A4-B24.md - Typora"]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:53:24] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:53:25] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 下午1:53:25] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 下午1:53:44] [Log] [IPC] .invoke("quit") args: []
+------------------
+[2026年9月29日 下午1:53:44] [Log] [IPC] .handle("quit") result: 
+------------------
+[2026年9月29日 下午1:53:44] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月29日 下午1:53:44] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月29日 下午1:55:54] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午1:55:54] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-D3-B06.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-D3-B06.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-D3-B06.md","date":1790661354611},{"name":"UNX-A4-B24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A4-B24.md","date":1790661203635},{"name":"UNX-A2-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A2-B08.md","date":1790661129720},{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390},{"name":"AURORA-10000-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\AURORA-10000-AI分工完成图.md","date":1789265250223},{"name":"Code Analysis3-独立软件与全系统部署总纲.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis3-独立软件与全系统部署总纲.md","date":1789229813670},{"name":"Code Analysis-AI分工完成图.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis-AI分工完成图.md","date":1789229782907},{"name":"Code Analysis2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis2.md","date":1789225893707},{"name":"AI20.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI20.md","date":1789225825655}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-D3-B06.md"]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-29T05:55:55.508Z"]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-D3-B06.md - Typora"]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 下午1:55:55] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 下午1:55:56] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 下午1:55:56] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 下午1:56:08] [Log] -------------------------------------------
+------------------
+[2026年9月29日 下午1:56:08] [Log] crypto.publicDecrypt called
+------------------
+[2026年9月29日 下午1:56:08] [Log] Key: -----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7nVoGCHqIMJyqgALEUrc
+5JJhap0+HtJqzPE04pz4y+nrOmY7/12f3HvZyyoRsxKdXTZbO0wEHFIh0cRqsuaJ
+PyaOOPbA0BsalofIAY3mRhQQ3vSf+rn3g+w0S+udWmKV9DnmJlpWqizFajU4T/E4
+5ZgMNcXt3E1ips32rdbTR0Nnen9PVITvrbJ3l6CI2BFBImZQZ2P8N+LsqfJsqyVV
+wDkt3mHAVxV7FZbfYWG+8FDSuKQHaCmvgAtChx9hwl3J6RekkqDVa6GIV13D23LS
+qdk0Jb521wFJi/V6QAK6SLBiby5gYN6zQQ5RQpjXtR53MwzTdiAzGEuKdOtrY2Me
+DwIDAQAB
+-----END PUBLIC KEY-----
+
+
+------------------
+[2026年9月29日 下午1:56:08] [Log] Buffer (Hex): 75736572406578616d706c652e636f6d
+------------------
+[2026年9月29日 下午1:56:08] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-D3-B06.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-D3-B06.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-D3-B06.md","date":1790661368839},{"name":"UNX-A4-B24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A4-B24.md","date":1790661203635},{"name":"UNX-A2-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A2-B08.md","date":1790661129720},{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390},{"name":"AURORA-10000-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\AURORA-10000-AI分工完成图.md","date":1789265250223},{"name":"Code Analysis3-独立软件与全系统部署总纲.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis3-独立软件与全系统部署总纲.md","date":1789229813670},{"name":"Code Analysis-AI分工完成图.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis-AI分工完成图.md","date":1789229782907},{"name":"Code Analysis2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis2.md","date":1789225893707},{"name":"AI20.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI20.md","date":1789225825655}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-D3-B06.md"]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-29T05:56:09.518Z"]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-D3-B06.md - Typora"]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:56:09] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:56:10] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 下午1:56:10] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 下午1:56:52] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-B1-B36.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-B1-B36.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-B1-B36.md","date":1790661412044},{"name":"UNX-D3-B06.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-D3-B06.md","date":1790661368839},{"name":"UNX-A4-B24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A4-B24.md","date":1790661203635},{"name":"UNX-A2-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A2-B08.md","date":1790661129720},{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390},{"name":"AURORA-10000-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\AURORA-10000-AI分工完成图.md","date":1789265250223},{"name":"Code Analysis3-独立软件与全系统部署总纲.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis3-独立软件与全系统部署总纲.md","date":1789229813670},{"name":"Code Analysis-AI分工完成图.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis-AI分工完成图.md","date":1789229782907},{"name":"Code Analysis2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis2.md","date":1789225893707}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-B1-B36.md"]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-29T05:56:52.599Z"]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-B1-B36.md - Typora"]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:56:52] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:56:53] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 下午1:56:53] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 下午1:59:33] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-B1-B38.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-B1-B38.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-B1-B38.md","date":1790661573694},{"name":"UNX-B1-B36.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-B1-B36.md","date":1790661412044},{"name":"UNX-D3-B06.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-D3-B06.md","date":1790661368839},{"name":"UNX-A4-B24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A4-B24.md","date":1790661203635},{"name":"UNX-A2-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A2-B08.md","date":1790661129720},{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390},{"name":"AURORA-10000-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\AURORA-10000-AI分工完成图.md","date":1789265250223},{"name":"Code Analysis3-独立软件与全系统部署总纲.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis3-独立软件与全系统部署总纲.md","date":1789229813670},{"name":"Code Analysis-AI分工完成图.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis-AI分工完成图.md","date":1789229782907}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-B1-B38.md"]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-29T05:59:34.394Z"]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-B1-B38.md - Typora"]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 下午1:59:34] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 下午1:59:35] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 下午1:59:35] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 下午2:00:08] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-A1-B05.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-A1-B05.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B05.md","date":1790661608920},{"name":"UNX-B1-B38.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-B1-B38.md","date":1790661573694},{"name":"UNX-B1-B36.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-B1-B36.md","date":1790661412044},{"name":"UNX-D3-B06.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-D3-B06.md","date":1790661368839},{"name":"UNX-A4-B24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A4-B24.md","date":1790661203635},{"name":"UNX-A2-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A2-B08.md","date":1790661129720},{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390},{"name":"AURORA-10000-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\AURORA-10000-AI分工完成图.md","date":1789265250223},{"name":"Code Analysis3-独立软件与全系统部署总纲.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis3-独立软件与全系统部署总纲.md","date":1789229813670}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-A1-B05.md"]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-29T06:00:09.503Z"]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-A1-B05.md - Typora"]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午2:00:09] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午2:00:10] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 下午2:00:10] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 下午2:00:32] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-A1-B17.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-A1-B17.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B17.md","date":1790661632004},{"name":"UNX-A1-B05.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B05.md","date":1790661608920},{"name":"UNX-B1-B38.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-B1-B38.md","date":1790661573694},{"name":"UNX-B1-B36.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-B1-B36.md","date":1790661412044},{"name":"UNX-D3-B06.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-D3-B06.md","date":1790661368839},{"name":"UNX-A4-B24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A4-B24.md","date":1790661203635},{"name":"UNX-A2-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A2-B08.md","date":1790661129720},{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390},{"name":"AURORA-10000-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\AURORA-10000-AI分工完成图.md","date":1789265250223}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-A1-B17.md"]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-29T06:00:32.549Z"]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-A1-B17.md - Typora"]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午2:00:32] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午2:00:33] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 下午2:00:33] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 下午2:00:46] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\14\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\unxreal\\\\batches\\\\UNX-A5-B08.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","outline"]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"UNX-A5-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A5-B08.md","date":1790661646110},{"name":"UNX-A1-B17.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B17.md","date":1790661632004},{"name":"UNX-A1-B05.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B05.md","date":1790661608920},{"name":"UNX-B1-B38.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-B1-B38.md","date":1790661573694},{"name":"UNX-B1-B36.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-B1-B36.md","date":1790661412044},{"name":"UNX-D3-B06.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-D3-B06.md","date":1790661368839},{"name":"UNX-A4-B24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A4-B24.md","date":1790661203635},{"name":"UNX-A2-B08.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A2-B08.md","date":1790661129720},{"name":"UNX-A1-B12.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B12.md","date":1790636065327},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790631910323},{"name":"CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目实施总步骤图与项目介绍.md","date":1790631898706},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790631834816},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\VE-STAR-II\\VE Varix STAR II · 总纲与施工书.md","date":1790624646095},{"name":"CoRun Varix STAR II · Unxreal · 项目全景图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\CoRun Varix STAR II · Unxreal · 项目全景图.md","date":1790622724678},{"name":"goal.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\goal.md","date":1790622241439},{"name":"UNX-A1-B11.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\unxreal\\batches\\UNX-A1-B11.md","date":1790621842592},{"name":"CREATER.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\CREATER.md","date":1790618798317},{"name":"CoRun Varix STAR II · Unxreal · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · AI分工完成图.md","date":1790617322947},{"name":"CoRun Varix STAR II · Unxreal · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CoRun Varix STAR II · Unxreal · 总纲与施工书.md","date":1790617228168},{"name":"VE Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II · 总纲与施工书.md","date":1790597474673},{"name":"CGPU Varix STAR II · 总纲与施工书.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\CGPU Varix STAR II · 总纲与施工书.md","date":1790579476491},{"name":"VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VE Varix STAR II ￂﾷ ￦ﾀﾻ￧ﾺﾲ￤ﾸﾎ￦ﾖﾽ￥ﾷﾥ￤ﾹﾦ.md","date":1790531518943},{"name":"Varix STAR I start.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start.md","date":1790442870259},{"name":"Varix STAR I start · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · AI分工完成图.md","date":1790433880601},{"name":"Varix STAR I · AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · AI分工完成图.md","date":1790355152679},{"name":"Varix STAR I start · 剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I start · 剩余任务推进总表.md","date":1790355008479},{"name":"Varix STAR I · MD3 任务分布与工程量.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD3 任务分布与工程量.md","date":1790289170643},{"name":"2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-16.md","date":1790252538175},{"name":"2026-09-24.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-24.md","date":1790252515398},{"name":"Varix STAR I · MD1 总案.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix STAR I · MD1 总案.md","date":1790197734135},{"name":"2026-09-14.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-14.md","date":1790175355074},{"name":"VARIX三体系统-AI分工完成图-2026-09-21.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX三体系统-AI分工完成图-2026-09-21.md","date":1790009630060},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1789930813266},{"name":"2026-09-18.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\.workbuddy\\memory\\2026-09-18.md","date":1789757788085},{"name":"VARIX双域系统AI分工执行清单.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工执行清单.md","date":1789737878380},{"name":"VARIX-500-AI分工完成图.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX-500-AI分工完成图.md","date":1789737562447},{"name":"VARIX双域系统剩余任务推进总表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统剩余任务推进总表.md","date":1789651875373},{"name":"VARIX双域系统AI分工任务表.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\VARIX双域系统AI分工任务表.md","date":1789645846690},{"name":"嵌入子系统改造-待完成清单-2026-09-16.md","path":"D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\嵌入子系统改造-待完成清单-2026-09-16.md","date":1789495963483},{"name":"UNREAL-X-15000-功能全景图.md","path":"C:\\Users\\varia\\Downloads\\UNREAL-X-15000-功能全景图.md","date":1789288122390}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["UNX-A5-B08.md"]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-29T06:00:46.684Z"]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.setTitle") args: ["UNX-A5-B08.md - Typora"]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月29日 下午2:00:46] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月29日 下午2:00:47] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月29日 下午2:00:47] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月29日 下午2:04:59] [Log] -------------------------------------------
+------------------
+[2026年9月29日 下午2:04:59] [Log] crypto.publicDecrypt called
+------------------
+[2026年9月29日 下午2:04:59] [Log] Key: -----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7nVoGCHqIMJyqgALEUrc
+5JJhap0+HtJqzPE04pz4y+nrOmY7/12f3HvZyyoRsxKdXTZbO0wEHFIh0cRqsuaJ
+PyaOOPbA0BsalofIAY3mRhQQ3vSf+rn3g+w0S+udWmKV9DnmJlpWqizFajU4T/E4
+5ZgMNcXt3E1ips32rdbTR0Nnen9PVITvrbJ3l6CI2BFBImZQZ2P8N+LsqfJsqyVV
+wDkt3mHAVxV7FZbfYWG+8FDSuKQHaCmvgAtChx9hwl3J6RekkqDVa6GIV13D23LS
+qdk0Jb521wFJi/V6QAK6SLBiby5gYN6zQQ5RQpjXtR53MwzTdiAzGEuKdOtrY2Me
+DwIDAQAB
+-----END PUBLIC KEY-----
+
+
+------------------
+[2026年9月29日 下午2:04:59] [Log] Buffer (Hex): a8a390dd7bfedb8567725fa39c541a115d0116eefe20e60b47b9883e8a9f3a51ba46d39bf504a8611f7b05db4f42ea93c2e3e4fcd8ab321fb049225360bf9b987d9a09efda3ea3f85f05de7d493e1f490b94a4df52751d04c0c1289a95b4595c0cbc48dff04b7ddc54fafa3471d241ab63b3e93bbc9231d509bafe801c3581bc4ed438a8328de7eeca672ce572129e4ccf342babc905120a948ef52c908c7c525f35e5b71eaee531abb7b618acde4adfb0755d68abef446220fdd8b499098faf50f0c089293702fe53e391753a7ac54a1bf40ac10dc053a54672554b78c14273aea774e8f47495a9243d34ea867e302365f496a43a3d8053ff58ef7efe501fdb
+------------------
+[2026年9月29日 下午2:04:59] [Log] BrowserWindow created
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .invoke("quit") args: []
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .handle("quit") result: 
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月29日 下午2:05:05] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
