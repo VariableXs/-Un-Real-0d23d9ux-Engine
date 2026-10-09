@@ -47,6 +47,12 @@
 //!   回无边框保住画面语义，只交出独占权。
 //! - **确认拒绝也是事实**：用户不确认（[`CODE_CONFIRM_REQUIRED`]）与系统
 //!   拒绝（不支持/忙）分码——混码会让遥测把「用户不想切」读成「切不了」。
+//! - **基线闸是原子性的承重墙**：回退目标是 `tx.from`，若建档时不核对
+//!   `plan.from == current`，一份过期计划就能把回退基准写成「切换前从未处于
+//!   的模式」（独占切换失败后回退到窗口化，等于把全屏应用摔在桌面上）。
+//!   故 [`SwitchMachine::begin`] 强制核对基线，不符即拒（[`CODE_BASELINE_MISMATCH`]，
+//!   与相位错同属调用方 bug 类：不计切换失败、不动现役）。no-op 豁免——无操作
+//!   本就无起点一致性可谈。
 //! - **零 panic 面**：查表走 `get`/match、计数全 `saturating_add`、无
 //!   unwrap/expect——判据区同样约束。
 
@@ -66,15 +72,18 @@ pub const CODE_SWITCH_BUSY: u16 = 0x4B04;
 pub const CODE_CONFIRM_REQUIRED: u16 = 0x4B05;
 /// 独占被系统抢占（信息级：回落事实留痕）。
 pub const CODE_PREEMPTED: u16 = 0x4B06;
+/// 切换基线不符：计划起点与现役模式不一致（调用方拿了过期计划）。
+pub const CODE_BASELINE_MISMATCH: u16 = 0x4B07;
 
 /// 本域诊断码全集（判据对账：互异 + 独占 0x4B 段）。
-pub const CODES: [u16; 6] = [
+pub const CODES: [u16; 7] = [
     CODE_BAD_REQUEST,
     CODE_SWITCH_FAILED,
     CODE_MODE_UNSUPPORTED,
     CODE_SWITCH_BUSY,
     CODE_CONFIRM_REQUIRED,
     CODE_PREEMPTED,
+    CODE_BASELINE_MISMATCH,
 ];
 
 /// 人话说明（后果 + 下一步，不能只说「失败」；未知码有兜底不 panic）。
@@ -86,6 +95,7 @@ pub const fn explain(code: u16) -> &'static str {
         CODE_SWITCH_BUSY => "切换忙：上一事务未结束，串行化调用方逻辑后再发起",
         CODE_CONFIRM_REQUIRED => "用户未确认：先展示代价声明（CAPABILITIES），确认后再切",
         CODE_PREEMPTED => "独占被系统抢占：已平滑回落无边框，如需独占请用户确认后重切",
+        CODE_BASELINE_MISMATCH => "切换基线不符：计划起点与现役模式不一致，重读现役模式后重新规划",
         // 兜底：码外值给人话而不是崩掉。
         _ => "未知切换诊断码（未登记）",
     }
@@ -299,6 +309,10 @@ pub struct SwitchTx {
 /// 不变式：`tx == None` 时 `current` 是唯一现役事实；`tx == Some` 时
 /// `current` 仍是现役事实（事务只在 confirm 成功后才改它，apply 只是
 /// 预登记目标——回退永远只回到 `tx.from`）。
+///
+/// 该不变式的承重前提是 **`tx.from` 恒等于建档时的现役模式**，由
+/// [`SwitchMachine::begin`] 的基线闸保证；缺了它，「回退只回到切换前」会
+/// 退化成「回退到计划里声称的切换前」，后者可能从未发生过。
 #[derive(Clone, Copy, Debug)]
 pub struct SwitchMachine {
     current: DisplayMode,
@@ -359,6 +373,23 @@ impl SwitchMachine {
     }
 
     /// 发起事务（计划非 no-op 且相位合法才建档；在途即拒 [`CODE_SWITCH_BUSY`]）。
+    ///
+    /// **基线闸**：计划起点必须等于现役模式，否则 [`CODE_BASELINE_MISMATCH`]。
+    /// 这不是多余的防御——回退目标是 `tx.from`，若建档时不核对基线，一份
+    /// 过期计划（调用方在别处切过模式、或直接构造了 [`SwitchPlan`]）会把
+    /// 回退基准写成「切换前从未处于的模式」：独占→独占切换失败后回退到
+    /// 窗口化，应用被摔在桌面上——原子事务最忌讳的半切换态以另一种形式
+    /// 复活。拒绝属**调用方 bug 类**（同相位错）：只拒本次调用，不开事务、
+    /// 不计切换失败、不动现役——过期计划不是系统的失败，不该污染失败账。
+    ///
+    /// **闸序：先忙后基线**。在途事务下 `current` 可能已被 apply 改过，调用方
+    /// 手里的计划起点自然变「旧」；此时先报基线不符就是**误导**——照它的话去
+    /// 重新规划，重新规划照样撞上忙。真正拦路的只有一件事（忙），报它即可；
+    /// 不忙时才轮到基线闸，此时「计划过期」才是准确诊断。两种拒绝都不开事务，
+    /// 闸序只影响诊断码的可操作性，不影响闸本身的强度。
+    ///
+    /// no-op 不受两道闸约束：它不建档、不改任何状态，「无操作」本就无从谈
+    /// 起点一致与否。
     pub fn begin(&mut self, plan: SwitchPlan) -> Result<(), u16> {
         if plan.noop {
             return Ok(()); // no-op 不开事务（同模式不制造假事务）
@@ -366,6 +397,10 @@ impl SwitchMachine {
         if self.tx.is_some() {
             self.last_code = CODE_SWITCH_BUSY;
             return Err(CODE_SWITCH_BUSY);
+        }
+        if plan.from != self.current {
+            self.last_code = CODE_BASELINE_MISMATCH;
+            return Err(CODE_BASELINE_MISMATCH);
         }
         self.tx = Some(SwitchTx { from: plan.from, to: plan.to, phase: TxPhase::Validate });
         Ok(())
@@ -751,6 +786,117 @@ pub fn run_vea51_checks() -> CheckSet {
         s.add("A51-原子切换-noop不开事务", ok6, "同模式 no-op：零事务零计数（不制造假事务）");
     }
 
+    // --- 判据 5b：基线闸（回退基准必须等于切换前现役） ---
+    //
+    // 本组是承重判据：M1 变异把 begin 的基线核对删掉后，下面「过期计划被拒」
+    // 一条立刻转红——因为不核对基线时，过期计划能建档，其 `from` 会被写进
+    // tx，确认段失败时按 `tx.from` 还原，把应用回退到一个**从未处于**的模式。
+    {
+        // 现役真值 Borderless；过期计划声称起点是 Windowed。
+        let mut m = SwitchMachine::new(DisplayMode::Borderless);
+        let stale = SwitchPlan {
+            from: DisplayMode::Windowed,
+            to: DisplayMode::Exclusive,
+            noop: false,
+        };
+        let r = m.begin(stale);
+        s.add(
+            "A51-基线闸-过期计划被拒且零副作用",
+            r == Err(CODE_BASELINE_MISMATCH)
+                && m.tx().is_none()
+                && m.current() == DisplayMode::Borderless
+                && m.counters() == (0, 0, 0, 0, 0)
+                && m.last_code() == CODE_BASELINE_MISMATCH,
+            "计划起点≠现役即拒（专属码）：不开事务、不动现役、切换成功/抢占/回落/失败/未确认五账全零——过期计划是调用方 bug 不是系统失败",
+        );
+        // 拒后机器仍可正常干活（健康度未被破坏）。
+        let good = plan_switch(
+            DisplayMode::Borderless,
+            DisplayMode::Exclusive,
+            true,
+            true,
+            m.available(),
+        );
+        let recovered = match good {
+            Ok(p) => m.begin(p) == Ok(())
+                && m.tx_validate(None) == Ok(())
+                && m.tx_apply(None) == Ok(())
+                && m.tx_confirm(None) == Ok(())
+                && m.current() == DisplayMode::Exclusive
+                && m.counters().0 == 1,
+            Err(_) => false,
+        };
+        s.add(
+            "A51-基线闸-拒绝后状态机仍健康",
+            recovered,
+            "基线闸拒绝后重新规划即可正常切换（三段全绿、成功计数 1），闸不留残状态",
+        );
+        // no-op 不受基线闸约束（起点一致性与「无操作」无关）。
+        let mut m2 = SwitchMachine::new(DisplayMode::Exclusive);
+        let noop_stale = SwitchPlan {
+            from: DisplayMode::Windowed,
+            to: DisplayMode::Windowed,
+            noop: true,
+        };
+        s.add(
+            "A51-基线闸-noop豁免不误伤",
+            m2.begin(noop_stale) == Ok(()) && m2.tx().is_none() && m2.current() == DisplayMode::Exclusive,
+            "no-op 计划不建档不受基线闸约束（无操作本就无起点一致性可谈）",
+        );
+        // 闸序：在途事务优先报忙（而非基线不符）——照基线不符去重规划仍会撞忙。
+        let mut m4 = SwitchMachine::new(DisplayMode::Windowed);
+        if let Ok(p) = plan_switch(
+            DisplayMode::Windowed,
+            DisplayMode::Exclusive,
+            true,
+            true,
+            m4.available(),
+        ) {
+            let _ = m4.begin(p);
+            // 事务在途时 current 仍是 Windowed；此计划起点恰也是 Windowed
+            // （基线其实相符），报忙才是唯一可操作的诊断。
+            let again = plan_switch(
+                DisplayMode::Windowed,
+                DisplayMode::Borderless,
+                true,
+                true,
+                m4.available(),
+            );
+            let busy_first = match again {
+                Ok(p2) => m4.begin(p2) == Err(CODE_SWITCH_BUSY),
+                Err(_) => false,
+            };
+            s.add(
+                "A51-基线闸-闸序先忙后基线",
+                busy_first && m4.tx().is_some() && m4.last_code() == CODE_SWITCH_BUSY,
+                "在途事务优先报忙：调用方照基线不符去重规划仍会撞忙，报忙才可操作；原事务不受影响",
+            );
+        }
+        // 回退基准 == 切换前现役：正常路径下 tx.from 恒等于建档时现役。
+        let mut m3 = SwitchMachine::new(DisplayMode::Borderless);
+        let before = m3.current();
+        if let Ok(p) = plan_switch(
+            DisplayMode::Borderless,
+            DisplayMode::Exclusive,
+            true,
+            true,
+            m3.available(),
+        ) {
+            let _ = m3.begin(p);
+            let _ = m3.tx_validate(None);
+            let _ = m3.tx_apply(None);
+            let _ = m3.tx_confirm(Some(CODE_SWITCH_FAILED));
+            s.add(
+                "A51-基线闸-回退基准即切换前现役",
+                m3.current() == before
+                    && m3.tx().is_none()
+                    && m3.counters().3 == 1
+                    && m3.counters().0 == 0,
+                "确认段失败回退到的恰是切换前现役模式（基线闸保证 tx.from 不会撒谎），失败计数 1、成功计数 0",
+            );
+        }
+    }
+
     // --- 判据 6：被抢回落（独占回落无边框、计数留痕、在途一并回滚） ---
     {
         let mut m = SwitchMachine::new(DisplayMode::Exclusive);
@@ -856,7 +1002,7 @@ pub fn run_vea51_checks() -> CheckSet {
             }
             i += 1;
         }
-        s.add("A51-判据-码位两两互异", ok, "六码互异（按码归类的前提）");
+        s.add("A51-判据-码位两两互异", ok, "七码互异（按码归类的前提）");
         let seg_ok = CODES.iter().all(|c| c & 0xFF00 == 0x4B00);
         s.add("A51-判据-码段独占0x4B", seg_ok, "全码独占 0x4B 段（与 0x4A/vea50 互斥）");
         s.add(
@@ -865,9 +1011,17 @@ pub fn run_vea51_checks() -> CheckSet {
             "未知码有兜底人话（不崩也不静默）",
         );
         s.add(
+            "A51-判据-基线码在册且有独立人话",
+            CODES.contains(&CODE_BASELINE_MISMATCH)
+                && explain(CODE_BASELINE_MISMATCH) != explain(CODE_BAD_REQUEST)
+                && explain(CODE_BASELINE_MISMATCH) != explain(CODE_SWITCH_BUSY)
+                && CODE_BASELINE_MISMATCH & 0xFF00 == 0x4B00,
+            "基线不符码在 CODES 全表内、有专属人话（不与相位错/忙混码——混码会把「计划过期」读成「切不了」）",
+        );
+        s.add(
             "A51-判据-条数对账",
-            s.len() == 28,
-            "判据条数恰 29（本条执行前已有 28 条，防悄悄增删）",
+            s.len() == 34,
+            "判据条数恰 35（本条执行前已有 34 条，防悄悄增删）",
         );
     }
 
