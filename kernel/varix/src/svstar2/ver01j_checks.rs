@@ -439,7 +439,7 @@ fn chk_contract(set: &mut CheckSet) {
         "F3410-联动-三态校验",
         off.validate().is_ok()
             && ok_link.validate().is_ok()
-            && bad_link.err() == Some(GlassCode::LinkageState)
+            && bad_link.validate().err() == Some(GlassCode::LinkageState)
             && GlassCode::LinkageState.blocking(),
         "联动默认关闭、端点合法值（恰 1000）放行、越界即拒（V 域色彩联动对接点）",
     );
