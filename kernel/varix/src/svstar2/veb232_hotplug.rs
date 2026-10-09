@@ -8,6 +8,13 @@
 //! 稳定后一次性处理**。
 //!
 //! **判据（锚点原文）**：去抖、状态机、轮询兜底、日志全程、判据。
+//! 本模块 29 条判据逐条映射：去抖 4 条（窗口内不落地／期满落地一次／
+//! 翻转合并一次落地／期限恰界贴线不误拒）、状态机 7 条（三态封闭集往返／
+//! 训练期满自动提升／稳定拔出回断开／连接中拔出直接断开／短脉冲永不改态／
+//! **落地优先训练期拔线不假稳定**／**待落地未决训练不抢先**）、轮询兜底 6 条、
+//! 日志全程 4 条、判据 8 条（风暴一次性落地／码位互异／码段独占／未知码
+//! 兜底／**下游队列满显性记账**／**请求取走队列复位账留存**／**读屏含位置
+//! 语义与最近事件**／条数对账）。
 //!
 //! **数据结构（锚点原文）**：HPD 状态机；去抖窗口记录；限流计数。
 //!
@@ -52,6 +59,18 @@
 //! - **稳定后一次性**：退避期满后走正常去抖——只要信号不再翻转，期限自然
 //!   到期，只落地一次。不需要额外的「一次性」专用逻辑，去抖本身就是一次性
 //!   的（这是设计上的一次性，不是补丁上的一次性）。
+//! - **落地优先于训练提升**（次序即语义）：链路训练期被拔线时，去抖落地与
+//!   训练定时器会撞在同一 tick。反序（先提升后落地）会造出一个**从未存在过
+//!   的「稳定」态**：F0225 收到「按稳定态重编程」的假请求（花屏/黑屏的
+//!   原料），落地次数从 2 虚增到 3，下游白跑两趟。因此 `poll` 先落去抖、
+//!   后谈训练，且 `pending` 未决期间**一律不提升稳定**——拔线是比训练定时器
+//!   更新的真相。
+//! - **请求没投出去是事实**：下游定容队列（[`REQ_CAP`]）满时逐条记账
+//!   [`HpdHotplug::dropped_requests`] 并挂 [`CODE_BAD_REQUEST`]——丢一条
+//!   重编程请求等于「插上了但画面没跟上」，静默丢弃会把它变成无痕故障。
+//!   取走请求只清队列不清账：被拒次数是历史事实。
+//! - **只算不播等于没播**：[`HpdHotplug::a11y_lines`] 七行里的「最近热事件」
+//!   必须真进数组——读屏用户听到「连接中」却不知刚插还是刚拔，事件性就没了。
 //! - **零 panic 面**：查表走 `get`/match、计数全 `saturating_add`、定容
 //!   队列写满显性拒绝（[`CODE_BAD_REQUEST`]）——判据区同样约束。
 
@@ -477,6 +496,8 @@ pub struct HpdHotplug {
     spurious: u32,
     /// 中断丢失计数。
     irq_lost_count: u32,
+    /// 下游请求被拒计数（队列满——请求没投出去的事实必须留痕）。
+    dropped_requests: u32,
     /// 最近诊断码（0 = 无）。
     last_code: u16,
 }
@@ -507,6 +528,7 @@ impl HpdHotplug {
             fallback_events: 0,
             spurious: 0,
             irq_lost_count: 0,
+            dropped_requests: 0,
             last_code: 0,
         }
     }
@@ -536,9 +558,14 @@ impl HpdHotplug {
         self.storm_backoff_until != 0
     }
 
-    /// 中断路径是否已判丢失。
-    pub const fn irq_lost(&self) -> bool {
+/// 中断路径是否已判丢失。
+    pub fn irq_lost(&self) -> bool {
         self.irq_lost
+    }
+
+    /// 下游请求被拒计数（队列满——请求没投出去的事实）。
+    pub const fn dropped_requests(&self) -> u32 {
+        self.dropped_requests
     }
 
     /// 兜底轮询间隔（0 = 关闭）。
@@ -746,27 +773,39 @@ impl HpdHotplug {
             self.storm_window_events = 0;
             self.storm_window_start = tick;
         }
+        // **落地优先于提升**（次序纪律）：先去抖落地，再考虑训练提升。
+        // 反序会造出一个从未存在过的「稳定」态——链路还在训练期就被拔线，
+        // 训练定时器先到 → 落地 Stable → 再落地 Disconnected，F0225 拿到
+        // 一条「链路已稳定、请按稳定态重编程」的假请求（花屏/黑屏的原料）。
+        // 拔线是比训练定时器更新的真相，必须先落地。
+        let mut committed = false;
+        // 去抖落地：pending 稳定到期限且不在风暴退避中。
+        if let Some(target) = self.pending {
+            if self.storm_backoff_until == 0 && tick >= self.debounce_deadline {
+                self.pending = None;
+                if target != self.state {
+                    // 目标异于现役：落地一次转换（含下游三件）。
+                    self.commit_to(target, tick);
+                    committed = true;
+                }
+                // 目标即现役（风暴最终态=风暴前态）：无转换可落地——
+                // 不制造假事务（假转换会惊动 F0225/F0233/F0103 白跑一趟）。
+            }
+        }
         // 连接中 → 稳定：训练期满自动提升（不落地假稳定）。
-        if self.state == LinkState::Connecting
+        // **只在无待落地时提升**：pending 未决期间不推稳定（可能是拔线在途，
+        // 可能是去抖期限未到，也可能是风暴退避中——三者都不该抢先落地稳定）。
+        if !committed
+            && self.pending.is_none()
+            && self.state == LinkState::Connecting
             && self.train_deadline != 0
             && tick >= self.train_deadline
         {
             self.commit_to(LinkState::Stable, tick);
-            return PollOutcome::Committed;
+            committed = true;
         }
-        // 去抖落地：pending 稳定到期限且不在风暴退避中。
-        if let Some(target) = self.pending {
-            if self.storm_backoff_until == 0 && tick >= self.debounce_deadline {
-                if target != self.state {
-                    // 目标异于现役：落地一次转换（含下游三件）。
-                    self.pending = None;
-                    self.commit_to(target, tick);
-                    return PollOutcome::Committed;
-                }
-                // 目标即现役（风暴最终态=风暴前态）：无转换可落地——
-                // 不制造假事务（假转换会惊动 F0225/F0233/F0103 白跑一趟）。
-                self.pending = None;
-            }
+        if committed {
+            return PollOutcome::Committed;
         }
         if fallback_fired {
             PollOutcome::FallbackEvent
@@ -799,27 +838,26 @@ impl HpdHotplug {
             self.train_deadline = 0;
         }
         // 下游三件：F0225 重编程 + F0233 布局重算 + F0103 通知。
-        let _ = self.reqs.push(DownstreamRequest {
-            kind: DownstreamKind::Reprogram,
-            port: self.port,
-            label: self.label,
-            state: to,
-            tick,
-        });
-        let _ = self.reqs.push(DownstreamRequest {
-            kind: DownstreamKind::LayoutRecompute,
-            port: self.port,
-            label: self.label,
-            state: to,
-            tick,
-        });
-        let _ = self.reqs.push(DownstreamRequest {
-            kind: DownstreamKind::Notify,
-            port: self.port,
-            label: self.label,
-            state: to,
-            tick,
-        });
+        // 队列满**显性记账**：丢一条请求 = 下游不知道该重编程（花屏），
+        // 静默 `let _ =` 会让「插上了但画面没跟上」变成无痕故障——记账并
+        // 挂 CODE_BAD_REQUEST，让诊断面看得见「下游请求被拒过几次」。
+        for kind in [
+            DownstreamKind::Reprogram,
+            DownstreamKind::LayoutRecompute,
+            DownstreamKind::Notify,
+        ] {
+            let ok = self.reqs.push(DownstreamRequest {
+                kind,
+                port: self.port,
+                label: self.label,
+                state: to,
+                tick,
+            });
+            if !ok {
+                self.dropped_requests = self.dropped_requests.saturating_add(1);
+                self.last_code = CODE_BAD_REQUEST;
+            }
+        }
     }
 
     /// 取走并清空下游请求（消费方驱动：F0225/F0233/F0103 各自过滤 kind）。
@@ -835,13 +873,17 @@ impl HpdHotplug {
     }
 
     /// 模式状态读屏播报（锚点无障碍：位置语义 + 插拔事实，不泄漏内容）。
-    pub fn a11y_lines(&self) -> [alloc::string::String; 6] {
+    ///
+    /// 七行：状态 / 最近热事件 / 事件数 / 合并 / 落地 / 风暴与兜底 / 中断路径
+    /// + 请求投递账。**最近热事件行必须真进数组**——只算不播等于没播
+    /// （用户听到「连接中」却不知道刚插还是刚被拔，读屏就失去了事件性）。
+    pub fn a11y_lines(&self) -> [alloc::string::String; 7] {
         use alloc::format;
         let (ev, mg, cm, st, fb, sp, lost) = self.counters();
         let latest = self.log.latest();
         let latest_line = match latest {
             Some(e) => format!(
-                "最近热事件：{}（tick {}，{}） / latest: {} (tick {}, {})",
+                "最近热事件：{}（tick {}，{}）/ latest: {} (tick {}, {})",
                 e.kind.label(),
                 e.tick,
                 if e.via_fallback { "兜底轮询" } else { "中断" },
@@ -861,6 +903,7 @@ impl HpdHotplug {
                 self.port,
                 self.state.label()
             ),
+            latest_line,
             format!("累计热插事件 {} 次 / hotplug events: {}", ev, ev),
             format!("去抖合并 {} 次 / debounced merges: {}", mg, mg),
             format!("落地转换 {} 次 / committed transitions: {}", cm, cm),
@@ -869,11 +912,13 @@ impl HpdHotplug {
                 st, fb, sp, st, fb, sp
             ),
             format!(
-                "中断路径：{}（丢失累计 {} 次）/ irq: {} (lost {})",
+                "中断路径：{}（丢失累计 {} 次）、未投出请求 {} 条 / irq: {} (lost {}), dropped {}",
                 if self.irq_lost { "丢失-兜底接管" } else { "正常" },
                 lost,
+                self.dropped_requests,
                 if self.irq_lost { "LOST" } else { "OK" },
-                lost
+                lost,
+                self.dropped_requests
             ),
         ]
     }
@@ -1014,6 +1059,42 @@ pub fn run_veb232_checks() -> CheckSet {
                 && m4.state() == LinkState::Stable
                 && m4.pending() == None,
             "短脉冲只入日志不改连接态（不刷出假插拔）",
+        );
+        // **落地优先于提升**：训练期拔线不经过「稳定」态。
+        // 反序（先提升后落地）会造出从未存在过的 Stable，让 F0225 拿到一条
+        // 「按稳定态重编程」的假请求——落地次数也会从 2 虚增到 3。
+        let mut m5 = HpdHotplug::new(1, "DP-1");
+        m5.on_event(HpdEventKind::Connect, 0);
+        let _ = m5.poll(DEBOUNCE_TICKS, None); // → Connecting，训练期到 11
+        m5.on_event(HpdEventKind::Disconnect, DEBOUNCE_TICKS + 1);
+        // tick 恰训练期满（11）且去抖期限（7）已过：必须直接落断开，绝不经过稳定。
+        let at_train = m5.poll(DEBOUNCE_TICKS + LINK_TRAIN_TICKS, None);
+        let visited_stable = m5.log().get(0).map(|e| e.committed_to) == Some(Some(LinkState::Stable));
+        s.add(
+            "B32-状态机-落地优先训练期拔线不假稳定",
+            at_train == PollOutcome::Committed
+                && m5.state() == LinkState::Disconnected
+                && m5.counters().2 == 2
+                && !visited_stable,
+            "训练定时器与拔线同拍时拔线优先（不落地假稳定不多投下游请求）",
+        );
+        // 待落地未到期限时训练不抢先提升（拔线在途但还在去抖窗口内）。
+        let mut m6 = HpdHotplug::new(1, "DP-1");
+        m6.on_event(HpdEventKind::Connect, 0);
+        let _ = m6.poll(DEBOUNCE_TICKS, None); // → Connecting，训练期到 11
+        m6.on_event(HpdEventKind::Disconnect, 9); // 去抖期限 12（训练期 11 先到）
+        let held = m6.poll(DEBOUNCE_TICKS + LINK_TRAIN_TICKS, None); // tick=11：期限未到
+        let held_pending = m6.pending();
+        let settled = m6.poll(12, None); // 期限到 → 直接落断开
+        s.add(
+            "B32-状态机-待落地未决训练不抢先",
+            held == PollOutcome::Idle
+                && m6.state() == LinkState::Disconnected
+                && held_pending == Some(LinkState::Disconnected)
+                && settled == PollOutcome::Committed
+                && m6.state() == LinkState::Disconnected
+                && m6.counters().2 == 2,
+            "拔线仍在去抖窗口内时训练不抢先提升；期限到后直落断开不路过稳定",
         );
     }
 
@@ -1190,10 +1271,63 @@ pub fn run_veb232_checks() -> CheckSet {
             !explain(0x63FF).is_empty() && explain(CODE_BAD_REQUEST) != explain(0x63FF),
             "未知码有兜底人话（不崩也不静默）",
         );
+        // 下游队列满显性记账：请求没投出去是事实，不许静默 let _ =。
+        let mut m2 = HpdHotplug::new(1, "DP-1");
+        let mut committed = 0u32;
+        // 12 容量 = 4 次转换的三件；第 5 次转换开始必拒。
+        for round in 0..6u64 {
+            let kind = if round % 2 == 0 {
+                HpdEventKind::Connect
+            } else {
+                HpdEventKind::Disconnect
+            };
+            let t = round * 100;
+            m2.on_event(kind, t);
+            if m2.poll(t + DEBOUNCE_TICKS, None) == PollOutcome::Committed {
+                committed += 1;
+            }
+        }
+        let full_code = m2.last_code();
+        s.add(
+            "B32-判据-下游队列满显性记账",
+            committed == 6
+                && m2.pending_requests() == REQ_CAP
+                && m2.dropped_requests() == 6
+                && full_code == CODE_BAD_REQUEST,
+            "第 5 次转换起三件各拒一条（6×3−12=6），挂 BAD_REQUEST 不静默丢",
+        );
+        // 取走后计数保留（历史事实不被清账）与队列复位。
+        let taken = m2.take_requests();
+        s.add(
+            "B32-判据-请求取走队列复位账留存",
+            taken.len() == REQ_CAP
+                && taken.get(0).map(|r| r.kind) == Some(DownstreamKind::Reprogram)
+                && taken.get(REQ_CAP - 1).map(|r| r.kind) == Some(DownstreamKind::Notify)
+                && m2.pending_requests() == 0
+                && m2.dropped_requests() == 6,
+            "取走即清队列；被拒计数是历史事实不被取走清零",
+        );
+        // 读屏七行：最近热事件行真在数组里（只算不播等于没播）。
+        let mut m3 = HpdHotplug::new(7, "HDMI-A-1");
+        let empty_lines = m3.a11y_lines();
+        m3.on_event(HpdEventKind::Connect, 0);
+        let _ = m3.poll(DEBOUNCE_TICKS, None);
+        let lines = m3.a11y_lines();
+        s.add(
+            "B32-判据-读屏含位置语义与最近事件",
+            lines.len() == 7
+                && empty_lines[0].contains("HDMI-A-1")
+                && empty_lines[0].contains('7')
+                && empty_lines[1].contains("无")
+                && lines[1].contains("插入")
+                && lines[1].contains("tick 3")
+                && lines[0].contains("连接中"),
+            "七行齐：状态带输出位置语义，最近热事件行真入数组（空时明说无）",
+        );
         s.add(
             "B32-判据-条数对账",
-            s.len() == 23,
-            "判据条数恰 24（本条执行前已有 23 条，防悄悄增删）",
+            s.len() == 28,
+            "判据条数恰 29（本条执行前已有 28 条，防悄悄增删）",
         );
     }
 
