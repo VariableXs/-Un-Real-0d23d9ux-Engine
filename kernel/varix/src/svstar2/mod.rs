@@ -208,6 +208,7 @@
 //! | [`ver01h_evalperf`] | F3408 令牌求值性能（求值缓存依赖图增量重算 + 批量求值流水线 + P95 承诺与告警 + 分帧兜底 + AD06 预算对齐） | VE 册 #VE-F3408 |
 //! | [`ver01i_debugtool`] | F3409 令牌调试工具（令牌检查器双向反查 O(1) 开桶索引 + 求值追踪正向闭包超预算截断留痕 + 覆盖来源视图漂移校准 + X03 会话统一闸） | VE 册 #VE-F3409 |
 //! | [`ver01j_glass`] | F3410 深空玻璃令牌基线（五级封闭层级审美单源 + 价签按层级质感公式推导不可手抄 + 缺签补齐错签拒 + 质感违例钳回整改 + 预算扫描降档预告对票应用 + V 域色彩联动挂点） | VE 册 #VE-F3410 |
+//! | [`ver01k_dualtheme`] | F3411 明暗双主题运行时（明暗两值强制配对缺一即拒 + 双主题对比度各测一次任一侧不达 AA 即阻断 + 切换跳变一律转过渡且接管不清零 + 跟随系统自动起过渡与手动锁定两态 + 日出日落时间驱动冻结预留接口 + V07 夜间模式联动挂点） | VE 册 #VE-F3411 |
 //! | [`ver02_arch`] | F3601 R 域开工与域号 ADR（跳段裁决+五板块十项映射+四域分工+收敛复述） | VE 册 #VE-F3601 |
 //! | [`ver03_arch`] | F3602 创作生态总架构（三层五段+开放格式P0+激励双单源+沙箱复述+收敛两段线） | VE 册 #VE-F3602 |
 //! | [`ver04_arch`] | F3603 创作资产模型（七要素+七类两轴+许可三态+兼容四级+schema两级复用） | VE 册 #VE-F3603 |
@@ -800,6 +801,8 @@ pub mod ver01i_checks;
 pub mod ver01i_debugtool;
 pub mod ver01j_checks;
 pub mod ver01j_glass;
+pub mod ver01k_checks;
+pub mod ver01k_dualtheme;
 pub mod ver02_arch;
 pub mod ver02_checks;
 pub mod ver03_arch;
@@ -1234,6 +1237,8 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3409-b", ver01i_checks::run_ver01i_checks_b()),
         ("VE-F3410-a", ver01j_checks::run_ver01j_checks_a()),
         ("VE-F3410-b", ver01j_checks::run_ver01j_checks_b()),
+        ("VE-F3411-a", ver01k_checks::run_ver01k_checks_a()),
+        ("VE-F3411-b", ver01k_checks::run_ver01k_checks_b()),
         ("VE-F3601", ver02_arch::run_ver02_checks()),
         ("VE-F3602", ver03_arch::run_ver03_checks()),
         ("VE-F3603", ver04_arch::run_ver04_checks()),
