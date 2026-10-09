@@ -6,7 +6,7 @@
 //! - 灰度（档位与观测分离、越档即越步）→ `U05-灰度-*`
 //! - 会签（缺签挂起+催办）→ `U05-会签-*`
 //! - 弱化即破坏（无障碍红线）→ `U05-红线-*`
-//! - 回滚协议 + 四格降级矩阵 + 错误零静默 → `U05-降级-*` / `U05-错误-*`
+//! - 降级矩阵四格 + 越步 + 撤回 → `U05-降级-*` / `U05-错误-*`
 //!
 //! **判据自身的四条纪律**（本文件从 F4204 继承教训，新增第四条）：
 //!
@@ -20,6 +20,11 @@
 //! 4. **（本文件新增）判据不得只钉「无事件」侧。** 只断「未弱化时不算破坏」
 //!    对「弱化了却没算破坏」一字未说，而那正是红线所在。故每条否定断言
 //!    都要配一条**走真实路径造出事件**的反向断言。
+//!
+//! 5. **（本文件新增）越步判据必须造出越步事件。** `advance` 只走下一步，
+//!    越步在这条路径上**永远不会发生**；只断言「越步被拒」的话，
+//!    一个把 `advance_to` 写成永远 `Err` 的实现同样全绿。故本族同时钉
+//!    **合法步位走步照常通过**（反向锚点）与**两向越步确实被拒**（正向）。
 //!
 //! 零墙钟、零 IO，回归可复现。
 
@@ -95,6 +100,13 @@ fn weakening_request() -> ChangeRequest {
     .with_migration("把对比度要求从满档降到 1 档")
 }
 
+/// 造一条**破坏但未附迁移指南**的申请（用于测「报告在阻断时仍落定」）。
+fn compliant_breaking_request_no_guide() -> ChangeRequest {
+    let mut r = compliant_breaking_request();
+    r.migration_guide = None;
+    r
+}
+
 /// 受理 → 走到会签步之前的公共前置（受理 + 影响分析）。
 fn opened_with_impact(req: ChangeRequest, reg: &ContractRegistry) -> ChangeFlowEngine {
     let mut e = ChangeFlowEngine::new();
@@ -156,7 +168,7 @@ impl FamilyTally {
     }
 
     /// 细项全绿才并族；**有红则逐条出声**（红项必须能指名）。
-    fn flush(mut self, set: &mut CheckSet) {
+    fn flush(self, set: &mut CheckSet) {
         let mut order: Vec<&'static str> = Vec::new();
         for (fam, _, _, _) in self.pending.iter() {
             if !order.iter().any(|f| f == fam) {
@@ -812,6 +824,92 @@ fn checks_redline(mut t: FamilyTally, cs: &mut CheckSet) {
         "弱化面数须含删除面",
     );
 
+    // 5.11 **专列恰好五行**：锚点要求「无障碍判据影响专列」，
+    //      而「专列」若只列有变化的面，全持平时就塌成**空表**——
+    //      空表与「忘了评估」在读屏上完全同形。
+    let col = weakening_request().a11y_column();
+    t.add(
+        "U05-红线-专列恰好五行",
+        col.len() == A11yFacet::ALL.len() && !col.is_empty(),
+        &format!("专列须一行一面（实得 {} 行）", col.len()),
+    );
+
+    // 5.12 **持平的面也占位**（反向锚点：专列不得只列变化项）。
+    let flat = ChangeRequest::new(
+        "U05-CTR-A11Y",
+        "1.1.0",
+        "X",
+        "X",
+        standard_a11y_full(),
+        standard_a11y_full(),
+    );
+    let fc = flat.a11y_column();
+    t.add(
+        "U05-红线-持平也占位",
+        fc.len() == 5
+            && fc.rows.iter().all(|r| r.effect == A11yEffect::Unchanged)
+            && fc.regressive_rows().is_empty(),
+        "全持平时专列仍须五行且全标持平（占位即「评估过了」的证据）",
+    );
+
+    // 5.13 **专列与结论同源**：判据侧独立核对「专列说弱化」与
+    //      「结论说弱化」在**每一面**上都不打架。判据不调被测方
+    //      的归并函数，而是按行重算一遍该面的归属。
+    let mut same = true;
+    for r in col.rows.iter() {
+        let expect_regressive = match r.effect {
+            A11yEffect::Weakened => true,
+            A11yEffect::Removed => true,
+            _ => false,
+        };
+        let in_delta = d.weakened.contains(&r.facet) || d.removed.contains(&r.facet);
+        if expect_regressive != in_delta {
+            same = false;
+        }
+    }
+    t.add(
+        "U05-红线-专列与结论逐面一致",
+        same,
+        "专列判为弱化/删除的面须逐面出现在结论的弱化或删除清单里",
+    );
+
+    // 5.14 **加强与新增不判弱化**（专列上要能区分这两者，
+    //      否则「加强」与「新增」在复盘里同形）。
+    let up2 = ChangeRequest::new(
+        "U05-CTR-A11Y",
+        "1.1.0",
+        "X",
+        "X",
+        vec![(A11yFacet::Contrast, 1)],
+        vec![(A11yFacet::Contrast, 2), (A11yFacet::HitArea, 1)],
+    );
+    let uc = up2.a11y_column();
+    t.add(
+        "U05-红线-加强与新增可区分",
+        uc.row(A11yFacet::Contrast).map(|r| r.effect) == Some(A11yEffect::Strengthened)
+            && uc.row(A11yFacet::HitArea).map(|r| r.effect) == Some(A11yEffect::Added)
+            && !up2.a11y_delta().is_weakened(),
+        "加强与新增须各自归位，且都不判弱化",
+    );
+
+    // 5.15 **专列可读屏**（一行一面逐行可念）。
+    let ct = col.screen_text();
+    t.add(
+        "U05-红线-专列可读屏",
+        ct.contains("对比度") && ct.contains("弱化") && ct.lines().count() >= 6,
+        "专列读屏须逐行给出面名、前后强度与归类",
+    );
+
+    // 5.16 **流程册上的专列取自受理的申请**（不受闸结论的归并口径影响：
+    //      结论里存的是弱化/新增/删除三类，拿不出「持平」与「加强」）。
+    let reg = std_reg();
+    let e2 = opened_with_impact(standard_additive_request(), &reg);
+    t.add(
+        "U05-红线-流程册专列恒五行",
+        e2.flow("U05-CTR-A11Y").map(|f| f.a11y_column().len()) == Some(5),
+        "放行态申请（无任何弱化）的专列同样须五行",
+    );
+
     t.flush(cs);
 }
 
@@ -900,9 +998,9 @@ fn checks_degrade(mut t: FamilyTally, cs: &mut CheckSet) {
     e4.open(roll_req, &reg2).expect("受理");
 
     // (a) 目标不在册 → TargetMissing
-    let va = e4.rollback_to("U05-CTR-ROLL", "7.7.7", &reg2);
+    let va = e4.rollback_to("U05-CTR-ROLL", "7.7.7", DomainTag::U, &reg2);
     // (b) 目标已废止 → TargetRetired
-    let vb = e4.rollback_to("U05-CTR-ROLL", "0.9.0", &reg2);
+    let vb = e4.rollback_to("U05-CTR-ROLL", "0.9.0", DomainTag::U, &reg2);
     t.add(
         "U05-降级-回滚目标缺失立案",
         !va.is_ok() && matches!(va, RollbackVerdict::TargetMissing(_)),
@@ -938,7 +1036,7 @@ fn checks_degrade(mut t: FamilyTally, cs: &mut CheckSet) {
     // 6.7 **回滚成功路径**：退到在册未废止的基线版本。
     let mut e7 = ChangeFlowEngine::new();
     let _ = e7.open(standard_additive_request(), &reg);
-    let ok = e7.rollback("U05-CTR-A11Y", &reg);
+    let ok = e7.rollback("U05-CTR-A11Y", DomainTag::U, &reg);
     t.add(
         "U05-降级-回滚成功退基线",
         ok.is_ok(),
@@ -967,6 +1065,302 @@ fn checks_degrade(mut t: FamilyTally, cs: &mut CheckSet) {
         "U05-降级-仅废止态判不可回滚",
         life,
         "只有 Retired 判不可回滚；草拟/已注册/已冻结均可回滚",
+    );
+
+    // 6.23 **回滚成功必须腾出在途名额**（回滚的死胡同，与作废同源）：
+    //      只把游标归零却留着流程行，`open` 会永远以「已有在途变更」拒受理，
+    //      这条契约从此再也改不了。
+    let mut e23 = ChangeFlowEngine::new();
+    let _ = e23.open(standard_additive_request(), &reg);
+    let rb = e23.rollback("U05-CTR-A11Y", DomainTag::U, &reg);
+    let freed = e23.flow("U05-CTR-A11Y").is_none();
+    let reopen = e23.open(standard_additive_request(), &reg);
+    t.add(
+        "U05-降级-回滚成功腾出名额",
+        rb.is_ok() && freed && reopen.is_ok(),
+        "回滚成功后须能重新受理同一契约的变更（回滚不得成为新的死胡同）",
+    );
+
+    // 6.24 **回滚不抹痕迹，且回滚本身留痕留名**。
+    let rb_traced = e23
+        .traces_of("U05-CTR-A11Y")
+        .iter()
+        .any(|x| x.code == E_ROLLED_BACK && x.actor == DomainTag::U);
+    t.add(
+        "U05-降级-回滚留痕留名",
+        rb_traced && !e23.traces_of("U05-CTR-A11Y").is_empty(),
+        "回滚是后果最重的动作，痕迹须记发起人",
+    );
+
+    // 6.25 **回滚失败不得腾名额**（失败的回滚没改变任何东西，
+    //      放走流程行等于把在途变更弄丢）。
+    let mut e25 = opened_with_impact(standard_additive_request(), &reg);
+    let bad_rb = e25.rollback_to("U05-CTR-A11Y", "7.7.7", DomainTag::U, &reg);
+    t.add(
+        "U05-降级-回滚失败保留流程行",
+        !bad_rb.is_ok() && e25.flow("U05-CTR-A11Y").is_some(),
+        "回滚失败不得把在途流程一并丢掉",
+    );
+
+    t.flush(cs);
+}
+
+// ===========================================================================
+// 六之二、越步（降级矩阵第一格·步序侧）+ 撤回出口
+// ===========================================================================
+
+fn checks_order(mut t: FamilyTally, cs: &mut CheckSet) {
+    let reg = std_reg();
+
+    // 6.10 **反向锚点（先立）**：请求「正是下一步」时照常通过。
+    //     没有这条，一个「advance_to 永远返回 Err」的实现能把本族全绿。
+    let mut e_ok = opened_with_impact(standard_additive_request(), &reg);
+    sign_all(&mut e_ok, 1);
+    let r_ok = e_ok.advance_to("U05-CTR-A11Y", FlowStep::Cosign, DomainTag::U);
+    t.add(
+        "U05-降级-合法步位照常走",
+        r_ok.is_ok() && e_ok.flow("U05-CTR-A11Y").and_then(|f| f.cursor) == Some(FlowStep::Cosign),
+        "请求的正是下一步时不得被当成越步（否则本族只是「永远拒绝」）",
+    );
+
+    // 6.11 **向前越步被拒**（受理+影响分析后直接要切换 = 跳过会签与灰度）。
+    let mut e1 = opened_with_impact(standard_additive_request(), &reg);
+    let r1 = e1.advance_to("U05-CTR-A11Y", FlowStep::Cutover, DomainTag::U);
+    t.add(
+        "U05-降级-向前越步被拒",
+        r1.is_err(),
+        "跳过会签与灰度直接要求切换，须被拒",
+    );
+
+    // 6.12 **越步必须「回退」**：游标退回未启动（不是原地不动）。
+    //     判据侧独立算：作废后游标须为 None，否则「回退」是空话。
+    let cur1 = e1.flow("U05-CTR-A11Y").and_then(|f| f.cursor);
+    let voided1 = e1.flow("U05-CTR-A11Y").and_then(|f| f.voided_from);
+    t.add(
+        "U05-降级-越步退回未启动",
+        cur1.is_none() && voided1 == Some(FlowStep::Cutover),
+        &format!("游标须退回未启动（实得 {:?}），作废起点记在被请求的步", cur1),
+    );
+
+    // 6.13 **越步必须「作废」**：整条痕迹标作废，且**一行不删**。
+    let tr1 = e1.traces_of("U05-CTR-A11Y");
+    let void_rows = tr1.iter().filter(|x| x.outcome == TraceOutcome::Voided).count();
+    let left_rows = tr1.iter().filter(|x| x.outcome == TraceOutcome::Advanced).count();
+    t.add(
+        "U05-降级-越步作废整条留痕",
+        void_rows >= 1 && left_rows == 0 && !tr1.is_empty(),
+        &format!("既有推进痕迹须整条标作废但保留（作废 {} 条 / 未作废 {} 条 / 共 {} 条）", void_rows, left_rows, tr1.len()),
+    );
+
+    // 6.14 **越步后不再接受推进**（否则作废只是个标记）。
+    t.add(
+        "U05-降级-越步后拒推进",
+        e1.advance("U05-CTR-A11Y", DomainTag::U).is_err()
+            && e1.advance_to("U05-CTR-A11Y", FlowStep::Impact, DomainTag::U).is_err(),
+        "已作废流程两条走步口都须拒",
+    );
+
+    // 6.15 **向后越步同罪**（回头重走已过的步 = 把已作废的判定复活）。
+    let mut e2 = opened_with_impact(standard_additive_request(), &reg);
+    sign_all(&mut e2, 1);
+    let _ = e2.advance("U05-CTR-A11Y", DomainTag::U); // 会签
+    let r2 = e2.advance_to("U05-CTR-A11Y", FlowStep::Request, DomainTag::U);
+    t.add(
+        "U05-降级-向后越步被拒",
+        r2.is_err() && e2.flow("U05-CTR-A11Y").and_then(|f| f.cursor).is_none(),
+        "回头重走申请步须被拒并同样退回未启动（否则拨游标即可复活作废判定）",
+    );
+
+    // 6.16 **作废流程必须撤得回**（否则申请人被永久锁死：
+    //     advance 拒推进 + open 拒并行受理 = 这条契约再也改不了）。
+    let mut e3 = opened_with_impact(standard_additive_request(), &reg);
+    sign_all(&mut e3, 1);
+    let _ = e3.advance("U05-CTR-A11Y", DomainTag::U);
+    let _ = e3.advance("U05-CTR-A11Y", DomainTag::U);
+    let _ = e3.advance_canary(
+        "U05-CTR-A11Y",
+        CanaryStage::Full,
+        CanaryObservation { stage: CanaryStage::Internal, healthy: true, observer: DomainTag::U },
+        DomainTag::U,
+    ); // 越档作废
+    let traces_before = e3.traces_of("U05-CTR-A11Y").len();
+    let r3 = e3.retract("U05-CTR-A11Y", DomainTag::U);
+    t.add(
+        "U05-降级-作废流程可撤回",
+        r3.is_ok() && e3.flow("U05-CTR-A11Y").is_none(),
+        "作废流程须有撤回出口",
+    );
+
+    // 6.17 **撤回不抹痕迹**，且撤回本身留痕。
+    let traces_after = e3.traces_of("U05-CTR-A11Y").len();
+    let retracted_traced = e3
+        .traces_of("U05-CTR-A11Y")
+        .iter()
+        .any(|x| x.outcome == TraceOutcome::Retracted);
+    t.add(
+        "U05-降级-撤回留痕且不删行",
+        traces_after >= traces_before && retracted_traced,
+        &format!("撤回只抹在途状态，痕迹须一行不删并留撤回痕（{} → {}）", traces_before, traces_after),
+    );
+
+    // 6.18 **撤回后可修正后重提**（「从第 1 步重来」这条正路真的在）。
+    let reopened = e3.open(standard_additive_request(), &reg);
+    t.add(
+        "U05-降级-撤回后能重新受理",
+        reopened.is_ok() && e3.flow("U05-CTR-A11Y").is_some(),
+        "撤回后同契约须能重新受理（这是 §二「正路未封死」的实证）",
+    );
+
+    // 6.19 **在途流程撤不回**（撤回若对在途流程开放，就是绕开会签的暗门：
+    //     会签挂起 → 撤回 → 重开 → 表是空的，会签白走一遍）。
+    let mut e4 = opened_with_impact(standard_additive_request(), &reg);
+    let r4 = e4.retract("U05-CTR-A11Y", DomainTag::U);
+    t.add(
+        "U05-降级-在途流程撤不回",
+        r4.is_err() && e4.flow("U05-CTR-A11Y").is_some(),
+        "未作废的在途流程不得撤回",
+    );
+
+    t.flush(cs);
+}
+
+// ===========================================================================
+// 六之三、会签表为空（消费方全撤订后表塌空）
+// ===========================================================================
+
+fn checks_empty_cosign(mut t: FamilyTally, cs: &mut CheckSet) {
+    // 走一条**真实可达**的塌空路径：F4203 允许注册时须有消费方，
+    // 但撤订只标记不删行，于是「全部撤订后 consumers() 为空」是真的会发生的。
+    let mut reg = std_reg();
+    let _ = reg.deregister("U05-CTR-A11Y", "1.0.0", DomainTag::T);
+    let _ = reg.deregister("U05-CTR-A11Y", "1.0.0", DomainTag::U);
+    let empty = reg.consumers("U05-CTR-A11Y", "1.0.0").is_empty();
+
+    let mut e = opened_with_impact(standard_additive_request(), &reg);
+    let table_empty = e.flow("U05-CTR-A11Y").map(|f| f.cosign.is_empty()).unwrap_or(false);
+
+    // 6.20 **空表不判通过**：这是本条的全部要害。逐行扫空的
+    //     `cosign_verdict()` 天生返回 Passed，「会签通过」的真实含义
+    //     成了「没人需要签」。
+    t.add(
+        "U05-会签-空表不判通过",
+        empty && table_empty,
+        "撤订全部消费方后会签表须为空（前置事实）",
+    );
+
+    let r = e.advance("U05-CTR-A11Y", DomainTag::U);
+    let v = e.flow("U05-CTR-A11Y").map(|f| f.cosign_verdict());
+    t.add(
+        "U05-会签-空表挂起不放行",
+        r.is_err() && v == Some(CosignVerdict::Vacuous) && !CosignVerdict::Vacuous.may_advance(),
+        "空表须判独立的「空转」而非「全签通过」——归并过去痕迹上就会记一句干净的通过",
+    );
+
+    // 6.21 **空转与挂起不得同形**（反向锚点：否则读册的人分不出
+    //      「还没人签」与「没人需要签」，前者的出路是催办，后者的出路是补消费方）。
+    t.add(
+        "U05-会签-空转不并入挂起",
+        CosignVerdict::Vacuous != CosignVerdict::Pending
+            && CosignVerdict::Vacuous.zh() != CosignVerdict::Pending.zh()
+            && !CosignVerdict::Vacuous.is_terminal(),
+        "空转是独立一态：不可继续（出路：补消费方）且非终局（不是被否决）",
+    );
+
+    // 6.21 **空表必须立案**：静默挂起会让人以为「只是还没人签」。
+    let codes: Vec<&'static str> = e.cases().iter().map(|c| c.code).collect();
+    t.add(
+        "U05-会签-空表即立案",
+        codes.contains(&E_COSIGN_NO_PARTY),
+        &format!("立案码集合 {:?}", codes),
+    );
+
+    // 6.22 **空表挂起须留痕**且指向会签步。
+    let held = e
+        .traces_of("U05-CTR-A11Y")
+        .iter()
+        .any(|x| x.step == FlowStep::Cosign && x.code == E_COSIGN_NO_PARTY);
+    t.add(
+        "U05-会签-空表留痕",
+        held,
+        "「这一步没发生」须在痕迹里看得见，不能只挂起不留痕",
+    );
+
+    t.flush(cs);
+}
+
+// ===========================================================================
+// 六之四、影响分析报告（第二步的产出物 · 分析 O(影响面)）
+// ===========================================================================
+
+fn checks_impact(mut t: FamilyTally, cs: &mut CheckSet) {
+    let reg = std_reg();
+
+    // 6.26 **第二步必须产出报告**：只判「过没过兼容闸」不叫影响分析，
+    //      它判的是这份改动**波及谁**。
+    let req = standard_additive_request()
+        .with_affected("U03-CTR-FOCUS")
+        .with_affected("U05-CTR-A11Y");
+    let e = opened_with_impact(req, &reg);
+    t.add(
+        "U05-降级-影响分析产出报告",
+        e.flow("U05-CTR-A11Y").and_then(|f| f.impact.as_ref()).is_some(),
+        "过完第二步须有影响分析报告",
+    );
+
+    // 6.27 **须会签方取自注册册**，不采信申请自述。
+    let r = e.flow("U05-CTR-A11Y").and_then(|f| f.impact.as_ref());
+    let want = expected_parties(&reg, "U05-CTR-A11Y", "1.0.0");
+    t.add(
+        "U05-降级-报告须会签方对齐册",
+        r.map(|x| x.parties.clone()) == Some(want.clone()) && !want.is_empty(),
+        &format!("报告里的须会签方须等于注册册消费方 {:?}", want),
+    );
+
+    // 6.28 **专列在报告里恒五行**（不因报告换了个载体就塌成空表）。
+    t.add(
+        "U05-降级-报告含五行专列",
+        r.map(|x| x.a11y.len()) == Some(5),
+        "报告内的无障碍专列须仍是一面一行",
+    );
+
+    // 6.29 **影响面条目数**（`分析 O(影响面)` 的「面」由 `surface_len` 度量）：
+    //      判据侧独立重算 = 申报数 + 相关方数 + 五面 + 档跳数。
+    let hops = CanaryStage::ALL.len() - 1;
+    let want_len = 2 + want.len() + 5 + hops;
+    t.add(
+        "U05-降级-影响面条目可重算",
+        r.map(|x| x.surface_len()) == Some(want_len) && hops == canary_hops(),
+        &format!("条目数须可独立重算（期望 {}）", want_len),
+    );
+
+    // 6.30 **档跳数跟着档表走**（写死字面量的话，增一档就静默少算一档）。
+    t.add(
+        "U05-降级-档跳数随档表",
+        canary_hops() == CanaryStage::ALL.len() - 1 && canary_hops() > 0,
+        "须逐档走过的跳数须由档表长度导出",
+    );
+
+    // 6.31 **未申报影响面须显性写出**（反向锚点：空表与「忘了评估」不可同形）。
+    let e2 = opened_with_impact(standard_additive_request(), &reg);
+    let rt = e2
+        .flow("U05-CTR-A11Y")
+        .and_then(|f| f.impact.as_ref())
+        .map(|x| x.screen_text())
+        .unwrap_or_default();
+    t.add(
+        "U05-降级-未申报影响面显性化",
+        rt.contains("未申报影响面") && e2.flow("U05-CTR-A11Y").map(|f| f.req.affected_contracts.is_empty()).unwrap_or(false),
+        "未申报影响面须在报告里显性写明，不得与「评估为空」同形",
+    );
+
+    // 6.32 **被阻断时报告照样落**（否则被拒的变更成了黑盒：
+    //      读册的人只知道「被拒」，不知道波及了谁）。
+    let e3 = opened_with_impact(compliant_breaking_request_no_guide(), &reg);
+    t.add(
+        "U05-降级-阻断时报告仍落定",
+        e3.flow("U05-CTR-A11Y").and_then(|f| f.impact.as_ref()).is_some()
+            && e3.flow("U05-CTR-A11Y").and_then(|f| f.verdict.as_ref()).map(|v| !v.allows()).unwrap_or(false),
+        "兼容闸阻断时影响面须仍可读",
     );
 
     t.flush(cs);
@@ -1063,6 +1457,51 @@ fn checks_errors(mut t: FamilyTally, cs: &mut CheckSet) {
         "读屏总览须同时给出痕迹与催办两节",
     );
 
+    // 7.6 **读屏总览含无障碍专列**（锚点要求的专列要在读屏面上，
+    //     只存在于结构体里等于没做——读屏的人看不到）。
+    t.add(
+        "U05-错误-读屏含无障碍专列",
+        s.contains("无障碍判据影响专列") && s.contains("对比度"),
+        "读屏总览须带出无障碍判据影响专列",
+    );
+
+    // 7.7 **作废了却仍停在推进位**，自审须能报出来。
+    //     作废的语义是「整条不成立」，游标却还指着某一步时，
+    //     读册的人会以为它仍在推进中。
+    let mut forged3 = ChangeFlowEngine::new();
+    forged3.open(standard_additive_request(), &reg).expect("受理");
+    if let Some(f) = forged3.flow_mut("U05-CTR-A11Y") {
+        f.cursor = Some(FlowStep::Impact);
+        f.voided_from = Some(FlowStep::Cutover);
+        f.canary = Some(CanaryStage::TenPercent);
+    }
+    let audit3 = forged3.self_audit();
+    t.add(
+        "U05-错误-作废却推进可被自审捕获",
+        audit3.iter().any(|x| x.contains(E_AUDIT_VOIDED_ADVANCED)),
+        &format!("已作废却留游标/灰度档，自审须报出来：{:?}", audit3),
+    );
+
+    // 7.8 **会签表为空却已推进**，自审须能报出来。
+    let mut forged4 = ChangeFlowEngine::new();
+    forged4.open(standard_additive_request(), &reg).expect("受理");
+    if let Some(f) = forged4.flow_mut("U05-CTR-A11Y") {
+        f.cosign.clear();
+        f.cursor = Some(FlowStep::Cosign);
+        f.verdict = Some(CompatVerdict {
+            kind: ChangeKind::Additive,
+            major_bumped: false,
+            migration_ok: false,
+            a11y: A11yDelta::none(),
+        });
+    }
+    let audit4 = forged4.self_audit();
+    t.add(
+        "U05-错误-空会签表推进可被自审捕获",
+        audit4.iter().any(|x| x.contains(E_AUDIT_NO_PARTY)),
+        &format!("会签表空却已推进，自审须报出来：{:?}", audit4),
+    );
+
     t.flush(cs);
 }
 
@@ -1073,13 +1512,16 @@ fn checks_errors(mut t: FamilyTally, cs: &mut CheckSet) {
 /// 跑 VE-F4205 全部自检。
 pub fn run_veu05_flow_checks() -> CheckSet {
     let mut cs = CheckSet::new("VE-F4205 契约变更流程引擎");
-    let mut t = FamilyTally::new();
-    checks_trace(t, &mut cs);
+    checks_trace(FamilyTally::new(), &mut cs);
     checks_compat(FamilyTally::new(), &mut cs);
     checks_canary(FamilyTally::new(), &mut cs);
     checks_cosign(FamilyTally::new(), &mut cs);
     checks_redline(FamilyTally::new(), &mut cs);
     checks_degrade(FamilyTally::new(), &mut cs);
+    checks_order(FamilyTally::new(), &mut cs);
+    checks_empty_cosign(FamilyTally::new(), &mut cs);
+    checks_impact(FamilyTally::new(), &mut cs);
     checks_errors(FamilyTally::new(), &mut cs);
     cs
 }
+

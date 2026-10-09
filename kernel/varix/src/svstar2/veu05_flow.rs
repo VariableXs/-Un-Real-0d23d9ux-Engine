@@ -167,6 +167,68 @@
 //! 与其无障碍判据域对齐。
 //!
 //! 无隐私面：本项处理的是契约元数据与流程痕迹，不触碰用户数据。
+//!
+//! # 十一、「越步」必须先有地方能越步，否则第一格降级是纸面条款
+//!
+//! 降级矩阵第一格写的是「越步→作废+回退」。最容易的写法是只留
+//! [`ChangeFlowEngine::advance`] 一个走步口——它自己算下一步，
+//! 于是**调用方压根无法请求别的步位**，越步不可表达、不可能被发生，
+//! 那条纪律就成了跑不到的分支。
+//!
+//! 故本版另有 [`ChangeFlowEngine::advance_to`]：请求哪个步位由调用方说。
+//! 于是越步成为**可表达**的事，也才能被拒、被记进痕迹。
+//!
+//! 处置上有个易错点：越步时游标本来就停在合法位，「退回去」是空操作，
+//! 于是只置一个作废标记就以为「回退」也做了。故 [`void_out_of_order`]
+//! **退回未启动**并把整条痕迹标作废——跨步的越权牵连的是整条推进链，
+//! 退回一步是不够的（与「越档」不同，详见 `void_flow` 的注释）。
+//!
+//! # 十二、作废必须有出口，否则申请人被永久锁死
+//!
+//! 作废之后 `advance` 拒推进、`open` 又因「已有在途变更」拒受理，
+//! 契约从此改不了。这正是 §二 批评的「把正路一并封死」的**另一种写法**——
+//! 批评的是「只作废不回退」，这里则是「两件都做了，但撤回口没开」。
+//!
+//! 故本版给出 [`ChangeFlowEngine::retract`]，并给它三条纪律：
+//! **只许撤作废的**（否则撤回会变成绕开会签的暗门）、
+//! **痕迹一行不删**（撤回抹的是在途状态，不是发生过什么）、
+//! **撤回本身也留痕**（步步留痕对撤回同样成立）。
+//!
+//! # 十三、会签表为空 = 这一步没发生，不是「全票通过」
+//!
+//! 会签表按 F4203 注册册的消费方铺开。契约若在册却无任何消费方，表就是空的，
+//! 而逐行扫空的 [`ChangeFlow::cosign_verdict`] 返回 `Passed`——
+//! 「会签通过」的真实含义成了「没人需要签」。
+//!
+//! 这不是通过，是**这一步根本没发生**，而痕迹上会记一条干净的「通过」，
+//! 谁也看不出该步被架空。故 [`step_cosign`] 对空表**挂起 + 立案**。
+//!
+//! # 十四、无障碍「专列」是五面各一行，不是「有变化的那几行」
+//!
+//! 锚点：「变更评估含无障碍判据影响专列」。只列变化的行有个致命后果：
+//! 全持平时专列是**空表**，而空表与「忘了评估」在读屏上完全同形。
+//!
+//! 故 [`A11yColumn`] 恒为 [`A11yFacet::ALL`] 的长度行，持平的面也占位——
+//! 占位本身即「这一面评估过了」的可查证据。且 [`A11yDelta`] 由专列
+//! **归并**而来而不重新比较（两处各比一遍早晚会长歪：专列说持平、
+//! 结论说弱化，而读屏的人只能看见专列）。
+//!
+//! # 十五、性能逐项分解与死锁的两种同源病
+//!
+//! 锚点：「走步 O(变更)；分析 O(影响面)；会签 O(方)」。三条对应的落点：
+//!
+//! - **走步 O(变更)**：[`ChangeFlowEngine::advance`] 与 [`ChangeFlowEngine::advance_to`]
+//!   各只做常数次按契约 ID 的线性定位（册容量 `MAX_FLOWS` 有界），
+//!   痕迹写入 `push_trace` 一次；越步的整条标记是**一趟**扫描，不嵌套。
+//! - **分析 O(影响面)**：[`ChangeFlowEngine::step_impact`] 产出 [`ImpactReport`]，
+//!   其规模由 [`ImpactReport::surface_len`]（`affected + parties + 五面 + 档数`）度量。
+//! - **会签 O(方)**：[`ChangeFlow::cosign_verdict`] 与 [`ChangeFlow::pending_parties`]
+//!   各扫表一趟，表长等于消费方数。
+//!
+//! 另一条：**死锁有两种同源病**，都源于「拒绝之后不给出路」——
+//! 作废不给出路（§十二）与回滚不给出路（本节）是同一条：
+//! 前者让 `advance` 与 `open` 双拒，后者只留一个游标归零却仍占名额的流程行。
+//! 两处的修法一致：**终态即离册，痕迹留档**。
 
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -387,6 +449,13 @@ pub struct ChangeRequest {
     pub migration_guide: Option<String>,
     /// 删除的字段名（**删字段必是破坏性**）。
     pub removed_fields: Vec<String>,
+    /// 申报的**影响面**：本变更波及的其它契约 ID。
+    ///
+    /// 由申请方申报，第二步影响分析会把它连同会签方、无障碍专列一并
+    /// 汇成 [`ImpactReport`] 落进痕迹。**申报为空不算错**——
+    /// 「只改自己」是合法变更；但申报为空时报告会显性写明
+    /// 「未申报影响面」，而不是让读册的人以为评估结果是空。
+    pub affected_contracts: Vec<String>,
 }
 
 impl ChangeRequest {
@@ -408,6 +477,7 @@ impl ChangeRequest {
             a11y_after,
             migration_guide: None,
             removed_fields: Vec::new(),
+            affected_contracts: Vec::new(),
         }
     }
 
@@ -420,6 +490,12 @@ impl ChangeRequest {
     /// 声明删了字段（**删字段即破坏性**，不可自报豁免）。
     pub fn with_removed(mut self, field: &str) -> ChangeRequest {
         self.removed_fields.push(field.to_string());
+        self
+    }
+
+    /// 申报一条影响面（**波及的其它契约**）。
+    pub fn with_affected(mut self, contract_id: &str) -> ChangeRequest {
+        self.affected_contracts.push(contract_id.to_string());
         self
     }
 
@@ -494,6 +570,118 @@ impl ChangeRequest {
 // 三、无障碍红线：弱化即破坏（由内容推导，不接受自报）
 // ---------------------------------------------------------------------------
 
+/// 单个无障碍面在本次变更中的**归类**（专列的判定单元）。
+///
+/// 单列一个 `Weakened` 布尔会把「持平 / 加强 / 弱化 / 删除 / 新增」五态
+/// 压成一列，于是复盘时分不出「本来就零强度」与「被降到零」——
+/// 而这两者的严重度完全不同。故归类做成**五态枚举**。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum A11yEffect {
+    /// 持平。
+    Unchanged,
+    /// 加强（强度上升）。
+    Strengthened,
+    /// 弱化（强度下降但仍大于零）。
+    Weakened,
+    /// 删除（改动前有、改动后归零）。
+    Removed,
+    /// 新增（改动前没有、改动后有）。
+    Added,
+}
+
+impl A11yEffect {
+    /// 中文名。
+    pub fn zh(self) -> &'static str {
+        match self {
+            A11yEffect::Unchanged => "持平",
+            A11yEffect::Strengthened => "加强",
+            A11yEffect::Weakened => "弱化",
+            A11yEffect::Removed => "删除",
+            A11yEffect::Added => "新增",
+        }
+    }
+
+    /// 是否属**弱化方向**（删除计弱化，见 [`A11yDelta::is_weakened`]）。
+    pub fn is_regressive(self) -> bool {
+        match self {
+            A11yEffect::Weakened => true,
+            A11yEffect::Removed => true,
+            _ => false,
+        }
+    }
+}
+
+/// **无障碍判据影响专列**的一行（锚点：「变更评估含无障碍判据影响专列」）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct A11yColumnRow {
+    /// 该行对应的无障碍面。
+    pub facet: A11yFacet,
+    /// 改动前强度（**已钳制到域内**，见 [`clamp_strength`]）。
+    pub before: u8,
+    /// 改动后强度（**已钳制到域内**）。
+    pub after: u8,
+    /// 归类。
+    pub effect: A11yEffect,
+}
+
+impl A11yColumnRow {
+    /// 读屏单行。
+    pub fn screen_line(&self) -> String {
+        format!(
+            "{}：{} → {}（{}）",
+            self.facet.zh(),
+            self.before,
+            self.after,
+            self.effect.zh()
+        )
+    }
+}
+
+/// 无障碍判据影响**专列**（**五面各一行，一行不缺**）。
+///
+/// 「专列」这个词要落在**数据**上：只列「有变化的面」的那种专列，
+/// 在「全部持平」时是**空表**，而空表与「忘了评估」在读屏上完全同形。
+/// 故本列恒为 [`A11yFacet::ALL`] 的长度行，持平的行也占位——
+/// 占位本身就是「这一面评估过了」的可查证据。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct A11yColumn {
+    /// 五行（顺序即 [`A11yFacet::ALL`]）。
+    pub rows: Vec<A11yColumnRow>,
+}
+
+impl A11yColumn {
+    /// 专列行数（**恒等于无障碍面数**，见结构注释）。
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// 是否空列（**恒为假**：专列不许塌成空表）。
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// 取某面的行。
+    pub fn row(&self, f: A11yFacet) -> Option<&A11yColumnRow> {
+        self.rows.iter().find(|r| r.facet == f)
+    }
+
+    /// 弱化方向的行（**专列到行，不只给一个布尔**）。
+    pub fn regressive_rows(&self) -> Vec<&A11yColumnRow> {
+        self.rows.iter().filter(|r| r.effect.is_regressive()).collect()
+    }
+
+    /// 读屏多行（**一行一面，逐行可念**）。
+    pub fn screen_text(&self) -> String {
+        let mut s = String::from("无障碍判据影响专列：\n");
+        for r in self.rows.iter() {
+            s.push_str("  ");
+            s.push_str(&r.screen_line());
+            s.push('\n');
+        }
+        s
+    }
+}
+
 /// 无障碍影响推导结果。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct A11yDelta {
@@ -538,29 +726,54 @@ impl A11yDelta {
 }
 
 impl ChangeRequest {
-    /// **无障碍影响推导**（本项红线所在）。
+    /// **无障碍判据影响专列**（锚点：变更评估含无障碍判据影响专列）。
     ///
-    /// 逐面比较改动前后强度：
+    /// 逐面比较改动前后强度，产出**恒五行**的专列（见 [`A11yColumn`]）。
+    /// 归类口径：
     ///
-    /// - 改动后**没有**该面 → [`A11yDelta::removed`]；
-    /// - 改动后强度**更低** → [`A11yDelta::weakened`]；
-    /// - 改动后强度**相等或更高** → 不算弱化；
-    /// - 改动前没有、改动后有 → [`A11yDelta::added`]（新增面不是弱化）。
+    /// - 改动前有、改动后归零 → [`A11yEffect::Removed`]；
+    /// - 改动后强度**更低**但仍大于零 → [`A11yEffect::Weakened`]；
+    /// - 改动后强度**更高** → [`A11yEffect::Strengthened`]；
+    /// - 改动前没有、改动后有 → [`A11yEffect::Added`]；
+    /// - 其余 → [`A11yEffect::Unchanged`]。
     ///
     /// 强度域**在推导内自行兜底**：超过 [`A11yFacet::MAX_STRENGTH`] 的
     /// 声明值按上限截断，避免「声明 250 强度」把比较变成假弱化。
     /// 依据第十节纪律第 8 条——`pub` 纯函数不能依赖调用方先钳制。
-    pub fn a11y_delta(&self) -> A11yDelta {
-        let mut d = A11yDelta::none();
+    pub fn a11y_column(&self) -> A11yColumn {
+        let mut rows: Vec<A11yColumnRow> = Vec::new();
         for f in A11yFacet::ALL.iter().copied() {
             let b = clamp_strength(self.before_strength(f));
             let a = clamp_strength(self.after_strength(f));
-            if b > 0 && a == 0 {
-                d.removed.push(f);
+            let effect = if b > 0 && a == 0 {
+                A11yEffect::Removed
             } else if a < b {
-                d.weakened.push(f);
+                A11yEffect::Weakened
             } else if b == 0 && a > 0 {
-                d.added.push(f);
+                A11yEffect::Added
+            } else if a > b {
+                A11yEffect::Strengthened
+            } else {
+                A11yEffect::Unchanged
+            };
+            rows.push(A11yColumnRow { facet: f, before: b, after: a, effect });
+        }
+        A11yColumn { rows }
+    }
+
+    /// **无障碍影响推导**（本项红线所在）。
+    ///
+    /// 专列是**单一事实来源**，本函数只做归并而**不重新比较**——
+    /// 两处各比一遍早晚会长歪（专列说持平、结论说弱化，
+    /// 而读屏的人只能看见专列）。
+    pub fn a11y_delta(&self) -> A11yDelta {
+        let mut d = A11yDelta::none();
+        for r in self.a11y_column().rows.iter() {
+            match r.effect {
+                A11yEffect::Removed => d.removed.push(r.facet),
+                A11yEffect::Weakened => d.weakened.push(r.facet),
+                A11yEffect::Added => d.added.push(r.facet),
+                A11yEffect::Unchanged | A11yEffect::Strengthened => {}
             }
         }
         d
@@ -704,6 +917,70 @@ impl CompatGate {
     }
 }
 
+/// **影响分析报告**（第二步的产出物，锚点「分析 O(影响面）」的落点）。
+///
+/// 「影响分析」四字若只做成一句「过没过兼容闸」，那这一步就不叫影响分析——
+/// 它判的是**这份改动波及谁**，而不是**这份改动合不合法**。
+/// 合法与否归兼容闸，波及谁归本报告，两者不混。
+///
+/// 报告由四部分构成，**缺哪部分都会在读屏上显性写出来**：
+///
+/// 1. [`ImpactReport::a11y`]——无障碍判据影响**专列**（恒五行，见 [`A11yColumn`]）；
+/// 2. [`ImpactReport::affected`]——申报波及的其它契约；
+/// 3. [`ImpactReport::parties`]——须会签的相关方（来自 F4203 注册册）；
+/// 4. [`ImpactReport::canary_hops`]——本变更须逐档走过的灰度档数。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImpactReport {
+    /// 契约 ID。
+    pub contract_id: String,
+    /// 无障碍判据影响专列。
+    pub a11y: A11yColumn,
+    /// 申报波及的其它契约（**声明顺序即申报顺序**，不排序不改动）。
+    pub affected: Vec<String>,
+    /// 须会签的相关方（**来自注册册消费方**，不采信申请自述）。
+    pub parties: Vec<DomainTag>,
+    /// 本变更须逐档走过的灰度档数（**末档之后的档数**，见 `canary_hops`）。
+    pub canary_hops: usize,
+}
+
+impl ImpactReport {
+    /// **影响面总条目**（`走步 O(变更)`/`分析 O(影响面)` 里的那个「面」）。
+    pub fn surface_len(&self) -> usize {
+        self.affected.len() + self.parties.len() + A11yFacet::ALL.len() + self.canary_hops
+    }
+
+    /// 读屏多行（**四个部分逐段出声**）。
+    pub fn screen_text(&self) -> String {
+        let mut s = String::new();
+        s.push_str(&format!("影响分析报告：{}\n", self.contract_id));
+        s.push_str(&self.a11y.screen_text());
+        s.push_str("  波及契约：");
+        if self.affected.is_empty() {
+            s.push_str("未申报影响面（只改自身；若确有波及须补报）\n");
+        } else {
+            s.push_str(&self.affected.join("、"));
+            s.push('\n');
+        }
+        s.push_str("  须会签方：");
+        if self.parties.is_empty() {
+            s.push_str("无（注册册无消费方；见会签空转处置）\n");
+        } else {
+            let names: Vec<&str> = self.parties.iter().map(|d| d.zh()).collect();
+            s.push_str(&names.join("、"));
+            s.push('\n');
+        }
+        s.push_str(&format!("  须逐档走过灰度：{} 档\n", self.canary_hops));
+        s
+    }
+}
+
+/// 灰度档数（**须逐档走过的跳数**：四档表里从内部档到全量档要走三跳）。
+pub fn canary_hops() -> usize {
+    // `ALL.len() - 1` 写成减法而不是字面量 `3`：档表增档时
+    // 跳数必须跟着变，写死字面量的话新增一档就静默少算一档。
+    CanaryStage::ALL.len() - 1
+}
+
 // ---------------------------------------------------------------------------
 // 五、会签表与催办
 // ---------------------------------------------------------------------------
@@ -736,6 +1013,13 @@ pub enum CosignVerdict {
     Pending,
     /// 有方已拒（**驳回**）。
     Refused,
+    /// **表空**（**没人需要签**，见头注§十三）。
+    ///
+    /// 刻意不并入 [`CosignVerdict::Passed`]：空表逐行扫完「无一未签」，
+    /// 归并过去就成了「全票通过」——而痕迹上记的那句「会签全通过」，
+    /// 真实含义是「这一步根本没发生」。独立成一态，
+    /// 读册的人才分得出「都签了」与「没人签」。
+    Vacuous,
 }
 
 impl CosignVerdict {
@@ -745,6 +1029,7 @@ impl CosignVerdict {
             CosignVerdict::Passed => "会签通过",
             CosignVerdict::Pending => "会签挂起",
             CosignVerdict::Refused => "会签驳回",
+            CosignVerdict::Vacuous => "会签空转",
         }
     }
 
@@ -752,8 +1037,15 @@ impl CosignVerdict {
     pub fn may_advance(self) -> bool {
         match self {
             CosignVerdict::Passed => true,
-            CosignVerdict::Pending => false,
-            CosignVerdict::Refused => false,
+            _ => false,
+        }
+    }
+
+    /// 是否为**终局**（一票否决：拒签一票即定，再等其余方也没意义）。
+    pub fn is_terminal(self) -> bool {
+        match self {
+            CosignVerdict::Refused => true,
+            _ => false,
         }
     }
 }
@@ -923,6 +1215,8 @@ pub enum TraceOutcome {
     Voided,
     /// 挂起（**会签缺等**：不许过，我去催）。
     Held,
+    /// 已撤回（**作废流程被申请人收回**；痕迹仍在，见 [`ChangeFlowEngine::retract`]）。
+    Retracted,
 }
 
 impl TraceOutcome {
@@ -933,6 +1227,7 @@ impl TraceOutcome {
             TraceOutcome::Rejected => "被拒",
             TraceOutcome::Voided => "作废",
             TraceOutcome::Held => "挂起",
+            TraceOutcome::Retracted => "已撤回",
         }
     }
 
@@ -1055,11 +1350,16 @@ pub const E_COSIGN_PENDING: &str = "E_COSIGN_PENDING";
 pub const E_COSIGN_REFUSED: &str = "E_COSIGN_REFUSED";
 pub const E_CANARY_UNHEALTHY: &str = "E_CANARY_UNHEALTHY";
 pub const E_ROLLBACK_MISSING: &str = "E_ROLLBACK_MISSING";
+pub const E_ROLLED_BACK: &str = "E_ROLLED_BACK";
 pub const E_ROLLBACK_RETIRED: &str = "E_ROLLBACK_RETIRED";
 pub const E_A11Y_WEAKENED: &str = "E_A11Y_WEAKENED";
 pub const E_VERSION_MALFORMED: &str = "E_VERSION_MALFORMED";
 pub const E_CONTRACT_UNKNOWN: &str = "E_CONTRACT_UNKNOWN";
 pub const E_FLOW_VOIDED: &str = "E_FLOW_VOIDED";
+pub const E_RETRACT_REFUSED: &str = "E_RETRACT_REFUSED";
+pub const E_COSIGN_NO_PARTY: &str = "E_COSIGN_NO_PARTY";
+pub const E_AUDIT_VOIDED_ADVANCED: &str = "E_AUDIT_VOIDED_ADVANCED";
+pub const E_AUDIT_NO_PARTY: &str = "E_AUDIT_NO_PARTY";
 pub const E_STEP_STATE: &str = "E_STEP_STATE";
 pub const E_CAP: &str = "E_CAP";
 
@@ -1133,6 +1433,8 @@ pub struct ChangeFlow {
     pub cursor: Option<FlowStep>,
     /// 兼容闸结论（`None` = 尚未过闸）。
     pub verdict: Option<CompatVerdict>,
+    /// **影响分析报告**（`None` = 尚未过第二步）。
+    pub impact: Option<ImpactReport>,
     /// 会签表（**须与消费方域集合对齐**）。
     pub cosign: Vec<CosignRow>,
     /// 当前灰度档（`None` = 尚未进灰度步）。
@@ -1181,11 +1483,24 @@ impl ChangeFlow {
         out
     }
 
+    /// **无障碍判据影响专列**（按流程册里**实际受理**的申请现算）。
+    ///
+    /// 从 [`ChangeFlow::req`] 现算而不是从闸结论里反推：闸结论存的是
+    /// [`A11yDelta`]（只有弱化/新增/删除三类），拿不出「持平」与「加强」，
+    /// 而专列要的正是**五面各一行**。少两行，专列就在全持平时塌成空表。
+    pub fn a11y_column(&self) -> A11yColumn {
+        self.req.a11y_column()
+    }
+
     /// 会签结论（**逐行独立判定，不看总数**）。
     ///
     /// 顺序上先看「有拒签」再看「有未签」：拒签是**终局**（一票否决，
-    /// 再等其余方也没意义），挂起是**可恢复**。
+    /// 再等其余方也没意义），挂起是**可恢复**。**空表最先判**——
+    /// 它不是「还没人签」，而是「没人需要签」，两者不可混。
     pub fn cosign_verdict(&self) -> CosignVerdict {
+        if self.cosign.is_empty() {
+            return CosignVerdict::Vacuous;
+        }
         let mut any_pending = false;
         for r in self.cosign.iter() {
             match r.state {
@@ -1363,6 +1678,7 @@ impl ChangeFlowEngine {
             base_version: base_v,
             cursor: Some(FlowStep::Request),
             verdict: None,
+            impact: None,
             cosign,
             canary: None,
             voided_from: None,
@@ -1480,6 +1796,62 @@ impl ChangeFlowEngine {
         }
     }
 
+    /// **显式步位走步**（越步在降级矩阵第一格落地于此）。
+    ///
+    /// [`ChangeFlowEngine::advance`] 只走「下一步」，于是**调用方压根无法越步**
+    /// ——那么「越步→作废+回退」这条纪律就成了写在纸上、跑不到的分支。
+    /// 本入口把「请求哪一步」显式化，越步才成为**可表达、可拒绝、可留痕**的事。
+    ///
+    /// 越步有**两个方向**，处置不同：
+    ///
+    /// - **向前越步**（跳步：期望影响分析却直接要切换）：
+    ///   想跳的是必经关口，整条变更的推进链被牵连 → 作废整条 + 退回未启动。
+    /// - **向后越步**（回跳：已过会签却回头重走申请）：
+    ///   与向前同罪：重走已过的步等于把已作废的判定复活 → 同样作废整条。
+    ///
+    /// 两向同处置是刻意的：区分它们只会给「向后越步」留一条绕过作废的暗门
+    /// （把游标拨回去重走，好让不该生效的会签重新生效一次）。
+    pub fn advance_to(
+        &mut self,
+        contract_id: &str,
+        target: FlowStep,
+        actor: DomainTag,
+    ) -> Result<FlowStep, ConsistencyError> {
+        let expect = {
+            let f = match self.flow(contract_id) {
+                Some(f) => f,
+                None => {
+                    return Err(ConsistencyError::new(
+                        E_CONTRACT_UNKNOWN,
+                        "无此流程",
+                        &format!("找不到契约 {} 的变更流程", contract_id),
+                        "先调用 open 受理申请",
+                        "流程引擎调用方",
+                    ));
+                }
+            };
+            f.expected_step()
+        };
+        if target == expect {
+            return self.advance(contract_id, actor);
+        }
+        let dir = if target.ordinal() > expect.ordinal() { "向前" } else { "向后" };
+        let detail = format!(
+            "{}越步：请求 {}，本进程序在 {}",
+            dir,
+            target.zh(),
+            expect.zh()
+        );
+        self.void_out_of_order(contract_id, target, actor, &detail);
+        Err(ConsistencyError::new(
+            E_STEP_OUT_OF_ORDER,
+            "越步，申请作废并退回未启动",
+            &detail,
+            "六步流按序推进；若确需改步序，先 retract 撤回本次变更，再按新方案重发",
+            "流程引擎调用方",
+        ))
+    }
+
     /// **切换/通告步的纵深复核**（兼容闸结论 + 会签齐备 + 灰度全量）。
     ///
     /// 写成显式复核而非依赖上游，是因为「上游一定拦住了」是**推断**不是**保证**：
@@ -1537,7 +1909,7 @@ impl ChangeFlowEngine {
 
     /// 第二步·影响分析（**兼容闸在此执行**）。
     fn step_impact(&mut self, contract_id: &str, actor: DomainTag) -> Result<(), ConsistencyError> {
-        let (req, base_v) = {
+        let (req, base_v, parties) = {
             let f = match self.flow(contract_id) {
                 Some(f) => f,
                 None => {
@@ -1552,7 +1924,8 @@ impl ChangeFlowEngine {
             };
             // **基线版本取自受理时的快照**（见 `ChangeFlow::base_version`），
             // 不在此处回查注册册——回查会让比较基准随他人变更漂移。
-            (f.req.clone(), f.base_version.clone())
+            let parties: Vec<DomainTag> = f.cosign.iter().map(|r| r.domain).collect();
+            (f.req.clone(), f.base_version.clone(), parties)
         };
         let verdict = self.gate.check(&req, &base_v)?;
         let allowed = verdict.allows();
@@ -1561,6 +1934,17 @@ impl ChangeFlowEngine {
         // verdict 随后要存进流程册（被移走），而错误构造仍要读它。
         let block_code = verdict.block_code();
         let detail = format!("{}｜{}", verdict.screen_line(), verdict.a11y.screen_line());
+
+        // **影响分析报告在本步落定**（被拒时同样落）：
+        // 「这份改动波及谁」与「这份改动合不合法」是两件事，
+        // 阻断时波及面照样要读得到——不然被拒的变更就成了黑盒。
+        let report = ImpactReport {
+            contract_id: contract_id.to_string(),
+            a11y: req.a11y_column(),
+            affected: req.affected_contracts.clone(),
+            parties,
+            canary_hops: canary_hops(),
+        };
 
         // 弱化单独再留一条痕：**红线必须在痕迹里看得见**，
         // 不能只藏在兼容闸结论的一个布尔里（布尔一翻转就看不出曾弱化过）。
@@ -1580,6 +1964,7 @@ impl ChangeFlowEngine {
 
         if let Some(f) = self.flow_mut(contract_id) {
             f.verdict = Some(verdict);
+            f.impact = Some(report);
         }
         self.mark_cursor(contract_id, FlowStep::Impact, actor, allowed, &detail)?;
         if !allowed {
@@ -1596,14 +1981,45 @@ impl ChangeFlowEngine {
 
     /// 第三步·相关方会签（**缺签挂起 + 催办**，见头注§五）。
     fn step_cosign(&mut self, contract_id: &str, actor: DomainTag) -> Result<(), ConsistencyError> {
-        let (pending, refused) = {
+        let (pending, v) = {
             let f = match self.flow(contract_id) {
                 Some(f) => f,
                 None => return Err(ConsistencyError::new(E_CONTRACT_UNKNOWN, "无此流程", "流程已不存在", "重开申请", "流程引擎调用方")),
             };
             let v = f.cosign_verdict();
-            (f.pending_parties(), v == CosignVerdict::Refused)
+            (f.pending_parties(), v)
         };
+
+        // **零相关方 = 会签被架空**：表里一个人没有，判定是
+        // [`CosignVerdict::Vacuous`] 而非通过——「全票通过」的真实含义
+        // 会是「没人需要签」，而痕迹上记的是一句干净的「通过」。
+        // 锚点说「相关方会签」是六步之一，故此处挂起并立案，不放行。
+        if v == CosignVerdict::Vacuous {
+            self.open_case(
+                contract_id,
+                E_COSIGN_NO_PARTY,
+                Severity::Blocking,
+                format!("契约 {} 在册但无任何消费方，会签表为空", contract_id),
+                "在注册中心为该契约登记消费方；无人消费的契约本不该走变更流程",
+            );
+            let _ = self.push_trace(FlowTrace {
+                contract_id: contract_id.to_string(),
+                step: FlowStep::Cosign,
+                outcome: TraceOutcome::Held,
+                code: E_COSIGN_NO_PARTY,
+                actor,
+                detail: "会签表为空：无相关方可比对，不判通过".to_string(),
+            });
+            return Err(ConsistencyError::new(
+                E_COSIGN_NO_PARTY,
+                "会签表为空，流程挂起",
+                "该契约在册却没有任何消费方，无人需签",
+                "先在契约注册中心登记消费方（F4203 单源），再重走会签步",
+                "变更申请方",
+            ));
+        }
+
+        let refused = v == CosignVerdict::Refused;
 
         if refused {
             let _ = self.push_trace(FlowTrace {
@@ -1777,30 +2193,43 @@ impl ChangeFlowEngine {
     ///
     /// 目标即**本次变更的基线版本**（回滚 = 退回起点），故不需要调用方
     /// 传目标——传了反而多一条「申请人回滚到某个非基线版本」的歧义路径。
-    pub fn rollback(&mut self, contract_id: &str, reg: &ContractRegistry) -> RollbackVerdict {
+    /// `actor` 是**发起回滚的人**，须留名：回滚是本流程里后果最重的动作，
+    /// 痕迹上写不出是谁发的，等于只记了「回滚发生过」。
+    pub fn rollback(&mut self, contract_id: &str, actor: DomainTag, reg: &ContractRegistry) -> RollbackVerdict {
         let base_v = self
             .flow(contract_id)
             .map(|f| f.base_version.clone())
             .unwrap_or_default();
-        self.rollback_to(contract_id, &base_v, reg)
+        self.rollback_to(contract_id, &base_v, actor, reg)
     }
 
     /// **回滚到指定版本**（回滚协议本体，`&ContractRegistry` 为 F4203 单源）。
+    ///
+    /// 成功时**流程行离册**：回滚的语义是「这次变更没有生效」，
+    /// 而一个仍占着在途名额、游标却已归零的流程行，会让 `open` 以
+    /// 「已有在途变更」为由永远拒掉后续申请——回滚成了新的死胡同
+    /// （与 §十二 的作废死锁同一类病）。**痕迹一行不删**，历史照查。
     pub fn rollback_to(
         &mut self,
         contract_id: &str,
         target_version: &str,
+        actor: DomainTag,
         reg: &ContractRegistry,
     ) -> RollbackVerdict {
         let v = self.probe_rollback(contract_id, target_version, reg);
         if let Some(f) = self.flow_mut(contract_id) {
             f.last_rollback = Some(v.clone());
-            // 回滚后流程回到**未启动**（已走的步全部不再成立）。
-            if v.is_ok() {
-                f.cursor = None;
-                f.canary = None;
-                f.voided_from = None;
-            }
+        }
+        if v.is_ok() {
+            self.flows.retain(|f| f.req.contract_id != contract_id);
+            let _ = self.push_trace(FlowTrace {
+                contract_id: contract_id.to_string(),
+                step: FlowStep::Announce,
+                outcome: TraceOutcome::Retracted,
+                code: E_ROLLED_BACK,
+                actor,
+                detail: format!("已回滚至 {}，流程行离册（痕迹保留）", target_version),
+            });
         }
         v
     }
@@ -1932,6 +2361,86 @@ impl ChangeFlowEngine {
         });
     }
 
+    /// **越步作废**（降级矩阵第一格的**步序**分支，区别于 `void_flow` 的档位分支）。
+    ///
+    /// 与 [`ChangeFlowEngine::void_flow`] 的差别只有一处，但这一处是要害：
+    /// 越档发生在**同一步之内**，退回一步即可；越步是**跨步**的，
+    /// 游标本来就停在合法位（「无处可退」），若只标个 `voided_from` 就算处置，
+    /// 那「回退」这一半就是空话。
+    ///
+    /// 故此处置**退回未启动**（`cursor = None`）：整条变更的推进链重新走，
+    /// 痕迹整条标作废但**行全留着**——查得到「有人试图跳步」。
+    /// 申请人要修正后重提，走 [`ChangeFlowEngine::retract`]。
+    fn void_out_of_order(&mut self, contract_id: &str, at: FlowStep, actor: DomainTag, detail: &str) {
+        for t in self.traces.iter_mut() {
+            if t.contract_id == contract_id && t.outcome == TraceOutcome::Advanced {
+                t.outcome = TraceOutcome::Voided;
+                t.code = E_STEP_OUT_OF_ORDER;
+                t.detail = format!("因 {} 处越步而作废（原：{}）", at.zh(), t.detail);
+            }
+        }
+        if let Some(f) = self.flow_mut(contract_id) {
+            f.voided_from = Some(at);
+            f.cursor = None;
+            f.canary = None;
+        }
+        let _ = self.push_trace(FlowTrace {
+            contract_id: contract_id.to_string(),
+            step: at,
+            outcome: TraceOutcome::Rejected,
+            code: E_STEP_OUT_OF_ORDER,
+            actor,
+            detail: detail.to_string(),
+        });
+    }
+
+    /// **撤回作废的变更**（**作废流程的唯一出口**，见头注§二）。
+    ///
+    /// 没有这个出口，作废就是把申请人**永久锁死**：`advance` 拒推进、
+    /// `open` 又因「已有在途变更」拒受理，于是这条契约再也改不了。
+    /// §二说「只作废」会「把『从第 1 步重来』这条正路一并封死」——
+    /// 那说的是**没做回退**的后果；本项把出口显式做出来，那条正路才真的在。
+    ///
+    /// 三条纪律：
+    ///
+    /// 1. **只许撤作废的**。在途未作废的流程撤不走——否则「会签挂起 →
+    ///    撤回 → 重开」就成了绕开会签的暗门（重开后表是空的，会签白走一遍）。
+    /// 2. **痕迹一行不删**。撤回抹掉的只是「在途状态」，不是「发生过什么」。
+    /// 3. **留下撤回痕**。撤回本身也是一次动作，步步留痕对撤回同样成立。
+    pub fn retract(&mut self, contract_id: &str, actor: DomainTag) -> Result<(), ConsistencyError> {
+        let voided = match self.flow(contract_id) {
+            Some(f) => f.voided_from.is_some(),
+            None => {
+                return Err(ConsistencyError::new(
+                    E_CONTRACT_UNKNOWN,
+                    "无此流程",
+                    &format!("找不到契约 {} 的变更流程", contract_id),
+                    "只有已受理的流程才谈得上撤回",
+                    "流程引擎调用方",
+                ));
+            }
+        };
+        if !voided {
+            return Err(ConsistencyError::new(
+                E_RETRACT_REFUSED,
+                "在途未作废的变更不得撤回",
+                &format!("契约 {} 的流程未发生作废，仍在途", contract_id),
+                "撤回只对作废流程开放；在途变更请走完六步，或等兼容闸/会签给出结论",
+                "流程引擎调用方",
+            ));
+        }
+        self.flows.retain(|f| f.req.contract_id != contract_id);
+        let _ = self.push_trace(FlowTrace {
+            contract_id: contract_id.to_string(),
+            step: FlowStep::Request,
+            outcome: TraceOutcome::Retracted,
+            code: E_FLOW_VOIDED,
+            actor,
+            detail: "作废流程已撤回，可修正后重新受理（痕迹保留）".to_string(),
+        });
+        Ok(())
+    }
+
     /// 自审（**标准册自身须干净**）。
     pub fn self_audit(&self) -> Vec<String> {
         let mut issues: Vec<String> = Vec::new();
@@ -1946,6 +2455,25 @@ impl ChangeFlowEngine {
             // 已切档却未过会签 = 会签被绕过。
             if f.canary.is_some() && !f.cosign.iter().all(|r| r.is_signed()) {
                 issues.push(format!("{}:{} 未齐签却已进灰度", E_COSIGN_PENDING, f.req.contract_id));
+            }
+            // **作废了却还停在推进位**：作废的语义是「整条不成立」，
+            // 游标却还指着某一步时，读痕迹的人会以为它仍在推进中。
+            if f.voided_from.is_some() && f.cursor.is_some() {
+                issues.push(format!(
+                    "{}:{} 已作废却游标仍在 {:?}",
+                    E_AUDIT_VOIDED_ADVANCED,
+                    f.req.contract_id,
+                    f.cursor
+                ));
+            }
+            // **作废了却还留着灰度档**：档位是「已放了多少流量」的存量事实，
+            // 作废后必须归零，否则读册的人以为流量还挂在那一档。
+            if f.voided_from.is_some() && f.canary.is_some() {
+                issues.push(format!("{}:{} 已作废却仍留灰度档", E_AUDIT_VOIDED_ADVANCED, f.req.contract_id));
+            }
+            // **零相关方却走完了会签**：表空即无人签，能走到通告就是架空。
+            if f.cursor.is_some() && f.cosign.is_empty() {
+                issues.push(format!("{}:{} 会签表为空却已推进", E_AUDIT_NO_PARTY, f.req.contract_id));
             }
         }
         issues
@@ -1972,6 +2500,14 @@ impl ChangeFlowEngine {
             }
             if let Some(c) = f.canary {
                 s.push_str(&format!("  灰度 {} 档\n", c.zh()));
+            }
+            // 无障碍判据影响**专列**入读屏总览（锚点：变更评估含专列）。
+            // 过了第二步就用报告里的那份（含波及面与会签方），
+            // 未过第二步则现算专列——**任何时候读屏都看得见那一列**，
+            // 不会因为「还没走到第二步」就整列缺席。
+            match &f.impact {
+                Some(r) => s.push_str(&r.screen_text()),
+                None => s.push_str(&f.a11y_column().screen_text()),
             }
             if let Some(v) = &f.last_rollback {
                 s.push_str(&format!("  {}\n", v.zh()));
