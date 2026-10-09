@@ -721,6 +721,16 @@ impl PresentHub {
         }
     }
 
+    /// 现役链描述符（未建链 ⇒ `None`）。
+    ///
+    /// **为什么补这个只读面**：链的几何真值只有链自己知道。此前外部只能拿到
+    /// 世代号与缓冲数，于是「活动链几何 == 已提交视口」这条不闪屏对账若由
+    /// 外部自查，只能拿自己推导的值和自己比对——那恒真，等于没对账。补上
+    /// 只读描述符，调用方才能拿**链的真值**去对账。
+    pub fn active_desc(&self) -> Option<ChainDesc> {
+        self.active.as_ref().map(|c| c.desc())
+    }
+
     pub fn failures(&self) -> &FailureLedger {
         &self.failures
     }
