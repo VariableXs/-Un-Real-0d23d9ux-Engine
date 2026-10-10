@@ -173,6 +173,7 @@
 //! | [`vem10_checks`] | F2410 域自检（判据逐条映射，分 a/b/c/d 四族；判据侧自备语料不读被测内部状态，夹逼对+反向断言+变异双向验证） | VE 册 #VE-F2410 |
 //! | [`vem11_fuzz`] | F2411 动画 fuzz（M 域 fuzz 首域，三段全真调对端：畸形动画段真调 eval_scalar_span——NaN 关键帧路径结果与显式 NON_FINITE_FALLBACK 参照路径逐位对拍（证钳制目标）+诊断记账、Custom 插值器闸门不合显性拒绝返 None；负时刻/超密零间隔对走 detect_curve_anomaly 计数、乱序时刻走 validate_samples TIMES_NON_MONOTONIC 拒（检测/校验各走真面，无 || true 恒真）；轨道风暴段万轨×4 采样真调求值三不变量——双跑摘要逐位一致/句柄表 opened==closed==万收敛零/求值步数恰 40000 且看门狗预算内（零分配红线结构面：求值签名无 Vec 出口+记账全定长），异种子异摘要证语料真随机；导入 fuzz 段按对端真实语义三态处置（诚实映射不拿措辞倒推实现）——采样器越界/访问器越界/值数不匹配（格式混淆）显性拒绝、NaN 采样值 validate 不拒但 anomaly non_finite_values 计数拦截（Detected）、合法对照 Passed，千级对抗闭合+拦截不泛化双向；案例固化库 FNV-1a 去重幂等+库容 4096 封顶显性拒（不静默丢案）+P0 立案 24h 期限钉死且超期谓词双向可判定；框架纪律：自持 LCG 同种子同流/看门狗超预算挂起立案/步数预算把 1 小时风暴档变成可判定事件） | VE 册 #VE-F2411 |
 //! | [`vem12_bench`] | F2412 动画基准（三族确定性逻辑基准入 F1773 M 段：求值吞吐族 1k 条 SoaTrack 六类型混合真调 plan_batches+bisect（steps 为 vem07 自报真实比较步数）+lerp_alpha——分批 bisect 摊薄即 SIMD 收益实测面，标让步数对拍+阶梯 100/1000 单调；导入导出族 10 骨骼×100 关键帧典型 clip 导入侧真调 validate_channel_refs+validate_samples、导出侧真调 export_gltf_anim（逆表 ExportMapTable::from_forward 对 F2409 正表机械求逆），产物 channels_out/keys_out 当场读；插值族四插值器（step/linear/bezier/slerp）各百万次真调 eval_scalar_span/eval_quat_span——双跑摘要证确定性，成本权重按结构面声明（1/1/3/8）贝塞尔<slerp 比值即调参依据；六列入册四道守卫：环境四要素缺一拒册/指标口径唯一（混报无效）/同族同谱去重/基线移动超 15% 须 ADR 链（无链拒）；模型-实测闭环真调 F2407 预留回填位——偏差 ≤30% recalibrate 定标、超线 mark_stale 显性、未定标拒闭环、重定标可恢复；M 段门禁暂挂声明显性） | VE 册 #VE-F2412 |
+//! | [`vem13_freeze`] | F2413 动画 API 冻结 v1（十二签名四族 5/3/2/2 逐条五列（全名/参数表/返回契约/官方描述词/版本）且全名一律 m.anim. 前缀——M 域族规范首族；描述词缺失整簿拒绝冻结（半冻簿比不冻更糟）；四行衔接全真调不代填——轨道数据真调 vem02 KeyframeRef（F1345 载体单源复用）、绑定路径真调 vem02 parse_bind_path（F2402 文法双向：合法解析/缺头拒）、事件轨真调 vem06 EventNameRegistry（F1408 注册制闭合：在册取回/拼写漂移名查空）、姿态输出对 F2422 契约预留形态在簿（export_samples 返回 Vec<JointPose>——F2422 本仓未落地，只验预留不编造对齐，契约本体随其落地同接口回填）；漂移 CI 钩子**双向**（偷删冻结条目与偷加未冻结签名同罪，逐字段对描述词/参数表/返回/族/版本）；v1 只增不改——Patch 恒拒并指引 v2 追加段、patch 不存在目标也拒、Append 只许 v2 且 v1 十二条逐字段不变、v1 版本塞追加拒、v2 重名追加拒；F2419 移交包以冻结簿为单一事实来源（术语三行 track/clip/keyframe+十二签名同检）；十年承诺钉成 315_360_000_000ms 可判定数值；如实记录 F2422 未落地的预留性质与 F1345 载体复用链路） | VE 册 #VE-F2413 |
 //! | [`veb18_compat`] | F0218 QEMU 版本兼容矩阵（版本行×特性×预期值；五登记行升序 + 尾部回退 O(1) 查表 + 探测记录入诊断快照；未知版本按回退行预期并标未认证、矩阵与实测冲突以实测为准并留档待修、探测失败走全行交集保守预期并告警；下游 F0215 按矩阵跳 N/A、F0216 宣告引用最低支持版本） | VE 册 #VE-F0218 |
 //! | [`veb18_checks`] | F0218 域自检（判据逐条映射，46 项分 a/b/c 三族；变异双向验证 23/23全捕获） | VE 册 #VE-F0218 |
 //! | [`veb19_debugchan`] | F0219 virtio 主客联调通道（宿主注入逐帧日志开关/强制刷新/快照导出，客户事件回传；通道独立于渲染数据面渲染路径零指令且结构上不持有渲染状态引用；配额按**字节当量**而非条数（快照 4096 对日志开关 12，差两个数量级以上，按条限流会让贵消息挤掉便宜消息）；限流但**安全类消息永不被丢**（丢掉的是最后的证据）且旁路不占配额但单独计数；通道不通降级仅宿主侧并回执告知，**降级只改送到哪一侧不改命令合法性故校验排在其前**；非法命令拒绝并回执专属原因码（参数个数/参数值/参数语义/未知类型四类）；限流丢弃必留回执且回执环形缓冲有界；周期间配额账本与全程累计账本分离；线上编码显式映射不用 enum as u8） | VE 册 #VE-F0219 |
@@ -714,6 +715,7 @@ pub mod vem10_export;
 pub mod vem10_checks;
 pub mod vem11_fuzz;
 pub mod vem12_bench;
+pub mod vem13_freeze;
 pub mod veb18_compat;
 pub mod veb18_checks;
 pub mod veb19_debugchan;
@@ -1232,6 +1234,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2410-d", vem10_checks::run_vem10_checks_d_standalone()),
         ("VE-F2411", vem11_fuzz::run_vem11_checks()),
         ("VE-F2412", vem12_bench::run_vem12_checks()),
+        ("VE-F2413", vem13_freeze::run_vem13_checks()),
         ("VE-F0218-a", veb18_checks::run_veb18_checks_a_standalone()),
         ("VE-F0218-b", veb18_checks::run_veb18_checks_b_standalone()),
         ("VE-F0218-c", veb18_checks::run_veb18_checks_c_standalone()),
