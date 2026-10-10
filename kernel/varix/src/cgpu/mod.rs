@@ -37,21 +37,26 @@
 //! vco04_priorcon — CGPU-F2244 降级优先级与冲突（四级序闭集安全>合同>体验>资源rank单调判据重算/优先级复用F1496四层模式对照表逐字/维度四闭集帧率画质延迟功耗归层映射/六对冲突显性消解规则R1~R6同层平局交互响应优先/裁决自检winners秩不劣于败者/码段0x5Axx五码/14项域自检）
 //! | [`vcw01_sdkdoc`] | CGPU-F3521 | W 域开工与 SDK 文档总架构（签收 V10 移交包 F3520 七件逐件对账缺件即空头签收拒；SDK 文档定位两条款字面量冻结——十年接口的说明书冻结签名才进参考+文档即契约漂移即缺陷；四段单向流水线 参考→教程→质量→站点 跳段/回退/未过质量关即发布显性码拒；V10 预告兑现——验收判据入文档示例映射表与 V 域 vcv01 映射表跨单元同源对拍表外判据拒；W_DOMAIN_TOTAL 160 守恒；0x5Cxx 六码独占） |
 //! | [`vcw01_sdkdoc_checks`] | CGPU-F3521 域自检（13 项六族：RECEIPT2 七件逐件对账+缺件错名反向必拒 / POSITION2 两条款逐字对拍+口径篡改反向必拒 / PIPE2 四段恰一步全过+跳段回退双向拒与发布终端闸 / FULFILL3 兑现结构核对+映射表逐行独立对拍+判据id与V域映射表跨单元同源 / CODE2 码段 0x5C 独占 !=0x50..0x5D 防自判死+码互异原因非空 / META2 域守恒独立重算+判据条数对账） |
-//! vco05_statemachine — CGPU-F2245 全域降级状态机（四态闭集正常/降级中/降级档/恢复标签冻结/形式化复用J03=1475迁移表全枚举+不可达态检查/六条合法迁移条件显性逐字/跳段倒退自迁移逐类显性拒/带迁移史留痕与断裂拒/重入迁移恢复途中再触发/与vco01段态分工声明/码段0x5Bxx五码/14项域自检）
-//! vco06_executor — CGPU-F2246 降级执行器（统一接口冻结v1——ExecAction五元组domain/action_id/semantics/payload_digest/sequence只增不改/执行域四闭集调度效果呈现资源与F2244四维对齐/执行语义建议vs强制二闭集复用J02建议语义+合同强制模式/失败处置三态留痕跳过-重试恰一次-升级立案/建议失败不阻塞链强制失败重试恰一次/回执账对账序号严格递增+升级标记自洽/码段0x5Cxx五码/14项域自检）
-//! vco07_recovery — CGPU-F2247 降级恢复引擎（恢复序四级闭集资源/效果/呈现/调度逐级回升与降级施加序相反/限速RECOVERY_INTERVAL_TICKS=500/滞回带HYSTERESIS_BAND=3不对称防振荡/恢复复用J03家族=1481两维序-过冲记忆-振荡判据模式复用/过冲回退一级恢复目标自动下调/振荡达限冻结转决策引擎/恢复观测账留痕tick递增+间隔可复核/引擎账一致性核验/码段0x5Dxx五码/12项域自检）
+// vco05_statemachine — CGPU-F2245 全域降级状态机（四态闭集正常/降级中/降级档/恢复标签冻结/形式化复用J03=1475迁移表全枚举+不可达态检查/六条合法迁移条件显性逐字/跳段倒退自迁移逐类显性拒/带迁移史留痕与断裂拒/重入迁移恢复途中再触发/与vco01段态分工声明/码段0x5Bxx五码/14项域自检）
+// vco06_executor — CGPU-F2246 降级执行器（统一接口冻结v1——ExecAction五元组domain/action_id/semantics/payload_digest/sequence只增不改/执行域四闭集调度效果呈现资源与F2244四维对齐/执行语义建议vs强制二闭集复用J02建议语义+合同强制模式/失败处置三态留痕跳过-重试恰一次-升级立案/建议失败不阻塞链强制失败重试恰一次/回执账对账序号严格递增+升级标记自洽/码段0x5Cxx五码/14项域自检）
+// vco07_recovery — CGPU-F2247 降级恢复引擎（恢复序四级闭集资源/效果/呈现/调度逐级回升与降级施加序相反/限速RECOVERY_INTERVAL_TICKS=500/滞回带HYSTERESIS_BAND=3不对称防振荡/恢复复用J03家族=1481两维序-过冲记忆-振荡判据模式复用/过冲回退一级恢复目标自动下调/振荡达限冻结转决策引擎/恢复观测账留痕tick递增+间隔可复核/引擎账一致性核验/码段0x5Dxx五码/12项域自检）
 pub mod cgi01_bandwidth;
 pub mod cgi01_bandwidth_checks;
 pub mod cgd02_frametimer;
 pub mod cgd02_frametimer_checks;
 pub mod cgd03_frameledger;
 pub mod cgd03_frameledger_checks;
+// cgd04_frameinterval — CGPU-F0484 帧间隔统计（16桶直方图桶宽=目标/8尾桶收离群/滚动120窗整数stddev牛顿isqrt零浮点/jank三级1.5×2.0×3.0×写死/日聚合健康比首尾对比±1%带宽三态趋势/0x31xx 两码）
+pub mod cgd04_frameinterval;
 pub mod vcj01_powerarch;
+pub mod cgj02_sensorabs;
 pub mod vcj01_powerarch_checks;
 pub mod cga02_threadpool;
 pub mod cga02_threadpool_checks;
 pub mod vcl01_virtualarch;
 pub mod vcl01_virtualarch_checks;
+// vcl02_virtmode — CGPU-F1762 虚拟化模式分类（四模式定义表机制名冻结词表/五维0-3整数矩阵版本化matrix-v3/决策树显性if序四约束/同卡直通×分区×半虚拟互斥共存判定/损耗声明四行选型报告带原文/0x33xx 两码）
+pub mod vcl02_virtmode;
 pub mod vcq01_reliability;
 pub mod vcq01_reliability_checks;
 pub mod vcq02_metrics;
@@ -72,6 +77,8 @@ pub mod vcw03_genpipeline;
 pub mod vcw03_genpipeline_checks;
 pub mod vcw04_apiref;
 pub mod vcw04_apiref_checks;
+// vcw05_docsync — CGPU-F3525 文档版本与代码同步（三态对齐规则写死落后/超前两害超前更危险/指纹+契约词双漂移立案幂等销账留痕不删/同步结论压发布门呼应文档即契约/0x34xx 三码）
+pub mod vcw05_docsync;
 pub mod cgm02_display;
 pub mod cgm02_display_checks;
 pub mod cgm03_edid;
@@ -80,6 +87,8 @@ pub mod cgm04_topology;
 pub mod cgm04_topology_checks;
 pub mod cgm05_modes;
 pub mod cgm05_modes_checks;
+//! cgm06_scaling — CGPU-F1926 显示缩放与 DPI（GPU缩放vs显示器缩放显性决策表窗口化1:1不入决策/DPI链EDID物理尺寸isqrt整数PPI四档取最近平局取低档/清晰度整数倍优先非整数给建议倍率/O域单点传递版本对账单向通报/0x36xx 两码）
+pub mod cgm06_scaling;
 // cgp08_perf —— CGPU-F2408 遥测性能（自身开销总账：五段设施逐段有预算有实测对账/开销换算器 ppm↔步↔微秒三口径/F0482 实测注入 640ppm 与 F1558 红线 L0≤0.05ms 与 F2401 使命三条口径只引用不重定义/超标处置建议账留痕可复算/零 IO 零墙钟零 panic）
 pub mod cgp08_perf;
 pub mod cgp08_perf_checks;
@@ -110,18 +119,38 @@ pub mod vco06_executor_checks;
 pub mod vco07_recovery;
 pub mod vco07_recovery_checks;
 pub mod cgb07_execfail;
+// cgb08_framequeue — CGPU-F0168 帧图与 GPU 队列映射（三队列路由表写死可对拍/节点跟资源走写集定home/写后读同卡同队列一致性即检即拒/映射O(1)查表+开销账/三队列用例建造器/0x30xx 五码）
+pub mod cgb08_framequeue;
 pub mod cgc01_carbitration;
+// cgc02_budgetmodel — CGPU-F0322 帧预算模型（四池比例ppm配置和恰1e6显性拒不静默归一/三级单向分解帧→池→账户/双表述μs权威ppm呈现换算单向取整不超发/Σ池=帧余量归网络池+Σ账户≤池超载显性拒不借贷/超载扫描是查询不是修复/0x35xx 三码）
+pub mod cgc02_budgetmodel;
+// cgc02_framebudget — CGPU-F0322 帧预算模型深化版（四池闭集+保交互下限守卫/三级层级+层级单调核验/双表述恒等可逆换算/守恒校验器+超载检测处置建议/确定性分配引擎+floor 饥饿防线+可借出转移/预算时间线八段 vsync 对齐/池压力五级+仲裁移交/余量再分配四策略/审计账 256 滚动三态查询/全链路仿真走查/0x62 段七码）
+pub mod cgc02_framebudget;
+// cgb08_framegraph — CGPU-F0168 帧图与 GPU 队列映射深化版（三队列+八类别规则表/多 GPU 路由五规则确定性/屏障跟写特例/读写集一致性三态校验+跨卡搬运计划器/映射开销四段账/三队列用例走查/映射回放漂移检测/帧间稳定性四级/负载分布+热点检测/遥测六指标/0x61 段六码）
+pub mod cgb08_framegraph;
+// cgd04_framegap — CGPU-F0484 帧间隔统计深化版（六桶直方图+形态五分类/整数方差+isqrt 抖动/jank 三级阈值恰边界/分级账+事故场景/周趋势四桶+整数斜率五态/健康度三因子万分制/P50/P95/P99 整数分位/场景归因对比/审计账三态查询/0x63 段六码）
+pub mod cgd04_framegap;
+// cge04_surfacerender — CGPU-F0644 表面渲染调度深化版（表面档案四维闭集/三键确定性排序/轮转公平器+饿死守卫/C 域联动序投射+一致性核验/排程开销四段账 50µs 红线/弃排显性两原因/审计账+弃排查/遥测六指标/0x64 段六码）
+pub mod cge04_surfacerender;
 pub mod cge03_surfacereg;
+pub mod cge04_surfsched;
 pub mod cgf02_authflow;
 pub mod cgg01_gnvidia;
+// cgg02_nvprobe — CGPU-F0962 NVIDIA 能力探测专项（RT/Tensor/显存/NVENC 四元特性表结果即数据/SKU级device+rev二级键未登记走代际默认诚实降级/DLSS+GSync扩展缺席不破坏功能/降级矩阵derive单点报告消费/0x32xx 三码）
+pub mod cgg02_nvprobe;
 pub mod cgh03_pooltier;
 pub mod vck01_heteroarch;
 pub mod vcn03_rebuild;
+//! vcn04_rebuildpipe — CGPU-F2084 效果重建管线（四段单向捕获→分析→重建→验证跳段回退显性拒/采样三纪律锚点稳定窗8帧+三象限布点+元数据同拍/验证复用等价分级像素容差2感知×8不等价打回重建计数留痕/段间传效果分解不传像素/0x37xx 三码）
+pub mod vcn04_rebuildpipe;
 pub mod vcq03_failpredict;
 pub mod cgr04_safedegrade;
+//! cgr05_faultiso — CGPU-F2725 渲染故障隔离（隔离格状态机健康→可疑→确诊/假警报不污染三机制封格+写前登记回滚+健康格零感知/Q05三信号确认窗3拍判定链声明式复用阈值独立写死可对拍/回滚只对确诊格凭证账不越权代写资源面/0x38xx 三码）
+pub mod cgr05_faultiso;
 pub mod vcs02_multiuser;
 pub mod vct03_protneg;
 pub mod vcu01_bencharch;
+pub mod vcu02_benchmodel;
 
 /// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
 pub const CGPU_DOMAIN: &str = "cgpu";
