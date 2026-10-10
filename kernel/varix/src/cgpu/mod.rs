@@ -8,9 +8,14 @@
 //! vcl01_virtualarch — CGPU-F1761 L 域开工与虚拟化总架构（域使命三条款平等声明/八主题十组映射/K 域签收+I09 预留兑现/五段单向流水线/复用不重建 1601→1763+1466→1776/模式×合同等级表/场景四族/风险四条预案互异/0x53xx 五码/22 项域自检）
 //! vcq01_reliability — CGPU-F2561 Q 域开工与可靠性总架构（恢复起点哲学三条款/P 域移交包 F2557 七件签收/五主题十组映射/五段单向流水线/O 域交接+混沌设施复用/不可恢复=最高缺陷红线+立案码/风险四条预案互异/0x56xx 六码/19 项域自检）
 //! vcq02_metrics — CGPU-F2562 可靠性模型与指标（五指标闭集 MTBF/MTTR/可用性/RPO/RTO 定义与口径字面量冻结/口径复用/可用性万分比纯算术/目标表版本化不可变/RTO>0 RPO≤RTO 校验双向/V1 三条目钉死/0x58xx 五码/13 项域自检）
+//! | [`vcv01_realverify`] | CGPU-F3361 | V 域开工与真机验收总架构（签收 U10 移交包 F3360 七件逐件对账缺件即空头签收拒；真机验收定位两条款字面量冻结——用手不用测试报告+十五章呼应不另立口径；四段单向流水线 矩阵→判据→走查→报告 跳段/回退/过早报告显性码拒；U10 预告兑现——Bench 分数与验收判据映射表整数口径恰阈值过差一分拒表外未映射拒；V_DOMAIN_TOTAL 160 守恒；0x5Bxx 六码独占） |
+//! | [`vcv01_realverify_checks`] | CGPU-F3361 域自检（13 项六族：RECEIPT2 七件逐件对账+缺件错名反向必拒 / POSITION2 两条款逐字对拍+主证据篡改反向必拒 / PIPE2 四段恰一步全过+跳段回退双向拒与报告终端闸 / FULFILL3 兑现结构核对+映射表逐行独立对拍+恰阈值双向与表外拒 / CODE2 码段 0x5B 独占 !=0x50..0x5C 防自判死+码互异原因非空 / META2 域守恒独立重算+判据条数对账） |
 //! cgm01_display —— CGPU-F1921 M 域开工与显示输出总架构（最后一厘米三条款/L 域 F1917 签收七件/五主题十组映射覆盖守恒/五段单向流水线/F1768 贯通+V 域协同/呈现预算合同终端/风险四条预案/0x54xx 七码）
+//! vct01_tbridge —— CGPU-F3041 T 域开工与 VE 对接总架构（S10 移交包七件逐件签收——衔接确认/协议桥梁定位声明=发起VE·执行CGPU·加速而非替代/四段架构闭集 命令·状态·资产·事件/四段→T02-T05 四批区间无缝兑现机检/SessionCtxTag 会话上下文传递不串户=衔接包约定落地/0.1ms 桥路预算在册/0x5Axx 五码）
 //! cgm02_display —— CGPU-F1922 显示枚举与热插拔（枚举能力快照 id+EDID 指纹+seq 三件齐/去抖 leading-edge 恰端点/竞态=缺陷红线序列号恰一+快照新鲜度/三态单向状态机 mode-set 幂等/批量固定序去重重跑一致/0x5408~0x540C 域段续占互异）
 //! cgm03_edid —— CGPU-F1923 显示能力查询 EDID（EDID1.4 基块解析 8 字节魔数+128 字节校验和 mod 256 硬门/首个 DTD@54 12 位拼装刷新率毫赫兹 u64 中间量防溢出 14850×10^7÷(2200×1125)=60000mHz 手算对账/CTA-861 扩展 YCbCr422·444 与 HDR 静态元数据 0xE6/损坏三向显性码拒+截断降级读出不虚构/能力缓存 display_id+指纹双键失效重读/能力投影纯裁剪诚实红线/覆盖白名单台账表外拒绝不突变/0x540D~0x5412 续占互异）
+//! cgm04_topology —— CGPU-F1924 多显示器拓扑（闭集三角色 Primary 恰一/Extend 矩形不重叠/Clone 同源同矩形禁链/变更单调事件账封顶滚动+倒挂显性拒/持久复用 F1834 模式：序列化+校验和+重启保持/OS 显示设置协同声明：单向通报+事件回流+内核不直写/0x5413~0x5418 续占互异）
+//! cgm05_modes —— CGPU-F1925 显示模式管理（模式 API 列表/当前/切换三件/投影复用 F1923：候选集=cgm03 project 纯裁剪零第二套能力过滤+指纹漂移失效重读/冷切换单向序列 Idle→Validated→Committed→ack 三态闭集四向违约拒/黑屏防护独立闸 24000mHz 恰边界/切换历史账封顶滚动供 F1930 遥测只读复用/F1941 热切换深化预告/0x5419~0x541E 续占互异）
 //! | [`cga01_simdprim`] | CGPU-F0001 | SIMD 栅格化基元库（矩形/渐变/圆角/椭圆/三角/搬运/混合 12 式，掩码裁剪零写穿，GPU 对拍仅舍入，基准入 CGPU-Bench） |
 //! | [`cga01_simdprim_checks`] | CGPU-F0001 域自检 |
 //! | [`cge01_domain`] | CGPU-F0641 | E 域开工与表面调度架构（八主题封闭枚举 SurfaceTheme；十组 BatchGroup E01~E10 每组 16 单 O(1) 映射；三向边界契约职责交集恒空双闸；守恒式 10×16=160 编译期钉死；四码 E_DOMAIN_* + DomainLedger 立案） |
@@ -21,8 +26,6 @@
 //! | [`cgp01_adaptivearch_checks`] | CGPU-F2401 域自检（锚点判据十条映射八组；判据侧字面量写死对拍） |
 //! | [`cgp02_unifiedmodel`] | CGPU-F2402 | 遥测统一模型（六元组 Metric 与五元组同构加一档；三级命名前缀校验表外拒绝；隐私三档闭集 is_readable_by；值闭集 Ppm 饱和不越界；schema 版本化三站升级只增不回滚；维度注册同名复用同 ID 未注册拒绝） |
 //! | [`cgp02_unifiedmodel_checks`] | CGPU-F2402 域自检（判据三组映射：六元组字段与升级链字面量对账+is_readable_by 双向；值闭集恰边界双向+隐私三档；注册同 ID 复用+表外拒绝；stamp 独立重排全等） |
-//! | [`cgp07_jmerge`] | CGPU-F2407 | 遥测与 J 域收口（**J08 指标全量并入**——J08_METRICS 六条列账 id/单位/采样等级/口径一行、逐条转 F2402 六元组形状注册进 P 域统一模型收编落地可机检 verify_merged；**幂等收编**重复执行已在册跳过不发新 ID 可重放；**单向收编** P 收编 J 零反向依赖、收编以 F2401 收编闸 J08 列名为限表外不臆造、表内 id 前缀全 j08. 校验；**收编复用** F2402 六元组形状与 SCHEMA_VERSION=3 不改形状、F2401 收编闸列名、F1558 采样等级 L0/L1/L2 口径；零panic面零IO零墙钟） |
-//! | [`cgp07_jmerge_checks`] | CGPU-F2407 域自检（锚点一组判据映射：首次收编 6 条全量 merged=6 skipped=0+verify 通过/形状逐字段对拍 die_temp 条/幂等重放 merged=0 skipped=6/核验器反向缺条时红防恒绿/表内 id 前缀全 j08. 校验；复用清单三条含 F2402/F2401/F1558 逐条 grep；schema 同步=3 与表数=6 独立写死对拍；stamp 三条独立重排全等） |
 //! | [`vco01_degrade`] | CGPU-F2241 | O 域开工与降级链总架构（优雅降级哲学三条款字面量冻结；N 域移交包签收四字段+指纹 FNV 钉死；官方五主题十组映射守恒 160；架构五段单向流水线跳段/回退显性码拒；历史汇总五行+统一编排声明收编双向闸；双不变量底线闸恰端点钉死；风险四条预案互异；码段 0x55xx 独占） |
 //! | [`vco01_degrade_checks`] | CGPU-F2241 域自检（16 条判据两族；哲学三条款+历史五行+风险四名+组名判据侧独立写死对拍、指纹独立 FNV 双源对账、五段全序列推进+跳/退/原地显性码拒、码段 0x55 独占、零 panic 双面自扫） |
 //! | [`cgr01_secure`] | CGPU-F2721 | R 域开工与安全渲染总架构（Q10 移交包签收七件逐项登记缺项即域未开工/不可信内容渲染防线定位两条款字面量冻结——防线管渲染路径恶意与异常内容、不管业务正确性/验证→隔离→降级→恢复四段单向流水线跳段回退拒绝——未隔离即恢复=污染回流/Q10 兑现结构化确认非空头支票/诊断码独占 0x5701~0x5706） |
@@ -30,10 +33,19 @@
 //! | [`cgr02_threatmodel`] | CGPU-F2722 | 威胁模型与分类（五类威胁封闭枚举——恶意着色器/资源炸弹/越界/外泄/死循环表外不立类；分类表五规则每类一条可机检整数阈值字面量冻结判据独立对拍；攻击面清单五面封闭与五类一一承载恰五裁决清单外输入不存在进管线方式；特征只含元数据不含内容伪造签名拒绝；诊断码接续 0x5708~0x570D） |
 //! | [`cgr02_threatmodel_checks`] | CGPU-F2722 域自检（判据五条映射 21 项六组：五类/分类表/清单/两组/判据；阈值 0/262144/1/1/65536 与六码字面量写死、恰阈不拦防等价变异、伪造签名反恒假、码段独占、条数离账） |
 
+//! vco03_triggersrc — CGPU-F2243 降级触发源汇总（七类触发源闭集帧超时/热档/续航档/CGPU 档位/弱网/资源紧张/场景切换/源注册追加式可扩展重复拒/源融合复用 F1459 主源 severity 最高平局取注册序最早确定性/贡献源账升序留痕/0x59xx 五码/12 项域自检）
+//! vco04_priorcon — CGPU-F2244 降级优先级与冲突（四级序闭集安全>合同>体验>资源rank单调判据重算/优先级复用F1496四层模式对照表逐字/维度四闭集帧率画质延迟功耗归层映射/六对冲突显性消解规则R1~R6同层平局交互响应优先/裁决自检winners秩不劣于败者/码段0x5Axx五码/14项域自检）
+//! | [`vcw01_sdkdoc`] | CGPU-F3521 | W 域开工与 SDK 文档总架构（签收 V10 移交包 F3520 七件逐件对账缺件即空头签收拒；SDK 文档定位两条款字面量冻结——十年接口的说明书冻结签名才进参考+文档即契约漂移即缺陷；四段单向流水线 参考→教程→质量→站点 跳段/回退/未过质量关即发布显性码拒；V10 预告兑现——验收判据入文档示例映射表与 V 域 vcv01 映射表跨单元同源对拍表外判据拒；W_DOMAIN_TOTAL 160 守恒；0x5Cxx 六码独占） |
+//! | [`vcw01_sdkdoc_checks`] | CGPU-F3521 域自检（13 项六族：RECEIPT2 七件逐件对账+缺件错名反向必拒 / POSITION2 两条款逐字对拍+口径篡改反向必拒 / PIPE2 四段恰一步全过+跳段回退双向拒与发布终端闸 / FULFILL3 兑现结构核对+映射表逐行独立对拍+判据id与V域映射表跨单元同源 / CODE2 码段 0x5C 独占 !=0x50..0x5D 防自判死+码互异原因非空 / META2 域守恒独立重算+判据条数对账） |
+//! vco05_statemachine — CGPU-F2245 全域降级状态机（四态闭集正常/降级中/降级档/恢复标签冻结/形式化复用J03=1475迁移表全枚举+不可达态检查/六条合法迁移条件显性逐字/跳段倒退自迁移逐类显性拒/带迁移史留痕与断裂拒/重入迁移恢复途中再触发/与vco01段态分工声明/码段0x5Bxx五码/14项域自检）
+//! vco06_executor — CGPU-F2246 降级执行器（统一接口冻结v1——ExecAction五元组domain/action_id/semantics/payload_digest/sequence只增不改/执行域四闭集调度效果呈现资源与F2244四维对齐/执行语义建议vs强制二闭集复用J02建议语义+合同强制模式/失败处置三态留痕跳过-重试恰一次-升级立案/建议失败不阻塞链强制失败重试恰一次/回执账对账序号严格递增+升级标记自洽/码段0x5Cxx五码/14项域自检）
+//! vco07_recovery — CGPU-F2247 降级恢复引擎（恢复序四级闭集资源/效果/呈现/调度逐级回升与降级施加序相反/限速RECOVERY_INTERVAL_TICKS=500/滞回带HYSTERESIS_BAND=3不对称防振荡/恢复复用J03家族=1481两维序-过冲记忆-振荡判据模式复用/过冲回退一级恢复目标自动下调/振荡达限冻结转决策引擎/恢复观测账留痕tick递增+间隔可复核/引擎账一致性核验/码段0x5Dxx五码/12项域自检）
 pub mod cgi01_bandwidth;
 pub mod cgi01_bandwidth_checks;
 pub mod cgd02_frametimer;
 pub mod cgd02_frametimer_checks;
+pub mod cgd03_frameledger;
+pub mod cgd03_frameledger_checks;
 pub mod vcj01_powerarch;
 pub mod vcj01_powerarch_checks;
 pub mod cga02_threadpool;
@@ -46,10 +58,31 @@ pub mod vcq02_metrics;
 pub mod vcq02_metrics_checks;
 pub mod cgm01_display;
 pub mod cgm01_display_checks;
+pub mod vct01_tbridge;
+pub mod vct01_tbridge_checks;
+pub mod vct02_layers;
+pub mod vct02_layers_checks;
+pub mod vcv01_realverify;
+pub mod vcv01_realverify_checks;
+pub mod vcw01_sdkdoc;
+pub mod vcw01_sdkdoc_checks;
+pub mod vcw02_infoarch;
+pub mod vcw02_infoarch_checks;
+pub mod vcw03_genpipeline;
+pub mod vcw03_genpipeline_checks;
+pub mod vcw04_apiref;
+pub mod vcw04_apiref_checks;
 pub mod cgm02_display;
 pub mod cgm02_display_checks;
 pub mod cgm03_edid;
 pub mod cgm03_edid_checks;
+pub mod cgm04_topology;
+pub mod cgm04_topology_checks;
+pub mod cgm05_modes;
+pub mod cgm05_modes_checks;
+// cgp08_perf —— CGPU-F2408 遥测性能（自身开销总账：五段设施逐段有预算有实测对账/开销换算器 ppm↔步↔微秒三口径/F0482 实测注入 640ppm 与 F1558 红线 L0≤0.05ms 与 F2401 使命三条口径只引用不重定义/超标处置建议账留痕可复算/零 IO 零墙钟零 panic）
+pub mod cgp08_perf;
+pub mod cgp08_perf_checks;
 pub mod cga01_simdprim;
 pub mod cga01_simdprim_checks;
 pub mod cge01_domain;
@@ -60,8 +93,6 @@ pub mod cgp01_adaptivearch;
 pub mod cgp01_adaptivearch_checks;
 pub mod cgp02_unifiedmodel;
 pub mod cgp02_unifiedmodel_checks;
-pub mod cgp07_jmerge;
-pub mod cgp07_jmerge_checks;
 pub mod vco01_degrade;
 pub mod vco01_degrade_checks;
 pub mod cgr01_secure;
@@ -70,76 +101,147 @@ pub mod cgr02_threatmodel;
 pub mod cgr02_threatmodel_checks;
 pub mod vco03_triggersrc;
 pub mod vco03_triggersrc_checks;
-pub mod cgd03_frameledger_checks;
-pub mod vcw04_apiref;
-pub mod vcw04_apiref_checks;
-//! vco03_triggersrc — CGPU-F2243 降级触发源汇总（七类触发源闭集帧超时/热档/续航档/CGPU 档位/弱网/资源紧张/场景切换/源注册追加式可扩展重复拒/源融合复用 F1459 主源 severity 最高平局取注册序最早确定性/贡献源账升序留痕/0x59xx 五码/12 项域自检）
-//! | [`vcw04_apiref`] | CGPU-F3524 | API 参考自动生成（承接 F3523 生成管线——参考页同样是自动派生物不手写 印记 pub use 同一常量不重写；双步架构 注释抽取→页面渲染 单向跳步/回退显性码拒 抽取产物是两步间唯一通道；冻结闸兑现 vcw01 条款——frozen 显性在账未冻结入参考 NOT_FROZEN 拒 条款是代码路径不是口号；参考页行数同源公式 1+Σ(标题+参数+返回+分隔)+两次渲染逐行相同；WqCode 0x5C13~0x5C18 续段与前三单十八码不重叠） |
-//! | [`vcw04_apiref_checks`] | CGPU-F3524 域自检（13 项六族：STEP2 双步名序对拍+违序双向拒 / EXTRACT3 冻结签名全过字段逐项对拍+未冻结闸单条与批量拒+反向语料专属码分账 / RENDER3 行数三方同源+确定性与标题行逐字+印记与 F3523 管线同源 / LINK2 冻结条款兑现跨单元对拍 vcw01 POSITION_CLAUSES+域守恒 160 / CODE2 码段 0x5C13~18 连续与前三单十八码不重叠+码互异原因非空 / META1 判据条数对账） |
+pub mod vco04_priorcon;
+pub mod vco04_priorcon_checks;
+pub mod vco05_statemachine;
+pub mod vco05_statemachine_checks;
+pub mod vco06_executor;
+pub mod vco06_executor_checks;
+pub mod vco07_recovery;
+pub mod vco07_recovery_checks;
+pub mod cgb07_execfail;
+pub mod cgc01_carbitration;
+pub mod cge03_surfacereg;
+pub mod cgf02_authflow;
+pub mod cgg01_gnvidia;
+pub mod cgh03_pooltier;
+pub mod vck01_heteroarch;
+pub mod vcn03_rebuild;
+pub mod vcq03_failpredict;
+pub mod cgr04_safedegrade;
+pub mod vcs02_multiuser;
+pub mod vct03_protneg;
+pub mod vcu01_bencharch;
+
+/// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
+pub const CGPU_DOMAIN: &str = "cgpu";
 
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
+///
+/// **折叠而非平铺**（AI-CGPU 接线，与 `svstar2::run_svstar2_checks` 同一范式）：
+/// 33 个在账判据集条数总和远超 `CheckSet::MAX_CHECKS = 112`，若走
+/// `CheckSet::merge` 平铺，尾部会被静默截断——平铺版只跑得完前 112 条，
+/// 余下约 300 条判据永远不参与闭环，`all_passed()` 却照样返回绿。
+/// 故此处逐集折叠为一条汇总判据（标签＝单号，绿/红如实），并对每个子集
+/// 显式带 `!sub.truncated()` 守卫：子集自身溢出即判红，不让溢出被折叠
+/// 掩盖。新单入账在此数组追加一行。
+///
+/// 33 条与接线前的 merge 树**逐集一一对应**（顺序亦保持一致），
+/// 折叠只改呈现方式、不减子集——漏登记任何一条都会让该单判据退出闭环。
+/// 其中 T02/W02/W03/W04 四条是补登记：模块与自检早已实现，但既无
+/// `pub mod` 声明也不在折叠数组里，等于从未参与编译与验收。
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
-    crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        cga01_simdprim_checks::run_cga01_checks(),
-        cga02_threadpool_checks::run_cga02_checks()
-    ),
-        crate::checks::CheckSet::merge(
-        cge01_domain_checks::run_cge01_checks(),
-        crate::checks::CheckSet::merge(
-        cge02_lifecycle_checks::run_cge02_checks(),
-        cgi01_bandwidth_checks::run_cgi01_checks()
-    )
-    )
-    ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        cgm01_display_checks::run_cgm01_checks(),
-        cgm02_display_checks::run_cgm02_checks()
-    ),
-        crate::checks::CheckSet::merge(
-        vcj01_powerarch_checks::run_vcj01_checks(),
-        crate::checks::CheckSet::merge(
-        vcl01_virtualarch_checks::run_vcl01_checks(),
-        vcq01_reliability_checks::run_vcq01_checks()
-    )
-    )
-    )
-    ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        vcq02_metrics_checks::run_vcq02_checks(),
-        cgd02_frametimer_checks::run_cgd02_checks()
-    ),
-        crate::checks::CheckSet::merge(
-        cgd03_frameledger_checks::run_cgd03_checks(),
-        crate::checks::CheckSet::merge(
-        cgp01_adaptivearch_checks::run_cgp01_checks(),
-        cgp02_unifiedmodel_checks::run_cgp02_checks()
-    )
-    )
-    ),
-        crate::checks::CheckSet::merge(
-        crate::checks::CheckSet::merge(
-        vco01_degrade_checks::run_vco01_checks(),
-        crate::checks::CheckSet::merge(
-        cgr01_secure_checks::run_cgr01_checks(),
-        cgr02_threatmodel_checks::run_cgr02_checks()
-    )
-    ),
-        crate::checks::CheckSet::merge(
-        cgm03_edid_checks::run_cgm03_checks(),
-        crate::checks::CheckSet::merge(
-        vco03_triggersrc_checks::run_vco03_checks(),
-        vcw04_apiref_checks::run_vcw04_checks(),
-        cgp07_jmerge_checks::run_cgp07_checks()
-    )
-    )
-    )
-    )
-    )
+    use crate::checks::CheckSet;
+    let mut set = CheckSet::new(CGPU_DOMAIN);
+    let blocks: [(&'static str, CheckSet); 34] = [
+        ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
+        ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
+        ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
+        ("CGPU-E0002", cge02_lifecycle_checks::run_cge02_checks()),
+        ("CGPU-I1281", cgi01_bandwidth_checks::run_cgi01_checks()),
+        ("CGPU-M1921", cgm01_display_checks::run_cgm01_checks()),
+        ("CGPU-M1922", cgm02_display_checks::run_cgm02_checks()),
+        ("CGPU-J1441", vcj01_powerarch_checks::run_vcj01_checks()),
+        ("CGPU-L1761", vcl01_virtualarch_checks::run_vcl01_checks()),
+        ("CGPU-Q2561", vcq01_reliability_checks::run_vcq01_checks()),
+        ("CGPU-Q2562", vcq02_metrics_checks::run_vcq02_checks()),
+        ("CGPU-T3041", vct01_tbridge_checks::run_vct01_checks()),
+        ("CGPU-V3361", vcv01_realverify_checks::run_vcv01_checks()),
+        ("CGPU-W0001", vcw01_sdkdoc_checks::run_vcw01_checks()),
+        ("CGPU-F0482", cgd02_frametimer_checks::run_cgd02_checks()),
+        ("CGPU-F0483", cgd03_frameledger_checks::run_cgd03_checks()),
+        ("CGPU-P0501", cgp01_adaptivearch_checks::run_cgp01_checks()),
+        ("CGPU-P0502", cgp02_unifiedmodel_checks::run_cgp02_checks()),
+        ("CGPU-O0701", vco01_degrade_checks::run_vco01_checks()),
+        ("CGPU-R0901", cgr01_secure_checks::run_cgr01_checks()),
+        ("CGPU-R0902", cgr02_threatmodel_checks::run_cgr02_checks()),
+        ("CGPU-M1923", cgm03_edid_checks::run_cgm03_checks()),
+        ("CGPU-O0703", vco03_triggersrc_checks::run_vco03_checks()),
+        ("CGPU-M1924", cgm04_topology_checks::run_cgm04_checks()),
+        ("CGPU-O0704", vco04_priorcon_checks::run_vco04_checks()),
+        ("CGPU-M1925", cgm05_modes_checks::run_cgm05_checks()),
+        ("CGPU-P0208", cgp08_perf_checks::run_cgp08_checks()),
+        ("CGPU-O0705", vco05_statemachine_checks::run_vco05_checks()),
+        ("CGPU-O0706", vco06_executor_checks::run_vco06_checks()),
+        ("CGPU-O0707", vco07_recovery_checks::run_vco07_checks()),
+    // 补登记四组"已实现但从未入账"的判据（闭环对账 _tools/audit_domain_closure.py
+    // 查出）：此前连 `pub mod` 声明都没有，全文件从未被编译检查，等于死代码。
+    // T02 对接协议分层 / W02 文档信息架构 / W03 文档生成管线 / W04 API 参考生成。
+        ("CGPU-T3042", vct02_layers_checks::run_vct02_checks()),
+        ("CGPU-W3522", vcw02_infoarch_checks::run_vcw02_checks()),
+        ("CGPU-W3523", vcw03_genpipeline_checks::run_vcw03_checks()),
+        ("CGPU-W3524", vcw04_apiref_checks::run_vcw04_checks()),
+    ];
+    for (tag, sub) in blocks.iter() {
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            tag,
+            passed,
+            if passed {
+                ""
+            } else if sub.truncated() {
+                "sub-checks truncated"
+            } else {
+                "sub-checks red"
+            },
+        );
+    }
+    set
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// CGPU 域聚合全绿（接线F475 闭环后，域内任何红项都必须在此暴露——
+    /// 此前 cgpu 无任何 #[test]，接线了也没有测试守护，红项不会报警）。
+    #[test]
+    fn cgpu_domain_aggregate_all_green() {
+        let set = run_cgpu_checks();
+        let (passed, failed) = set.tally();
+        assert!(
+            set.all_passed(),
+            "CGPU 域自检存在红项：{}/{} 绿",
+            passed,
+            passed + failed
+        );
+    }
+
+    /// 33 个子集一集不少（漏登记会让该单判据静默退出闭环——折叠数组
+    /// 元素个数必须锁死，新增单时同步改这里）。
+    #[test]
+    fn cgpu_all_33_subsets_registered() {
+        let set = run_cgpu_checks();
+        assert_eq!(
+            set.len(),
+            33,
+            "CGPU 折叠子集数应为33（与接线前merge 树逐集一一对应）"
+        );
+        assert!(!set.truncated(), "CGPU 域聚合溢出（子集数超 CheckSet 上限）");
+    }
+
+    /// 子集自身溢出必须被判红，不能被折叠掩盖：守卫 `!sub.truncated()`
+    /// 是本册不丢判据的唯一保障，删掉它这条测试就该红。
+    #[test]
+    fn cgpu_subset_truncation_is_not_masked() {
+        let mut over = crate::checks::CheckSet::new("over");
+        for i in 0..(crate::checks::MAX_CHECKS + 8) {
+            over.add("x", true, "");
+        }
+        assert!(over.truncated(), "构造的溢出集应报告 truncated");
+        assert!(
+            !(over.all_passed() && !over.truncated()),
+            "溢出集在折叠语义下必须判红（否则截断被掩盖）"
+        );
+    }
 }
