@@ -28,9 +28,15 @@ const EXPECT_LH_SMALL: i64 = 128;
 const EXPECT_BH_SMALL: i64 = 64;
 
 /// A 族条数（判据侧写死，聚合守恒用）。
-const EXPECT_A_COUNT: usize = 16;
+const EXPECT_A_COUNT: usize = 29;
 /// B 族登记本条前条数（判据侧写死）。
 const EXPECT_B_BEFORE: usize = 5;
+
+/// 保守估算手算期望（字号 640、"AB" 两簇：advance=2×1em=1280、行高=640×6/5=768）。
+const EXPECT_CONS_ADV: i64 = 1280;
+const EXPECT_CONS_LH: i64 = 768;
+/// 保守/精确 advance 对照（精确 640，见 [`EXPECT_ADV_AB`]）。
+const EXPECT_EXACT_ADV: i64 = 640;
 
 // ---------------------------------------------------------------------------
 // 夹具
@@ -108,6 +114,50 @@ impl MeasureBackend for StubBackend {
             line_height_q16: 1280,
             glyph_count: glyphs as u32,
         })
+    }
+}
+
+/// **计次后端**（判据「超时后不问引擎」的取证面）：首调成功，其后一律故障——
+/// 若降级路径仍去问引擎，判据即拿得到 0x1802。
+struct CountOnceBackend {
+    calls: core::cell::Cell<u32>,
+}
+
+impl MeasureBackend for CountOnceBackend {
+    fn measure(&self, req: &ContractRequest) -> Result<BackendResult, ContractError> {
+        if self.calls.get() == 0 {
+            self.calls.set(1);
+            Ok(BackendResult {
+                advance_q16: EXPECT_EXACT_ADV,
+                bound_w_q16: EXPECT_BH_AB,
+                bound_h_q16: EXPECT_BH_AB,
+                line_height_q16: EXPECT_BH_AB,
+                glyph_count: req.text.len() as u32,
+            })
+        } else {
+            Err(ContractError::new(
+                C_TEXT18_BACKEND_FAULT,
+                "计次后端已耗尽",
+                "用于取证降级路径不再问引擎",
+            ))
+        }
+    }
+}
+
+/// **可替换保守估算器**（估算策略整体替换面的取证）：宽 2em/簇，行高 2em。
+struct WideEstimator;
+
+impl ConservativeEstimator for WideEstimator {
+    fn estimate(&self, req: &ContractRequest) -> BackendResult {
+        let glyphs = req.text.iter().filter(|b| **b != b'\n').count() as i64;
+        let size = req.params.font_size_q16 as i64;
+        BackendResult {
+            advance_q16: glyphs * 2 * size,
+            bound_w_q16: glyphs * 2 * size,
+            bound_h_q16: size * 2,
+            line_height_q16: size * 2,
+            glyph_count: glyphs as u32,
+        }
     }
 }
 
@@ -232,7 +282,7 @@ fn chk_bound_quantize(set: &mut CheckSet) {
 }
 
 fn chk_bound_timeout(set: &mut CheckSet) {
-    // 边界-03 超时 16ms 语义：恰 16000μs 到点 = 时限内（<=）；+1μs = 低置信降级。
+    // 边界-03 超时 16ms 语义：恰 16000μs 到点 = 时限内（<=，保真）；+1μs = 降级。
     let src = VecSource::with_good();
     let be = EngineBackend { source: &src };
     let req = good_req(b"AB");
@@ -240,7 +290,13 @@ fn chk_bound_timeout(set: &mut CheckSet) {
     let in_time = n.consume(&be, &req, &ContractOpts::async16(), 10_000, 16_000, 0);
     let late = n.consume(&be, &req, &ContractOpts::async16(), 10_000, 16_001, 0);
     let ok = match (in_time, late) {
-        (Ok(a), Ok(b)) => !a.low_confidence && b.low_confidence && a.advance_q16 == b.advance_q16,
+        (Ok(a), Ok(b)) => {
+            !a.low_confidence
+                && b.low_confidence
+                && a.advance_q16 == EXPECT_EXACT_ADV
+                && b.advance_q16 == EXPECT_CONS_ADV
+                && b.advance_q16 > a.advance_q16
+        }
         _ => false,
     };
     if ok && n.timeouts == 1 && n.calls == 2 {
@@ -249,12 +305,23 @@ fn chk_bound_timeout(set: &mut CheckSet) {
         set.fail("E18-边界-03-超时16ms语义", "deadline 翻面或计数漂移");
     }
     // 边界-04 评审线：>0.1% 严格大于——恰 0.1%（1000 中 1）不触发，2/1000 触发。
-    let calm = n_side::NConsumer { calls: 1000, timeouts: 1 };
-    let hot = n_side::NConsumer { calls: 1000, timeouts: 2 };
+    let calm = n_side::NConsumer { calls: 1000, timeouts: 1, overhead_ns: 0, review_open: false };
+    let hot = n_side::NConsumer { calls: 1000, timeouts: 2, overhead_ns: 0, review_open: false };
     if !calm.review_required() && hot.review_required() {
         set.ok("E18-边界-04-评审线严格大于");
     } else {
         set.fail("E18-边界-04-评审线严格大于", "评审线边界漂移（含等或提前触发）");
+    }
+    // 边界-07 stale 句柄：句柄与请求内容不匹配 → 0x1803（不返回任何度量）。
+    let handle = match contract_measure(&be, &good_req(b"AB"), &ContractOpts::async16()) {
+        Ok(ContractOutcome::Pended(h)) => h,
+        _ => ContractHandle { ticket: 0, timeout_us: TIMEOUT_US, cost_ns: 0 },
+    };
+    let r = contract_resolve(&handle, &be, &good_req(b"XYZ"), 0, 0);
+    if matches!(r, Err(ContractError { code: C_TEXT18_TICKET_MISMATCH, .. })) {
+        set.ok("E18-边界-07-stale句柄拒绝");
+    } else {
+        set.fail("E18-边界-07-stale句柄拒绝", "stale 句柄未被拒");
     }
 }
 
@@ -371,9 +438,22 @@ fn chk_cost_version(set: &mut CheckSet) {
 // ---------------------------------------------------------------------------
 
 fn chk_err_contract(set: &mut CheckSet) {
-    // 错误-01 三码独占 0x18 段、互异、呈现三要素齐备。
-    let codes = [C_TEXT18_HASH_MISMATCH, C_TEXT18_BAD_REQUEST, C_TEXT18_BACKEND_FAULT];
-    let distinct = codes[0] != codes[1] && codes[1] != codes[2] && codes[0] != codes[2];
+    // 错误-01 五码独占 0x18 段、互异、呈现三要素齐备。
+    let codes = [
+        C_TEXT18_HASH_MISMATCH,
+        C_TEXT18_BAD_REQUEST,
+        C_TEXT18_BACKEND_FAULT,
+        C_TEXT18_TICKET_MISMATCH,
+        C_TEXT18_CHANGE_REJECTED,
+    ];
+    let mut distinct = true;
+    for i in 0..codes.len() {
+        for j in i + 1..codes.len() {
+            if codes[i] == codes[j] {
+                distinct = false;
+            }
+        }
+    }
     let seg_ok = codes.iter().all(|c| c & 0xFF00 == 0x1800);
     let e = ContractError::new(C_TEXT18_BACKEND_FAULT, "原因样例", "建议样例");
     let line = e.screen_line();
@@ -512,6 +592,233 @@ fn chk_not_truncated(set: &mut CheckSet) {
     }
 }
 
+fn chk_conservative(set: &mut CheckSet) {
+    // 保守-01 超时后**不问引擎**：计次后端首调后即故障，降级仍拿到响应即证。
+    let once = CountOnceBackend { calls: core::cell::Cell::new(0) };
+    let req = good_req(b"AB");
+    let handle = match contract_measure(&once, &req, &ContractOpts::async16()) {
+        Ok(ContractOutcome::Pended(h)) => h,
+        _ => {
+            set.fail("E18-保守-01-超时不再问引擎", "首调未挂起");
+            return;
+        }
+    };
+    match contract_resolve(&handle, &once, &req, 16_001, 0) {
+        Ok(r) => {
+            let ok = r.low_confidence
+                && r.advance_q16 == EXPECT_CONS_ADV
+                && r.line_height_q16 == EXPECT_CONS_LH
+                && r.bound_w_q16 == EXPECT_CONS_ADV
+                && r.glyph_count == 2
+                && r.clusters.len() == 2;
+            if ok {
+                set.ok("E18-保守-01-超时不再问引擎");
+            } else {
+                set.fail("E18-保守-01-超时不再问引擎", "降级值未到手算期望");
+            }
+        }
+        Err(_) => set.fail("E18-保守-01-超时不再问引擎", "降级路径仍撞引擎故障（0x1802）"),
+    }
+    // 保守-02 方向钉死：保守 advance/行高 ≥ 精确值（永不低估占宽）。
+    let src = VecSource::with_good();
+    let be = EngineBackend { source: &src };
+    let exact = match contract_measure(&be, &good_req(b"AB"), &ContractOpts::sync()) {
+        Ok(ContractOutcome::Fulfilled(r)) => r,
+        _ => {
+            set.fail("E18-保守-02-保守方向不低估", "精确路径报错");
+            return;
+        }
+    };
+    let cons = match conservative_response(&good_req(b"AB")) {
+        Ok(r) => r,
+        Err(_) => {
+            set.fail("E18-保守-02-保守方向不低估", "保守路径报错");
+            return;
+        }
+    };
+    let ok = exact.advance_q16 == EXPECT_EXACT_ADV
+        && cons.advance_q16 >= exact.advance_q16
+        && cons.line_height_q16 >= exact.line_height_q16
+        && cons.bound_w_q16 <= cons.advance_q16
+        && cons.low_confidence
+        && !exact.low_confidence;
+    if ok {
+        set.ok("E18-保守-02-保守方向不低估");
+    } else {
+        set.fail("E18-保守-02-保守方向不低估", "保守/精确方向关系漂移");
+    }
+    // 保守-03 估算器可整体替换（N 侧换策略、契约层不动）：宽估算器给出 2em/簇。
+    let wide = match conservative_response_with(&WideEstimator, &good_req(b"AB")) {
+        Ok(r) => r,
+        Err(_) => {
+            set.fail("E18-保守-03-估算器可替换", "替换估算器报错");
+            return;
+        }
+    };
+    if wide.advance_q16 == EXPECT_CONS_ADV * 2 && wide.line_height_q16 == 1280 {
+        set.ok("E18-保守-03-估算器可替换");
+    } else {
+        set.fail("E18-保守-03-估算器可替换", "替换估算器结果不符");
+    }
+    // 保守-04 降级路径同样受参数闸约束（越界估算也不放行）。
+    let mut bad = good_params();
+    bad.font_size_q16 = 1;
+    let r = conservative_response(&ContractRequest {
+        text: b"A",
+        font: good_font(),
+        params: bad,
+        lang_tag: 0,
+    });
+    if matches!(r, Err(ContractError { code: C_TEXT18_BAD_REQUEST, .. })) {
+        set.ok("E18-保守-04-降级路径参数闸");
+    } else {
+        set.fail("E18-保守-04-降级路径参数闸", "降级路径绕过了参数闸");
+    }
+}
+
+fn chk_budget_accounting(set: &mut CheckSet) {
+    // 预算-02 开销逐次落账：响应与异步句柄同源同值，且 N 侧累计在预算内。
+    let src = VecSource::with_good();
+    let be = EngineBackend { source: &src };
+    let req = good_req(b"AB");
+    let resp = match contract_measure(&be, &req, &ContractOpts::sync()) {
+        Ok(ContractOutcome::Fulfilled(r)) => r,
+        _ => {
+            set.fail("E18-预算-02-逐次开销落账", "同步路径报错");
+            return;
+        }
+    };
+    let handle = match contract_measure(&be, &req, &ContractOpts::async16()) {
+        Ok(ContractOutcome::Pended(h)) => h,
+        _ => {
+            set.fail("E18-预算-02-逐次开销落账", "异步路径报错");
+            return;
+        }
+    };
+    let mut n = n_side::NConsumer::new();
+    let _ = n.consume(&be, &req, &ContractOpts::sync(), 10_000, 0, 0);
+    let ok = resp.cost_ns == call_cost_ns(2, 2)
+        && handle.cost_ns == resp.cost_ns
+        && request_cost(&req) == resp.cost_ns
+        && n.overhead_ns == resp.cost_ns
+        && n.budget_ok()
+        && resp.cost_ns <= CALL_BUDGET_NS;
+    if ok {
+        set.ok("E18-预算-02-逐次开销落账");
+    } else {
+        set.fail("E18-预算-02-逐次开销落账", "开销未逐次落账或超预算");
+    }
+    // 预算-03 保守降级同样记开销（降级不豁免记账——它也是一次契约调用）。
+    let cons = match conservative_response(&good_req(b"AB")) {
+        Ok(r) => r,
+        Err(_) => {
+            set.fail("E18-预算-03-降级同记账", "降级路径报错");
+            return;
+        }
+    };
+    if cons.cost_ns == resp.cost_ns {
+        set.ok("E18-预算-03-降级同记账");
+    } else {
+        set.fail("E18-预算-03-降级同记账", "降级路径漏记或错记开销");
+    }
+    // 预算-04 预算容量边界钉死：cost = 150 + 10L（全非换行字节）⇒ L=185 恰在
+    // 2000ns 预算内，L=186 越线——容量上限可判定，不靠「大概不超」。
+    let at_cap = call_cost_ns(185, 185);
+    let over_cap = call_cost_ns(186, 186);
+    if at_cap == CALL_BUDGET_NS && over_cap > CALL_BUDGET_NS && over_cap > at_cap {
+        set.ok("E18-预算-04-预算容量边界");
+    } else {
+        set.fail("E18-预算-04-预算容量边界", "预算容量上界不可判定或恰边界漂移");
+    }
+}
+
+fn chk_review_trigger(set: &mut CheckSet) {
+    // 评审-03 越线即开单：1000 调 2 超时 → 千分率 2、哈希与版本在单、不重复开单。
+    let mut n = n_side::NConsumer { calls: 999, timeouts: 1, overhead_ns: 0, review_open: false };
+    let first = n.take_review();
+    let second = n.take_review();
+    let review = match first {
+        Some(r) => r,
+        None => {
+            set.fail("E18-评审-03-越线触发评审单", "越线未开单");
+            return;
+        }
+    };
+    let line = review.screen_line();
+    let ok = second.is_none()
+        && n.review_open
+        && review.calls == 999
+        && review.timeouts == 1
+        && review.rate_permille == 1
+        && review.contract_id == CONTRACT_ID
+        && review.version == CONTRACT_VERSION
+        && review.hash == PROVIDER_CONTRACT_HASH
+        && line.contains("F0813")
+        && line.contains("1‰");
+    if ok {
+        set.ok("E18-评审-03-越线触发评审单");
+    } else {
+        set.fail("E18-评审-03-越线触发评审单", "评审单字段或去重漂移");
+    }
+    // 评审-04 未越线不开单；恰 0.1% 亦不开单（严格大于的实体面）。
+    let mut calm = n_side::NConsumer { calls: 1000, timeouts: 1, overhead_ns: 0, review_open: false };
+    if calm.take_review().is_none() && calm.timeout_rate_permille() == 1 {
+        set.ok("E18-评审-04-未越线不开单");
+    } else {
+        set.fail("E18-评审-04-未越线不开单", "未越线即开单或千分率错算");
+    }
+}
+
+fn chk_change_process(set: &mut CheckSet) {
+    // 变更-02 提案双拒：空理由、与现行文本逐字相同 → 0x1804。
+    let empty = propose_change("VE-F0818/text-measure/v2:noop", "  ");
+    let same = propose_change(CONTRACT_TEXT, "改点措辞");
+    let ok = matches!(empty, Err(ContractError { code: C_TEXT18_CHANGE_REJECTED, .. }))
+        && matches!(same, Err(ContractError { code: C_TEXT18_CHANGE_REJECTED, .. }));
+    if ok {
+        set.ok("E18-变更-02-提案双拒");
+    } else {
+        set.fail("E18-变更-02-提案双拒", "空理由/空变更未被拒");
+    }
+    // 变更-03 受理前不可生效：E 侧提案停在 PROPOSED，N 侧受理后才翻 ACCEPTED。
+    let mut change = match propose_change("VE-F0818/text-measure/v2:req+{tracking};", "新增 tracking 字段") {
+        Ok(c) => c,
+        Err(_) => {
+            set.fail("E18-变更-03-双签受理", "合法提案被拒");
+            return;
+        }
+    };
+    let before = (change.state, change.is_accepted());
+    let accepted = accept_change(&mut change);
+    let ok = before == (CHANGE_PROPOSED, false)
+        && accepted.is_ok()
+        && change.is_accepted()
+        && change.hash_after != change.hash_before
+        && change.hash_before == PROVIDER_CONTRACT_HASH
+        && change.to_version == CONTRACT_VERSION + 1
+        && change.screen_line().contains("v1->v2");
+    if ok {
+        set.ok("E18-变更-03-双签受理");
+    } else {
+        set.fail("E18-变更-03-双签受理", "受理状态或前后哈希漂移");
+    }
+    // 变更-04 已受理单不可二次受理伪造（状态幂等：受理后 state 必为 ACCEPTED）。
+    let mut again = match propose_change("VE-F0818/text-measure/v2:req-;", "精简字段") {
+        Ok(c) => c,
+        Err(_) => {
+            set.fail("E18-变更-04-受理状态守恒", "合法提案被拒");
+            return;
+        }
+    };
+    let _ = accept_change(&mut again);
+    let reaccept = accept_change(&mut again);
+    if reaccept.is_ok() && again.state == CHANGE_ACCEPTED {
+        set.ok("E18-变更-04-受理状态守恒");
+    } else {
+        set.fail("E18-变更-04-受理状态守恒", "受理后状态漂移");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 入口（a=规格+边界+幂等+开销 / b=错误+判据承载力；合并入口供聚合器）
 // ---------------------------------------------------------------------------
@@ -525,6 +832,10 @@ pub fn run_vee18_checks_a_standalone() -> CheckSet {
     chk_bound_gates(&mut s);
     chk_idem(&mut s);
     chk_cost_version(&mut s);
+    chk_conservative(&mut s);
+    chk_budget_accounting(&mut s);
+    chk_review_trigger(&mut s);
+    chk_change_process(&mut s);
     s
 }
 
@@ -540,4 +851,21 @@ pub fn run_vee18_checks_b_standalone() -> CheckSet {
 /// 全域判据入口（聚合器调用这个）。
 pub fn run_vee18_checks() -> CheckSet {
     CheckSet::merge(run_vee18_checks_a_standalone(), run_vee18_checks_b_standalone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 域自检独立入口：F0818 判据全绿（聚合器之外的可复跑面）。
+    #[test]
+    fn vee18_family_all_green() {
+        let set = run_vee18_checks();
+        assert!(
+            set.all_passed(),
+            "vee18 域自检存在红项：{}/{} 绿",
+            set.tally().0,
+            set.len(),
+        );
+    }
 }

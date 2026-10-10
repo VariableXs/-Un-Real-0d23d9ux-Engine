@@ -37,16 +37,25 @@
 //! 全部响应值以 1/64 px（q16）表达（[`GRID_Q16`]）；量化规则钉死方向——
 //! advance/行高**向上取整**（布局保守：绝不低估占宽），轮廓边界**向下取整**
 //! （内容内收：绝不高估覆盖）。[`ceil_grid`]/[`floor_grid`] 是唯二量化出口。
-//! 失败语义：异步模式超时（[`TIMEOUT_US`] 语义由调用方 deadline 承载）返回
-//! **保守估算并标记 `low_confidence`**——数字照给、置信自报，UI 帧不阻塞。
+//! 失败语义：异步模式超时（[`TIMEOUT_US`] 语义由调用方 deadline 承载）**不再
+//! 问引擎**、立即给**保守估算**（[`BuiltinEstimator`]：每簇 1em、行高 1.2em 的
+//! 上界，对 advance/行高永不低估）并标记 `low_confidence`——数字照给、置信自报，
+//! UI 帧不阻塞。估算策略本身可整体替换（[`ConservativeEstimator`] trait）。
 //!
 //! # 四、超时率评审线与开销预算
 //!
-//! N 侧消费统计（[`n_side::NConsumer`]）记录调用数与超时数，压测超时率
-//! **>0.1%**（严格大于：恰 0.1% 不触发）→ [`n_side::NConsumer::review_required`]
-//! 翻真（锚点「触发契约评审」）。契约调用开销模型 [`call_cost_ns`] 按
+//! N 侧消费统计（[`n_side::NConsumer`]）记录调用数、超时数与累计开销，压测超时率
+//! **>0.1%**（严格大于：恰 0.1% 不触发）→ [`n_side::NConsumer::take_review`] 开出
+//! 实体评审单 [`n_side::ContractReview`]（越线当拍开一单，不重复刷屏）——锚点
+//! 「触发契约评审」的落地形态。契约调用开销模型 [`call_cost_ns`] 按
 //! 「哈希基价 + 逐字节 FNV + 逐簇映射」记账，预算 [`CALL_BUDGET_NS`] =
-//! 2000ns（0.002ms）——代表请求内预算内，判据断言。
+//! 2000ns（0.002ms），**逐次落到响应/句柄的 `cost_ns` 字段**（不是纸面公式），
+//! 总量面由 [`n_side::NConsumer::budget_ok`] 对账。
+//!
+//! # 四之二、跨域变更流程（AE10 F6394 范式）
+//!
+//! E 侧不得单方改契约：[`propose_change`] 受理空理由与空变更两拒并留痕前后哈希，
+//! [`accept_change`] 是 N 侧受理权（双签的另一半）——提案未受理即永不可生效。
 //!
 //! # 五、兑现声明：F0813 号契约的逐条应答
 //!
@@ -115,7 +124,7 @@ pub const fn contract_hash() -> u64 {
 const _: () = assert!(CONTRACT_VERSION as usize == CONTRACT_REVISIONS.len());
 
 // ===========================================================================
-// 二、契约错误：三码独占 0x18 细分段 + 呈现三要素
+// 二、契约错误：五码独占 0x18 细分段 + 呈现三要素
 // ===========================================================================
 
 /// 契约哈希不符（双端同败的运行期复核出口）。
@@ -124,6 +133,10 @@ pub const C_TEXT18_HASH_MISMATCH: u16 = 0x1800;
 pub const C_TEXT18_BAD_REQUEST: u16 = 0x1801;
 /// 引擎后端故障（后端 Err 的契约化包装）。
 pub const C_TEXT18_BACKEND_FAULT: u16 = 0x1802;
+/// 异步句柄与请求内容不匹配（stale 句柄取回他人请求）。
+pub const C_TEXT18_TICKET_MISMATCH: u16 = 0x1803;
+/// 跨域变更提案被拒（AE10 F6394 范式的拒绝出口）。
+pub const C_TEXT18_CHANGE_REJECTED: u16 = 0x1804;
 
 /// 契约错误（呈现三要素：机读码 + 可读原因 + 建议动作）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -232,6 +245,8 @@ pub struct ContractResponse {
     pub clusters: Vec<Cluster>,
     /// 低置信标记（超时降级路径置位）。
     pub low_confidence: bool,
+    /// 本次契约调用的开销记账（ns；判据「≤0.002ms/次」的逐次可观测面）。
+    pub cost_ns: u64,
 }
 
 // ===========================================================================
@@ -274,6 +289,8 @@ pub struct ContractHandle {
     pub ticket: u64,
     /// 超时上限（μs；契约 v1 语义值见 [`TIMEOUT_US`]）。
     pub timeout_us: u32,
+    /// 本次挂起调用的开销记账（ns；与响应同源同值）。
+    pub cost_ns: u64,
 }
 
 /// 契约选项（同步/异步模式开关）。
@@ -362,6 +379,39 @@ pub fn contract_hash_ok() -> bool {
     PROVIDER_CONTRACT_HASH == contract_hash() && PROVIDER_CONTRACT_HASH != 0
 }
 
+/// 请求合法域前置闸（参数越界 → 0x1801；**不进引擎、不进估算器**）。
+fn validate_params(req: &ContractRequest) -> Result<(), ContractError> {
+    if !req.params.valid() {
+        return Err(ContractError::new(
+            C_TEXT18_BAD_REQUEST,
+            "排版参数越界（字号域 64..=16384 或行高模式越界）",
+            "钳到契约合法域后重试；越界值不做隐式缩放",
+        ));
+    }
+    Ok(())
+}
+
+/// 原始读数 → 契约响应（量化出口唯一：`ceil`/`floor` 两个方向 + 簇映射 + 开销记账）。
+fn quantize(raw: BackendResult, text: &[u8], low_confidence: bool) -> ContractResponse {
+    let clusters = build_clusters(text);
+    ContractResponse {
+        advance_q16: ceil_grid(raw.advance_q16),
+        bound_w_q16: floor_grid(raw.bound_w_q16),
+        bound_h_q16: floor_grid(raw.bound_h_q16),
+        line_height_q16: ceil_grid(raw.line_height_q16),
+        glyph_count: raw.glyph_count,
+        cost_ns: call_cost_ns(text.len(), clusters.len()),
+        clusters,
+        low_confidence,
+    }
+}
+
+/// 单请求开销记账（域分隔串 + 逐字节 FNV + 逐簇映射）。
+pub fn request_cost(req: &ContractRequest) -> u64 {
+    let clusters = req.text.iter().filter(|b| **b != b'\n').count();
+    call_cost_ns(req.text.len(), clusters)
+}
+
 /// **契约测量入口**：校验 → 后端度量 → 量化 → 簇映射 → 超时语义。
 pub fn contract_measure(
     backend: &dyn MeasureBackend,
@@ -382,6 +432,7 @@ pub fn contract_measure(
     Ok(ContractOutcome::Pended(ContractHandle {
         ticket: ticket_of(req),
         timeout_us: opts.async_timeout_us,
+        cost_ns: resp.cost_ns,
     }))
 }
 
@@ -389,27 +440,80 @@ fn measure_inner(
     backend: &dyn MeasureBackend,
     req: &ContractRequest,
 ) -> Result<ContractResponse, ContractError> {
-    if !req.params.valid() {
-        return Err(ContractError::new(
-            C_TEXT18_BAD_REQUEST,
-            "排版参数越界（字号域 64..=16384 或行高模式越界）",
-            "钳到契约合法域后重试；越界值不做隐式缩放",
-        ));
-    }
+    validate_params(req)?;
     let raw = backend.measure(req)?;
-    let clusters = build_clusters(req.text);
-    Ok(ContractResponse {
-        advance_q16: ceil_grid(raw.advance_q16),
-        bound_w_q16: floor_grid(raw.bound_w_q16),
-        bound_h_q16: floor_grid(raw.bound_h_q16),
-        line_height_q16: ceil_grid(raw.line_height_q16),
-        glyph_count: raw.glyph_count,
-        clusters,
-        low_confidence: false,
-    })
+    Ok(quantize(raw, req.text, false))
 }
 
-/// 异步取回：超时语义翻面——时限内保真，超时保守估算 + 低置信（帧不阻塞）。
+// ===========================================================================
+// 六之二、失败语义落地：**保守估算**（超时后不等引擎，立即给上界）
+// ===========================================================================
+
+/// 保守估算的每簇宽度假设（em/簇；1 = 最坏字面即全角上限）。
+pub const CONSERVATIVE_EM_PER_CLUSTER: i64 = 1;
+/// 保守估算的行高分子（行高 = font_size × NUM/DEN）。
+pub const CONSERVATIVE_LINE_HEIGHT_NUM: i64 = 6;
+/// 保守估算的行高分母（1.2em 行距上限）。
+pub const CONSERVATIVE_LINE_HEIGHT_DEN: i64 = 5;
+
+/// 保守估算器（可替换：N 侧超时后自行求值，**不依赖任何引擎实现类型**）。
+pub trait ConservativeEstimator {
+    /// 按请求求保守原始读数（契约层负责量化与置信标记）。
+    fn estimate(&self, req: &ContractRequest) -> BackendResult;
+}
+
+/// 内建保守估算器：每簇 1em 宽、行高 1.2em——对 `advance`/`line_height` 是**上界**
+/// （布局永不低估占宽）；轮廓边界仍走下取整（内容内收，安全方向不变）。
+pub struct BuiltinEstimator;
+
+impl ConservativeEstimator for BuiltinEstimator {
+    fn estimate(&self, req: &ContractRequest) -> BackendResult {
+        let glyphs = req.text.iter().filter(|b| **b != b'\n').count() as i64;
+        let size = req.params.font_size_q16 as i64;
+        let advance = glyphs
+            .saturating_mul(CONSERVATIVE_EM_PER_CLUSTER)
+            .saturating_mul(size);
+        let line_height = size
+            .saturating_mul(CONSERVATIVE_LINE_HEIGHT_NUM)
+            / CONSERVATIVE_LINE_HEIGHT_DEN;
+        BackendResult {
+            advance_q16: advance,
+            bound_w_q16: advance,
+            bound_h_q16: line_height,
+            line_height_q16: line_height,
+            glyph_count: clamp_u32(glyphs),
+        }
+    }
+}
+
+/// 保守估算响应（超时降级路径：数字照给、置信自报、UI 帧不阻塞）。
+///
+/// 走此路径**完全不问引擎**——超时之后继续等引擎正是超时的定义。
+pub fn conservative_response(req: &ContractRequest) -> Result<ContractResponse, ContractError> {
+    conservative_response_with(&BuiltinEstimator, req)
+}
+
+/// 保守估算响应（自定义估算器面：N 侧可整体替换估算策略而契约层不动）。
+pub fn conservative_response_with(
+    est: &dyn ConservativeEstimator,
+    req: &ContractRequest,
+) -> Result<ContractResponse, ContractError> {
+    validate_params(req)?;
+    Ok(quantize(est.estimate(req), req.text, true))
+}
+
+fn clamp_u32(v: i64) -> u32 {
+    if v > i64::from(u32::MAX) {
+        u32::MAX
+    } else if v < 0 {
+        0
+    } else {
+        v as u32
+    }
+}
+
+/// 异步取回：超时语义翻面——时限内保真，超时**不再问引擎**、改给保守估算并标记
+/// 低置信（帧不阻塞）。
 ///
 /// 边界钉死：`elapsed == timeout` 恰好到点 = 时限内（`<=` 语义）。
 pub fn contract_resolve(
@@ -419,12 +523,20 @@ pub fn contract_resolve(
     now_us: u64,
     start_us: u64,
 ) -> Result<ContractResponse, ContractError> {
-    let mut resp = measure_inner(backend, req)?;
+    validate_params(req)?;
+    if ticket_of(req) != handle.ticket {
+        return Err(ContractError::new(
+            C_TEXT18_TICKET_MISMATCH,
+            "异步句柄与请求内容不匹配（stale 句柄）",
+            "按当前请求重新发起异步度量；禁止用旧句柄取回别的请求",
+        ));
+    }
     let elapsed = now_us.saturating_sub(start_us);
     if elapsed > handle.timeout_us as u64 {
-        resp.low_confidence = true;
+        return conservative_response(req);
     }
-    Ok(resp)
+    let raw = backend.measure(req)?;
+    Ok(quantize(raw, req.text, false))
 }
 
 // ===========================================================================
@@ -463,6 +575,8 @@ pub mod n_side {
         ceil_grid, floor_grid, ContractError, ContractOpts, ContractOutcome, ContractRequest,
         MeasureBackend,
     };
+    use alloc::format;
+    use alloc::string::String;
 
     /// N 侧独立写死的契约规范文本（与 E 侧 [`super::CONTRACT_TEXT`] 对拍）。
     pub const N_CONTRACT_TEXT: &str = "VE-F0818/text-measure/v1:\
@@ -507,17 +621,91 @@ failure{timeout→conservative+low_confidence, ui-frame-never-blocked}";
         pub calls: u64,
         /// 超时降级数。
         pub timeouts: u64,
+        /// 累计契约调用开销（ns；逐次由响应 `cost_ns` 累加）。
+        pub overhead_ns: u64,
+        /// 评审单是否已开（同一波越线只开一单，不重复刷屏）。
+        pub review_open: bool,
+    }
+
+    /// 契约评审单（N 侧超时率越线时触发——「触发契约评审」的实体）。
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ContractReview {
+        /// 契约登记号。
+        pub contract_id: &'static str,
+        /// 契约版本。
+        pub version: u32,
+        /// 契约哈希（评审对拍的对象）。
+        pub hash: u64,
+        /// 触发时调用数。
+        pub calls: u64,
+        /// 触发时超时数。
+        pub timeouts: u64,
+        /// 实测超时率（千分数；判据线 1‰ = 0.1%）。
+        pub rate_permille: u32,
+        /// 触发口径（可读）。
+        pub trigger: &'static str,
+    }
+
+    impl ContractReview {
+        /// 评审单可读摘要（归档/告警台账）。
+        pub fn screen_line(&self) -> String {
+            format!(
+                "review {} v{} hash={:016X} 超时率 {}/{} ({}‰) 越线 1‰ 触发：{}",
+                self.contract_id,
+                self.version,
+                self.hash,
+                self.timeouts,
+                self.calls,
+                self.rate_permille,
+                self.trigger,
+            )
+        }
     }
 
     impl NConsumer {
         /// 新消费者（零计数）。
         pub const fn new() -> NConsumer {
-            NConsumer { calls: 0, timeouts: 0 }
+            NConsumer { calls: 0, timeouts: 0, overhead_ns: 0, review_open: false }
         }
 
         /// 超时率是否触发契约评审（**>0.1%** 严格大于：恰 0.1% 不触发）。
         pub const fn review_required(&self) -> bool {
             self.timeouts.saturating_mul(1000) > self.calls
+        }
+
+        /// 实测超时率（千分数；零调用记 0）。
+        pub const fn timeout_rate_permille(&self) -> u32 {
+            if self.calls == 0 {
+                return 0;
+            }
+            let r = self.timeouts.saturating_mul(1000) / self.calls;
+            if r > u32::MAX as u64 {
+                u32::MAX
+            } else {
+                r as u32
+            }
+        }
+
+        /// 累计开销是否仍在逐次预算内（判据「≤0.002ms/次」的总量对账面）。
+        pub const fn budget_ok(&self) -> bool {
+            self.overhead_ns <= self.calls.saturating_mul(super::CALL_BUDGET_NS)
+        }
+
+        /// 取出契约评审单：越线当拍开一单，已开则不再重复开单（防刷屏）。
+        pub fn take_review(&mut self) -> Option<ContractReview> {
+            if !self.review_required() || self.review_open {
+                return None;
+            }
+            self.review_open = true;
+            Some(ContractReview {
+                contract_id: super::CONTRACT_ID,
+                version: super::CONTRACT_VERSION,
+                hash: super::PROVIDER_CONTRACT_HASH,
+                calls: self.calls,
+                timeouts: self.timeouts,
+                rate_permille: self.timeout_rate_permille(),
+                trigger: "N 侧压测超时率 > 0.1%（F0818 错误路径）",
+            })
         }
 
         /// 消费一次度量：UI 布局以契约接口取宽度并判定是否放得下。
@@ -544,12 +732,14 @@ failure{timeout→conservative+low_confidence, ui-frame-never-blocked}";
                     r
                 }
             };
+            self.overhead_ns = self.overhead_ns.saturating_add(resp.cost_ns);
             let fits = resp.advance_q16 <= available_q16;
             Ok(NFit {
                 advance_q16: resp.advance_q16,
                 fits,
                 low_confidence: resp.low_confidence,
                 glyph_count: resp.glyph_count,
+                cost_ns: resp.cost_ns,
             })
         }
     }
@@ -565,6 +755,8 @@ failure{timeout→conservative+low_confidence, ui-frame-never-blocked}";
         pub low_confidence: bool,
         /// 簇数。
         pub glyph_count: u32,
+        /// 本次调用开销（ns）。
+        pub cost_ns: u64,
     }
 
     // 静默引用面：N 侧对契约量化出口的显式依赖（判据断言其方向性）。
@@ -611,7 +803,7 @@ pub const FULFILLMENT: Fulfillment = Fulfillment {
         "ContractRequest{text,font,params,lang_tag}",
         "ContractResponse{advance_q16,bound_w_q16,bound_h_q16,line_height_q16,clusters}",
         "GRID_Q16=64, ceil_grid/floor_grid",
-        "TIMEOUT_US=16000, ContractResponse.low_confidence",
+        "TIMEOUT_US=16000, BuiltinEstimator+ContractResponse.low_confidence",
     ],
     hash: PROVIDER_CONTRACT_HASH,
 };
@@ -632,6 +824,109 @@ pub fn fulfillment_statement() -> String {
         FULFILLMENT.evidence[2],
         FULFILLMENT.evidence[3],
     )
+}
+
+// ===========================================================================
+// 九之二、E 侧变更契约走跨域变更流程（AE10 F6394 范式：提案方 E，受理方 N）
+// ===========================================================================
+
+/// 变更单状态：已提案（E 侧单方不得落地）。
+pub const CHANGE_PROPOSED: u8 = 0;
+/// 变更单状态：N 侧已受理（双签齐备，可进入下一版）。
+pub const CHANGE_ACCEPTED: u8 = 1;
+
+/// 跨域变更单（提案方 E 引擎 / 受理方 N 消费；两段哈希即变更前后指纹）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProposedChange {
+    /// 变更理由（非空是受理的前置——无理由的变更一律拒）。
+    pub rationale: String,
+    /// 变更前契约文本。
+    pub text_before: &'static str,
+    /// 变更后契约文本。
+    pub text_after: &'static str,
+    /// 变更前哈希。
+    pub hash_before: u64,
+    /// 变更后哈希。
+    pub hash_after: u64,
+    /// 变更前版本号。
+    pub from_version: u32,
+    /// 变更后版本号（恒为 +1——契约版本只进一格）。
+    pub to_version: u32,
+    /// 受理状态。
+    pub state: u8,
+}
+
+impl ProposedChange {
+    /// 是否已被 N 侧受理（E 侧单方永远拿不到真值即落地权）。
+    pub fn is_accepted(&self) -> bool {
+        self.state == CHANGE_ACCEPTED
+    }
+    /// 变更单可读摘要（归档/评审台账）。
+    pub fn screen_line(&self) -> String {
+        format!(
+            "change {} v{}->v{} hash {:016X}->{:016X} state={} 理由：{}",
+            CONTRACT_ID,
+            self.from_version,
+            self.to_version,
+            self.hash_before,
+            self.hash_after,
+            self.state,
+            self.rationale,
+        )
+    }
+}
+
+/// E 侧发起变更提案（F6394 范式的入口；三条拒绝规则即流程的最小纪律）。
+///
+/// 拒绝：理由为空、目标文本与现行契约逐字相同（空变更）、受理方哈希未变。
+pub fn propose_change(
+    next_text: &'static str,
+    rationale: &str,
+) -> Result<ProposedChange, ContractError> {
+    if rationale.trim().is_empty() {
+        return Err(ContractError::new(
+            C_TEXT18_CHANGE_REJECTED,
+            "变更提案未给出理由（空理由不得进跨域评审）",
+            "补写变更理由（受影响字段 + 迁移口径）后重新提案",
+        ));
+    }
+    if next_text == CONTRACT_TEXT {
+        return Err(ContractError::new(
+            C_TEXT18_CHANGE_REJECTED,
+            "变更后契约文本与现行契约逐字相同（空变更）",
+            "要么不提案，要么给出真实的字段/精度/失败语义差异",
+        ));
+    }
+    Ok(ProposedChange {
+        rationale: String::from(rationale),
+        text_before: CONTRACT_TEXT,
+        text_after: next_text,
+        hash_before: contract_hash(),
+        hash_after: fnv1a(next_text.as_bytes()),
+        from_version: CONTRACT_VERSION,
+        to_version: CONTRACT_VERSION + 1,
+        state: CHANGE_PROPOSED,
+    })
+}
+
+/// N 侧受理变更单（双签的另一半：受理前一律不可生效）。
+pub fn accept_change(change: &mut ProposedChange) -> Result<(), ContractError> {
+    if change.hash_after == change.hash_before {
+        return Err(ContractError::new(
+            C_TEXT18_CHANGE_REJECTED,
+            "变更前后哈希一致（变更未真正改变契约面）",
+            "核对变更文本与哈希计算路径后重新受理",
+        ));
+    }
+    if change.to_version != change.from_version + 1 {
+        return Err(ContractError::new(
+            C_TEXT18_CHANGE_REJECTED,
+            "目标版本号非 +1（契约版本只进一格）",
+            "把 to_version 定为 from_version + 1 后重新受理",
+        ));
+    }
+    change.state = CHANGE_ACCEPTED;
+    Ok(())
 }
 
 // ===========================================================================
