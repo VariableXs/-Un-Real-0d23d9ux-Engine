@@ -291,6 +291,7 @@
 //! | [`vef54_checks`] | F5401 域自检（判据逐条映射，43 项分 a/b/c 三族；变异双向验证 15/17 捕获 + 2 项等价变异留痕） | VE 册 #VE-F5401 |
 //! | [`vef55_netmodel`] | F5402 网络分层模型（四层职责册**每层单句**与 F5401 Layer 单源逐位对账；**跨层直调禁止**——依赖（F5401 allowed_deps 编译期）与调用（本条运行期相邻下传）两条纪律正交：越层直调拦截+**归位**改道逐层下传链、向上调用拒绝无归位（反向依赖不给路径）；层职责漂移**对拍修正**（DutyAct 行为归属投影，修正目标=职责册单源）；层间契约**版本拦截**（F5401 冻结之上不静默兼容旧版）；拦截器四路记账 O(1) 每调用） | VE 册 #VE-F5402 |
 //! | [`vef55_checks`] | F5402 域自检（27 项五组：职责册对账+行为射影 6/漂移对拍 4/拦截四向闭包+记账隔离 8/契约版本双向 4/读屏可达+判据元 5；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F5402 |
+//! | [`vef56_transport`] | F5403 传输层选型（双通道模型各司其职——四分类流量（会话/交易/状态/输入）O(1) 分派表钉死（低频重语义→可靠有序 TCP 类/高频可弃→不可靠 UDP 类），分派卡满足分类需求能力自洽；通道误用诊断+指路（状态走可靠/交易走不可靠双向检出——队头阻塞与丢包各有人话解释，正确分派零诊断不误报）；选型 ADR 四节齐录（背景/决策/理由/推翻条件——Y01 口径），三推翻条件可判定谓词（RTT 超 120ms 预算/可靠补偿丢包/后端可换），触发即五步重选型流程（冻结分派→重跑选型→出新 ADR 归档旧 ADR→抽象卡不变零改动切换），阈值内不过敏；通道抽象——上层只见 ChannelSpec 三问句（有序/重传/拥塞），协议名（TCP/UDP）出现即抽象泄漏拦截（能力语汇可靠/不可靠放行），同卡多后端（TCP/QUIC 同位换、UDP 另一卡）兑现可替换，交易的重传需求只被可靠卡满足） | VE 册 #VE-F5403 |
 //! | [`veu01_arch`] | F4201 U 域开工与一致性总架构（五层+接口冻结+承接落地+双维入约） | VE 册 #VE-F4201 |
 //! | [`veu02_model`] | F4202 跨域一致性模型（四类×三型+关系代数+环检测+红线+版本化） | VE 册 #VE-F4202 |
 //! | [`veu03_registry`] | F4203 契约注册中心（四能力+五字段冻结+唯一性+引用计数+生命周期） | VE 册 #VE-F4203 |
@@ -645,6 +646,7 @@ pub mod vef54_aaarch;
 pub mod vef54_checks;
 pub mod vef55_netmodel;
 pub mod vef55_checks;
+pub mod vef56_transport;
 pub mod veg03_checks;
 pub mod veg03_webm_mkv;
 pub mod veg04_checks;
@@ -1383,6 +1385,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F5401-a", vef54_checks::run_vef54_aaarch_checks_a_standalone()),
         ("VE-F5401-b", vef54_checks::run_vef54_aaarch_checks_b_standalone()),
         ("VE-F5402", vef55_checks::run_vef55_checks()),
+        ("VE-F5403", vef56_transport::run_vef56_checks()),
         ("VE-F5401-c", vef54_checks::run_vef54_aaarch_checks_c_standalone()),
         ("VE-F1203", veg03_checks::run_veg03_checks()),
         ("VE-F1204-a", veg04_checks::run_veg04_checks_a()),
