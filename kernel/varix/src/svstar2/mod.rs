@@ -70,7 +70,7 @@
 //! | [`veo06_shorthand`] | F2806 简写属性展开（shorthand→longhand 展开器；六条 box 类简写逐条实现，1~4 分量 clockwise 分配走逐边 fallback 公式；border-radius 斜杠双轴保留结构化 AxisPair（上游对 Delim 即拒，斜杠形态为前向声明）；参数域单源承 F2805 注册表越界钳到边界并告警；编译期七闸——条数/名唯一/longhand 互异/注册表可查/上界域/双轴恰一/边序秩精确；上游哈希对账+下游前向声明+对账钩子） | VE 册 #VE-F2806 |
 //! | [`veo06_shorthand_checks`] | F2806 域自检（43 条判据，四族分述：架构声明 8 / 集成边界 6 / 解析子集 10 / 降级矩阵 16 / 判据 6；判据侧独立第二套 assign 实现对拍） | VE 册 #VE-F2806 |
 //! | [`veo07_rules`] | F2807 样式规则存储与样式表对象（七类规则封闭枚举 RuleKind：style/media/import/font-face/keyframes/namespace/comment，`of_rank` 越界 None；平行数组规格表 PARAM_MAX_OF/DECLS_CAP_OF/AT_RULE_OF 与编译期逐位对账闸；开桶哈希 NameIndex 索引桶内保插入序；Stylesheet 增查删——insert_rule/insert_style 带参数域钳制告警、remove_rule 墓碑语义、lookup_ids/rule_of/live_count/screen_text；长手转换 convert_longhands 走 F2806 展开器；上游对账 F2806 可注入缺失探针 + 下游前向声明 F2808 + 对账钩子 reconcile_stylesheet；七码 E_SHEET_* 独占 0x2A 段） | VE 册 #VE-F2807 |
-//! | [`veo07_rules_checks`] | F2807 域自检（44 条判据，两族分述：规格+边界+子集 25 / 降级矩阵+判据承载力 19；判据侧独立写死 24 名 longhand 期望名单与 0x2A 码表对拍；单遍词法剥除（注释/字符串一次状态机）扫生产面与判据面零 panic；聚合防自调——tally 合计断而非全域入口递归） | VE 册 #VE-F2807 |
+//! | [`veo07_rules_checks`] | F2807 域自检（47 条判据，两族分述：规格+边界+子集 25 / 降级矩阵+判据承载力 22——新增四条盯墓碑容量闸：删后插得回（容量认在账数非 arena 长度，早期版本把样式表变成删过一次就再也插不进来的不可恢复只读）、压实回收并重建索引保源序（索引存下标，不重建就指向别的规则：名字对内容错比查不到更危险）、未越阈不压实（压实是 O(n) 写放大）、回收计数入账；判据侧独立写死 24 名 longhand 期望名单与 0x2A 码表对拍；单遍词法剥除（注释/字符串一次状态机）扫生产面与判据面零 panic；聚合防自调——tally 合计断而非全域入口递归） | VE 册 #VE-F2807 |
 //! | [`veo08_import`] | F2808 @import 与样式表依赖图（三形态封闭枚举 ImportForm：纯名/媒体/层叠层，`of_rank` 越界 None；规格表 FORM_SPECS 参数域逐行公开 name_cap/param_cap；依赖图节点=已注册样式表+边=@import 语句，索引复用 F2807 NameIndex 单源；Kahn 入度消去单源两用——拓扑序加载计划与循环检测同一实现，环成员=剩余节点；深度上界 16 单边 O(1) 恰阈钳制；越界钳制+告警/拒绝三要素/环检出立案；上游对账 F2807 现算摘要+下游前向声明 F2809 三面+对账钩子 reconcile_import_graph；十码 E_IMPORT_* 独占 0x2B 段） | VE 册 #VE-F2808 |
 //! | [`veo08_import_checks`] | F2808 域自检（27 条判据，两族分述：规格+边界+子集 16 / 降级矩阵+判据承载力 11；判据侧独立写死 10 码表/三形态规格值/下游 faces 对拍；独立第二套 DFS 拓扑实现性质对拍+环语料可分辨自证；深度恰阈 16/17 双向抓 >⇄>= 变异；单遍词法剥除扫生产面与判据面零 panic） | VE 册 #VE-F2808 |
 //! | [`vew01_sdk_arch`] | F4601 W 域开工与插件 SDK 总架构（四层/双承诺/承接/层冻结） | VE 册 #VE-F4601 |
@@ -500,7 +500,11 @@ pub mod vec21_parser;
 pub mod vec22_ast;
 pub mod vec22_checks;
 pub mod vec23_checks;
+pub mod vec24_structblock;
+pub mod vec24_checks;
+pub mod vec24_checks;
 pub mod vec23_transunit;
+pub mod vec24_struct;
 pub mod vel16_security;
 pub mod vea52_hotres;
 pub mod ved01_checks;
@@ -1055,6 +1059,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0421", vec21_checks::run_vec21_checks()),
 ("VE-F0422", vec22_checks::run_vec22_checks()),
 ("VE-F0423", vec23_checks::run_vec23_checks()),
+    ("VE-F0424", vec24_checks::run_vec24_checks()),
         ("VE-F2216", vel16_security::run_vel16_checks()),
         ("VE-F0052", vea52_hotres::run_vea52_checks()),
         ("VE-F0601", ved01_checks::run_ved01_checks()),
