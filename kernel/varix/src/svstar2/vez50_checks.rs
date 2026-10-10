@@ -773,8 +773,8 @@ fn c501_criteria(v: &mut Vec<(&'static str, bool, &'static str)>) {
 
 /// 本文件判据总条数（自检用）。
 const fn c501_estimated_count() -> usize {
-    // layers 7 + human 6 + handoff 9 + freeze 11 + criteria 9
-    7 + 6 + 9 + 11 + 9
+    // layers 8 + human 6 + handoff 11 + freeze 12 + criteria 10 = 47
+    8 + 6 + 11 + 12 + 10
 }
 
 // ---------------------------------------------------------------------------
