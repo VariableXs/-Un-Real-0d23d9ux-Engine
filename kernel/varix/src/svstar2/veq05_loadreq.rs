@@ -459,12 +459,17 @@ impl PriorityQueues {
     ///
     /// 遍历方向固定为 critical→idle（**从最急开始**），保证「critical 先于
     /// high」在跨级场景下也成立；级内顺序由各自的 FIFO 保证。
+    ///
+    /// 修复记录（VE-F3205 打磨）：初版写作「从末级倒扣到零级」且循环体尾部
+    /// 多一句 `i += 1`——于是 (a) Idle 级有货时**先返最闲级**（优先级倒置），
+    /// (b) Idle 级为空时下标在末级与越界值之间往复，**无限自旋挂死**
+    /// （F3207 的消费入口直接卡住整条加载管线）。本条按锚点「最急级先出」
+    /// 改为从零级（critical）正向扫到末级（idle），见判据 Q05-跨级复测。
     pub fn pop(&mut self) -> Option<(Priority, u32)> {
-        let mut i = PRIORITY_LEVELS;
-        while i > 0 {
-            i -= 1;
+        let mut i = 0usize;
+        while i < PRIORITY_LEVELS {
             if let Some(id) = self.queues[i].pop() {
-                // `from_ordinal` 对 `i < 5` 恒Some，不做unwrap。
+                // `from_ordinal` 对 `i < PRIORITY_LEVELS` 恒 Some，不做 unwrap。
                 return match Priority::from_ordinal(i) {
                     Some(p) => Some((p, id)),
                     None => None,
@@ -856,6 +861,12 @@ pub struct LoadStats {
     pub inflation_alarms: u64,
     /// 超时未配置告警次数。
     pub default_timeout_alarms: u64,
+    /// 合并表满 ⇒ 键未入表（降级为不合并）的次数。
+    ///
+    /// 没有这个计数，表满路径之后 `release` 会把「本就没入表的键」当成
+    /// 记账漂移打泄漏告警——**降级被误报成泄漏**，闸门信号从此不可信。
+    /// 有了它，泄漏告警可与 `not_tabled` 逐条对账（见判据 30）。
+    pub not_tabled: u64,
 }
 
 /// 装载结果（**合并时必须区分：谁是主请求**）。
@@ -918,6 +929,12 @@ impl LoadGate {
         if merged {
             self.stats.merged = self.stats.merged.saturating_add(1);
             return Admit::Merged { primary };
+        }
+        if !self.merge.contains(&key) {
+            // subscribe 返回「新建」但表里查不到此键 ⇒ 合并表满，
+            // 本请求降级为不合并（仍须正常入队加载）。记 not_tabled：
+            // 事后 release 的泄漏告警靠它逐条对账（降级≠泄漏）。
+            self.stats.not_tabled = self.stats.not_tabled.saturating_add(1);
         }
         // 3) 入队
         self.queues.push(req.priority, id);
@@ -1005,7 +1022,7 @@ impl LoadGate {
     }
 
     /// 读屏面板（**只报聚合计数**）。
-    pub fn a11y_lines(&self) -> [String; 6] {
+    pub fn a11y_lines(&self) -> [String; 7] {
         [
             format!("拒绝 / rejected: {}", self.stats.rejected),
             format!("合并命中 / merged: {}", self.stats.merged),
@@ -1019,6 +1036,7 @@ impl LoadGate {
                 "合并表条目 / merge entries: {} (泄漏闸 {} )",
                 self.merge.len, self.merge.leak_alarms
             ),
+            format!("合并表满未入表 / not tabled: {}", self.stats.not_tabled),
         ]
     }
 }
@@ -1641,22 +1659,24 @@ pub fn run_veq05_checks() -> CheckSet {
         let empty_uri = validate_request(&LoadRequest::new(b"", LoadType::Texture, Priority::Normal, 0, 0));
         s.add(
             "Q05-面板与零panic-聚合计数可查且空态安全",
-            lines.len() == 6
+            lines.len() == 7
                 && joined.contains("rejected")
                 && joined.contains("merged")
                 && joined.contains("inflation")
+                && joined.contains("not tabled")
                 // **整行匹配**而非 `contains("1")`：单字符子串在别处也会命中
                 // （"rejected: 1" 与 "inflation alarms: 0" 里都有 "1" 的邻居），
                 // 那样这条断的是"某个数字出现过"，不是"这个计数被正确报出"。
                 && lines[0] == format!("拒绝 / rejected: {}", g.stats.rejected)
                 && lines[1] == format!("合并命中 / merged: {}", g.stats.merged)
                 && lines[2] == format!("入队 / enqueued: {}", g.stats.enqueued)
+                && lines[6] == format!("合并表满未入表 / not tabled: {}", g.stats.not_tabled)
                 // 私有形态不得泄漏：具体 URI
                 && !joined.contains("res/p")
                 && pop_empty
                 && empty_uri == ValidateVerdict::Rejected(RejectKind::EmptyUri)
                 && Priority::from_ordinal(usize::MAX).is_none(),
-            "面板六行双语只报聚合计数且不含具体 URI；空队列 pop 返回 None、空 URI 被拒、越界下标反解返回 None（零 panic 面）",
+            "面板七行双语只报聚合计数且不含具体 URI；空队列 pop 返回 None、空 URI 被拒、越界下标反解返回 None（零 panic 面）",
         );
     }
 
@@ -1816,5 +1836,130 @@ pub fn run_veq05_checks() -> CheckSet {
         );
     }
 
+    // --- 判据 29：**五级齐全员队**（出队严格 critical→idle 不越级） -----
+    //
+    // 判据 4 只压了四级。本条把五级一次压满，出队必须严格按
+    // critical→high→normal→low→idle 全序返回——遍历方向若写成从末级
+    // 倒扣（idle 先出）或漏扫某一级，本条必红。
+    {
+        let mut q = PriorityQueues::new();
+        // 逆序压入：先 idle 后 critical（入队序故意与优先级反向）
+        q.push(Priority::Idle, 50);
+        q.push(Priority::Low, 40);
+        q.push(Priority::Normal, 30);
+        q.push(Priority::High, 20);
+        q.push(Priority::Critical, 10);
+        let mut order = [0u32; 5];
+        let mut i = 0usize;
+        while i < 5 {
+            if let Some((_, id)) = q.pop() {
+                order[i] = id;
+            }
+            i += 1;
+        }
+        let drained = q.pop().is_none() && q.total_len() == 0;
+        s.add(
+            "Q05-五级全序-出队严格critical到idle且排空即None",
+            order == [10, 20, 30, 40, 50]
+                && drained
+                // 各恰一条：五级都真实参与了优先级裁决而不是某级恒空
+                && q.level_dequeued(Priority::Critical) == 1
+                && q.level_dequeued(Priority::High) == 1
+                && q.level_dequeued(Priority::Normal) == 1
+                && q.level_dequeued(Priority::Low) == 1
+                && q.level_dequeued(Priority::Idle) == 1,
+            "五级各压一条后逆优先级出队严格为 10,20,30,40,50（critical→high→normal→low→idle），\
+             排空后再 pop 返回 None：遍历方向与越级扫视在此被钉死",
+        );
+    }
+
+    // --- 判据 30：**合并表满降级路径**（不入表仍入队 + 告警可对账） -----
+    //
+    // 合并表灌满 64 条不同键后，第 65 个新键进不了表：请求必须**照常入队
+    // 加载**（合并是优化不是正确性依赖），同时 not_tabled 记 1。
+    // 随后对该键 release：键从不在表里，泄漏闸必然告警——这不是记账漂移
+    // 而是已知降级，故泄漏告警数必须与 not_tabled **逐条对账得上**。
+    // 若没有 not_tabled，降级路径会把闸门打成假阳，泄漏信号从此不可信。
+    {
+        let mut g = LoadGate::new();
+        let mut i = 0u32;
+        while i < MERGE_SLOTS as u32 {
+            // 64 个互不相同的合法 URI 灌满合并表（每条都真实入表）
+            let mut uri = [b'k'; 16];
+            uri[7] = b'/';
+            let hex = b"0123456789abcdef";
+            uri[8] = hex[((i >> 12) & 0xF) as usize];
+            uri[9] = hex[((i >> 8) & 0xF) as usize];
+            uri[10] = hex[((i >> 4) & 0xF) as usize];
+            uri[11] = hex[(i & 0xF) as usize];
+            g.admit(&LoadRequest::new(&uri, LoadType::Texture, Priority::Normal, i, 1000));
+            i += 1;
+        }
+        let filled = g.merge_len() == MERGE_SLOTS;
+        // 第 65 个新键：表满 ⇒ 不入表但仍入队
+        let extra = LoadRequest::new(b"zz/overflow", LoadType::Texture, Priority::Normal, 99, 1000);
+        let r = g.admit(&extra);
+        let not_tabled = g.stats.not_tabled;
+        // 常态路径（未满时）不得记 not_tabled
+        let clean_gate = {
+            let mut g2 = LoadGate::new();
+            g2.admit(&LoadRequest::new(b"clean/one", LoadType::Texture, Priority::Normal, 1, 1000));
+            g2.stats.not_tabled == 0
+        };
+        // 对入不了表的键 release ⇒ 泄漏告警 1 次，与 not_tabled 对账得上
+        let rel = g.release(&extra);
+        let reconciled = g.leak_alarms() == not_tabled && not_tabled == 1;
+        s.add(
+            "Q05-合并表满-降级不入表仍入队且告警可对账",
+            filled
+                && r == Admit::Enqueued { priority: Priority::Normal, timeout_ms: 1000 }
+                && clean_gate
+                && !rel
+                && reconciled
+                // 表长未被这次release 破坏
+                && g.merge_len() == MERGE_SLOTS,
+            "合并表灌满 64 键后第 65 键照常入队（合并是优化不是正确性依赖）并记 not_tabled=1；\
+             对该键 release 的泄漏告警恰为 1 且与 not_tabled 逐条对账——降级不被误报成泄漏",
+        );
+    }
+
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 全判据必须全绿且不截断（**判据驱动**：没有这个测试，
+    /// `run_veq05_checks` 只是一段没人调用的死代码——初版的
+    /// `PriorityQueues::pop` 倒置+自旋 bug 正是这样绕过所有验证的）。
+    #[test]
+    fn q05_all_criteria_pass() {
+        let s = run_veq05_checks();
+        let (_p, f) = s.tally();
+        assert_eq!(f, 0, "VE-F3205 判据存在红项");
+        assert!(!s.truncated(), "判据集不应被截断");
+    }
+
+    /// 出队方向回归：五级齐全员队必须 critical 先出。
+    #[test]
+    fn q05_pop_serves_most_urgent_first() {
+        let mut q = PriorityQueues::new();
+        q.push(Priority::Idle, 5);
+        q.push(Priority::Normal, 3);
+        q.push(Priority::Critical, 1);
+        assert_eq!(q.pop(), Some((Priority::Critical, 1)), "最急级必须先出");
+        assert_eq!(q.pop(), Some((Priority::Normal, 3)));
+        assert_eq!(q.pop(), Some((Priority::Idle, 5)));
+        assert_eq!(q.pop(), None, "排空即 None");
+    }
+
+    /// Idle 级为空时 pop 必须终止（初版在末级空槽上无限自旋）。
+    #[test]
+    fn q05_pop_terminates_without_idle_traffic() {
+        let mut q = PriorityQueues::new();
+        q.push(Priority::Critical, 7);
+        assert_eq!(q.pop(), Some((Priority::Critical, 7)));
+        assert_eq!(q.pop(), None, "末级空槽上不得自旋");
+    }
 }
