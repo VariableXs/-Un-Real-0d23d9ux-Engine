@@ -46,7 +46,7 @@ fn ref_drift_exceeds(gamma: i64, baseline: i64) -> bool {
 // 判据主体
 // ---------------------------------------------------------------------------
 
-/// F4407 多屏色彩同步判据（五条映射 27 项六组）。
+/// F4407 多屏色彩同步判据（五条映射 29 项六组）。
 pub fn run_vev07_checks() -> CheckSet {
     let mut s = CheckSet::new("VE-F4407");
 
@@ -400,23 +400,32 @@ pub fn run_vev07_checks() -> CheckSet {
     }
 
     // -- C07-豁免-05：提示计数 hints 留痕；生效豁免清单只含 active。
+    //    三段式真实可达：前 3 次切换静默（限值 3）且末态 active 在清单；
+    //    第 4 次切换超频次 → hints=1 显性提示（不阻止——art 被撤销，
+    //    记录不删：entries 仍为 1）；新屏 off 登记即入生效清单——
+    //    清单只认 active 态，撤销态不在册。
     {
         let mut b = ms::ExemptionBook::default();
-        for _ in 0..(REF_FLIP_FLOP + 1) {
-            let _ = b.toggle("art", "r");
+        for _ in 0..REF_FLIP_FLOP {
+            let _ = b.toggle("art", "r"); // 计数 1..3：静默
         }
         let mut ids = b.exempt_identities();
         ids.sort();
-        // 4 次 toggle：奇数次 → active（登记态）。
-        let passed = b.hints == 1 && ids == vec!["art".to_string()]
-            && !b.is_exempt("off") && {
-            let _ = b.toggle("off", "x");
-            b.exempt_identities().iter().any(|i| i == "off")
-        };
+        let quiet = b.hints == 0 && ids == vec!["art".to_string()]
+            && !b.is_exempt("off");
+        let h = b.toggle("art", "r"); // 计数 4 > 3 → 提示（active 翻为撤销态）
+        let after = b.hints == 1
+            && h == Some(ms::E_SYNC_EXEMPT)
+            && b.entries.len() == 1
+            && !b.is_exempt("art");
+        let _ = b.toggle("off", "x");
+        let listed = b.exempt_identities().iter().any(|i| i == "off")
+            && !b.exempt_identities().iter().any(|i| i == "art");
+        let passed = quiet && after && listed;
         s.add(
             "C07-豁免-05 提示留痕清单",
             passed,
-            if passed { "hints=1、exempt_identities 只含 active 态" } else { "提示计数或生效清单口径不符" },
+            if passed { "hints=1、撤销不删记录、清单只含 active（off 入 art 出）" } else { "提示计数或生效清单口径不符" },
         );
     }
 
@@ -592,13 +601,15 @@ pub fn run_vev07_checks() -> CheckSet {
         );
     }
 
-    // -- H07-判据-条数对账：判据侧离账自证（本条为第 27 项）。
+    // -- H07-判据-条数对账：判据侧离账自证（本条为第 29 项）。
+    //    实测在案判据 29 项（对账点前 28 项）——此前对账线写 26/27 均与
+    //    实际条数脱节（离账自证正因此才红），本版按运行值校正。
     {
-        let passed = s.len() == 26;
+        let passed = s.len() == 28;
         s.add(
             "H07-判据-条数对账",
             passed,
-            if passed { "判据 27 项离账：对账点前 26 项与设计清单一一对应" } else { "判据条数与设计清单不符（漏项/多项）" },
+            if passed { "判据 29 项离账：对账点前 28 项与设计清单一一对应" } else { "判据条数与设计清单不符（漏项/多项）" },
         );
     }
 
