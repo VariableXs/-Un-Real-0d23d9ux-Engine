@@ -930,24 +930,3 @@ pub fn run_vel14_checks() -> CheckSet {
 /// L 域文档汇总前的暂挂声明（锚点跨批对接点：输出供 L 域文档汇总——
 /// 建账前暂挂，移交期模式延续；十年承诺期内文档随 v1 只增不改同步演进）。
 pub const L_LEDGER_DOC_SUSPENDED_NOTE: &str = "粒子三文档入 L 域文档汇总：汇总册建账前暂挂声明（移交期模式 F2214 同款）；文档随 F2213 v1 冻结同步演进，十年承诺 TEN_YEAR_COMMITMENT_MS 内只增不改";
-
-#[cfg(test)]
-mod v001_tmp_verify {
-    use super::*;
-
-    #[test]
-    fn vel14_checks_all_green() {
-        let s = run_vel14_checks();
-        let (items, n) = s.red_items();
-        let mut reds: Vec<String> = Vec::new();
-        for i in 0..n {
-            if let Some(it) = items[i] {
-                if !it.passed {
-                    reds.push(format!("红项：{} / {}", it.name, it.detail));
-                }
-            }
-        }
-        let (p, f) = s.tally();
-        assert!(reds.is_empty(), "vel14 红项 {}/{}：{:?}", p, p + f, reds);
-    }
-}

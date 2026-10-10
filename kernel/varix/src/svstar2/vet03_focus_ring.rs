@@ -43,6 +43,14 @@
 //! 而非 P1。分级的理由：延迟是「慢」，无渲染是「没了」，用户在两种
 //! 情况下的应对完全不同（等一下 vs 以为程序死了）。
 //!
+//! **配对按 seq、查表走索引**：焦点事件在管线里可能被合并（一次按键触发
+//! 多次焦点变更被折叠成一次渲染），所以「相邻下标」配对会把合并误判成
+//! 丢失、反之亦然——两种误判方向相反，正是这类断言最容易被钻的缝。
+//! [`RenderIndex`] 在建索引时丢掉 `ring_drawn=false` 的记录（否则「环
+//! 消失」会被伪装成「环很慢」），同 seq 多帧取**最小**延迟（重绘/重试
+//! 不得把「迟到」洗成达标），时序倒置（渲染帧早于输入帧）按无可信配对
+//! 处理而非算出负数。
+//!
 //! ── 判据二：强化参数（锚点"高对比下焦点环双层加粗+外发光增强"）────
 //!
 //! 焦点环是**双层**结构：内环（贴着控件边界，主指示）+ 外晕（柔化层）。
@@ -81,6 +89,15 @@
 //! 没读环境态——若语料里环境态没变，则「重算」与「恢复」结果相同，
 //! 判据恒绿。
 //!
+//! **保持失效必须立案（锚点错误矩阵"保持失效→P1"）**：本域另外三条
+//! 错误路径都有代码承载，唯独这条若只写协议不写立案，恢复逻辑坏成
+//! 什么样都**不产出任何诊断**——它会安安静静地返回一个「看起来正常」
+//! 的状态（环变细了 / 焦点节点丢了 / 可见位翻了），账本照样自报
+//! `epoch == 1` 一切正常。[`file_preservation_fault`] 逐字段展开差分
+//! （环宽度 / 目标 / 序号 / 可见位 / 发光 / 双层标志）并判 **P1**：
+//! 定P1 而非 P0 是因为环此刻**还在**、焦点仍可见，属「可见性降级」
+//! 而非「可见性归零」；P0 在本域只留给「环消失」与「语义-像素断链」。
+//!
 //! ── 判据四：协同仲裁（锚点"F3044 迁移动效在高对比下简化"）────────
 //!
 //! F3044（焦点环动效）给环加了迁移动画（旧环收→新环放150ms）与入场
@@ -112,6 +129,12 @@
 //! 真画了）。前者恒真时后者仍可能为零，故两条都必须独立断；
 //! 只断「摘要未变」是最典型的恒真弱门禁（什么都没发生时它也成立）。
 //!
+//! **两个时点必须由调用方传入**：改动语义这件事只能由**前后两次观测**
+//! 得出，而 [`run_focus_frame`] 若在内部对同一份 [`f3803::SemLayer`]
+//! 摘要两次，「改了语义」这条 P0 在端到端路径上就是一段**永远走不到的
+//! 死代码**——单元级判据（直接喂两份不同摘要）照样全绿，真实路径却抓
+//! 不到任何东西。故签名收两份语义面，让这条 P0 在真实路径上可达。
+//!
 //! ── 复用单源（锚点"跨批对接点：F3044/N05 单源复用声明"）──────────
 //!
 //! 本条**不重新发明**三样东西，只读消费上游：
@@ -125,11 +148,24 @@
 //! **F3044 前向声明**：F3044 尚未入库 Rust 侧，本条只声明**协同契约**
 //! （[`MotionPlan`] 的输入是 F3044 的迁移意图，输出是F3804 裁决后的
 //! 渲染计划），不越界实现 F3044 的动效参数表——那是 F3044 的活。
+//! 契约以**带域前缀的冻结常量**表达（[`F3044_MIGRATION_MS`] /
+//! [`F3044_MIN_VISIBLE_PCT`]）：抄一次是声明，将来改成 `pub use` 指向
+//! F3044 定义时调用点一行不用动；判据侧对冻结值与锚点逐字对账，
+//! 抄错即红，而不是等到线上才发现。
 //!
 //! **性能（锚点"强化 O(1) 参数；追焦 O(1) 帧内；保持 O(1)；协同 O(仲裁)"）**：
-//! 全部为**有限常数**上的扫描/查表：门联动搜索上界 [`GLOW_SCAN_MAX`] = 255
-//! 是编译期常量，与场景规模无关；追焦按 seq 配对是 O(事件数) 但事件数
-//! 是单帧内焦点变更次数（常数级）；保持与协同均为 O(1)。
+//! 四条承诺**逐条做成可实测的判据**，而不是写在注释里：
+//!   - 强化 O(1) 参数 → 查表**无状态**：重复调用输出恒等（一旦有状态，
+//!     渲染结果就依赖调用历史，比慢更糟）；扫描上界 [`GLOW_SCAN_MAX`] 是
+//!     编译期常量，与场景规模无关。
+//!   - 追焦 O(1) 帧内 → [`judge_chase`] 先建 [`RenderIndex`] 再二分查，
+//!     并把**真实比较步数**记进 [`ChaseCost`]。判据在 512 与 4096 两档
+//!     语料上取比值：平方增长是 64 倍，判据要求小于 24 倍。
+//!     步数是**计数器**（与机器、优化级别无关、可复现），不是编造的耗时。
+//!   - 保持 O(1) → 账本只有**一个快照槽**，64 轮失焦/聚焦后快照逐字段
+//!     恒等且 epoch 精确等于轮数（无隐藏累积状态）。
+//!   - 协同 O(仲裁) → 只依赖三个标量输入、不遍历任何集合；12 组输入
+//!     恰好产出 3 条分支理由（多一条就说明有分支在按集合内容分流）。
 //! **没有一项是 O(场景节点数)**：这是架构约束，不是巧合。
 
 #![allow(clippy::needless_range_loop)]
@@ -154,6 +190,51 @@ pub const FOCUS_STATE_PROTOCOL_VERSION: &str = "T04-focus-state-v1";
 
 /// 协同裁决协议版本（判据四：仲裁协议版本）。
 pub const FOCUS_MOTION_PROTOCOL_VERSION: &str = "T04-focus-motion-v1";
+
+// ---------------------------------------------------------------------------
+// 零、F3044 契约冻结与 F3802 注入消费接点
+//
+// 锚点「跨批对接点：F3044/N05 单源复用声明；D 域渲染（执行对端）；
+// F3802 注入消费」。
+//
+// **F3044 尚未入库 Rust 侧**，所以「复用」在这里只能是**契约冻结**：
+// 把 F3044 已定案的数值（迁移时长、起点可见度）以带域前缀的常量**原样
+// 抄进本域并冻结**，而不是等到F3044 落地后再逐处对齐。理由：
+//   - 抄一次是**声明**，逐处对齐是**猜测**：现在只有一个数字要猜；
+//     F3044 落地后是散落在判据语料里的几十处 150 各猜各的。
+//   - 常量名带 `F3044_` 前缀 = 它不是本域的真理，是**别人真理的引用**。
+//     将来 F3044 入库，本域改成 `pub use` 指向它的定义，调用点一行不用动。
+//   - 真要抄错，判据侧有对账（见 `run_f3804_checks`的「单源」段），
+//     锚点值与冻结值不一致即红——不是等到线上才发现。
+// ---------------------------------------------------------------------------
+
+/// F3044 已定案的焦点环迁移时长（ms）。**引用值，非本域定义**。
+///
+/// F3044 锚点：环迁移动画 旧环收→新环放 150ms。
+/// 本域在高对比 / 减动效下把它**裁决为 0**，但「动效源请求多少」这个
+/// 数值必须与F3044 一致，否则本域裁剪的是自己编的数字。
+pub const F3044_MIGRATION_MS: u32 = 150;
+
+/// F3044 已定案的迁移起点可见度红线（%）——「起点即 60% 可见」。
+///
+/// **引用值，非本域定义**。见 [`MIN_VISIBLE_PCT`]（仲裁不变量用的就是它）。
+pub const F3044_MIN_VISIBLE_PCT: u8 = 60;
+
+/// 本域在 F3802 管线上的**消费接点**（跨批对接点：F3802 注入消费）。
+///
+/// 焦点环是**像素级**产出（环要真的画进帧缓冲），不是样式层改尺寸——
+/// 故落在 [`f3802::InjectionSlot::Filter`]（过滤注入：像素级滤镜）。
+/// 声明成常量而不是散在调用处的字面量，好让「接点被改名/挪槽」这件事
+/// 是一次显眼的常量改动，而不是某处 `slot: Filter` 悄悄改掉。
+pub const FOCUS_RING_INJECTION_SLOT: f3802::InjectionSlot = f3802::InjectionSlot::Filter;
+
+/// 本域在 F3802 策略表里的**参数名**（生产侧）。
+///
+/// F3802 的 `POST_ASSISTIVE_HINT` 策略消费一个名为 `focus_ring` 的参数；
+/// 那个名字的消费方在 F3802、生产方在本域。名字对不上时不会有任何报错
+/// ——F3802 只是拿到 0.0，辅助技术接入时焦点环不增强，而所有断言都绿。
+/// 故把它冻结成本域常量，并在判据里与上游策略表**逐字对账**。
+pub const FOCUS_RING_PARAM: &str = "focus_ring";
 
 // ---------------------------------------------------------------------------
 // 一、强化参数表（判据二：双层加粗 + 外发光增强）
@@ -430,6 +511,8 @@ pub struct ChaseVerdict {
     pub late: usize,
     /// 未能配到渲染的事件数（**焦点环消失**，比延迟更严重）。
     pub stalled: usize,
+    /// 本次裁决的**实际工作量**（锚点性能条：追焦 O(1) 帧内）。
+    pub cost: ChaseCost,
 }
 
 impl ChaseVerdict {
@@ -440,6 +523,140 @@ impl ChaseVerdict {
     /// 是否存在超门限的延迟（P1 级）。
     pub fn has_late(&self) -> bool {
         self.late > 0
+    }
+}
+
+/// 追焦裁决的**工作量账**（不是估算，是这次真的数出来的步数）。
+///
+/// **为什么要把步数暴露成一个可断的类型**：锚点承诺「追焦 O(1) 帧内」，
+/// 而这句话在代码里是**无法直接观察**的——复杂度是关于输入规模的性质，
+/// 单看一个输入得出的结论永远是真的（n=1 时任何实现都是 O(1)）。
+/// 唯一的办法是**把操作次数记下来**，让判据在**大语料**上比较
+/// 「实测步数」与「若用朴素实现会走的步数」，用比值把复杂度钉死。
+///
+/// 这不是性能基准测试，也不是编造的耗时数字——它是**计数器**，
+/// 与机器无关、与优化级别无关、可被任何输入复现。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ChaseCost {
+    /// 输入事件数。
+    pub inputs: u32,
+    /// 索引里被采纳的渲染记录数（已滤掉 `ring_drawn=false`）。
+    pub drawn_runs: u32,
+    /// 二分定位到 seq 区间的总步数。
+    pub seek_steps: u32,
+    /// 同seq 组内扫描帧号的总步数。
+    pub group_steps: u32,
+}
+
+impl ChaseCost {
+    /// 总比较步数（定位 + 组内扫描）。
+    pub fn comparisons(&self) -> u32 {
+        self.seek_steps.saturating_add(self.group_steps)
+    }
+
+    /// **朴素实现**（每个输入线性扫全部渲染）在同一语料上的步数。
+    ///
+    /// 给出它不是为了对比性能，而是为了让判据能算出一个**比值**：
+    /// 「实测 / 朴素」这个比值随语料规模增长而下降，才是复杂度的证据。
+    /// 只有比值、且比值**不随规模改善**的实现，和朴素实现没区别。
+    pub fn naive_comparisons(&self) -> u32 {
+        self.inputs.saturating_mul(self.inputs.saturating_add(self.drawn_runs))
+    }
+
+    /// 实测步数是否**严格少于**朴素实现（同等语料下）。
+    pub fn beats_naive(&self) -> bool {
+        self.comparisons() < self.naive_comparisons()
+    }
+}
+
+/// 渲染侧索引：按 seq 归并、按 frame 有序。
+///
+/// **为什么不是「每个输入扫一遍渲染」**：朴素写法是 O(输入数 × 渲染数)，
+/// 而这两者都随场景规模增长——焦点密集的界面（表格、树、编辑器）上
+/// 单帧事件数并不少，于是「追焦 O(1) 帧内」这句承诺在实现上是假的。
+/// 建一次索引（O(渲染数 log 渲染数)）再二分查，把单事件成本压到
+/// O(log 渲染数 + 同组帧数)，后者在正常渲染管线里恒为 1
+/// （一个焦点事件只产生一次环绘制）。
+///
+/// **取最小延迟而非首个匹配**：同一个 seq 可能有多帧渲染产出（重绘、
+/// 丢帧重试）。首个匹配会把「重试后才画上」误判成达标——而用户真正
+/// 经历的是**最晚**那帧之前的所有时刻。这里取组内最小正延迟，
+/// 与判据侧独立重算的口径逐字一致。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RenderIndex {
+    /// `(seq, frame)` 升序；同 seq 的多帧排在一起且 frame 升序。
+    runs: Vec<(u64, u64)>,
+}
+
+impl RenderIndex {
+    /// 建索引。**丢弃 `ring_drawn=false` 的记录**——环没画的帧不是渲染，
+    /// 混进索引会把「环消失」伪装成「环很慢」。
+    pub fn build(renders: &[FocusRender]) -> RenderIndex {
+        let mut runs: Vec<(u64, u64)> = Vec::new();
+        for r in renders.iter() {
+            if r.ring_drawn {
+                runs.push((r.seq, r.frame));
+            }
+        }
+        runs.sort_unstable();
+        RenderIndex { runs }
+    }
+
+    /// 索引长度（采纳的渲染记录数）。
+    pub fn len(&self) -> usize {
+        self.runs.len()
+    }
+
+    /// 空索引（该帧确实什么都没渲染）。
+    pub fn is_empty(&self) -> bool {
+        self.runs.is_empty()
+    }
+
+    /// 查 `seq` 在 `from_frame` 之后的**最小延迟**，并累计查找步数。
+    ///
+    /// **零 panic 面**：全部用 `get()` / `position` 语义，不用下标。
+    /// 返回 `None` = 「这个 seq 没有画上环」（P0）或「所有产出都早于
+    /// 输入帧」（时序倒置）——两者都归入 stalled，由调用方立案。
+    pub fn min_lag(&self, seq: u64, from_frame: u64, cost: &mut ChaseCost) -> Option<u64> {
+        // 二分定位第一个 seq >= 目标的记录；定位不到直接 None。
+        let mut lo = 0usize;
+        let mut hi = self.runs.len();
+        let mut base: Option<usize> = None;
+        while lo < hi {
+            cost.seek_steps += 1;
+            let mid = lo + (hi - lo) / 2;
+            match self.runs.get(mid) {
+                Some(&(s, _)) if s < seq => lo = mid + 1,
+                Some(_) => {
+                    base = Some(mid);
+                    hi = mid;
+                }
+                None => return None,
+            }
+        }
+        let start = base?;
+        // 组内向前扫，取满足 frame >= from_frame 的最小延迟。
+        let mut best: Option<u64> = None;
+        let mut i = start;
+        while i < self.runs.len() {
+            let pair = match self.runs.get(i) {
+                Some(p) => *p,
+                None => break,
+            };
+            if pair.0 != seq {
+                break;
+            }
+            cost.group_steps += 1;
+            if pair.1 >= from_frame {
+                let lag = pair.1 - from_frame;
+                best = Some(match best {
+                    Some(prev) if prev <= lag => prev,
+                    _ => lag,
+                });
+            }
+            i += 1;
+        }
+        best
     }
 }
 
@@ -454,15 +671,19 @@ pub fn judge_chase(
     renders: &[FocusRender],
     bag: &mut IssueBag,
 ) -> ChaseVerdict {
+    let index = RenderIndex::build(renders);
+    let mut cost = ChaseCost {
+        inputs: inputs.len() as u32,
+        drawn_runs: index.len() as u32,
+        ..ChaseCost::default()
+    };
     let mut worst = 0u64;
     let mut on_time = 0usize;
     let mut late = 0usize;
     let mut stalled = 0usize;
 
     for inp in inputs.iter() {
-        // 零 panic 面：用 `find` 而非下标；无匹配即「无渲染」。
-        let matched = renders.iter().find(|r| r.seq == inp.seq && r.ring_drawn);
-        match matched.and_then(|r| chase_lag(inp, r)) {
+        match index.min_lag(inp.seq, inp.frame, &mut cost) {
             Some(lag) => {
                 if lag > worst {
                     worst = lag;
@@ -509,7 +730,7 @@ pub fn judge_chase(
         }
     }
 
-    ChaseVerdict { worst_lag: worst, on_time, late, stalled }
+    ChaseVerdict { worst_lag: worst, on_time, late, stalled, cost }
 }
 
 // ---------------------------------------------------------------------------
@@ -637,12 +858,127 @@ pub fn preserve_across_window(
     (restored, recomputed)
 }
 
+/// 保持失效立案（锚点错误矩阵：**保持失效 → P1**）。
+///
+/// **为什么这条错误路径不能省**：锚点四条错误路径里，三条在本域都有
+/// 承载（滞后 P1 / 门联动修正 / 协同仲裁），唯独「保持失效」只写了句
+/// 「P1（复述红线）」而没有代码。若不补，恢复逻辑坏成什么样都**不产出
+/// 任何诊断**——它会安安静静地返回一个「看起来正常」的状态：
+/// 环变细了、目标节点丢了、`visible` 翻成 false，而账本照样自报
+/// `epoch == 1` 一切正常。**失效没有声音，等于没有这个错误路径**。
+///
+/// **P1 而非 P0 的理由**（与「滞后 P1」「消失 P0」的分级保持一致）：
+/// 焦点环此刻**还在**、焦点还是可见的，用户只是看到它变形或变细——
+/// 是「可见性降级」，不是「可见性归零」。把它记 P0 会稀释 P0 的含义
+/// （P0 在本域只留给「环消失」与「语义-像素断链」两类致命项）。
+///
+/// **差分逐字段展开**：只报「不一致」等于把定位成本全推给追责的人；
+/// 这里直接告诉他**哪个字段**偏了（环宽度 / 目标 / 序号 / 可见位），
+/// 因为这四种失效的成因完全不同（保存被覆盖 / 存错字段 / 存了旧事件
+/// / 可见位被顺手改掉）。
+///
+/// 返回 `true` = 保持完好（无立案）。
+pub fn file_preservation_fault(
+    before: &FocusRenderState,
+    restored: Option<&FocusRenderState>,
+    epoch: u64,
+    bag: &mut IssueBag,
+) -> bool {
+    let got = match restored {
+        Some(r) => r,
+        None => {
+            bag.push(
+                "FOCUS_STATE_NOT_PRESERVED",
+                format!(
+                    "窗口第{} 次失焦后没有任何可恢复的快照（失焦前状态：target={} seq={} \
+                     可见={} 内环={}px 外晕={}px 发光alpha={}）",
+                    epoch,
+                    before.target,
+                    before.seq,
+                    before.visible,
+                    before.params.inner_px,
+                    before.params.outer_px,
+                    before.params.glow_alpha
+                ),
+                "账本里没有快照可恢复：要么保存路径没被调用（窗口失焦事件丢失），\
+                 要么快照已被 clear()。此时用户回到窗口看到的焦点渲染状态\
+                 是未经确认的——环可能凭空变细、变没，或焦点落在别处"
+                    .to_string(),
+                "补齐失焦时的保存调用并核对 clear() 的时机；\
+                 不得用「重算一份当前状态」顶替恢复——那是断供/恢复\
+                 两条路合成一条，保持协议的逐字段承诺即失效".to_string(),
+                Severity::P1,
+            );
+            return false;
+        }
+    };
+    if got.identical_to(before) {
+        return true;
+    }
+
+    // 逐字段差分——四种成因不同，混报成一句话等于放弃定位。
+    let mut fields: Vec<&'static str> = Vec::new();
+    if got.target != before.target {
+        fields.push("目标节点");
+    }
+    if got.params.inner_px != before.params.inner_px
+        || got.params.outer_px != before.params.outer_px
+    {
+        fields.push("环宽度");
+    }
+    if got.params.glow_alpha != before.params.glow_alpha {
+        fields.push("发光强度");
+    }
+    if got.params.layered != before.params.layered {
+        fields.push("双层标志");
+    }
+    if got.seq != before.seq {
+        fields.push("事件序号");
+    }
+    if got.visible != before.visible {
+        fields.push("可见位");
+    }
+
+    bag.push(
+        "FOCUS_STATE_NOT_PRESERVED",
+        format!(
+            "窗口第{} 次失焦后的恢复状态与失焦前不一致：偏在 {}。\
+             失焦前 target={} seq={} 可见={} 内环={}px 外晕={}px 发光alpha={}；\
+             恢复后 target={} seq={} 可见={} 内环={}px 外晕={}px 发光alpha={}",
+            epoch,
+            fields.join("、"),
+            before.target,
+            before.seq,
+            before.visible,
+            before.params.inner_px,
+            before.params.outer_px,
+            before.params.glow_alpha,
+            got.target,
+            got.seq,
+            got.visible,
+            got.params.inner_px,
+            got.params.outer_px,
+            got.params.glow_alpha
+        ),
+        "焦点渲染状态保持协议要求「逐字段原样恢复」：\
+         窗口切回来时焦点环必须和离开时一模一样。当前恢复值有字段漂移，\
+         用户会看到环在切回窗口的瞬间变形——这不是动效，是状态丢失"
+            .to_string(),
+        "沿快照回溯是哪一步改写了它：重复失焦覆盖快照 / 保存了已退化的状态 /\
+         恢复时读到了环境态重算的结果。特别注意环宽度与发光两字段——\
+         它们恰好是「高对比强化环」与「常规环」的分界线，\
+         漂移即等于把强化档用户的环悄悄降级".to_string(),
+        Severity::P1,
+    );
+    false
+}
+
 // ---------------------------------------------------------------------------
 // 五、协同仲裁（判据四）
 // ---------------------------------------------------------------------------
 
-/// 环迁移过程中的**最低可见度下限**（复述 F3044 起点红线：起点即 60% 可见）。
-pub const MIN_VISIBLE_PCT: u8 = 60;
+/// 环迁移过程中的**最低可见度下限**（引用 F3044 起点红线：起点即 60% 可见）。
+pub const MIN_VISIBLE_PCT: u8 = F3044_MIN_VISIBLE_PCT;
 
 /// 高对比下的迁移时长（**0ms** = 不做迁移动画，即「简化」）。
 pub const HC_MIGRATION_MS: u32 = 0;
@@ -865,6 +1201,14 @@ pub struct FocusFrameVerdict {
 /// 理由：断供影响的是「要不要强化」，不影响「焦点环在不在」。
 /// 把断供当成「整帧不渲染焦点环」会让断供变成比不开启高对比
 /// **更糟**的结果（依赖高对比的用户反而连基本焦点环都没有）。
+///
+/// **语义面必须传前后两份**（[`SemLayer`] × 2）而不是在本函数里
+/// 摘要一次用两次：执法要判的是「渲染**有没有改动**语义」，
+/// 而改动这件事只能由**两个时点**的观测得出。在函数内部取两次
+/// 同一份数据的摘要，比值恒等，「改了语义」这条 P0 在端到端路径上
+/// 就成了一段**永远走不到的死代码**——单元级判据（直接给两份不同
+/// 摘要）会绿，端到端却抓不到任何东西。把两个时点交给调用方，
+/// 才让这条 P0 在真实路径上可达。
 pub fn run_focus_frame(
     probes: &[f3802::StateProbe],
     missing: &[f3802::A11yStateKey],
@@ -874,7 +1218,8 @@ pub fn run_focus_frame(
     inputs: &[FocusInput],
     renders: &[FocusRender],
     pix: &f3803::PixLayer,
-    sem: &f3803::SemLayer,
+    sem_before: &f3803::SemLayer,
+    sem_after: &f3803::SemLayer,
     bag: &mut IssueBag,
 ) -> FocusFrameVerdict {
     let captured = f3802::capture_states(probes, missing, bag);
@@ -903,8 +1248,8 @@ pub fn run_focus_frame(
 
     let chase = judge_chase(inputs, renders, bag);
     let audit = audit_focus_render(
-        f3803::semantic_digest(sem),
-        f3803::semantic_digest(sem),
+        f3803::semantic_digest(sem_before),
+        f3803::semantic_digest(sem_after),
         pix,
         bg,
         bag,
@@ -1123,6 +1468,109 @@ pub fn run_f3804_checks() -> CheckSet {
             "判据不得只信被测函数自报值",
         );
     }
+    // 锚点性能条「追焦 O(1) 帧内」：**用计数器实测**，不靠嘴声明。
+    //
+    // 语料规模必须**够大**：n=1 时任何实现都是 O(1)，复杂度断言在
+    // 小语料上是恒真门禁。这里取 512 事件 × 512 渲染——朴素实现要走
+    // ~26 万步，索引实现只要几千步，比值差两个数量级。
+    {
+        const N: u64 = 512;
+        let mut inputs = Vec::new();
+        let mut renders = Vec::new();
+        let mut i = 0u64;
+        while i < N {
+            inputs.push(probe_input(i, 1000, i as u32));
+            // 偶数 seq 同帧、奇数 seq 次帧——两类延迟都要在语料里。
+            let frame = if i % 2 == 0 { 1000 } else { 1001 };
+            renders.push(probe_render(i, frame, i as u32, true));
+            i += 1;
+        }
+        let mut bag = IssueBag::new();
+        let v = judge_chase(&inputs, &renders, &mut bag);
+        set.add(
+            "性能-追焦索引显著优于朴素扫描",
+            v.cost.beats_naive()
+                && v.cost.comparisons() * 8 < v.cost.naive_comparisons()
+                && v.cost.inputs == N as u32,
+            "512×512 语料下实测步数须比朴素实现低一个数量级以上（否则「O(1) 帧内」是空话）",
+        );
+        set.add(
+            "性能-追焦在大语料上仍全绿",
+            v.on_time == N as usize && v.late == 0 && v.stalled == 0 && !bag.has_any(),
+            "索引化不得改变裁决结果：512 事件全部按 0/1 帧判达标",
+        );
+        // 规模**放大 8 倍**时步数的增长倍数。
+        //
+        // **必须做真正的多点对比**：单点测量分不出 O(n log n) 与 O(n²)
+        // ——两者在小 n 上看起来差不多。取 n 与 8n 两点的**比值**才是
+        // 复杂度证据，且倍数要拉得足够开才有判别力：
+        //   平方增长 = 8² = 64 倍；线性 = 8 倍；n log n ≈ 8×(13/10) ≈ 10 倍。
+        // 判据取「小于 24 倍」：离 64 有足够余量，离实测的 ~10 也不至于
+        // 松到把平方实现放过。这不是拍脑袋的数——三个量级各占一档。
+        let mut inputs2 = Vec::new();
+        let mut renders2 = Vec::new();
+        let mut j = 0u64;
+        while j < N * 8 {
+            inputs2.push(probe_input(j, 1000, j as u32));
+            let frame = if j % 2 == 0 { 1000 } else { 1001 };
+            renders2.push(probe_render(j, frame, j as u32, true));
+            j += 1;
+        }
+        let mut bag2 = IssueBag::new();
+        let v2 = judge_chase(&inputs2, &renders2, &mut bag2);
+        let base_steps = v.cost.comparisons() as u64;
+        let big_steps = v2.cost.comparisons() as u64;
+        set.add(
+            "性能-规模放大8倍步数远低于平方增长",
+            base_steps > 0 && big_steps.saturating_mul(100) < base_steps.saturating_mul(2_400),
+            "语料放大 8 倍后实测步数须 < 24 倍（平方增长会是 64 倍）",
+        );
+        set.add(
+            "性能-放大后裁决结果不变",
+            v2.on_time == (N * 8) as usize && v2.late == 0 && v2.stalled == 0 && !bag2.has_any(),
+            "规模放大不得改变裁决结果（索引化只换查找方式，不换判定）",
+        );
+    }
+    // 索引语义：同seq 多帧取**最小**延迟（重绘/重试不得被当成首次画上）。
+    {
+        let inputs = vec![probe_input(1, 100, 7)];
+        let renders = vec![
+            probe_render(1, 103, 7, true),
+            probe_render(1, 101, 7, true),
+            probe_render(1, 100, 7, true),
+        ];
+        let mut bag = IssueBag::new();
+        let v = judge_chase(&inputs, &renders, &mut bag);
+        set.add(
+            "追焦-同seq多帧取最小延迟",
+            v.on_time == 1 && v.worst_lag == 0 && !bag.has_any(),
+            "同一 seq 的多次渲染产出须取最小延迟（否则重试会把「迟到」洗成达标）",
+        );
+    }
+    // 索引不得把未画环的帧算进配对（否则「环消失」被伪装成「环很慢」）。
+    {
+        let renders = vec![probe_render(1, 100, 7, false), probe_render(1, 101, 7, false)];
+        let mut cost = ChaseCost::default();
+        let idx = RenderIndex::build(&renders);
+        let lag = idx.min_lag(1, 100, &mut cost);
+        set.add(
+            "追焦-未画环不入索引",
+            idx.len() == 0 && lag.is_none(),
+            "ring_drawn=false 的记录须在建索引时就被丢弃（不能参与配对）",
+        );
+    }
+    // 时序倒置（渲染帧早于输入帧）仍按无可信配对处理，不产生负延迟。
+    {
+        let renders = vec![probe_render(1, 90, 7, true)];
+        let mut cost = ChaseCost::default();
+        let idx = RenderIndex::build(&renders);
+        let lag = idx.min_lag(1, 100, &mut cost);
+        set.add(
+            "追焦-时序倒置不产生负延迟",
+            lag.is_none() && idx.len() == 1,
+            "渲染帧早于输入帧属时序倒置，须按无可信配对处理而非算出负数",
+        );
+    }
 
     // ── 判据二：强化参数 ───────────────────────────────────────────
     {
@@ -1164,7 +1612,7 @@ pub fn run_f3804_checks() -> CheckSet {
             "削减不得静默——静默削减会让动效作者无迹可寻",
         );
     }
-    // 门联动返回值**极大性**：授���值可行，且 +1 不可行（除非已满）。
+    // 门联动返回值**极大性**：授予值可行，且 +1 不可行（除非已满）。
     {
         let granted = enforce_contrast_gate(GATE_RING_RGB, GATE_BG, 255, &mut IssueBag::new()).granted_alpha;
         let at = glow_edge_contrast(GATE_RING_RGB, GATE_BG, granted);
@@ -1284,6 +1732,110 @@ pub fn run_f3804_checks() -> CheckSet {
             "保持-无快照返None不造默认态",
             r.is_none(),
             "无快照时不得返回默认环参数（否则用户看到环凭空变细）",
+        );
+    }
+    // 锚点错误路径「保持失效 → P1」：立案必须真能触发，且只 P1 不 P0。
+    //
+    // **分级必须双向验**：只测「无快照 → P1」会漏掉「P1 被写成 P0」
+    // 这个更隐蔽的退化——P0 一多，真正的致命项就淹没在里面。
+    {
+        let before = FocusRenderState {
+            target: 42,
+            params: RING_TABLE_HIGH_CONTRAST,
+            seq: 9,
+            visible: true,
+        };
+        let mut bag_none = IssueBag::new();
+        let ok_none = file_preservation_fault(&before, None, 1, &mut bag_none);
+        set.add(
+            "保持失效-无快照判P1且非P0",
+            !ok_none
+                && bag_none.has_code("FOCUS_STATE_NOT_PRESERVED")
+                && !bag_none.has_p0(),
+            "无快照可恢复须立案 P1；不得升 P0（环还在，只是没保住）",
+        );
+        // 逐字段差分：宽度漂移（强化档被悄悄降级）最典型。
+        let thinned = FocusRenderState {
+            target: 42,
+            params: RING_TABLE_BASE,
+            seq: 9,
+            visible: true,
+        };
+        let mut bag_w = IssueBag::new();
+        let ok_w = file_preservation_fault(&before, Some(&thinned), 2, &mut bag_w);
+        let w_issue = bag_w
+            .issues()
+            .iter()
+            .find(|i| i.code == "FOCUS_STATE_NOT_PRESERVED");
+        let names_width = match w_issue {
+            Some(i) => i.symptom.contains("环宽度") && i.symptom.contains("发光强度"),
+            None => false,
+        };
+        set.add(
+            "保持失效-环宽漂移判P1并指名字段",
+            !ok_w && bag_w.has_code("FOCUS_STATE_NOT_PRESERVED") && !bag_w.has_p0() && names_width,
+            "环宽度/发光漂移须被逐字段点名（这两种字段正是强化档与常规档的分界）",
+        );
+        // 完好恢复不得立案（否则这条错误路径变成恒真噪音）。
+        let mut bag_ok = IssueBag::new();
+        let ok_ok = file_preservation_fault(&before, Some(&before), 3, &mut bag_ok);
+        set.add(
+            "保持失效-完好恢复不立案",
+            ok_ok && !bag_ok.has_any(),
+            "逐字段一致即完好；误立案会让 P1 队列被噪声淹没",
+        );
+        // 可见位漂移单独验：它与宽度漂移的成因完全不同（前者是状态丢失）。
+        let hidden = FocusRenderState {
+            target: 42,
+            params: RING_TABLE_HIGH_CONTRAST,
+            seq: 9,
+            visible: false,
+        };
+        let mut bag_h = IssueBag::new();
+        let _ = file_preservation_fault(&before, Some(&hidden), 4, &mut bag_h);
+        let h_issue = bag_h
+            .issues()
+            .iter()
+            .find(|i| i.code == "FOCUS_STATE_NOT_PRESERVED");
+        let names_vis = match h_issue {
+            Some(i) => i.symptom.contains("可见位") && !i.symptom.contains("环宽度"),
+            None => false,
+        };
+        set.add(
+            "保持失效-可见位漂移单独点名",
+            names_vis,
+            "可见位漂移不得混报成环宽问题（两者修法不同）",
+        );
+    }
+    // 保持 O(1)：账本只有一个快照槽，反复失焦/聚焦不累积任何集合。
+    {
+        let before = FocusRenderState {
+            target: 7,
+            params: RING_TABLE_HIGH_CONTRAST,
+            seq: 3,
+            visible: true,
+        };
+        let amb = AmbientState { high_contrast: true, reduce_motion: false };
+        let amb2 = AmbientState { high_contrast: false, reduce_motion: false };
+        let mut ledger = FocusLedger::new();
+        let mut same = true;
+        let mut round = 0u64;
+        while round < 64 {
+            let (r, _) = preserve_across_window(&mut ledger, &before, &amb, &amb2);
+            match r {
+                Some(got) => {
+                    if !got.identical_to(&before) {
+                        same = false;
+                    }
+                }
+                None => same = false,
+            }
+            round += 1;
+        }
+        set.add(
+            "性能-保持O(1)且不随轮次漂移",
+            same && ledger.epoch == 64,
+            "64 轮失焦/聚焦后快照仍逐字段恒等、epoch 精确等于轮数（无隐藏累积状态）",
         );
     }
 
@@ -1473,10 +2025,11 @@ pub fn run_f3804_checks() -> CheckSet {
             &[],
             GATE_RING_RGB,
             GATE_BG,
-            150,
+            F3044_MIGRATION_MS,
             &inputs,
             &renders,
             &pix,
+            &sem,
             &sem,
             &mut bag,
         );
@@ -1493,6 +2046,37 @@ pub fn run_f3804_checks() -> CheckSet {
             v.audit.linked && v.chase.on_time == 1 && !v.chase.has_stall(),
             "正常帧须成链且追焦 0 超限",
         );
+        // 端到端路径上「改了语义」这条 P0 必须**可达**（此前内建两份
+        // 同一份数据的摘要，这条分支在端到端是死代码）。
+        let mutated = f3803::SemLayer {
+            nodes: vec![
+                f3803::SemNode::new(1, f3803::NodeRole::Widget, "提交"),
+                f3803::SemNode::new(2, f3803::NodeRole::Widget, "取消"),
+                // 渲染顺手往语义面塞了一个「焦点环」节点——读屏会念出来。
+                f3803::SemNode::new(3, f3803::NodeRole::Image, "焦点环"),
+            ],
+        };
+        let mut bag2 = IssueBag::new();
+        let v2 = run_focus_frame(
+            &focus_probes(true, false),
+            &[],
+            GATE_RING_RGB,
+            GATE_BG,
+            150,
+            &inputs,
+            &renders,
+            &pix,
+            &sem,
+            &mutated,
+            &mut bag2,
+        );
+        set.add(
+            "端到端-语义被改时改语义P0可达",
+            !v2.audit.linked
+                && !v2.audit.sem_unchanged
+                && bag2.has_code("FOCUS_RING_TOUCHED_SEMANTICS"),
+            "端到端必须真能抓到「渲染顺手改了语义面」——只断单元级会漏掉死代码",
+        );
     }
     // 断供：判 P0、参数退回常规档、但焦点环本身照常渲染。
     {
@@ -1504,10 +2088,11 @@ pub fn run_f3804_checks() -> CheckSet {
             &[f3802::A11yStateKey::HighContrast],
             GATE_RING_RGB,
             GATE_BG,
-            150,
+            F3044_MIGRATION_MS,
             &[probe_input(1, 10, 1)],
             &[probe_render(1, 10, 1, true)],
             &pix,
+            &sem,
             &sem,
             &mut bag,
         );
@@ -1551,7 +2136,160 @@ pub fn run_f3804_checks() -> CheckSet {
         );
     }
 
-    // ── 无隐私面 ───────────────────────────────────────────────────
+    // ── F3044 契约冻结：抄一次是对账，不是猜测 ────────────────────
+    //
+    // F3044 尚未入库 Rust 侧，故本域只能**声明契约**。声明的可信度
+    // 全靠这几条：数值必须与锚点逐字相等、仲裁不变量必须真的引用它
+    // （不是各写一个 60）、判据语料里的动效源时长必须取自它
+    // （不是散落的裸 150）。三条任一被绕过，契约就退化成注释。
+    {
+        set.add(
+            "契约-F3044迁移时长与锚点相等",
+            F3044_MIGRATION_MS == 150,
+            "F3044 锚点：环迁移动画 旧环收→新环放 150ms；冻结值必须逐字相等",
+        );
+        set.add(
+            "契约-起点可见度与锚点相等",
+            F3044_MIN_VISIBLE_PCT == 60,
+            "F3044 锚点：起点即 60% 可见；冻结值必须逐字相等",
+        );
+        set.add(
+            "契约-仲裁不变量真引用冻结值",
+            MIN_VISIBLE_PCT == F3044_MIN_VISIBLE_PCT,
+            "MIN_VISIBLE_PCT 必须是 F3044 冻结值的引用，不得各写一个 60",
+        );
+        // 语料里的「动效源时长」必须取自契约常量，不是裸 150。
+        //
+        // **这条防的是最阴的一类漂移**：判据全绿，但判的是 137ms。
+        // 判据语料一旦写死数字，它与真源脱钩的那天没人会发现——
+        // 因为所有断言依然成立，只是断言的对象早就换了。
+        let plan = arbitrate_motion(true, false, F3044_MIGRATION_MS);
+        set.add(
+            "契约-语料时长取自契约常量",
+            plan.simplified && plan.duration_ms == 0 && plan.duration_ms < F3044_MIGRATION_MS,
+            "高对比下必须把契约里的 F3044 时长裁到 0（用常量而非裸 150 驱动）",
+        );
+        let mut bag = IssueBag::new();
+        file_motion_arbitration(&plan, F3044_MIGRATION_MS, &mut bag);
+        let told = match bag.issues().first() {
+            Some(i) => i.symptom.contains("150"),
+            None => false,
+        };
+        set.add(
+            "契约-否决显性文案回写契约值",
+            told,
+            "立案文案须报出被否决的具体时长（否则动效作者不知道该改多少）",
+        );
+    }
+
+    // ── F3802 注入消费接点（跨批对接点：D 域渲染 + F3802 注入）─────
+    {
+        let mut in_list = false;
+        let mut i = 0usize;
+        while i < f3802::D_DOMAIN_INJECTION_SLOTS.len() {
+            if let Some(slot) = f3802::D_DOMAIN_INJECTION_SLOTS.get(i) {
+                if *slot == FOCUS_RING_INJECTION_SLOT {
+                    in_list = true;
+                }
+            }
+            i += 1;
+        }
+        set.add(
+            "接点-焦点环落在D域已登记注入槽",
+            in_list,
+            "焦点环走像素级过滤注入；该槽必须在 F3802 的 D 域注入槽清单内（否则无处可注入）",
+        );
+        // 槽归属必须与产出性质相符：焦点环要画进帧缓冲，故是 Filter 而非 Style。
+        set.add(
+            "接点-像素级产出不得落样式槽",
+            FOCUS_RING_INJECTION_SLOT != f3802::InjectionSlot::Style,
+            "焦点环是像素产出；若被挪到样式槽（改布局尺寸）则环根本不会被画出来",
+        );
+        // 与 F3802 的策略表对齐：辅助技术接入态那一档必须显式携带焦点环。
+        //
+        // F3802 的 `POST_ASSISTIVE_HINT` 策略带 `focus_ring=1.0` 参数——
+        // 本域是那个参数的生产者，故须核对生产出来的参数名与上游一致。
+        let mut hint_params: Vec<&'static str> = Vec::new();
+        for s in f3802::spec_strategies().iter() {
+            for (name, _value) in s.params.iter() {
+                if name.contains("focus_ring") {
+                    hint_params.push(name);
+                }
+            }
+        }
+        set.add(
+            "接点-消费上游focus_ring参数名",
+            hint_params.len() == 1 && hint_params.first() == Some(&FOCUS_RING_PARAM),
+            "本域产出的参数名须与 F3802 策略表里消费的名字逐字一致（改名即静默失效）",
+        );
+    }
+
+    // ── 性能逐项分解：强化 O(1) / 协同 O(仲裁) ────────────────────
+    //
+    // 追焦与保持两项已在上文用**计数器**实测；此处补齐剩下两项。
+    {
+        // 强化 O(1) 参数：纯查表 ⇒ **无状态** ⇒ 重复调用输出恒等。
+        //
+        // 「O(1)」在代码里最容易被悄悄破坏的方式不是变慢，而是**变有状态**
+        // （缓存上次结果、懒初始化）。一旦有状态，同一份输入两次调用会
+        // 给出不同答案——那比慢更糟，因为它让渲染结果依赖调用历史。
+        // 重复调用恒等是唯一能**实测**「无状态」的手段。
+        let mut stable = true;
+        let mut rep = 0u32;
+        while rep < 64 {
+            if focus_ring_params(true) != RING_TABLE_HIGH_CONTRAST
+                || focus_ring_params(false) != RING_TABLE_BASE
+            {
+                stable = false;
+            }
+            rep += 1;
+        }
+        set.add(
+            "性能-强化查表无状态（O(1)参数）",
+            stable,
+            "参数表查找重复 64 次输出须恒等（一旦有状态，渲染结果就依赖调用历史）",
+        );
+        // 状态空间封闭：布尔入参 ⇒ 恰好两张表条目，两态都可取到。
+        set.add(
+            "性能-参数表覆盖全部状态",
+            focus_ring_params(true).layered && focus_ring_params(false).layered,
+            "两态都须落在双层档上（表缺一格 = 该态拿不到强化）",
+        );
+        // 门联动扫描上界是编译期常量，与场景规模无关（O(1) 而非 O(alpha)）。
+        set.add(
+            "性能-门联动上界为编译期常量",
+            GLOW_SCAN_MAX == u8::MAX,
+            "门联动扫描上界须是常量 255（若按调用方的 alpha 长度扫描则退化成 O(输入)）",
+        );
+        // 协同 O(仲裁)：只依赖三个标量输入，**不遍历任何集合**。
+        //
+        // 「O(仲裁)」的实质是「常数条分支、不随场景规模变化」。可实测的
+        // 代理量：遍历全部 12 组输入时，产出的理由集合**恰好 3 条**
+        // ——多一条就意味着某个分支在按集合内容分流。
+        const MIGRATION_PROBE: [u32; 3] = [0, F3044_MIGRATION_MS, 300];
+        let mut reasons: Vec<&'static str> = Vec::new();
+        let mut mask = 0u8;
+        while mask < 4 {
+            let mut si = 0usize;
+            while si < MIGRATION_PROBE.len() {
+                let ms = match MIGRATION_PROBE.get(si) {
+                    Some(v) => *v,
+                    None => break,
+                };
+                let p = arbitrate_motion(mask & 1 == 1, mask & 2 == 2, ms);
+                if !reasons.contains(&p.reason) {
+                    reasons.push(p.reason);
+                }
+                si += 1;
+            }
+            mask += 1;
+        }
+        set.add(
+            "性能-协同恰三条分支理由",
+            reasons.len() == 3,
+            "12 组输入须只产出 3 条理由（多一条说明有分支在按集合内容分流）",
+        );
+    }
     {
         // 结构性自证：本域公开类型不含用户标识/位置/输入历史。
         // acc_name 是 UI 自身的可访问名，不是用户数据。
