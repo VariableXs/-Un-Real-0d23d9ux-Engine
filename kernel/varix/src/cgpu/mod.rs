@@ -42,7 +42,7 @@
 // vco07_recovery — CGPU-F2247 降级恢复引擎（恢复序四级闭集资源/效果/呈现/调度逐级回升与降级施加序相反/限速RECOVERY_INTERVAL_TICKS=500/滞回带HYSTERESIS_BAND=3不对称防振荡/恢复复用J03家族=1481两维序-过冲记忆-振荡判据模式复用/过冲回退一级恢复目标自动下调/振荡达限冻结转决策引擎/恢复观测账留痕tick递增+间隔可复核/引擎账一致性核验/码段0x5Dxx五码/12项域自检）
 pub mod cgi01_bandwidth;
 pub mod cgi01_bandwidth_checks;
-//! cgi02_pciebw — CGPU-F1282 PCIe 带宽模型（Gen3/4/5×x1/4/8/16理论带宽表985/1969/3938MB/s写死/理论vs有效85%系数双值输出单边输出是撒谎/共享通道权重ppm和恰1e6拥塞按需求权重比检出查询不仲裁/对拍600k~1e6ppm合理带低于=链路异常高于=探测错误物理不可能/模型卡公开口径/0x3Axx 四码）
+// cgi02_pciebw — CGPU-F1282 PCIe 带宽模型（Gen3/4/5×x1/4/8/16理论带宽表985/1969/3938MB/s写死/理论vs有效85%系数双值输出单边输出是撒谎/共享通道权重ppm和恰1e6拥塞按需求权重比检出查询不仲裁/对拍600k~1e6ppm合理带低于=链路异常高于=探测错误物理不可能/模型卡公开口径/0x3Axx 四码）
 pub mod cgi02_pciebw;
 pub mod cgd02_frametimer;
 pub mod cgd02_frametimer_checks;
@@ -57,6 +57,8 @@ pub mod cga02_threadpool;
 pub mod cga02_threadpool_checks;
 // cga03_framegraph —— CGPU-F0003 帧任务图构建与依赖解析（五元组节点/读写集排序分组自动建边 RAW·WAW+对拍账守恒/Kahn 拓扑环检测死锁上抛/关键路径分层+长路径优先发射+完工模型改善量/跨帧围栏四元组账本双向配对对账零失误/快照序列化 FNV 指纹往返恒等/操作数计账构建预算 1000 节点≤200μs 参考探针/0x64 段十八码）
 pub mod cga03_framegraph;
+// cga04_placer —— CGPU-F0004 CPU/GPU 任务放置决策器（成本画像五输入/双路预估公式写死/双路契约资格证+缺路拒/滞回防抖连续 5 帧差>15% 才切换/误差账持续>30% 触发重标定闭环 ±50% 钳制单帧一次/决策日志滚动全量可回放+守恒对账/双路指纹对拍分歧立案冻结/0x65 段十五码）
+pub mod cga04_placer;
 pub mod vcl01_virtualarch;
 pub mod vcl01_virtualarch_checks;
 // vcl02_virtmode — CGPU-F1762 虚拟化模式分类（四模式定义表机制名冻结词表/五维0-3整数矩阵版本化matrix-v3/决策树显性if序四约束/同卡直通×分区×半虚拟互斥共存判定/损耗声明四行选型报告带原文/0x33xx 两码）
@@ -91,7 +93,7 @@ pub mod cgm04_topology;
 pub mod cgm04_topology_checks;
 pub mod cgm05_modes;
 pub mod cgm05_modes_checks;
-//! cgm06_scaling — CGPU-F1926 显示缩放与 DPI（GPU缩放vs显示器缩放显性决策表窗口化1:1不入决策/DPI链EDID物理尺寸isqrt整数PPI四档取最近平局取低档/清晰度整数倍优先非整数给建议倍率/O域单点传递版本对账单向通报/0x36xx 两码）
+// cgm06_scaling — CGPU-F1926 显示缩放与 DPI（GPU缩放vs显示器缩放显性决策表窗口化1:1不入决策/DPI链EDID物理尺寸isqrt整数PPI四档取最近平局取低档/清晰度整数倍优先非整数给建议倍率/O域单点传递版本对账单向通报/0x36xx 两码）
 pub mod cgm06_scaling;
 // cgp08_perf —— CGPU-F2408 遥测性能（自身开销总账：五段设施逐段有预算有实测对账/开销换算器 ppm↔步↔微秒三口径/F0482 实测注入 640ppm 与 F1558 红线 L0≤0.05ms 与 F2401 使命三条口径只引用不重定义/超标处置建议账留痕可复算/零 IO 零墙钟零 panic）
 pub mod cgp08_perf;
@@ -130,6 +132,8 @@ pub mod cgc01_carbitration;
 pub mod cgc02_budgetmodel;
 // cgc02_framebudget — CGPU-F0322 帧预算模型深化版（四池闭集+保交互下限守卫/三级层级+层级单调核验/双表述恒等可逆换算/守恒校验器+超载检测处置建议/确定性分配引擎+floor 饥饿防线+可借出转移/预算时间线八段 vsync 对齐/池压力五级+仲裁移交/余量再分配四策略/审计账 256 滚动三态查询/全链路仿真走查/0x62 段七码）
 pub mod cgc02_framebudget;
+// cgc03_budgetaccount — CGPU-F0323 预算账户模型（账户树四级系统根→域→功能→表面配额继承三律：上限钳制拒/保底不越顶合围/超订显性注册许激活拒+清单点名；四属性不变量组 min≤used≤cap+借出面=cap-min；生命周期四态定表注册→激活⇄冻结→注销+级联孤儿回收有账逐个留痕+Closed 子不占账收敛激活；借出账本三纪律保底不可借/借入不超上限/Σ借出=Σ借入对账；F0217 双向反馈正向三维字典序仲裁池尽拒低优+反向满足率<60% 高优提关键性+10 留痕；0x3C 段）
+pub mod cgc03_budgetaccount;
 // cgb08_framegraph — CGPU-F0168 帧图与 GPU 队列映射深化版（三队列+八类别规则表/多 GPU 路由五规则确定性/屏障跟写特例/读写集一致性三态校验+跨卡搬运计划器/映射开销四段账/三队列用例走查/映射回放漂移检测/帧间稳定性四级/负载分布+热点检测/遥测六指标/0x61 段六码）
 pub mod cgb08_framegraph;
 // cgd04_framegap — CGPU-F0484 帧间隔统计深化版（六桶直方图+形态五分类/整数方差+isqrt 抖动/jank 三级阈值恰边界/分级账+事故场景/周趋势四桶+整数斜率五态/健康度三因子万分制/P50/P95/P99 整数分位/场景归因对比/审计账三态查询/0x63 段六码）
@@ -143,21 +147,21 @@ pub mod vct04_handshake;
 pub mod cge03_surfacereg;
 pub mod cge04_surfsched;
 pub mod cgf02_authflow;
-//! cgf03_probedomain — CGPU-F0803 能力探测体系（四能力域统一表格式/采样/RT/现代特性消费面零per厂商if链/三层设备→驱动→系统有序注入层间交集下限仲裁/schema版本化消费单点D04降级I域选路/防伪三查层间⊆+声明-行为位比对+上限钳制虚报位清零留痕/0x39xx 三码）
+// cgf03_probedomain — CGPU-F0803 能力探测体系（四能力域统一表格式/采样/RT/现代特性消费面零per厂商if链/三层设备→驱动→系统有序注入层间交集下限仲裁/schema版本化消费单点D04降级I域选路/防伪三查层间⊆+声明-行为位比对+上限钳制虚报位清零留痕/0x39xx 三码）
 pub mod cgf03_probedomain;
 pub mod cgg01_gnvidia;
 // cgg02_nvprobe — CGPU-F0962 NVIDIA 能力探测专项（RT/Tensor/显存/NVENC 四元特性表结果即数据/SKU级device+rev二级键未登记走代际默认诚实降级/DLSS+GSync扩展缺席不破坏功能/降级矩阵derive单点报告消费/0x32xx 三码）
 pub mod cgg02_nvprobe;
 pub mod cgh03_pooltier;
 pub mod vck01_heteroarch;
-//! vck02_hetres — CGPU-F1602 异构资源抽象（ComputeDevice四核心trait必选+Batch/Realtime扩展trait特性位图分层/四类型卡NPU DSP ISP MEDIA静态规格/HetCaps schema版本化能力即数据/HetHandle全局id+home+位置标签跨引擎位可达性判定/热注册带任务注销显性拒/MockEngine确定性假引擎F1454模式/0x3Bxx 四码）
+// vck02_hetres — CGPU-F1602 异构资源抽象（ComputeDevice四核心trait必选+Batch/Realtime扩展trait特性位图分层/四类型卡NPU DSP ISP MEDIA静态规格/HetCaps schema版本化能力即数据/HetHandle全局id+home+位置标签跨引擎位可达性判定/热注册带任务注销显性拒/MockEngine确定性假引擎F1454模式/0x3Bxx 四码）
 pub mod vck02_hetres;
 pub mod vcn03_rebuild;
-//! vcn04_rebuildpipe — CGPU-F2084 效果重建管线（四段单向捕获→分析→重建→验证跳段回退显性拒/采样三纪律锚点稳定窗8帧+三象限布点+元数据同拍/验证复用等价分级像素容差2感知×8不等价打回重建计数留痕/段间传效果分解不传像素/0x37xx 三码）
+// vcn04_rebuildpipe — CGPU-F2084 效果重建管线（四段单向捕获→分析→重建→验证跳段回退显性拒/采样三纪律锚点稳定窗8帧+三象限布点+元数据同拍/验证复用等价分级像素容差2感知×8不等价打回重建计数留痕/段间传效果分解不传像素/0x37xx 三码）
 pub mod vcn04_rebuildpipe;
 pub mod vcq03_failpredict;
 pub mod cgr04_safedegrade;
-//! cgr05_faultiso — CGPU-F2725 渲染故障隔离（隔离格状态机健康→可疑→确诊/假警报不污染三机制封格+写前登记回滚+健康格零感知/Q05三信号确认窗3拍判定链声明式复用阈值独立写死可对拍/回滚只对确诊格凭证账不越权代写资源面/0x38xx 三码）
+// cgr05_faultiso — CGPU-F2725 渲染故障隔离（隔离格状态机健康→可疑→确诊/假警报不污染三机制封格+写前登记回滚+健康格零感知/Q05三信号确认窗3拍判定链声明式复用阈值独立写死可对拍/回滚只对确诊格凭证账不越权代写资源面/0x38xx 三码）
 pub mod cgr05_faultiso;
 pub mod vcs02_multiuser;
 pub mod vct03_protneg;
