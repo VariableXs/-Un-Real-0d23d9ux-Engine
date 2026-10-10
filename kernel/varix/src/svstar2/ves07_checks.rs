@@ -538,6 +538,75 @@ fn p06_pipeline() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// P07 · 跨批对接点（锚点五名码面钉死 + 发布/分发契约）
+// ---------------------------------------------------------------------------
+
+fn p07_docks() -> CheckSet {
+    let mut s = CheckSet::new("VE-F3607-p07");
+    let reg = f3204_registry();
+    let set = set123();
+
+    // 五名齐备：非空、VE-F 前缀、逐名不同（漂移一个字符本条即红）。
+    let mut named = true;
+    let mut i = 0usize;
+    while i < DOCKS.len() {
+        match DOCKS.get(i) {
+            Some(d) => {
+                if d.is_empty() || !d.starts_with("VE-F") {
+                    named = false;
+                }
+                let mut j = i + 1;
+                while j < DOCKS.len() {
+                    if let Some(e) = DOCKS.get(j) {
+                        if d == e {
+                            named = false;
+                        }
+                    }
+                    j += 1;
+                }
+            }
+            None => named = false,
+        }
+        i += 1;
+    }
+    s.add("P07-对接-五名齐备互异", named, "F3204/F2919/F3303/F3627/F3616 码面钉死");
+
+    // 三单源：F3204 真复用（注册表即其产物），F2919/F3303 复述件指名。
+    s.add("P07-对接-真复用与复述分工", reg.registered == 10
+        && F2919_RESTATED_NOTE.contains("F2919")
+        && F3303_RESTATED_NOTE.contains("F3303")
+        && DOCK_SCHEMA_SOURCE == "VE-F3204", "真复用走代码、复述走声明件");
+
+    // 发布契约（F3627）：两态映射 + 不可发布必带理由。
+    let good = good_asset(1);
+    let mut bag_g = DiagBag::new();
+    let rg = validate(&good, &set, &reg, &mut bag_g);
+    let (g_tag, g_ok) = publish_contract(&rg);
+    let mut bad = good_asset(1);
+    bad.scan_findings = 1;
+    let mut bag_b = DiagBag::new();
+    let rb = validate(&bad, &set, &reg, &mut bag_b);
+    let (b_tag, b_ok) = publish_contract(&rb);
+    s.add("P07-对接-发布契约两态", g_ok && g_tag == "publishable"
+        && !b_ok && b_tag == "blocked"
+        && distribution_precondition(&rg) && !distribution_precondition(&rb),
+        "可发布/已阻断两态且分发前置同口径");
+
+    // **分级不进契约**（红线承重）：C 级资产其余全过 ⇒ 可发布可分发了——
+    // 把 grade 塞进契约即把分级处置偷改成分级阻断。
+    let mut worst = good_asset(1);
+    worst.a11y = A11ySelfCheck { contrast_ok: false, semantic_labeled: false };
+    let mut bag_w = DiagBag::new();
+    let rw = validate(&worst, &set, &reg, &mut bag_w);
+    let (w_tag, w_ok) = publish_contract(&rw);
+    s.add("P07-对接-评级不进契约", rw.a11y.grade == A11yGrade::C
+        && w_ok && w_tag == "publishable"
+        && distribution_precondition(&rw),
+        "C 级可发布可分发了（契约只认裁决不认评级）");
+    s
+}
+
+// ---------------------------------------------------------------------------
 // 聚合
 // ---------------------------------------------------------------------------
 
@@ -550,6 +619,7 @@ pub fn run_ves07_all_checks() -> CheckSet {
     out = CheckSet::merge(out, p04_a11y());
     out = CheckSet::merge(out, p05_scan());
     out = CheckSet::merge(out, p06_pipeline());
+    out = CheckSet::merge(out, p07_docks());
     out
 }
 
@@ -571,6 +641,6 @@ mod tests {
         }
         assert!(failed.is_empty(), "红项: {:?}", failed);
         assert!(!st.truncated(), "判据数超过 MAX_CHECKS 被截断");
-        assert_eq!(st.len(), 71, "判据总数漂移（拆分阈值 112 需重新评估）");
+        assert_eq!(st.len(), 75, "判据总数漂移（拆分阈值 112 需重新评估）");
     }
 }

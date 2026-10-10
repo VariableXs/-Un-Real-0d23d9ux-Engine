@@ -45,6 +45,12 @@
 //! O(引用·logN)（发布集合排序一次建集 + 逐引用二分）；分级 O(1)
 //! （两布尔查表）；扫描 O(复用)（findings 计数直读）。
 //!
+//! **跨批对接点（锚点原文五名）**：F3204（schema 单源，**真复用**
+//! [`super::veq04_type`]）/F2919（许可三查复述件）/F3303（安全扫描
+//! 复述件）三单源声明；F3627 发布对端（[`publish_contract`] ）、
+//! F3616 分发前置（[`distribution_precondition`] ）——五点码面钉死于
+//! [`DOCKS`]，判据侧独立对拍（复述件非空+指名单号同样是判据不是注释）。
+//!
 //! 零 panic 面、零 IO、零墙钟；无全局可变状态（状态由调用方持有）。
 
 use alloc::format;
@@ -240,7 +246,49 @@ pub const F2919_RESTATED_NOTE: &str =
 /// F3303 落库后由对账钩子接管。
 pub const F3303_RESTATED_NOTE: &str =
     "安全扫描复述自 F3303：检出计数非零即 P0 阻断且不静默放行；\
-     本实现为跨域复述件，F3303 落库后切换真单源";
+      本实现为跨域复述件，F3303 落库后切换真单源";
+
+// ---------------------------------------------------------------------------
+// 二 bis、跨批对接点（锚点原文五名，码面钉死防漂移）
+// ---------------------------------------------------------------------------
+
+/// 对接点一：F3204 类型单源（schema 校验**真复用**，非复述）。
+pub const DOCK_SCHEMA_SOURCE: &str = "VE-F3204";
+/// 对接点二：F2919 许可单源（复述件，落库后钩子接管）。
+pub const DOCK_LICENSE_SOURCE: &str = "VE-F2919";
+/// 对接点三：F3303 安全扫描单源（复述件，落库后钩子接管）。
+pub const DOCK_SCAN_SOURCE: &str = "VE-F3303";
+/// 对接点四：F3627 发布对端（消费本模块裁决）。
+pub const DOCK_PUBLISH: &str = "VE-F3627";
+/// 对接点五：F3616 分发前置（分发闸的输入面）。
+pub const DOCK_DISTRIBUTE: &str = "VE-F3616";
+/// 五点全集（判据侧独立对拍）。
+pub const DOCKS: [&str; 5] = [
+    DOCK_SCHEMA_SOURCE,
+    DOCK_LICENSE_SOURCE,
+    DOCK_SCAN_SOURCE,
+    DOCK_PUBLISH,
+    DOCK_DISTRIBUTE,
+];
+
+/// 发布契约（F3627 的输入面）：裁决 → 可否发布的两态映射。
+///
+/// 只认 [`Verdict`]：无障碍评级是**建议**不是闸——把 grade 塞进这里
+/// 就等于把「分级处置」偷改成「分级阻断」，与锚点红线正相反。
+pub fn publish_contract(report: &ValidationReport) -> (&'static str, bool) {
+    match report.verdict {
+        Verdict::Publishable => ("publishable", true),
+        Verdict::Blocked => ("blocked", false),
+    }
+}
+
+/// 分发前置谓词（F3616 的输入面）：可发布才可分发了。
+///
+/// 与 [`publish_contract`] 同口径（verdict 唯一依据）——C 级无障碍资产
+/// 同样可分发的红线在此承重（分级不阻断，见判据 P04）。
+pub fn distribution_precondition(report: &ValidationReport) -> bool {
+    report.verdict == Verdict::Publishable
+}
 
 // ---------------------------------------------------------------------------
 // 三、输入模型
