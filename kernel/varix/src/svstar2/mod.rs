@@ -175,6 +175,7 @@
 //! | [`vem12_bench`] | F2412 动画基准（三族确定性逻辑基准入 F1773 M 段：求值吞吐族 1k 条 SoaTrack 六类型混合真调 plan_batches+bisect（steps 为 vem07 自报真实比较步数）+lerp_alpha——分批 bisect 摊薄即 SIMD 收益实测面，标让步数对拍+阶梯 100/1000 单调；导入导出族 10 骨骼×100 关键帧典型 clip 导入侧真调 validate_channel_refs+validate_samples、导出侧真调 export_gltf_anim（逆表 ExportMapTable::from_forward 对 F2409 正表机械求逆），产物 channels_out/keys_out 当场读；插值族四插值器（step/linear/bezier/slerp）各百万次真调 eval_scalar_span/eval_quat_span——双跑摘要证确定性，成本权重按结构面声明（1/1/3/8）贝塞尔<slerp 比值即调参依据；六列入册四道守卫：环境四要素缺一拒册/指标口径唯一（混报无效）/同族同谱去重/基线移动超 15% 须 ADR 链（无链拒）；模型-实测闭环真调 F2407 预留回填位——偏差 ≤30% recalibrate 定标、超线 mark_stale 显性、未定标拒闭环、重定标可恢复；M 段门禁暂挂声明显性） | VE 册 #VE-F2412 |
 //! | [`vem13_freeze`] | F2413 动画 API 冻结 v1（十二签名四族 5/3/2/2 逐条五列（全名/参数表/返回契约/官方描述词/版本）且全名一律 m.anim. 前缀——M 域族规范首族；描述词缺失整簿拒绝冻结（半冻簿比不冻更糟）；四行衔接全真调不代填——轨道数据真调 vem02 KeyframeRef（F1345 载体单源复用）、绑定路径真调 vem02 parse_bind_path（F2402 文法双向：合法解析/缺头拒）、事件轨真调 vem06 EventNameRegistry（F1408 注册制闭合：在册取回/拼写漂移名查空）、姿态输出对 F2422 契约预留形态在簿（export_samples 返回 Vec<JointPose>——F2422 本仓未落地，只验预留不编造对齐，契约本体随其落地同接口回填）；漂移 CI 钩子**双向**（偷删冻结条目与偷加未冻结签名同罪，逐字段对描述词/参数表/返回/族/版本）；v1 只增不改——Patch 恒拒并指引 v2 追加段、patch 不存在目标也拒、Append 只许 v2 且 v1 十二条逐字段不变、v1 版本塞追加拒、v2 重名追加拒；F2419 移交包以冻结簿为单一事实来源（术语三行 track/clip/keyframe+十二签名同检）；十年承诺钉成 315_360_000_000ms 可判定数值；如实记录 F2422 未落地的预留性质与 F1345 载体复用链路） | VE 册 #VE-F2413 |
 //! | [`vem14_docs`] | F2414 动画文档（三文档结构即代码：白皮书=管线章+轨道章+统一章（F1345 跨域叙事有物质证据）、制作指南=类型章+绑定章+批量章、导入导出手册=映射章+校验章+精度章——每行替述可读+挂读者+**单源引用只引不抄**（六源：vem02 六类轨官方名/vem13 冻结十二条全名/vem09 映射规格摘要/vem10 逆表行数/vem02 KeyframeRef 载体/vem06 事件注册，文档面无任何 API 可写死数字）；CI 对账钩子（未盖章拒/复制值≠源现值拒/drift 注入即拒、章数对拍/读者三覆盖）；统一叙事真调 F1345 载体对拍（失同步即跨域立案——叙事不是修辞是契约）；演练门禁：指南六步 API 全名对拍 F2413 v1 冻结簿（引 v2 追加段/拼错名/步骤缺损即拒）；术语以 F2419 裁决表为准真调仲裁（track/clip/keyframe 偏离中文名/缺术语即拒）；手册示范真调 F2409/F2410 现算不抄录） | VE 册 #VE-F2414 |
+//! | [`vem15_consistency`] | F2415 动画一致性（M01 家族一致性四段域级首例：双跑断言——六类语义轨×典型参数 12 条场景真调 bisect+lerp_alpha+eval_scalar_span/eval_quat_span（slerp 面走四元数路径），双跑位摘要 diff=0、一粒位改动即换摘要（防走过场哈希守卫）、P0 归因三查（浮点/遍历/随机）齐备；往返复述——真调 export_gltf_anim 产出文档再喂 F2409 validate_channel_refs+validate_samples 逐通道/逐采样器复述，空 clip 导出失真即拒（对账钩子在网）；口径家族——F2276 双级口径表 M01 维四条目（求值确定性/往返一致=同平台逐位，插值器数学/量化分辨率=跨平台近似），同平台降级近似与跨平台宣称逐位双向拦截；ADR 对——三族语义参数（插值器数学/绑定路径语义/事件轨触发语义）白名单登记，无 ADR 语义变更拦截（指名到参数）、带 ADR 放行、白名单外参数拒绝；跨后端一致性诚实声明：GPU 求值后端未落地前只承诺语义级一致，逐位承诺只覆盖同平台 CPU 双跑路径） | VE 册 #VE-F2415 |
 //! | [`veb18_compat`] | F0218 QEMU 版本兼容矩阵（版本行×特性×预期值；五登记行升序 + 尾部回退 O(1) 查表 + 探测记录入诊断快照；未知版本按回退行预期并标未认证、矩阵与实测冲突以实测为准并留档待修、探测失败走全行交集保守预期并告警；下游 F0215 按矩阵跳 N/A、F0216 宣告引用最低支持版本） | VE 册 #VE-F0218 |
 //! | [`veb18_checks`] | F0218 域自检（判据逐条映射，46 项分 a/b/c 三族；变异双向验证 23/23全捕获） | VE 册 #VE-F0218 |
 //! | [`veb19_debugchan`] | F0219 virtio 主客联调通道（宿主注入逐帧日志开关/强制刷新/快照导出，客户事件回传；通道独立于渲染数据面渲染路径零指令且结构上不持有渲染状态引用；配额按**字节当量**而非条数（快照 4096 对日志开关 12，差两个数量级以上，按条限流会让贵消息挤掉便宜消息）；限流但**安全类消息永不被丢**（丢掉的是最后的证据）且旁路不占配额但单独计数；通道不通降级仅宿主侧并回执告知，**降级只改送到哪一侧不改命令合法性故校验排在其前**；非法命令拒绝并回执专属原因码（参数个数/参数值/参数语义/未知类型四类）；限流丢弃必留回执且回执环形缓冲有界；周期间配额账本与全程累计账本分离；线上编码显式映射不用 enum as u8） | VE 册 #VE-F0219 |
@@ -718,6 +719,7 @@ pub mod vem11_fuzz;
 pub mod vem12_bench;
 pub mod vem13_freeze;
 pub mod vem14_docs;
+pub mod vem15_consistency;
 pub mod veb18_compat;
 pub mod veb18_checks;
 pub mod veb19_debugchan;
@@ -1238,6 +1240,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F2412", vem12_bench::run_vem12_checks()),
         ("VE-F2413", vem13_freeze::run_vem13_checks()),
         ("VE-F2414", vem14_docs::run_vem14_checks()),
+        ("VE-F2415", vem15_consistency::run_vem15_checks()),
         ("VE-F0218-a", veb18_checks::run_veb18_checks_a_standalone()),
         ("VE-F0218-b", veb18_checks::run_veb18_checks_b_standalone()),
         ("VE-F0218-c", veb18_checks::run_veb18_checks_c_standalone()),
