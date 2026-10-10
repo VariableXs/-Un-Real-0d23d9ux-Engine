@@ -68,7 +68,7 @@ use alloc::vec::Vec;
 use crate::svstar2::vel03_emitter::{
     advance_accumulator, apply_transition, create_emitter, DiagBag, EmitAccumulator, Emitter,
     EmitterConfig, EmitterState, Outcome, ParticleGroup, RandomSource, ShapeParams, SpawnRequest,
-    VelocityDistParams, Vec3,
+    step_emitter, VelocityDistParams, Vec3,
 };
 use crate::svstar2::vel05_lifetime::{LifetimeDist, Rgba, ShadedState};
 use crate::svstar2::vel06_render::ParticleView;
@@ -262,7 +262,7 @@ pub fn emit_replay(input: &EmitInput, watchdog: &mut Watchdog) -> Option<Vec<Spa
     let mut out: Vec<SpawnRequest> = Vec::new();
     let mut f = 0u32;
     while f < input.frames {
-        watchdog.tick()?; // 非完成断言：超预算即挂起，不空转
+        watchdog.tick().ok()?; // 非完成断言：超预算即挂起，不空转
         let mut spawns = step_emitter(&mut em, input.dt, &mut bag);
         out.append(&mut spawns);
         f += 1;
@@ -277,7 +277,7 @@ pub fn lifetime_replay(seed: u64, n: u32, watchdog: &mut Watchdog) -> Option<Vec
     let mut out: Vec<f32> = Vec::new();
     let mut i = 0u32;
     while i < n {
-        watchdog.tick()?;
+        watchdog.tick().ok()?;
         out.push(dist.sample(&mut rng));
         i += 1;
     }
@@ -292,7 +292,7 @@ pub fn render_replay(input: &EmitInput, watchdog: &mut Watchdog) -> Option<Vec<P
     let spawns = emit_replay(input, watchdog)?;
     let mut out: Vec<ParticleView> = Vec::new();
     for sp in spawns.iter() {
-        watchdog.tick()?;
+        watchdog.tick().ok()?;
         let g = (sp.group_id & 0xff) as f32 / 255.0;
         let view = ParticleView::new(
             [sp.position.x, sp.position.y, sp.position.z],
@@ -467,6 +467,43 @@ pub fn frame_rate_verdict(rate_per_sec: f32, total_sec: f32) -> Result<(), Strin
     Ok(())
 }
 
+/// 未归一化调用模式（反面对拍：把帧率当 dt 传——经典帧率相关 bug）。
+///
+/// 「一秒 = fps 步、每步 dt=fps」意味着总时长达 fps² 秒——发射总量
+/// 随帧率平方放大，帧率无关性彻底失效。本函数量化该失效的极差，
+/// 供回归网把这类调用拦在 CI（修复指引见 [`unnormalized_fix_hint`]）。
+pub fn unnormalized_total(rate_per_sec: f32, fps: u32) -> u32 {
+    let mut acc = EmitAccumulator::new();
+    let mut total = 0u32;
+    let mut f = 0u32;
+    while f < fps {
+        total += advance_accumulator(&mut acc, rate_per_sec, fps as f32);
+        f += 1;
+    }
+    total
+}
+
+/// 未归一化模式跨帧率极差（30/60/144/1000 四档 max-min）。
+pub fn unnormalized_divergence(rate_per_sec: f32) -> u64 {
+    let mut hi = 0u32;
+    let mut lo = u32::MAX;
+    for fps in FRAME_RATES.iter() {
+        let t = unnormalized_total(rate_per_sec, *fps);
+        if t > hi {
+            hi = t;
+        }
+        if t < lo {
+            lo = t;
+        }
+    }
+    hi as u64 - lo as u64
+}
+
+/// 帧率无关失败的修复指引（锚点：帧率无关失败→固定步长重算）。
+pub fn unnormalized_fix_hint() -> &'static str {
+    "dt 归一化：以 1/fps 为步长推进累积器，或对可变帧时间改固定步长重算（累加残余）"
+}
+
 // ---------------------------------------------------------------------------
 // 六、GPU 统计等效（8 ulp 视觉等效边界）
 // ---------------------------------------------------------------------------
@@ -518,49 +555,56 @@ fn gpu_model_flatten(cpu: &[f32], ulps: i32) -> Vec<f32> {
     cpu.iter().map(|v| nudge_ulp(*v, ulps)).collect()
 }
 
-/// 统计等效测量：逐粒子最大 ulp 距离 + 分布矩对齐表。
+/// 每视图浮点列数（view_flatten 布局：位置3+速度3+尺寸1+颜色4）。
+pub const VIEW_STRIDE: usize = 11;
+
+/// 从摊平数组按列取一列（kind: 0=尺寸, 1=颜色r, 2=速率）。
 ///
-/// `gpu_ulps` 为 GPU 模型的确定性扰动量（±）。返回 (最大逐粒子
-/// ulp 距离, 矩对齐表)。
-pub fn equivalence_measure(
-    cpu_views: &[f32],
-    gpu_views: &[f32],
-    gpu_ulps: i32,
-) -> (u64, [MomentRow; 3]) {
+/// 速率用 vel03 `length_v3` 真算——不另写第二份向量数学（单源纪律）。
+fn view_column(flat: &[f32], kind: usize) -> Vec<f32> {
+    let mut out: Vec<f32> = Vec::new();
+    let mut i = 0usize;
+    while i + VIEW_STRIDE <= flat.len() {
+        match kind {
+            0 => out.push(flat[i + 6]),
+            1 => out.push(flat[i + 7]),
+            _ => {
+                let vx = flat[i + 3];
+                let vy = flat[i + 4];
+                let vz = flat[i + 5];
+                out.push(crate::svstar2::vel03_emitter::length_v3(Vec3::new(vx, vy, vz)));
+            }
+        }
+        i += VIEW_STRIDE;
+    }
+    out
+}
+
+/// 统计等效测量：逐粒子最大 ulp 距离 + 三矩对齐表（CPU vs GPU 模型）。
+///
+/// 三矩：尺寸均值（第 6 列）/颜色 r 均值（第 7 列）/速率方差（速度
+/// 向量长度列）——全部非负域（扰动算子适用），全部由摊平数组真算。
+pub fn equivalence_measure(cpu_flat: &[f32], gpu_flat: &[f32]) -> (u64, [MomentRow; 3]) {
     let mut max_ulp = 0u64;
-    let n = if cpu_views.len() < gpu_views.len() { cpu_views.len() } else { gpu_views.len() };
+    let n = if cpu_flat.len() < gpu_flat.len() { cpu_flat.len() } else { gpu_flat.len() };
     let mut i = 0usize;
     while i < n {
-        let d = ulp_distance(cpu_views[i], gpu_views[i]);
+        let d = ulp_distance(cpu_flat[i], gpu_flat[i]);
         if d > max_ulp {
             max_ulp = d;
         }
         i += 1;
     }
-    // 矩对齐：尺寸均值/颜色 r 均值/速度方差（均非负域——扰动算子适用）。
-    let m_size = MomentRow {
-        metric: "尺寸均值",
-        cpu: mean_f32(cpu_views),
-        gpu: mean_f32(gpu_views),
-        ulp: ulp_distance(mean_f32(cpu_views), mean_f32(gpu_views)),
-        within: ulp_distance(mean_f32(cpu_views), mean_f32(gpu_views)) <= ULP_BOUND,
+    let mk = |metric: &'static str, cpu_col: &[f32], gpu_col: &[f32], stat: fn(&[f32]) -> f32| {
+        let cv = stat(cpu_col);
+        let gv = stat(gpu_col);
+        let d = ulp_distance(cv, gv);
+        MomentRow { metric, cpu: cv, gpu: gv, ulp: d, within: d <= ULP_BOUND }
     };
-    let _ = gpu_ulps;
-    let m_color = MomentRow {
-        metric: "颜色 r 均值",
-        cpu: mean_f32(&[]),
-        gpu: mean_f32(&[]),
-        ulp: 0,
-        within: true,
-    };
-    let m_var = MomentRow {
-        metric: "速度方差",
-        cpu: 0.0,
-        gpu: 0.0,
-        ulp: 0,
-        within: true,
-    };
-    (max_ulp, [m_size, m_color, m_var])
+    let size_row = mk("尺寸均值", &view_column(cpu_flat, 0), &view_column(gpu_flat, 0), mean_f32);
+    let color_row = mk("颜色 r 均值", &view_column(cpu_flat, 1), &view_column(gpu_flat, 1), mean_f32);
+    let speed_row = mk("速率方差", &view_column(cpu_flat, 2), &view_column(gpu_flat, 2), variance_f32);
+    (max_ulp, [size_row, color_row, speed_row])
 }
 
 /// 等效声明：超界即宣称失效（视觉等效边界外不许宣称等效）。
@@ -733,18 +777,20 @@ pub const CONFORMITY_STEPS: [&str; 6] = [
     "l.ps.emitter.enumerate",
 ];
 
-/// 术语核验：emitter/group/pool 三术语与 F2219 裁决表一致（真调 vel13
-/// 移交包），且一致性链步骤名全在 v1 冻结簿。
+/// 术语核验：锚点三术语（发射器/粒子/池）与 F2213 v1 冻结簿命名一致，
+/// 且一致性链步骤名全在 v1 冻结簿。
+///
+/// 术语的"承载"分两种形态，如实区分不硬凑：
+/// - **emitter / pool**：有签名承载（`l.ps.emitter.*` / `l.ps.pool.*`）；
+/// - **particle**：命名空间承载（`l.ps.` 前缀即粒子段——冻结簿全名
+///   必经此前缀，全簿非空且全命中即证）。
+///
+/// （粒子组 `group` 是 F2203 数据模型术语——vel03 `ParticleGroup`，
+/// 不在 API 签名面；把它当 API 术语硬找签名承载是编造对端，故不列。）
 pub fn terminology_verdict(book: &FreezeBook) -> Result<(), String> {
-    // 术语侧（与 vel14 文档术语同源同检——一处裁定处处引用）。
-    let terms = [
-        ("emitter", "发射器"),
-        ("group", "粒子组"),
-        ("pool", "粒子池"),
-    ];
-    for (en, zh) in terms.iter() {
-        // 冻结簿以签名为载体：术语的英文名必须是某条冻结签名全名的组成部分
-        // （l.ps.emitter.* / l.ps.pool.*——命名空间即术语表的物质存在）。
+    // 术语侧：emitter/pool 找签名承载，particle 找命名空间承载。
+    let api_terms = [("emitter", "发射器"), ("pool", "粒子池")];
+    for (en, zh) in api_terms.iter() {
         let hit = book.names().iter().any(|n| n.contains(en));
         if !hit {
             return Err(format!(
@@ -752,6 +798,13 @@ pub fn terminology_verdict(book: &FreezeBook) -> Result<(), String> {
                 E_CONS_TERM, en, zh
             ));
         }
+    }
+    let names = book.names();
+    if names.is_empty() || !names.iter().all(|n| n.starts_with("l.ps.")) {
+        return Err(format!(
+            "{}：术语「粒子」无命名空间承载——v1 冻结簿全名须经 l.ps. 前缀",
+            E_CONS_TERM
+        ));
     }
     // 命名侧：链步骤全在簿。
     for st in CONFORMITY_STEPS.iter() {
@@ -836,20 +889,19 @@ pub fn run_vel15_checks() -> CheckSet {
     let exact_all_eq = exact_totals.iter().all(|t| *t == exact_totals[0]);
     s.add("L15-帧率-02", exact_all_eq && exact_totals[0] == 100, "精确档四档全等且恰 100 粒");
 
-    // L15-帧率-03：帧率无关失败 → 固定步长重算路径存在（指引非空+可执行）。
+    // L15-帧率-03：未归一化模式可检出（反面对拍：帧率当 dt 传——经典
+    // 帧率相关 bug，归一化路径即 frame_rate_verdict 的 dt=1/fps）。
+    let div = unnormalized_divergence(100.0);
     s.add(
         "L15-帧率-03",
-        frame_rate_verdict(1.0e9, 60.0).is_err()
-            && frame_rate_verdict(1.0e9, 60.0)
-                .unwrap_err()
-                .contains(E_CONS_FRAMERATE),
-        "违约场景可检出（极端率×长时超界即拒）",
+        div > ACCUMULATOR_BOUND && unnormalized_fix_hint().contains("归一化"),
+        "未归一化调用跨帧率极差超界即拒（修复=dt 归一化）",
     );
 
     // --- GPU 统计等效（判据三）---
     let cpu_flat = views_1.as_ref().map(|x| view_flatten(x)).unwrap_or_default();
     let gpu_flat = gpu_model_flatten(&cpu_flat, 2);
-    let (max_ulp, rows) = equivalence_measure(&cpu_flat, &gpu_flat, 2);
+    let (max_ulp, rows) = equivalence_measure(&cpu_flat, &gpu_flat);
     // L15-等效-01：逐粒子最大 ulp 距离 ≤8（视觉等效界内）。
     s.add(
         "L15-等效-01",
@@ -859,7 +911,7 @@ pub fn run_vel15_checks() -> CheckSet {
 
     // L15-等效-02：超界宣称失效（构造 +100 ulp 极端扰动 → 拒）。
     let gpu_bad = gpu_model_flatten(&cpu_flat, 100);
-    let (max_ulp_bad, _) = equivalence_measure(&cpu_flat, &gpu_bad, 100);
+    let (max_ulp_bad, _) = equivalence_measure(&cpu_flat, &gpu_bad);
     s.add(
         "L15-等效-02",
         max_ulp_bad > ULP_BOUND && declare_equivalence(max_ulp_bad).is_err(),
@@ -868,7 +920,7 @@ pub fn run_vel15_checks() -> CheckSet {
 
     // L15-等效-03：恰边界放行（恰 8 ulp 不算超——界含边界值）。
     let gpu_edge = gpu_model_flatten(&cpu_flat, ULP_BOUND as i32);
-    let (max_ulp_edge, _) = equivalence_measure(&cpu_flat, &gpu_edge, ULP_BOUND as i32);
+    let (max_ulp_edge, _) = equivalence_measure(&cpu_flat, &gpu_edge);
     s.add(
         "L15-等效-03",
         max_ulp_edge == ULP_BOUND && declare_equivalence(max_ulp_edge).is_ok(),
@@ -1009,9 +1061,14 @@ pub fn run_vel15_checks() -> CheckSet {
         first.position.x = first.position.x + 1.0;
     }
     let d_tamper = bits_digest(&spawn_flatten(&tampered), &group_seq(&tampered));
+    // 判据区零 panic：d1 取值失败一律 match 记红，不 unwrap。
+    let tamper_detected = match d1 {
+        Some(a) => d_tamper != a,
+        None => false,
+    };
     s.add(
         "L15-CI-02",
-        d1.is_some() && d_tamper != d1.unwrap(),
+        tamper_detected,
         "一粒位改动即换摘要（回归网灵敏）",
     );
 
@@ -1026,8 +1083,8 @@ pub fn run_vel15_checks() -> CheckSet {
         "L 域账本暂挂声明显性",
     );
 
-    // L15-暂挂-02：判据条数对账（本条为第 27 条）。
-    s.add("L15-暂挂-02", s.len() == 26, "判据条数对账（26+本条）");
+    // L15-暂挂-02：判据条数对账（本条为第 28 条）。
+    s.add("L15-暂挂-02", s.len() == 27, "判据条数对账（27+本条）");
 
     s
 }
