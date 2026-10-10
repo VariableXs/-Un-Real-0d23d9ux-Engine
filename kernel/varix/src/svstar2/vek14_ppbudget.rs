@@ -861,7 +861,7 @@ pub mod checks {
 
     /// 跑全部判据。
     pub fn run_vek14_checks() -> CheckSet {
-        let mut s = CheckSet::new("vek14_ppbudget");
+        let mut s = CheckSet::new("svstar2-vek14");
 
         // -- P14-COST-01 十效果 × 三档闭集完整且成本单调可查 -----------------
         //恒返回 0 的实现会让「每格非零」也绿，故先断**十格全非零**再断单调。
