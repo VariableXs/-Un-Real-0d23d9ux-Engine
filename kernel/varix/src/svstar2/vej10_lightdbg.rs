@@ -19,6 +19,13 @@
 //!   光源异常场景的防线）——截断不是丢弃：`total_vertices`（真实应画数）
 //!   与 `vertices.len()`（实际交付数）分别如实记账，VE-Y 才知道拿到的是
 //!   截断视图。
+//!
+//!   **截断防线对管理器来源恒不触发，这是几何事实不是漏洞**：F1807 的
+//!   `MAX_LIGHTS = 256`、单灯最坏顶点 [`MAX_VERTS_PER_LIGHT`] = 32，
+//!   上界 `256 × 32 = 8192 < 16384`。所以纯入口取自描述序列
+//!   [`build_wireframe_from`]，管理器口 [`build_wireframe`] 只是它的
+//!   convenience 包装——「万级光源」是合并光源体/实例化光源等**不经管理器
+//!   注册**的来源，只有那条路径才真的撞上限。两处行为一致，不分裂语义。
 //! - **热力负载** [`HeatPayload`]：三分量贡献分解缓冲（直接光/IBL/探针），
 //!   半分辨率。**复用光照 pass 的中间缓冲**——输入就是 pass 已经算出的
 //!   三张全分辨率图，本条只做 2×2 盒式降采样分通道写出，零重复计算。
@@ -64,11 +71,20 @@
 //!
 //! # 四、信封与总线（F1764 J 段）
 //!
-//! 每帧信封封装带版本与校验和：[`Envelope`] 对（kind, schema, byte_len,
-//! seq）做 FNV-1a 摘要存入 `declared`；[`JEnvelopeRegistry::reconcile`]
+//! 每帧信封封装带版本与校验和：[`Envelope`] 对 (kind, schema, byte_len,
+//! seq) 做 FNV-1a 摘要存入 `declared`；[`JEnvelopeRegistry::reconcile`]
 //! 重算比对，不一致即漂移 → **拦截而非记一笔**：置 `intercepted` 后
 //! `take()` 一律返回 `None`——漂移的信封不得再被消费端取用，否则 VE-Y
 //! 会把旧结构画成当前结构。
+//!
+//! **信封 seq 是真帧号**：摘要与 seq 在**信封构造处**一次写定（框架经
+//! [`JDebugBus::peek_next_seq`] 先取帧号再封信封）。若先封 seq=0 的信封、
+//! 再让压帧口改帧号，字段看着像版本号实际恒为 0，而摘要算的是 0——这种
+//! 「装饰字段」在单帧判据下完全看不见，故 `C10-ENV-08` 逐帧对拍。
+//!
+//! **拦截态粘滞**：对账经 [`JDebugBus::reconcile_latest`] **就地**跑在帧上，
+//! 写回 `intercepted`。此前每次取用都克隆一份登记簿再对账，等于「这帧坏了」
+//! 要靠每次重新发现才能生效，且不调对账口的调用方完全不知情。
 //!
 //! 总线背压 → **F1764 淘汰旧帧策略承接**：[`JDebugBus`] 定容环形，满时
 //! 弹出最旧帧、保住最新帧，淘汰计数 + 专属诊断码——背压是常态不是异常，
@@ -78,12 +94,18 @@
 //! F1830、氛围段归 F1850 沿用本条目负载类型扩展）——扩展位只声明不实现，
 //! `wire()` 可解析但无负载构造面（诚实预留）。
 //!
-//! # 五、耗时五元组的诚实标注
+//! # 五、耗时五元组与字节口径的诚实标注
 //!
 //! 内核 no_std 无墙钟，统计快照的「耗时五元组」以**真实工作单元计数**
 //! （选灯操作数/剔除判定数/线框顶点数/热力像素数/信封封装数）作为机检
 //! 口径，**不是自证式常数**；墙钟口径由光照基准条目在目标机器定标。
 //! 这与 F2407/F2013 同纪律：可机检的先机检，不可在本条定标的如实移交。
+//!
+//! **「不是常数」是逐字段兑现的**：`envelope_seals` 读登记簿**实测枚数**
+//! （热力被预算拒绝时只有两枚，此前写死 3 会凭空多记一个封装单元）；
+//! `byte_len` 按**字段表逐项相加**得 [`STATS_WIRE_BYTES`]，不写「4×7 +
+//! 8×6」这种与实际字段数对不上的估算——信封字节量是消费端分配缓冲的
+//! 依据，多报白占显存、少报越界读。
 //!
 //! # 六、诊断码
 //!
@@ -97,8 +119,10 @@
 //! 不改他人文件：F1807 管理器只读消费，F1764 信封自持实现
 //! （沿用 M 段已验证形状，J 段独立落码）。
 
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::collections::VecDeque;
-use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::vej07_lightmgr::{FrameStats, LightDesc, LightKind, LightManager};
@@ -330,7 +354,7 @@ pub struct WireVertex {
 }
 
 /// 线框负载：光源图元顶点列表 + 溢出记账。
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct WireframePayload {
     /// 实际交付顶点（≤ [`CAP_WIRE_VERTICES`]）。
     pub vertices: Vec<WireVertex>,
@@ -340,6 +364,9 @@ pub struct WireframePayload {
     pub truncated: bool,
     /// 画了多少个光源的图元（截断后不足整灯的不计入）。
     pub lights_drawn: usize,
+    /// 截断丢弃的顶点数（`total_vertices − vertices.len()`）——**溢出标记
+    /// 的量化面**。没有它，截断只告诉消费方「少了」，不告诉「少了多少」。
+    pub dropped_vertices: usize,
     /// 本负载字节量（信封 byte_len 口径：每顶点 15 字节）。
     pub byte_len: u32,
 }
@@ -374,8 +401,8 @@ fn light_primitives(desc: &LightDesc, out: &mut Vec<WireVertex>, log: &mut Jdiag
             while i < RING_SEGMENTS {
                 let ang = (i as f32) * core::f32::consts::TAU / (RING_SEGMENTS as f32);
                 // 射线基点绕位置微散开（环半径 0.1），画成短放射线。
-                let bx = px + ang.cos() * 0.1;
-                let by = py + ang.sin() * 0.1;
+                let bx = px + ang.m_cos() * 0.1;
+                let by = py + ang.m_sin() * 0.1;
                 let bz = pz;
                 out.push(WireVertex {
                     x: bx,
@@ -411,27 +438,27 @@ fn light_primitives(desc: &LightDesc, out: &mut Vec<WireVertex>, log: &mut Jdiag
                     / (RING_SEGMENTS as f32);
                 // 水平圆（XZ 平面）。
                 out.push(WireVertex {
-                    x: px + a0.cos() * r,
+                    x: px + a0.m_cos() * r,
                     y: py,
-                    z: pz + a0.sin() * r,
+                    z: pz + a0.m_sin() * r,
                     mark,
                 });
                 out.push(WireVertex {
-                    x: px + a1.cos() * r,
+                    x: px + a1.m_cos() * r,
                     y: py,
-                    z: pz + a1.sin() * r,
+                    z: pz + a1.m_sin() * r,
                     mark,
                 });
                 // 垂直圆（XY 平面）。
                 out.push(WireVertex {
-                    x: px + a0.cos() * r,
-                    y: py + a0.sin() * r,
+                    x: px + a0.m_cos() * r,
+                    y: py + a0.m_sin() * r,
                     z: pz,
                     mark,
                 });
                 out.push(WireVertex {
-                    x: px + a1.cos() * r,
-                    y: py + a1.sin() * r,
+                    x: px + a1.m_cos() * r,
+                    y: py + a1.m_sin() * r,
                     z: pz,
                     mark,
                 });
@@ -465,7 +492,7 @@ fn light_primitives(desc: &LightDesc, out: &mut Vec<WireVertex>, log: &mut Jdiag
             let cxu = dy * axis.2 - dz * axis.1;
             let cyu = dz * axis.0 - dx * axis.2;
             let czu = dx * axis.1 - dy * axis.0;
-            let ul = (cxu * cxu + cyu * cyu + czu * czu).sqrt();
+            let ul = (cxu * cxu + cyu * cyu + czu * czu).m_sqrt();
             let (ux, uy, uz) = if ul > 0.0 { (cxu / ul, cyu / ul, czu / ul) } else { (1.0, 0.0, 0.0) };
             // v = dir × u（已单位化：dir 与 u 均为单位向量且正交）。
             let (vx, vy, vz) = (dy * uz - dz * uy, dz * ux - dx * uz, dx * uy - dy * ux);
@@ -478,22 +505,22 @@ fn light_primitives(desc: &LightDesc, out: &mut Vec<WireVertex>, log: &mut Jdiag
                 // 侧棱：位置 → 底环点。
                 out.push(WireVertex { x: px, y: py, z: pz, mark });
                 out.push(WireVertex {
-                    x: cx + ux * (a0.cos() * spread_r) + vx * (a0.sin() * spread_r),
-                    y: cy + uy * (a0.cos() * spread_r) + vy * (a0.sin() * spread_r),
-                    z: cz + uz * (a0.cos() * spread_r) + vz * (a0.sin() * spread_r),
+                    x: cx + ux * (a0.m_cos() * spread_r) + vx * (a0.m_sin() * spread_r),
+                    y: cy + uy * (a0.m_cos() * spread_r) + vy * (a0.m_sin() * spread_r),
+                    z: cz + uz * (a0.m_cos() * spread_r) + vz * (a0.m_sin() * spread_r),
                     mark,
                 });
                 // 底环：相邻两点相连。
                 out.push(WireVertex {
-                    x: cx + ux * (a0.cos() * spread_r) + vx * (a0.sin() * spread_r),
-                    y: cy + uy * (a0.cos() * spread_r) + vy * (a0.sin() * spread_r),
-                    z: cz + uz * (a0.cos() * spread_r) + vz * (a0.sin() * spread_r),
+                    x: cx + ux * (a0.m_cos() * spread_r) + vx * (a0.m_sin() * spread_r),
+                    y: cy + uy * (a0.m_cos() * spread_r) + vy * (a0.m_sin() * spread_r),
+                    z: cz + uz * (a0.m_cos() * spread_r) + vz * (a0.m_sin() * spread_r),
                     mark,
                 });
                 out.push(WireVertex {
-                    x: cx + ux * (a1.cos() * spread_r) + vx * (a1.sin() * spread_r),
-                    y: cy + uy * (a1.cos() * spread_r) + vy * (a1.sin() * spread_r),
-                    z: cz + uz * (a1.cos() * spread_r) + vz * (a1.sin() * spread_r),
+                    x: cx + ux * (a1.m_cos() * spread_r) + vx * (a1.m_sin() * spread_r),
+                    y: cy + uy * (a1.m_cos() * spread_r) + vy * (a1.m_sin() * spread_r),
+                    z: cz + uz * (a1.m_cos() * spread_r) + vz * (a1.m_sin() * spread_r),
                     mark,
                 });
                 i += 1;
@@ -526,36 +553,79 @@ fn light_primitives(desc: &LightDesc, out: &mut Vec<WireVertex>, log: &mut Jdiag
     }
 }
 
-/// 构建线框负载：遍历管理器在册光源生成图元，超上限截断 + 溢出标记。
-pub fn build_wireframe(mgr: &LightManager, log: &mut JdiagLog) -> WireframePayload {
+/// 单个光源图元的顶点数（判据侧独立重算的公共口径；构造与判据同源推导）。
+pub const fn verts_of(kind: LightKind) -> usize {
+    match kind {
+        LightKind::Directional => 2 * RING_SEGMENTS,
+        LightKind::Point => 4 * RING_SEGMENTS,
+        LightKind::Spot => 4 * RING_SEGMENTS,
+        LightKind::Area => 8,
+    }
+}
+
+/// **单灯最坏顶点数**（四类图元的最大值）。
+pub const MAX_VERTS_PER_LIGHT: usize = 4 * RING_SEGMENTS;
+
+/// 构建线框负载的**纯入口**：光源描述序列 → 线框顶点。
+///
+/// **为什么不只接受 `&LightManager`**：管理器受 F1807 的
+/// [`MAX_LIGHTS`](super::vej07_lightmgr::MAX_LIGHTS) 硬上限约束，注册源
+/// 最多 256 盏；即便每盏都画最贵的 32 顶点图元，总量也只有
+/// `256 × 32 = 8192 < CAP_WIRE_VERTICES`——**管理器路径永远触发不了截断**，
+/// 锚点要求的「万级光源异常场景」防线会退化成一段永不执行的死代码。
+/// 因此本入口吃**任意描述序列**（合并光源体、实例化光源、跨管理器聚合的
+/// 调试视图等），管理器只是其中一种来源。截断语义对两者一致。
+pub fn build_wireframe_from(descs: &[LightDesc], log: &mut JdiagLog) -> WireframePayload {
     let mut vertices: Vec<WireVertex> = Vec::new();
+    let mut prims: Vec<WireVertex> = Vec::new();
     let mut total = 0usize;
     let mut lights_drawn = 0usize;
     let mut truncated = false;
-    for desc in mgr.iter_live() {
-        let mut prims: Vec<WireVertex> = Vec::new();
-        light_primitives(&desc, &mut prims, log);
+    for desc in descs.iter() {
+        prims.clear();
+        light_primitives(desc, &mut prims, log);
         total += prims.len();
-        if vertices.len() + prims.len() <= CAP_WIRE_VERTICES {
-            for v in prims {
-                vertices.push(v);
+        if !truncated && vertices.len() + prims.len() <= CAP_WIRE_VERTICES {
+            for v in prims.iter() {
+                vertices.push(*v);
             }
             lights_drawn += 1;
         } else {
-            truncated = true;
-            log.record(JdbgCode::WIREFRAME_TRUNCATED);
-            break;
+            // **不 break**：截断后仍走完余下光源。理由有二——
+            // ① `total_vertices` 必须是「真实应画数」，break 掉就只剩
+            //    已交付数，消费方无从知道丢了多少（`dropped_vertices`
+            //    永远是 0，溢出标记形同虚设）；
+            // ② 余下光源的输入异常（非有限坐标/无限范围）仍要进诊断台账，
+            //    break 掉会让「场景里有畸形灯」这件事随截断一起消失。
+            // 顶点一律丢弃，但遍历与记账不中断——成本是每盏一次图元生成，
+            // 复用同一个 `prims` 缓冲，不额外分配。
+            if !truncated {
+                truncated = true;
+                log.record(JdbgCode::WIREFRAME_TRUNCATED);
+            }
         }
     }
     // 字节口径：每顶点 3×f32 + 3×u8 = 15 字节（三通道标记各 1 字节）。
     let byte_len = (vertices.len() * 15) as u32;
+    let dropped_vertices = total.saturating_sub(vertices.len());
     WireframePayload {
         vertices,
         total_vertices: total,
         truncated,
         lights_drawn,
+        dropped_vertices,
         byte_len,
     }
+}
+
+/// 构建线框负载（管理器在册光源 convenience 口，语义等价于
+/// [`build_wireframe_from`]）。
+///
+/// **恒不截断**：`MAX_LIGHTS × MAX_VERTS_PER_LIGHT = 8192 < CAP_WIRE_VERTICES`，
+/// 该性质由判据 `C10-DEG-01` 以独立重算钉死——哪天上调了 `CAP_WIRE_VERTICES`
+/// 到管理器上限之下（防线对在册光源彻底失效），判据即红。
+pub fn build_wireframe(mgr: &LightManager, log: &mut JdiagLog) -> WireframePayload {
+    build_wireframe_from(&mgr.iter_live(), log)
 }
 
 // ---------------------------------------------------------------------------
@@ -594,7 +664,7 @@ impl HeatTier {
 /// **复用而非重算**：输入是光照 pass 已算出的三张全分辨率图，本条只做
 /// 2×2 盒式降采样分通道写出——热力分解是「把已有结果分通道端出去」，
 /// 不重复任何光照计算（锚点性能条款原文）。
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HeatPayload {
     /// 实际档位（降档后如实标注）。
     pub tier: HeatTier,
@@ -821,6 +891,17 @@ pub struct TimingQuintet {
     pub envelope_seals: u64,
 }
 
+/// 统计快照线缆字节数（**按字段表逐项加出来的，不是估的**）。
+///
+/// `active_lights/selected/culled/dropped` 4×u32 = 16；
+/// `census` 4×u32 + `missing_mask` u8 = 17；
+/// `timing` 5×u64 = 40。合计 **73**。
+///
+/// **为什么不写 76**：此前按「4×7 + 8×6」估写 76，而五元组实际只有 5 个
+/// u64——多出来的 3 字节是凭空捏造的。信封 `byte_len` 是消费端按它分配
+/// 缓冲的依据，多报会白占显存、少报会越界读，故此项必须可对账。
+pub const STATS_WIRE_BYTES: u32 = 4 * 4 + 4 * 4 + 1 + 5 * 8;
+
 /// 统计快照：活跃光源数/各类型计数/剔除计数 + 耗时五元组。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct StatsSnapshot {
@@ -836,7 +917,7 @@ pub struct StatsSnapshot {
     pub census: KindCensus,
     /// 耗时五元组。
     pub timing: TimingQuintet,
-    /// 本负载字节量（定长字段合计：4×7 + 8×6 = 76 字节）。
+    /// 本负载字节量（= [`STATS_WIRE_BYTES`]，按字段表实算）。
     pub byte_len: u32,
 }
 
@@ -866,7 +947,7 @@ pub fn build_stats(
             heat_pixels,
             envelope_seals: 0,
         },
-        byte_len: 76,
+        byte_len: STATS_WIRE_BYTES,
     }
 }
 
@@ -1008,6 +1089,18 @@ impl JEnvelopeRegistry {
         }
     }
 
+    /// 本簿已注册的信封枚数（**实测**而非按负载类型总数推算——热力降档
+    /// 失败时实际只有两枚，凭常数写「三」就是记账撒谎）。
+    pub fn sealed(&self) -> u32 {
+        let mut n = 0u32;
+        for slot in self.slots.iter() {
+            if slot.is_some() {
+                n += 1;
+            }
+        }
+        n
+    }
+
     /// 注册一枚信封（同类型覆盖旧枚）。
     pub fn register(&mut self, env: Envelope) -> bool {
         self.epoch = self.epoch.wrapping_add(1);
@@ -1045,6 +1138,15 @@ impl JEnvelopeRegistry {
             return None;
         }
         self.slots[Self::slot_of(kind)].as_ref()
+    }
+
+    /// 可变取用一枚**已注册**信封（对账钩子与负向判据用——篡改字段后
+    /// 摘要必然失配，正是要制造漂移的那一处）。
+    ///
+    /// **不给未注册类型开可变口**：否则可以在登记簿里凭空造出一枚没有
+    /// 基准的信封，绕过「登记时写基准」这条纪律。
+    pub fn slot_mut(&mut self, kind: PayloadKind) -> Option<&mut Envelope> {
+        self.slots[Self::slot_of(kind)].as_mut()
     }
 
     /// 是否已被拦截。
@@ -1097,9 +1199,11 @@ impl JDebugBus {
     pub fn push_frame(&mut self, mut frame: JDebugFrame, log: &mut JdiagLog) -> u32 {
         frame.seq = self.next_seq;
         self.next_seq = self.next_seq.wrapping_add(1);
-        // 信封封装单元在压帧时补记（三类实作负载各一枚）。
+        // 信封封装单元在压帧时补记：**读登记簿实测枚数**（热力被降档拒绝时
+        // 只有两枚），不写常数 3。
+        let sealed = frame.registry.sealed();
         if let Some(st) = frame.stats.as_mut() {
-            st.timing.envelope_seals = 3;
+            st.timing.envelope_seals = sealed as u64;
         }
         let seq = frame.seq;
         if self.frames.len() >= self.cap {
@@ -1111,9 +1215,31 @@ impl JDebugBus {
         seq
     }
 
+    /// 下一帧将用的序号（**只读窥探**，让调用方在构造信封时就把正确的
+    /// 帧号写进去；压帧时取同一个值，故两者恒等）。
+    pub const fn peek_next_seq(&self) -> u32 {
+        self.next_seq
+    }
+
+    /// 对最新帧的登记簿**就地**对账（拦截态写回，跨调用粘滞）。
+    ///
+    /// **为什么必须就地**：拦截若只活在临时克隆上，「这帧坏了」这件事
+    /// 每次取用都要重新发现一次，且调用方若不调对账口就完全不知情。
+    pub fn reconcile_latest(&mut self, log: &mut JdiagLog) {
+        if let Some(f) = self.frames.back_mut() {
+            f.registry.reconcile(log);
+        }
+    }
+
     /// 最新帧（消费端语义：只要最新）。
     pub fn latest(&self) -> Option<&JDebugFrame> {
         self.frames.back()
+    }
+
+    /// 最新帧可变口（对账与负向判据用；`assemble_frame` 经
+    /// [`JDebugBus::push_frame`] 压帧，不走此口）。
+    pub fn latest_mut(&mut self) -> Option<&mut JDebugFrame> {
+        self.frames.back_mut()
     }
 
     /// 背压淘汰累计数。
@@ -1162,9 +1288,14 @@ impl JDebugAssembler {
         &self.log
     }
 
-    /// 总线（只读）。
-    pub fn bus(&self) -> &JDebugBus {
+/// 总线（只读）。
+    pub const fn bus(&self) -> &JDebugBus {
         &self.bus
+    }
+
+    /// 总线可变口（负向判据制造信封漂移用；产线路径不经此口）。
+    pub const fn bus_mut(&mut self) -> &mut JDebugBus {
+        &mut self.bus
     }
 
     /// 档位守卫（只读，供判据交叉验证两个口径）。
@@ -1191,6 +1322,10 @@ impl JDebugAssembler {
         if !self.guard.try_push(&mut self.log) {
             return None;
         }
+        // 帧号先定：信封摘要在**产生处**就要带上正确的 seq——先封一个
+        // seq=0 的信封、再让 `push_frame` 改帧号，会留下「摘要与帧号对不上」
+        // 的信封（字段看着像版本号，实际恒为 0，是纯装饰）。
+        let seq = self.bus.peek_next_seq();
         // 1) 线框负载。
         let wire = build_wireframe(mgr, &mut self.log);
         // 2) 热力负载（复用 pass 中间缓冲）。
@@ -1204,11 +1339,11 @@ impl JDebugAssembler {
         let stats = build_stats(mgr, frame_stats, wire.vertices.len() as u64, heat_pixels);
         // 4) 信封三枚，登记后入帧。
         let mut registry = JEnvelopeRegistry::new();
-        registry.register(Envelope::new(PayloadKind::Wireframe, wire.byte_len, 0));
+        registry.register(Envelope::new(PayloadKind::Wireframe, wire.byte_len, seq));
         if let Some(h) = heat.as_ref() {
-            registry.register(Envelope::new(PayloadKind::Heat, h.byte_len, 0));
+            registry.register(Envelope::new(PayloadKind::Heat, h.byte_len, seq));
         }
-        registry.register(Envelope::new(PayloadKind::Stats, stats.byte_len, 0));
+        registry.register(Envelope::new(PayloadKind::Stats, stats.byte_len, seq));
         let frame = JDebugFrame {
             seq: 0,
             wire: Some(wire),
@@ -1216,20 +1351,180 @@ impl JDebugAssembler {
             stats: Some(stats),
             registry,
         };
+        // `peek_next_seq()` 与 `push_frame()` 之间不得有其他压帧（单线程
+        // 压帧口保证）；该等价关系由判据 `C10-ENV-08` 钉死——这里不加
+        // `debug_assert`，保持生产面零 panic。
         Some(self.bus.push_frame(frame, &mut self.log))
     }
 
     /// 消费端取信封（走登记簿对账口——被拦截即 `None`）。
+    ///
+    /// 对账**就地**跑在最新帧的登记簿上：拦截态粘滞在帧上，后续每次取用
+    /// 都直接吃到拦截结果，不靠「每次都重新发现一次漂移」。
     pub fn take_envelope(&mut self, kind: PayloadKind) -> Option<Envelope> {
-        // 取前先对账：漂移拦截优先于任何取用。
-        let mut snapshot = JEnvelopeRegistry::new();
-        if let Some(f) = self.bus.latest() {
-            snapshot = f.registry.clone();
-        }
-        snapshot.reconcile(&mut self.log);
-        if snapshot.is_intercepted() {
+        self.bus.reconcile_latest(&mut self.log);
+        let frame = self.bus.latest()?;
+        if frame.registry.is_intercepted() {
             return None;
         }
-        snapshot.take(kind).copied()
+        frame.registry.take(kind).copied()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! **与域自检（`vej10_checks.rs`）的分工**：域自检走「判据侧独立重算 +
+    //! 双向对拍」，防的是**口径写错**；本节走「同输入两次调用逐位相同 +
+    //! 畸形输入不崩」，防的是**不确定性与 panic 面**。两者不可互替——
+    //! 一段每帧重跑都给出不同顶点序的代码，判据全绿也能过，但它在渲染里
+    //! 就是每帧抖动的线框。
+    use super::*;
+    use crate::svstar2::vej07_lightmgr::FrameStats;
+
+    fn desc(kind: LightKind, pos: (f32, f32, f32), dir: (f32, f32, f32), range: f32, id: u64) -> LightDesc {
+        LightDesc::new(kind, pos, dir, (1.0, 1.0, 1.0), 1.0, range, id).0
+    }
+
+    fn mgr() -> LightManager {
+        let mut m = LightManager::new();
+        let _ = m.add(desc(LightKind::Directional, (0.0, 8.0, 0.0), (0.0, -1.0, 0.0), f32::INFINITY, 1), Vec::new());
+        let _ = m.add(desc(LightKind::Point, (2.0, 1.0, 0.0), (0.0, 0.0, 0.0), 4.0, 2), Vec::new());
+        let _ = m.add(desc(LightKind::Spot, (0.0, 5.0, 0.0), (0.0, -1.0, 0.0), 6.0, 3), Vec::new());
+        let _ = m.add(desc(LightKind::Area, (1.0, 3.0, -1.0), (0.0, -1.0, 0.0), 1.5, 4), Vec::new());
+        m
+    }
+
+    fn fs() -> FrameStats {
+        FrameStats { registered: 4, selected: 3, culled: 1, dropped: 0, total_ops: 17 }
+    }
+
+    fn heat_src() -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+        let n = 32 * 32;
+        let mut d: Vec<f32> = Vec::new();
+        let mut i: Vec<f32> = Vec::new();
+        let mut p: Vec<f32> = Vec::new();
+        let mut k = 0usize;
+        while k < n {
+            d.push(1.0);
+            i.push(2.0);
+            p.push(4.0);
+            k += 1;
+        }
+        (d, i, p)
+    }
+
+    #[test]
+    fn same_input_twice_is_bit_identical() {
+        let (d, i, p) = heat_src();
+        let mut a = JDebugAssembler::new(BuildProfile::Debug);
+        let mut b = JDebugAssembler::new(BuildProfile::Debug);
+        let m = mgr();
+        let s1 = a.assemble_frame(&m, &fs(), &d, &i, &p, 32, 32, 4096);
+        let s2 = b.assemble_frame(&m, &fs(), &d, &i, &p, 32, 32, 4096);
+        assert_eq!(s1, s2);
+        let fa = a.bus().latest().cloned();
+        let fb = b.bus().latest().cloned();
+        match (fa, fb) {
+            (Some(x), Some(y)) => {
+                let wa = x.wire.as_ref().map(|w| w.vertices.clone());
+                let wb = y.wire.as_ref().map(|w| w.vertices.clone());
+                assert_eq!(wa, wb, "线框顶点序列两次调用必须逐位相同");
+                assert_eq!(x.heat, y.heat, "热力负载两次调用必须逐位相同");
+                assert_eq!(x.stats, y.stats, "统计快照两次调用必须逐位相同");
+            }
+            _ => panic!("两次组装都应产出帧"),
+        }
+    }
+
+    #[test]
+    fn malformed_lights_never_panic_and_never_emit_nonfinite() {
+        let bad = [
+            desc(LightKind::Point, (f32::NAN, 0.0, 0.0), (0.0, 0.0, 0.0), 4.0, 1),
+            desc(LightKind::Point, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), -1.0, 2),
+            desc(LightKind::Point, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.0, 3),
+            desc(LightKind::Spot, (1.0, 1.0, 1.0), (f32::NAN, 0.0, 0.0), 3.0, 4),
+            desc(LightKind::Directional, (0.0, 1.0, 0.0), (0.0, -1.0, 0.0), f32::INFINITY, 5),
+            desc(LightKind::Area, (0.0, 0.0, 0.0), (0.0, -1.0, 0.0), f32::NAN, 6),
+        ];
+        let mut log = JdiagLog::default();
+        let w = build_wireframe_from(&bad, &mut log);
+        assert!(w.vertices.len() > 0);
+        for v in w.vertices.iter() {
+            assert!(
+                v.x.is_finite() && v.y.is_finite() && v.z.is_finite(),
+                "畸形输入不得产出非有限顶点"
+            );
+        }
+        // 畸形必须留痕，不许静默。
+        assert!(
+            log.count(JdbgCode::WIRE_NON_FINITE) + log.count(JdbgCode::WIRE_RANGE_INFINITE) > 0
+        );
+    }
+
+    #[test]
+    fn degenerate_heat_geometry_does_not_panic() {
+        let mut log = JdiagLog::default();
+        // 零宽高：下游采样数为 0，不应崩、不应产出越界长度。
+        let empty: Vec<f32> = Vec::new();
+        let (outcome, payload) = build_heat(&empty, &empty, &empty, 0, 0, 4096, &mut log);
+        assert_eq!(outcome, HeatBuildOutcome::Built);
+        match payload {
+            Some(h) => {
+                assert_eq!(h.hw, 0);
+                assert_eq!(h.hh, 0);
+                assert!(h.direct.is_empty() && h.ibl.is_empty() && h.probe.is_empty());
+            }
+            None => panic!("零尺寸在预算内不应被拒"),
+        }
+        // 非 2 的幂奇数尺寸：右移取整后不应越界读。
+        let src: Vec<f32> = (0..13 * 7).map(|k| k as f32).collect();
+        let (_o2, p2) = build_heat(&src, &src, &src, 13, 7, 4096, &mut log);
+        match p2 {
+            Some(h) => {
+                assert_eq!(h.direct.len(), (h.hw as usize) * (h.hh as usize));
+                for v in h.direct.iter() {
+                    assert!(v.is_finite());
+                }
+            }
+            None => panic!("奇数尺寸在预算内不应被拒"),
+        }
+    }
+
+    #[test]
+    fn empty_manager_frame_is_well_formed() {
+        let (d, i, p) = heat_src();
+        let mut asm = JDebugAssembler::new(BuildProfile::Debug);
+        let empty = LightManager::new();
+        let seq = asm.assemble_frame(&empty, &fs(), &d, &i, &p, 32, 32, 4096);
+        assert_eq!(seq, Some(1));
+        match asm.bus().latest() {
+            Some(f) => {
+                let s = match f.stats {
+                    Some(s) => s,
+                    None => panic!("空场景也应有统计快照"),
+                };
+                assert_eq!(s.active_lights, 0);
+                assert_eq!(s.census.missing_mask, 0b1111, "四类全缺项须标出，不得静默");
+                assert_eq!(s.byte_len, STATS_WIRE_BYTES);
+                let w = f.wire.as_ref();
+                assert!(w.map(|x| x.vertices.is_empty()).unwrap_or(false));
+            }
+            None => panic!("应有一帧"),
+        }
+    }
+
+    #[test]
+    fn release_profile_assembles_nothing_and_keeps_counting_entries() {
+        let (d, i, p) = heat_src();
+        let mut asm = JDebugAssembler::new(BuildProfile::Release);
+        let m = mgr();
+        for _ in 0..8 {
+            assert_eq!(asm.assemble_frame(&m, &fs(), &d, &i, &p, 32, 32, 4096), None);
+        }
+        assert_eq!(asm.guard().payload_builds, 0, "发行档净值必须恒 0");
+        assert_eq!(asm.guard().forced_attempts, 8);
+        assert_eq!(asm.guard().build_entries, 8, "单调口径必须等于进入次数");
+        assert!(asm.bus().is_empty());
+        assert_eq!(asm.log().count(JdbgCode::RELEASE_FORCED), 8);
     }
 }
