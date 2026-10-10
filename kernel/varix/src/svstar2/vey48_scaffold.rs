@@ -184,10 +184,7 @@ impl ScaffoldTemplate {
 
     /// 启动步数（入口文件 1 步 + 每依赖文件 1 步——可机检的「一分钟」）。
     pub fn boot_steps(&self) -> u32 {
-        let mut steps: u32 = 1;
-        let _ = &self.files;
-        steps = steps.saturating_add(self.files.len() as u32);
-        steps
+        1u32.saturating_add(self.files.len() as u32)
     }
 }
 

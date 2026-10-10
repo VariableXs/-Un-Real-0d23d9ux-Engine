@@ -17,21 +17,23 @@
 //!   不丢已答**，续答从断点继续不重头；问答界面逐题带读屏文本（域本色：
 //!   问答界面读屏可达）。
 //! - **日验证**：模板按日验证签名——当日已验签名集 O(1) 比对（槽位日
-//!   键查表）；签名不符或验证过期 → **下架**留痕，不许带病出模板。
+//!   键查表：条目带当日日戳，非当日日戳即**验证过期**）；签名不符或
+//!   验证过期 → **下架**留痕，不许带病出模板；日单容量满显性拒。
 //! - **判据**：三模板库判据侧独立写死对拍；生成失败 → 清理半成品
-//!   O(1) + 重试计数；分钟预算超限显性报；隐私黑名单注入实测必拒。
+//!   O(1) + 重试计数；产物**占位符零残留**（未填即败不产半成品）；
+//!   分钟预算超限显性报；隐私黑名单注入实测必拒；渲染值自指不死循环。
 //!
 //! **错误路径与降级矩阵**：模板失效→日验证下架；问答中断→可续答；
 //! 生成失败→清理重试。
 //!
-//! **性能逐项分解**：生成 O(模板规模)；验证 O(1)；清理 O(1)。
+//! **性能逐项分解**：生成 O(模板规模)；验证 O(1)（有界 ≤MAX_DAILY 查表）；
+//! 清理 O(1)。
 //!
 //! **跨批对接点**：F4702 口径同规上游；F4804 构建衔接；F4815 测试。
 //!
-//! **诊断码**：X 域 `0x3A1x` 续编（0x3A20..0x3A27），与 F4801/F4802 不重号。
+//! **诊断码**：X 域 `0x3A1x` 续编（0x3A20..0x3A2A），与 F4801/F4802 不重号。
 
 use crate::checks::CheckSet;
-use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -40,7 +42,7 @@ use alloc::vec::Vec;
 // 〇、诊断码（0x3A20.. 续编，显性映射）
 // ---------------------------------------------------------------------------
 
-/// 脚手架诊断码（封闭全集八码）。
+/// 脚手架诊断码（封闭全集十一码）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScafErr {
     /// 模板未知。
@@ -49,7 +51,7 @@ pub enum ScafErr {
     TplSigBad,
     /// 模板含隐私残留。
     TplPrivacyLeak,
-    /// 模板已下架（日验证失效）。
+    /// 模板已下架（日验证失效/验证过期）。
     TplRetired,
     /// 问答越题（跳题/重复答题）。
     QuizJump,
@@ -59,6 +61,12 @@ pub enum ScafErr {
     GenDirty,
     /// 续答令牌失效。
     ResumeBad,
+    /// 占位符未填（产物零残留闸）。
+    TplFill,
+    /// 库/日单容量满（显性拒）。
+    TplFull,
+    /// 模板重名重复入册。
+    TplDup,
 }
 
 impl ScafErr {
@@ -73,6 +81,9 @@ impl ScafErr {
             ScafErr::MinuteOver => 0x3A25,
             ScafErr::GenDirty => 0x3A26,
             ScafErr::ResumeBad => 0x3A27,
+            ScafErr::TplFill => 0x3A28,
+            ScafErr::TplFull => 0x3A29,
+            ScafErr::TplDup => 0x3A2A,
         }
     }
     /// 人话。
@@ -86,10 +97,13 @@ impl ScafErr {
             ScafErr::MinuteOver => "分钟预算超限",
             ScafErr::GenDirty => "生成失败残留未清理",
             ScafErr::ResumeBad => "续答令牌失效",
+            ScafErr::TplFill => "占位符未填",
+            ScafErr::TplFull => "库/日单已满",
+            ScafErr::TplDup => "模板重名",
         }
     }
     /// 全集。
-    pub const ALL: [ScafErr; 8] = [
+    pub const ALL: [ScafErr; 11] = [
         ScafErr::TplUnknown,
         ScafErr::TplSigBad,
         ScafErr::TplPrivacyLeak,
@@ -98,8 +112,24 @@ impl ScafErr {
         ScafErr::MinuteOver,
         ScafErr::GenDirty,
         ScafErr::ResumeBad,
+        ScafErr::TplFill,
+        ScafErr::TplFull,
+        ScafErr::TplDup,
     ];
 }
+
+// ---------------------------------------------------------------------------
+// 〇 bis、跨批对接点（锚点原文三条，码面钉死防漂移）
+// ---------------------------------------------------------------------------
+
+/// 跨批对接点（锚点原文：F4702 口径同规上游；F4804 构建衔接；F4815 测试）。
+pub const DOCK_UPSTREAM: &str = "VE-F4702";
+/// 构建衔接对端（F4804 构建系统对接——分钟预算的构建步由其落地）。
+pub const DOCK_BUILD: &str = "VE-F4804";
+/// 测试对端（F4815 工具链测试——判据集由其消费）。
+pub const DOCK_TEST: &str = "VE-F4815";
+/// 三点全集（判据侧独立对拍）。
+pub const DOCKS: [&str; 3] = [DOCK_UPSTREAM, DOCK_BUILD, DOCK_TEST];
 
 // ---------------------------------------------------------------------------
 // 一、三类模板库（锚点：项目模板生成器（应用/插件/工具三类模板））
@@ -218,7 +248,7 @@ impl TplLibrary {
     /// 入册（O(库数) 查重 + O(内容长) 隐私扫描；同类同名重复拒绝）。
     pub fn admit(&mut self, t: TemplateSpec) -> bool {
         if self.tpls.len() >= MAX_TPLS {
-            self.refused.push((t.name, ScafErr::TplUnknown));
+            self.refused.push((t.name, ScafErr::TplFull));
             return false;
         }
         let mut i = 0usize;
@@ -231,7 +261,7 @@ impl TplLibrary {
         }
         for prev in self.tpls.iter() {
             if prev.name == t.name {
-                self.refused.push((t.name, ScafErr::TplUnknown));
+                self.refused.push((t.name, ScafErr::TplDup));
                 return false;
             }
         }
@@ -314,19 +344,50 @@ impl Quiz {
     }
 }
 
-/// 用问答值填充模板（占位符 `{{key}}` → 值；O(内容长)）。
+/// 用问答值填充模板（占位符 `{{key}}` → 值；O(内容长) 单趟扫描）。
+///
+/// 单趟推进不回扫已填入的值——**值里自指键**（值含 `{{key}}` 自身）也
+/// 必然终止，不会把替换当新占位符无限循环；未命中的键原样留下，交由
+/// 产物零残留闸（[`no_residue`]）判失败，不静默吞半成品。
 pub fn render(body: &str, answers: &[(String, String)]) -> String {
-    let mut out = body.to_string();
-    let mut i = 0usize;
-    while i < answers.len() {
-        let k = format!("{{{{{}}}}}", answers[i].0);
-        let v = answers[i].1.clone();
-        while let Some(pos) = out.find(&k) {
-            out.replace_range(pos..pos + k.len(), &v);
+    let mut out = String::new();
+    let mut rest = body;
+    while let Some(pos) = rest.find("{{") {
+        out.push_str(&rest[..pos]);
+        let after = &rest[pos + 2..];
+        match after.find("}}") {
+            Some(end) => {
+                let key = &after[..end];
+                let mut hit = false;
+                for kv in answers.iter() {
+                    if kv.0.as_str() == key {
+                        out.push_str(&kv.1);
+                        hit = true;
+                        break;
+                    }
+                }
+                if !hit {
+                    // 未命中：原样留键，零残留闸会拒（显性失败优于静默半成品）。
+                    out.push_str("{{");
+                    out.push_str(key);
+                    out.push_str("}}");
+                }
+                rest = &after[end + 2..];
+            }
+            None => {
+                // 没有闭合括号的 "{{"：原样输出剩余全部（同样过零残留闸）。
+                out.push_str(&rest[pos..]);
+                return out;
+            }
         }
-        i += 1;
     }
+    out.push_str(rest);
     out
+}
+
+/// 占位符零残留判定（产物里不许留下未填的 `{{…}}`——生成即败的判据）。
+pub fn no_residue(body: &str) -> bool {
+    !body.contains("{{")
 }
 
 // ---------------------------------------------------------------------------
@@ -381,9 +442,10 @@ impl RunLedger {
         }
     }
 
-    /// 总消耗与总预算比对（一分钟口径）。
+    /// 总消耗与总预算比对（一分钟口径：无超支记账且总当量 ≤60 才算
+    /// 「从零到运行一分钟内」——分账超步即越口径，总和小也不放水）。
     pub fn within_minute(&self) -> bool {
-        self.gen + self.build + self.run <= MINUTE_SLOTS
+        self.over.is_empty() && self.gen + self.build + self.run <= MINUTE_SLOTS
     }
 }
 
@@ -391,15 +453,28 @@ impl RunLedger {
 // 四、日验证单（锚点：模板签名与日验证；模板失效→日验证下架）
 // ---------------------------------------------------------------------------
 
-/// 日验证单（当日已验签名集，O(1) 槽位比对）。
+/// 日验证单条目（槽位日键：条目带验证当日日戳，非当日即过期）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DailyEntry {
+    /// 模板名。
+    pub name: String,
+    /// 验证当时的签名。
+    pub sig: u64,
+    /// 验证当日日戳（与单的 `day` 相等才算「当日已验」）。
+    pub day: u32,
+}
+
+/// 日验证单（当日已验签名集，有界 ≤MAX_DAILY 槽位查表 = 常量时间）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DailyCheck {
     /// 槽位日（day slot 递增计数）。
     pub day: u32,
-    /// 当日已验（模板名 → 签名）。
-    pub verified: Vec<(String, u64)>,
-    /// 下架留痕。
+    /// 当日已验（条目带日戳——昨日的通过不算今日的）。
+    pub verified: Vec<DailyEntry>,
+    /// 下架留痕（签名漂移/验证过期/显性下架）。
     pub retired: Vec<(String, ScafErr)>,
+    /// 拒绝留痕（日单容量满——显性拒不静默丢）。
+    pub refused: Vec<(String, ScafErr)>,
 }
 
 /// 日验证容量。
@@ -408,33 +483,48 @@ pub const MAX_DAILY: usize = 16;
 impl DailyCheck {
     /// 新单。
     pub fn new(day: u32) -> DailyCheck {
-        DailyCheck { day, verified: Vec::new(), retired: Vec::new() }
+        DailyCheck { day, verified: Vec::new(), retired: Vec::new(), refused: Vec::new() }
     }
 
-    /// 日验证（O(1) 签名比对：当日已验且签名相等才算过；不符 → 下架留痕）。
+    /// 翻日（日键推进：旧日戳条目全部作废——下次 check 即判过期下架）。
+    pub fn roll_day(&mut self, day: u32) {
+        self.day = day;
+    }
+
+    /// 日验证（当日已验且签名相等才算过；签名漂移或**验证过期** →
+    /// 下架留痕；日单满 → 显性拒并留痕）。
     pub fn check(&mut self, name: &str, sig: u64) -> bool {
-        for (n, s) in self.verified.iter() {
-            if n == name {
-                if *s == sig {
+        let mut i = 0usize;
+        while i < self.verified.len() {
+            if self.verified[i].name == name {
+                if self.verified[i].day != self.day {
+                    // 验证过期：昨日的通过不赊给今日——下架留痕等重验。
+                    self.verified.remove(i);
+                    self.retired.push((name.to_string(), ScafErr::TplRetired));
+                    return false;
+                }
+                if self.verified[i].sig == sig {
                     return true;
                 }
                 self.retired.push((name.to_string(), ScafErr::TplSigBad));
                 return false;
             }
+            i += 1;
         }
-        if self.verified.len() < MAX_DAILY {
-            self.verified.push((name.to_string(), sig));
-            return true;
+        if self.verified.len() >= MAX_DAILY {
+            self.refused.push((name.to_string(), ScafErr::TplFull));
+            return false;
         }
-        false
+        self.verified.push(DailyEntry { name: name.to_string(), sig, day: self.day });
+        true
     }
 
-    /// 显性下架（日验证过期/失效处置，留痕）。
+    /// 显性下架（日验证失效处置，留痕）。
     pub fn retire(&mut self, name: &str) {
         self.retired.push((name.to_string(), ScafErr::TplRetired));
         let mut i = 0usize;
         while i < self.verified.len() {
-            if self.verified[i].0 == name {
+            if self.verified[i].name == name {
                 self.verified.remove(i);
                 return;
             }
@@ -487,9 +577,16 @@ impl Generator {
         let mut i = 0usize;
         while i < tpl.files.len() {
             let body = render(&tpl.files[i].body, answers);
+            if !no_residue(&body) {
+                // 占位符未填即败：产物零残留是 all-or-nothing 的一环。
+                drop(files);
+                self.dirty_cleaned += 1;
+                self.retries += 1;
+                return GenOutcome::Failed(ScafErr::TplFill);
+            }
             if !privacy_scan(&body) {
                 // 失败即清理半成品（O(1)：整集丢弃 + 计数），再计数重试。
-                files = Vec::new();
+                drop(files);
                 self.dirty_cleaned += 1;
                 self.retries += 1;
                 return GenOutcome::Failed(ScafErr::TplPrivacyLeak);
@@ -631,7 +728,7 @@ pub fn run_vey03_checks() -> CheckSet {
         let mut dc2 = DailyCheck::new(8);
         let _ = dc2.check("tool-x", 42);
         dc2.retire("tool-x");
-        let gone = !dc2.verified.iter().any(|(n, _)| n == "tool-x");
+        let gone = !dc2.verified.iter().any(|e| e.name == "tool-x");
         let retired_traced = dc2.retired.iter().any(|(n, e)| n == "tool-x" && *e == ScafErr::TplRetired);
         s.add(
             "Y03-日验证-签名漂移下架+显性retire清册",
@@ -681,7 +778,7 @@ pub fn run_vey03_checks() -> CheckSet {
         );
     }
     {
-        // 未知模板拒；诊断码八码互异且落在 0x3A2x 段（与 Y01/Y02 不重号）。
+        // 未知模板拒；诊断码十一码互异且落在 0x3A2x 段（与 Y01/Y02 不重号）。
         let mut g = Generator::new();
         let lib = TplLibrary::new();
         let unknown = g.generate(&lib, "ghost", &[]);
@@ -689,7 +786,7 @@ pub fn run_vey03_checks() -> CheckSet {
         let mut i = 0usize;
         while i < ScafErr::ALL.len() {
             let w = ScafErr::ALL[i].wire();
-            if w < 0x3A20 || w > 0x3A27 {
+            if w < 0x3A20 || w > 0x3A2A {
                 uniq = false;
             }
             let mut j = i + 1;
@@ -707,6 +804,405 @@ pub fn run_vey03_checks() -> CheckSet {
             "",
         );
     }
+    {
+        // 日验证过期：翻日后同签名的旧通过作废——下架留痕等重验。
+        let mut dc = DailyCheck::new(7);
+        let first = dc.check("app-basic", 0xA11CE);
+        dc.roll_day(8);
+        let expired = dc.check("app-basic", 0xA11CE);
+        let traced = dc.retired.iter().any(|(n, e)| n == "app-basic" && *e == ScafErr::TplRetired);
+        // 重验放行：过期下架后按当日重新入单（下架 ≠ 删库）。
+        let reok = dc.check("app-basic", 0xA11CE);
+        s.add(
+            "Y03-日验证-验证过期下架留痕+可重验",
+            first && !expired && traced && reok,
+            "",
+        );
+    }
+    {
+        // 日单满显性拒：第 MAX_DAILY+1 个模板被拒且留痕，不静默丢。
+        let mut dc = DailyCheck::new(1);
+        let mut all_ok = true;
+        let mut i = 0usize;
+        while i < MAX_DAILY {
+            let mut nm = String::from("t");
+            nm.push_str(&i.to_string());
+            if !dc.check(&nm, i as u64) {
+                all_ok = false;
+            }
+            i += 1;
+        }
+        let full_rej = !dc.check("one-more", 0xFF);
+        let full_traced = dc.refused.iter().any(|(n, e)| n == "one-more" && *e == ScafErr::TplFull);
+        s.add(
+            "Y03-日验证-日单满显性拒留痕",
+            all_ok && full_rej && full_traced,
+            "",
+        );
+    }
+    {
+        // 库满显性拒 + 重名入册拒：拒绝必留痕可审计（重名在未满时先判，
+        // 库满时容量先判——两者都只认显性码，不静默吞）。
+        let mut lib = TplLibrary::new();
+        let mk = || vec![TplFile { name: "m.rs".to_string(), body: "fn main() {}".to_string() }];
+        // 未满时重名：TplDup。
+        let a1 = lib.admit(TemplateSpec { name: "a".to_string(), kind: TplKind::App, files: mk() });
+        let dup = lib.admit(TemplateSpec { name: "a".to_string(), kind: TplKind::App, files: mk() });
+        let dup_traced = lib.refused.iter().any(|(n, e)| n == "a" && *e == ScafErr::TplDup);
+        // 补满到 MAX_TPLS（异名）。
+        let mut filled = true;
+        let mut i = 1usize;
+        while i < MAX_TPLS {
+            let mut nm = String::from("t");
+            nm.push_str(&i.to_string());
+            if !lib.admit(TemplateSpec { name: nm, kind: TplKind::App, files: mk() }) {
+                filled = false;
+            }
+            i += 1;
+        }
+        // 已满再入册：TplFull。
+        let full = lib.admit(TemplateSpec { name: "z".to_string(), kind: TplKind::App, files: mk() });
+        let full_traced = lib.refused.iter().any(|(n, e)| n == "z" && *e == ScafErr::TplFull);
+        s.add(
+            "Y03-三类模板-库满显性拒+重名入册拒均留痕",
+            a1 && !dup && dup_traced && filled && !full && full_traced && lib.tpls.len() == MAX_TPLS,
+            "",
+        );
+    }
+    {
+        // 占位符未填即败：答案缺键 → 生成失败（TplFill）+ 半成品清理 + 重试计数。
+        let mut lib = TplLibrary::new();
+        let files = vec![TplFile {
+            name: "meta.rs".to_string(),
+            body: "pub const NAME: &str = \"{{name}}\";\npub const NS: &str = \"{{ns}}\";".to_string(),
+        }];
+        let _ = lib.admit(TemplateSpec { name: "plugin-basic".to_string(), kind: TplKind::Plugin, files });
+        let mut g = Generator::new();
+        let half = g.generate(&lib, "plugin-basic", &[("name".to_string(), "hello".to_string())]);
+        s.add(
+            "Y03-判据-占位符未填即败零残留",
+            matches!(half, GenOutcome::Failed(ScafErr::TplFill))
+                && g.dirty_cleaned == 1
+                && g.retries == 1,
+            "",
+        );
+    }
+    {
+        // 渲染自指值不死循环（回归）：值里含键自身也必然终止且结果确定。
+        let answers = [("name".to_string(), "x{{name}}".to_string())];
+        let out = render("a={{name}}", &answers);
+        s.add(
+            "Y03-判据-渲染自指值终止不死循环",
+            out == "a=x{{name}}" && !no_residue(&out),
+            "",
+        );
+    }
+    {
+        // 跨批对接三点：非空互异且都是 VE-F 编号（锚点原文钉死）。
+        let mut docks_ok = DOCKS.len() == 3;
+        let mut i = 0usize;
+        while i < DOCKS.len() {
+            if !DOCKS[i].starts_with("VE-F") {
+                docks_ok = false;
+            }
+            let mut j = i + 1;
+            while j < DOCKS.len() {
+                if DOCKS[i] == DOCKS[j] {
+                    docks_ok = false;
+                }
+                j += 1;
+            }
+            i += 1;
+        }
+        s.add(
+            "Y03-跨批对接-F4702同规上游+F4804构建衔接+F4815测试",
+            docks_ok && DOCK_BUILD == "VE-F4804",
+            "",
+        );
+    }
 
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app_lib() -> TplLibrary {
+        let mut lib = TplLibrary::new();
+        assert!(lib.admit(TemplateSpec {
+            name: "app-basic".to_string(),
+            kind: TplKind::App,
+            files: vec![
+                TplFile { name: "main.rs".to_string(), body: "fn main() {}".to_string() },
+                TplFile {
+                    name: "state".to_string().to_string(),
+                    body: "pub struct State;".to_string(),
+                },
+            ],
+        }));
+        assert!(lib.admit(TemplateSpec {
+            name: "plugin-basic".to_string(),
+            kind: TplKind::Plugin,
+            files: vec![TplFile {
+                name: "lib.rs".to_string(),
+                body: "pub fn init() {}".to_string(),
+            }],
+        }));
+        assert!(lib.admit(TemplateSpec {
+            name: "tool-basic".to_string(),
+            kind: TplKind::Tool,
+            files: vec![TplFile {
+                name: "main.rs".to_string(),
+                body: "fn main() {}".to_string(),
+            }],
+        }));
+        lib
+    }
+
+    #[test]
+    fn y03_all_criteria_pass() {
+        let s = run_vey03_checks();
+        let (_p, f) = s.tally();
+        assert_eq!(f, 0, "VE-F4803 判据存在红项");
+        assert!(!s.truncated(), "判据集不应被截断");
+    }
+
+    #[test]
+    fn y03_three_kinds_library_exact_and_closed() {
+        let lib = app_lib();
+        assert_eq!(TplKind::ALL.len(), 3, "三类恰为三类");
+        let mut seen: Vec<TplKind> = Vec::new();
+        for k in TplKind::ALL.iter() {
+            assert!(
+                lib.tpls.iter().any(|t| t.kind == *k),
+                "{} 类模板缺位（齐全性是判据）",
+                k.zh()
+            );
+            assert!(!seen.contains(k), "同类模板重复计册");
+            seen.push(*k);
+        }
+        assert_eq!(lib.tpls.len(), 3, "库恰三类");
+    }
+
+    #[test]
+    fn y03_signature_detects_single_byte_drift() {
+        let lib = app_lib();
+        let t = lib.get("app-basic").unwrap();
+        let mut drifted = t.clone();
+        drifted.files[0].body.push(' ');
+        assert_ne!(t.signature(), drifted.signature(), "单字节漂移签名必变");
+        assert_eq!(t.signature(), t.signature(), "同内容签名可复现");
+    }
+
+    #[test]
+    fn y03_privacy_template_refused_with_trace() {
+        let mut lib = TplLibrary::new();
+        assert!(!lib.admit(TemplateSpec {
+            name: "leaky".to_string(),
+            kind: TplKind::Tool,
+            files: vec![TplFile {
+                name: "cfg.rs".to_string(),
+                body: "const token = \"t\";".to_string(),
+            }],
+        }));
+        assert!(lib.get("leaky").is_none(), "带隐私模板不得入册");
+        assert!(
+            lib.refused.iter().any(|(n, e)| n == "leaky" && *e == ScafErr::TplPrivacyLeak),
+            "拒载须留痕可审计"
+        );
+    }
+
+    #[test]
+    fn y03_quiz_resume_replays_from_breakpoint() {
+        let qs = vec![
+            Question { id: 0, prompt_key: "q.name".to_string(), screen: "项目名".to_string() },
+            Question { id: 1, prompt_key: "q.kind".to_string(), screen: "类别".to_string() },
+            Question { id: 2, prompt_key: "q.ns".to_string(), screen: "命名空间".to_string() },
+        ];
+        let mut q = Quiz::new(qs.clone()).unwrap();
+        assert!(!q.answer(2, "越题"), "越题必拒");
+        assert!(q.answer(0, "demo"), "顺序作答应过");
+        assert!(q.answer(1, "plugin"), "顺序作答应过");
+        assert!(!q.done(), "未答毕不得判完成");
+        let snap = q.snap.clone();
+        let mut q2 = Quiz::new(qs).unwrap();
+        q2.snap = snap;
+        assert!(q2.answer(2, "mkt"), "断点续答应继续");
+        assert!(q2.done());
+        assert_eq!(q2.snap.answered[0].1, "demo", "续答不丢已答");
+        assert!(q.refused.iter().any(|(id, e)| *id == 2 && *e == ScafErr::QuizJump));
+    }
+
+    #[test]
+    fn y03_quiz_requires_screen_text() {
+        let bad = Quiz::new(vec![Question {
+            id: 0,
+            prompt_key: "q.x".to_string(),
+            screen: String::new(),
+        }]);
+        assert!(bad.is_none(), "读屏文本缺一拒建");
+    }
+
+    #[test]
+    fn y03_minute_slot_budget_explicit_over() {
+        let mut led = RunLedger::new();
+        led.charge_gen(8);
+        led.charge_build(22);
+        led.charge_run(4);
+        assert!(led.within_minute(), "标准流水恰在预算内");
+        assert!(led.over.is_empty(), "标准流水不应有超支");
+        assert_eq!(MINUTE_SLOTS, 60, "总当量恰一分钟");
+        assert_eq!(SLOTS_GENERATE + SLOTS_BUILD + SLOTS_RUN, 60, "三分账恰闭合");
+        let mut bad = RunLedger::new();
+        bad.charge_build(SLOTS_BUILD + 1);
+        assert!(!bad.within_minute(), "超步即越分钟口径");
+        assert!(bad.over.contains(&ScafErr::MinuteOver), "超支显性记账");
+    }
+
+    #[test]
+    fn y03_daily_drift_retires_with_trace() {
+        let mut dc = DailyCheck::new(7);
+        assert!(dc.check("app-basic", 0xA11CE));
+        assert!(dc.check("app-basic", 0xA11CE), "同日复验命中");
+        assert!(!dc.check("app-basic", 0xA11CE ^ 1), "签名漂移必下架");
+        assert!(
+            dc.retired.iter().any(|(n, e)| n == "app-basic" && *e == ScafErr::TplSigBad),
+            "下架留痕"
+        );
+        dc.retire("app-basic");
+        assert!(!dc.verified.iter().any(|e| e.name == "app-basic"), "retire 清册");
+        assert!(dc.retired.iter().any(|(n, e)| n == "app-basic" && *e == ScafErr::TplRetired));
+    }
+
+    #[test]
+    fn y03_daily_expiry_retires_and_allows_reverify() {
+        let mut dc = DailyCheck::new(7);
+        assert!(dc.check("app-basic", 0xA11CE));
+        dc.roll_day(8);
+        assert!(!dc.check("app-basic", 0xA11CE), "昨日的通过不赊给今日");
+        assert!(
+            dc.retired.iter().any(|(n, e)| n == "app-basic" && *e == ScafErr::TplRetired),
+            "验证过期下架留痕"
+        );
+        assert!(dc.check("app-basic", 0xA11CE), "下架 ≠ 删库：可重验");
+    }
+
+    #[test]
+    fn y03_daily_full_sheet_refuses_with_trace() {
+        let mut dc = DailyCheck::new(1);
+        let mut i = 0usize;
+        while i < MAX_DAILY {
+            let mut nm = String::from("t");
+            nm.push_str(&i.to_string());
+            assert!(dc.check(&nm, i as u64), "容量内逐个放行");
+            i += 1;
+        }
+        assert!(!dc.check("one-more", 0xFF), "日单满显性拒");
+        assert!(
+            dc.refused.iter().any(|(n, e)| n == "one-more" && *e == ScafErr::TplFull),
+            "拒绝留痕不静默"
+        );
+    }
+
+    #[test]
+    fn y03_library_rejects_full_and_duplicate_with_trace() {
+        let mut lib = TplLibrary::new();
+        let mk = || vec![TplFile { name: "m.rs".to_string(), body: "fn main() {}".to_string() }];
+        // 未满时重名先判：TplDup。
+        assert!(lib.admit(TemplateSpec { name: "a".to_string(), kind: TplKind::App, files: mk() }));
+        assert!(!lib.admit(TemplateSpec { name: "a".to_string(), kind: TplKind::App, files: mk() }));
+        assert!(lib.refused.iter().any(|(n, e)| n == "a" && *e == ScafErr::TplDup), "重名留痕");
+        // 补满（异名）后库满先判：TplFull。
+        let mut i = 1usize;
+        while i < MAX_TPLS {
+            let mut nm = String::from("t");
+            nm.push_str(&i.to_string());
+            assert!(lib.admit(TemplateSpec { name: nm, kind: TplKind::App, files: mk() }));
+            i += 1;
+        }
+        assert!(!lib.admit(TemplateSpec { name: "z".to_string(), kind: TplKind::App, files: mk() }));
+        assert!(lib.refused.iter().any(|(n, e)| n == "z" && *e == ScafErr::TplFull), "库满留痕");
+        assert_eq!(lib.tpls.len(), MAX_TPLS, "库恰满不超容");
+    }
+
+    #[test]
+    fn y03_generate_fails_on_unfilled_placeholder() {
+        let mut lib = TplLibrary::new();
+        assert!(lib.admit(TemplateSpec {
+            name: "plugin-basic".to_string(),
+            kind: TplKind::Plugin,
+            files: vec![TplFile {
+                name: "meta.rs".to_string(),
+                body: "pub const NAME: &str = \"{{name}}\";\npub const NS: &str = \"{{ns}}\";".to_string(),
+            }],
+        }));
+        let mut g = Generator::new();
+        let half = g.generate(&lib, "plugin-basic", &[("name".to_string(), "hello".to_string())]);
+        assert!(matches!(half, GenOutcome::Failed(ScafErr::TplFill)), "占位符未填即败");
+        assert_eq!(g.dirty_cleaned, 1, "半成品必清理");
+        assert_eq!(g.retries, 1, "重试计数显性");
+    }
+
+    #[test]
+    fn y03_render_self_referential_value_terminates() {
+        let answers = [("name".to_string(), "x{{name}}".to_string())];
+        let out = render("a={{name}}", &answers);
+        assert_eq!(out, "a=x{{name}}", "自指值单趟替换不死循环");
+        assert!(!no_residue(&out), "自指值不算未填残留");
+        let miss = render("a={{nope}}", &answers);
+        assert_eq!(miss, "a={{nope}}", "未命中键原样留下交零残留闸");
+    }
+
+    #[test]
+    fn y03_docks_non_empty_distinct() {
+        assert_eq!(DOCKS.len(), 3);
+        assert_eq!(DOCK_UPSTREAM, "VE-F4702");
+        assert_eq!(DOCK_BUILD, "VE-F4804");
+        assert_eq!(DOCK_TEST, "VE-F4815");
+        assert_ne!(DOCK_BUILD, DOCK_TEST);
+    }
+
+    #[test]
+    fn y03_generate_all_or_nothing_on_privacy_value() {
+        let mut lib = TplLibrary::new();
+        assert!(lib.admit(TemplateSpec {
+            name: "plugin-basic".to_string(),
+            kind: TplKind::Plugin,
+            files: vec![TplFile {
+                name: "meta.rs".to_string(),
+                body: "pub const NAME: &str = \"{{name}}\";".to_string(),
+            }],
+        }));
+        let mut g = Generator::new();
+        let ok = g.generate(&lib, "plugin-basic", &[("name".to_string(), "hello".to_string())]);
+        assert!(matches!(ok, GenOutcome::Done(ref fs) if fs.len() == 1 && fs[0].body.contains("\"hello\"")));
+        let bad = g.generate(
+            &lib,
+            "plugin-basic",
+            &[("name".to_string(), "x\"; const SECRET = 1".to_string())],
+        );
+        assert!(matches!(bad, GenOutcome::Failed(ScafErr::TplPrivacyLeak)));
+        assert_eq!(g.dirty_cleaned, 1, "半成品必清理");
+        assert_eq!(g.retries, 1, "重试计数显性");
+        let ghost = g.generate(&lib, "ghost", &[]);
+        assert!(matches!(ghost, GenOutcome::Failed(ScafErr::TplUnknown)), "未知模板拒");
+    }
+
+    #[test]
+    fn y03_diag_codes_unique_in_segment() {
+        for w in ScafErr::ALL.iter().map(|e| e.wire()) {
+            assert!((0x3A20..=0x3A2A).contains(&w), "诊断码越段");
+        }
+        let mut i = 0usize;
+        while i < ScafErr::ALL.len() {
+            let mut j = i + 1;
+            while j < ScafErr::ALL.len() {
+                assert_ne!(ScafErr::ALL[i].wire(), ScafErr::ALL[j].wire(), "诊断码互异");
+                j += 1;
+            }
+            i += 1;
+        }
+        assert!(!ScafErr::TplPrivacyLeak.zh().is_empty(), "人话非空");
+    }
 }
