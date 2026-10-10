@@ -57,6 +57,7 @@
 //! | [`vej14_lightbench`] | F1814 光照基准（三族阶梯确定性逻辑基准入 F1773 总册 J 段——吞吐族 16/32/64 点光×1/4 方向光组合矩阵 720p 口径（真调 F1811 成本模型、阶梯单调=可定标前提、与 COST_TABLE 独立重算一致）、插值族 1k/10k/100k 探针（真调 F1808 irradiance SH2 卷积逐方向、评估数线性、输出有限反 DCE）、预滤波族 512/1024/2048 立方×三采样档（模型口径声明真实现随 F1809、分辨率平方放大比值恰 4）；六列入册复用 vek17 格式件单源（环境四闸/去重/ADR 守卫）；跨环境偏差 30% 敏感性标注；模型-实测闭环真调 F1811 单源（WithinGate/RevisionCase→mark_stale→rebaseline 有 ADR 落账清 stale——CALIBRATION_SOURCE「recalibrate from F1814 ladder via ADR」的兑现）；F1767 门禁挂接声明；J02 F1834 共享格式声明） | VE 册 #VE-F1814 |
 //! | [`vej15_lightapi`] | F1815 光照 API 冻结 v1（十五签名闭集 j.light.*（管理五/探针四/IBL 三/曝光三——数目恰 15、名字唯一、前缀逐条）+实现面真调（管理 add/get/iter_live/remove、探针 accumulate/quantize/irradiance/dequantize、IBL EnvCube 构建/Hammersley 采样序列/三档参数、曝光 mode/EV 钳制/遥测计数——F1803-F1812 单源全通）；冻结机构复用 F2018 单源且参数化前缀入口（freeze_admit_with_prefix——j.light. 走同一机构不复制函数）；指纹漂移检测（F1781 同源）；v1 只增不改（第 16 条进 v1 拒/v2 追加段放）；衔接核验表（I03 F1670 参数块对齐/I02 F1650 pass 序时序——冲突以 I02 冻结序为准回改的机检形态）；J 域账本 F1781 同构声明） | VE 册 #VE-F1815 |
 //! | [`vej16_lightdoc`] | F1816 光照文档（三文档结构化——光照指南（四单位表概念章/光源选型决策树/双模式迁移章）、探针与 IBL 制作手册（cubemap 与 f16 规格章/放置→烘焙→插值→数据访问流程章/常见错误对照实践章）、性能调优指南（F1811 成本单位口径预算章/并发档档位章/案例章——单源守卫：阶梯数字只活在 F1814 册不复抄）；决策树三问六叶全落 LightKind 闭集+面光预留叶显性标注+无孤儿分支；数值对账钩子五条逐核（HDR 65504/54 字节/EV ±6/目标 0.18/容量 256——文档值==实现单源常量）+漂移拦截负例（假声明被拦=钩子有鉴别力）；示例代码是真函数进编译门禁且真调可用；术语裁决表八词 wire 唯一（F1786 强制）；F1802 对账钩子预留显性标注（vej02 未施工不假装对上）；J02/J03 文档 F1836/F1856 沿用三文档结构模板+索引 F1790/F1799 声明） | VE 册 #VE-F1816 |
+//! | [`vej17_lightconsistency`] | F1817 光照一致性（三段核验——跨后端对拍：16×16 标定场景（固定光源组合+固定相机）双路径渲染（f32 前向累加 vs f64 中间量）哈希比对+逐像素容差判定，同路径逐位一致=确定性根基、异路径逐位或容差内两档一致结论；容差白名单强制（F1763 同规则：未登记场景拦截 ToleranceUnregistered、元数据场景/原因/数值三件全、语义差×10 检出走到立案面）；双模式换算对拍（物理 1/d² 与艺术窗口幂曲线在标定距离锚定强度换算系数、锚定邻域采样容差内一致、极端采样修正立项分支真存在——F1802 换算表修正）；跨版本稳定（一致性账本基线哈希+ADR 链：同哈希过/变更无 ADR 拦截计数/有 ADR 落账换基线）；0x37 段独占） | VE 册 #VE-F1817 |
 //! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
 //! | [`veb13_heads`] | F0213 virtio 多头与 EDID（逐输出独立使能与模式/EDID 三级注入优先级与非法拒载保默认/热增删幂等重算以最新 cfg 为准/布局表 O(输出数) 应用与版本化持久化/位置语义播报名） | VE 册 #VE-F0213 |
 //! | [`veb14_perf`] | F0214 virtio 性能与诊断接口（按帧统计命令数/传输字节/队列深度与提交到完成延迟的对数分桶草图在线更新分位/诊断快照按需拉取不常驻无请求零开销/计数溢出饱和不回绕且可区分恰好等于上限与已饱和/打点缺失标记缺测不入分位不补零/快照请求并发串行化排队有界满则拒收不覆盖/计数入遥测总线受 F0096 预算治理按提交序确定性抽样） | VE 册 #VE-F0214 |
@@ -732,6 +733,7 @@ pub mod vej13_lightfuzz;
 pub mod vej14_lightbench;
 pub mod vej15_lightapi;
 pub mod vej16_lightdoc;
+pub mod vej17_lightconsistency;
 pub mod vek13_checks;
 pub mod vem02_checks;
 pub mod vem02_track;
@@ -1275,6 +1277,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1814", vej14_lightbench::checks::run_vej14_checks()),
         ("VE-F1815", vej15_lightapi::checks::run_vej15_checks()),
         ("VE-F1816", vej16_lightdoc::checks::run_vej16_checks()),
+        ("VE-F1817", vej17_lightconsistency::checks::run_vej17_checks()),
         ("VE-F2402", vem02_checks::run_vem02_checks()),
         ("VE-F2403", vem03_checks::run_vem03_checks()),
         ("VE-F2404", vem04_checks::run_vem04_checks()),
