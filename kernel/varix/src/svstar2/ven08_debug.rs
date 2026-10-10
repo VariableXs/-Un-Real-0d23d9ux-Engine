@@ -1032,6 +1032,27 @@ impl TuneAck {
         matches!(self, TuneAck::Rejected { code: N8DiagCode::TuneSeqRegressed, .. })
     }
 
+    /// 是否**生效但超一帧工作预算**。
+    ///
+    /// 此前这个事实只躺在 `Applied { over_budget }` 的变体字段里，
+    /// 调用方不逐字段拆变体就问不到——而「这次超标没有」是调优面板上
+    /// 必问的一句话，不该逼每个调用方去 `matches!` 一次。
+    /// 恒假是错的（被拒时本就无从谈超标），恒真也是错的。
+    pub const fn is_over_budget(&self) -> bool {
+        matches!(self, TuneAck::Applied { over_budget: true, .. })
+    }
+
+    /// 本次生效的**真实工作单元数**（被拒时为 `0`）。
+    ///
+    /// 与 [`TuneAck::is_over_budget`] 同理：不拆变体就取不到「花了多少」，
+    /// 于是「拿工作量做面板排序」这类需求会被逼去重算一遍子树规模。
+    pub const fn work_units(&self) -> u32 {
+        match self {
+            TuneAck::Applied { work_units, .. } => *work_units,
+            TuneAck::Rejected { .. } => 0,
+        }
+    }
+
     /// 序号。
     pub const fn seq(&self) -> u64 {
         match self {
@@ -1662,7 +1683,7 @@ pub fn describe() -> String {
 
 /// 冒烟：拾一段子树 + 一次属性检查 + 一帧统计。
 pub fn smoke() -> String {
-    let mut tree = match ControlTree::new("root") {
+    let tree = match ControlTree::new("root") {
         Ok(t) => t,
         Err(_) => return String::from("冒烟失败：树建不起来\n"),
     };
