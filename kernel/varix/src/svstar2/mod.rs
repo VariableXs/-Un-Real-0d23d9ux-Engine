@@ -327,6 +327,7 @@
 //! | [`vel16_security`] | F2216 粒子安全（四限额各有对策不空转——池内存真调 vel08 PoolQuota::validate 超硬顶显性拒绝、纹理申购 checked_mul 防回滚后比上限（粒子资源面申购闸的诚实声明：GPU 纹理实体在纹理域）、发射器数 EmitterRegistry 运行时计数超限显性拒绝（不改计数+被拒记账）、绘制调用 DrawCallMeter 超限**降级声明不拒绘**（锚点矩阵原文——拒绘会让画面消失降级让画面变 Cheap 但仍在）；输入消毒三入口（配置加载/网络同步/脚本事件）钳制必记账——NaN 速度钳零向量、负发射率/超上限真调 vel03 clamp_emit_rate、超大池申请真调 vel08 quota 拒绝、畸形事件名真调 vel04 注册制查表拒收（F1925 同规则）；恶意数据防御三查——包围盒校验（越界/非有限坐标拒）、索引越界拒（index≥顶点数）、循环引用鸽笼限深检测（parent 链超节点数必成环），三查全过才装配三角形真调 vel03 build_cumulative_area（双向：不误伤合法输入）；隐私红线结构性——TelemetryPacket 仅四聚合字段（粒子数/生成率/水位/发射器数）类型上无 Vec 出口、白名单闭集与黑名单（position/velocity/color）不交+渲染面恰四段无内容字段双重验证） | VE 册 #VE-F2216 |
 //! | [`veu12_checks`] | F4012 域自检（六族判据：分项预算/热表单源/合批复述/基准注册/开销执法/码段承载；双向用例——超支样本点名、风暴恰阈边界、万项块数 40、孤儿 covers 拒绝、执法清单与对账逐项相等防另立口径） | VE 册 #VE-F4012 |
 //! | [`veu12_perf`] | F4012 国际化性能（四项分项预算表 Locale 解析/格式化/方向判定/复数选择逐项对账按名定位超支、格式缓存复用 F4006 热表纪律击穿直查降级计数风暴显性化、万项合批 256 块边界含等+批次风暴、基准注册 covers 锚定预算表阈值单源不重抄+不达进循环清单、开销执法与对账同一真相不另立口径） | VE 册 #VE-F4012 |
+//! | [`veu13_i18n_font`] | F4013 国际化与 O06 字体深化（语言→字体偏好表+预留激活协议复用 F2915 模式——条目 Reserved/Active 两态，预留态查询显性报错不静默回退默认字体、激活幂等；支持声明红线——新语言无字体验证凭据或覆盖缺口未补不可声明支持（红线实测，真调 fontsub validate_font 魔验+missing_diag 缺口计数给凭据，坏魔数拦截）；激活对拍——语言切换必须同步换字体偏好（半切换裂缝拦截），预留态语言不参与对拍；覆盖表——已激活语言必须有可支撑字体覆盖，覆盖漏→补点名到语言；单源复用——语言标签口径=vei02 BCP47（parse_lenient+DOMAIN_DEFAULT），非法标签/首选族空超长拒接入） | VE 册 #VE-F4013 |
 //! | [`vea52_hotres`] | F0052 分辨率热切换处理�?*两拍实现三段原子**：备齐拍只写 staged[3] 三个 bool 不触现役任何状态，提交拍才�?链重�?视口+UI 三者一次连续赋值落地并 epoch+1——逐段生效再补偿回滚看着更直接，实则更差：视口段失败要把已换的链**重建回旧分辨�?*，而这次重建本身要走一�?A46 三段事务，两次重建之间用户看到的正是几何错配的链，那恰恰是闪屏的成因；两拍之下「三段失配→事务回滚�?*不需要补偿逻辑**，没提交即未发生，回退天然无残影）�?*链重建不重写**，提交拍真调 A46 PresentHub::rebuild，几何边界也复用 A46 �?MIN/MAX_WIDTH/HEIGHT 常量（两处各写一套上限迟早互相扯皮）�?*不闪屏是可机检事实不是承诺**：呈现四值封�?Presented/Held/NoChain/Flickered，NoChain 不可省（两值封闭会把未建链算成闪烁、告警被噪声淹没），判定�?A46 �?*链真描述�?*（为此给 A46 补只�?active_desc）与已提交视口逐位比宽高；**诚实声明 Flickered 正常路径不可�?*（两拍已保证同源），它是设计违约的可检测出口，故留 audit_force_chain_desync 钩并以变异实测「删�?commit 的视口更新即转红」，否则该分支只是死判据；在途呈现判 Held 拦下不丢弃；**DPI 联动两路�?*：空闲期只重�?UI 不重建链（像素几何未变故，省一次重建是诚实代价声明），在途期**显式拒绝不并入暂�?*（并入会让暂�?UI 与新 DPI 互相矛盾、提交时按谁算都不对）；几何对账只比宽高不比 DPI（比进去会把 DPI 变更误报成闪屏）�?*基线闸承原子�?*（过期计划即拒专属码，不计回退属调用方 bug 类，no-op 豁免）；诊断码独�?0x8Dxx 九码（全 kernel �?grep 确认零占用）；判�?31 项，9 项变异全捕获；零 panic 面、no_std�?| VE �?#VE-F0052 |
 //! | [`ves04_flow`] | F3604 创作工作流引擎（DAG 契约复用 F3005+ 三预置流 + 断点续作 + 沙箱 + 驱动协议） | VE 册 #VE-F3604 |
 //! | [`ves04_checks`] | F3604 域自检（判据逐条映射，55 项分两批落集） | VE 册 #VE-F3604 |
@@ -884,6 +885,7 @@ pub mod veu10_corpus;
 pub mod veu10_checks;
 pub mod veu12_perf;
 pub mod veu12_checks;
+pub mod veu13_i18n_font;
 pub mod veu11_debug;
 pub mod veu11_checks;
 pub mod vev01_arch;
@@ -1334,6 +1336,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4009", veu09_checks::run_veu09_checks()),
         ("VE-F4010", veu10_checks::run_veu10_checks()),
         ("VE-F4012", veu12_checks::run_veu12_checks()),
+        ("VE-F4013", veu13_i18n_font::run_veu13_checks()),
         ("VE-F4011", veu11_checks::run_veu11_checks()),
         ("VE-F4401", vev01_checks::run_vev01_checks()),
         ("VE-F4402-a", vev02_checks::run_vev02_checks_a()),
