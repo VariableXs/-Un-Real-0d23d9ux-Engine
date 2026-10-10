@@ -898,6 +898,8 @@ pub mod veu04_checks;
 pub mod veu04_engine;
 pub mod veu05_flow;
 pub mod veu05_flow_checks;
+pub mod veu06_scan;
+pub mod veu06_checks;
 pub mod veu08_checks;
 pub mod veu08_density;
 pub mod veu09_checks;
@@ -1364,6 +1366,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4203", veu03_checks::run_veu03_checks()),
         ("VE-F4204", veu04_checks::run_veu04_checks()),
         ("VE-F4205", veu05_flow_checks::run_veu05_flow_checks()),
+        ("VE-F4206", veu06_checks::run_veu06_checks()),
         ("VE-F4008", veu08_checks::run_veu08_checks()),
         ("VE-F4009", veu09_checks::run_veu09_checks()),
         ("VE-F4010", veu10_checks::run_veu10_checks()),
