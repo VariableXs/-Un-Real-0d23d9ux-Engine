@@ -2345,6 +2345,10 @@ impl ChangeFlowEngine {
         }
         if let Some(f) = self.flow_mut(contract_id) {
             f.voided_from = Some(at);
+            // 灰度档位是「已放了多少流量」的存量事实：作废后必须归零，
+            // 否则读册的人以为流量还挂在那一档——与自审的
+            // E_AUDIT_VOIDED_ADVANCED 检的是同一件事，这里是处置侧。
+            f.canary = None;
             // 回退到该步**之前**：即退回上一步（无上一步则退回未启动）。
             f.cursor = match at.ordinal() {
                 1 => None,
