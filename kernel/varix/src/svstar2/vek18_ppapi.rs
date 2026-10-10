@@ -213,12 +213,18 @@ pub enum FreezeError {
     V1Closed,
 }
 
-/// 冻结准入裁决（构建期静态核对的最小可执行形态）。
+/// 冻结准入裁决（构建期静态核对的最小可执行形态；K 域 k.post. 口径）。
 pub fn freeze_admit(sig: &ApiSignature) -> Result<(), FreezeError> {
+    freeze_admit_with_prefix(sig, PREFIX)
+}
+
+/// 带前缀参数的冻结准入（跨域复用入口——J 域 F1815 用 j.light. 前缀走
+/// 同一机构；参数化前缀而非复制函数，指纹/四闸/错误分型保持全域同源）。
+pub fn freeze_admit_with_prefix(sig: &ApiSignature, prefix: &str) -> Result<(), FreezeError> {
     if sig.doc.trim().is_empty() {
         return Err(FreezeError::MissingDoc);
     }
-    if !sig.name.starts_with(PREFIX) {
+    if !sig.name.starts_with(prefix) {
         return Err(FreezeError::BadPrefix);
     }
     if sig.params.trim().is_empty() || sig.ret.trim().is_empty() {
@@ -260,6 +266,20 @@ pub const API_V2_APPENDIX: &[ApiSignature] = &[];
 /// 追加裁决：进 v1 清单=拒（闭集）；进 v2 段=放（机制在，K02/K03 沿用）。
 pub fn admit_appendix(sig: &ApiSignature, to_v1: bool) -> Result<(), FreezeError> {
     freeze_admit(sig)?;
+    if to_v1 {
+        Err(FreezeError::V1Closed)
+    } else {
+        Ok(())
+    }
+}
+
+/// 带前缀参数的追加裁决（跨域复用入口——同 [`freeze_admit_with_prefix`]）。
+pub fn admit_appendix_with_prefix(
+    sig: &ApiSignature,
+    prefix: &str,
+    to_v1: bool,
+) -> Result<(), FreezeError> {
+    freeze_admit_with_prefix(sig, prefix)?;
     if to_v1 {
         Err(FreezeError::V1Closed)
     } else {
