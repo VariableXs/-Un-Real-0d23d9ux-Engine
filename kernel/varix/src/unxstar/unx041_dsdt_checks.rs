@@ -37,7 +37,7 @@ const ALL_CODES: [DsCode; 5] = [
 ];
 
 /// 预期判据条数（写前先数实挂 s.add 个数）。
-const EXPECTED_CHECKS: usize = 12;
+const EXPECTED_CHECKS: usize = 15;
 
 // ---------------------------------------------------------------------------
 // 判据侧独立夹具（与被测 tests 分开落笔）
@@ -179,7 +179,113 @@ pub fn run_unx041_checks() -> CheckSet {
         "",
     );
 
-    // ================= 四、判据自检（META） =================
+    // ================= 四、深化十区：消费面（DEEP） =================
+
+    // 深-01：头部全字段审计——36 字节逐段恰值（creator 面判据侧独立
+    // 读字节对拍）+ 与 SdtHeader 双路提取恒等 + revision 分级。
+    let t_good = j_dsdt(b"VARIX1", false);
+    let audit_ok = match header_audit(&t_good) {
+        Some(a) => {
+            let sig_ok = a.signature == *b"DSDT";
+            let len_ok = a.length == 96;
+            let rev_ok = a.revision == 2;
+            let oem_ok = a.oem_id[0] == b'V' && a.oem_id[5] == b'1';
+            // 判据侧独立读 creator 面（28..32 / 32..36——夹具未写应全零）。
+            let cid = [t_good[28], t_good[29], t_good[30], t_good[31]];
+            let crev = u32::from_le_bytes([
+                t_good[32],
+                t_good[33],
+                t_good[34],
+                t_good[35],
+            ]);
+            let creator_ok = a.creator_id == cid && a.creator_rev == crev;
+            // 双路对拍：SdtHeader::parse 同字节源提取恒等。
+            let cross_ok = match crate::acpi::SdtHeader::parse(&t_good) {
+                Some(h) => a.matches_sdt_header(&h),
+                None => false,
+            };
+            sig_ok
+                && len_ok
+                && rev_ok
+                && oem_ok
+                && creator_ok
+                && cross_ok
+                && a.revision_class() == 2
+                && a.creator_printable()
+        }
+        None => false,
+    };
+    // 残表显性 None。
+    let audit_none = header_audit(&t_good[..10]).is_none();
+    s.add("U41-深-01-头部全字段审计", audit_ok && audit_none, "");
+
+    // 深-02：指针双写四态账——五态恰值（判据侧独立构造各态夹具）。
+    let pa_none = pointer_audit(&j_facp(2, 0, 0));
+    let pa_x = pointer_audit(&j_facp(2, J_ADDR, 0));
+    let pa_d = pointer_audit(&j_facp(1, 0, 0x0009_A000));
+    let pa_eq = pointer_audit(&j_facp(2, J_ADDR, J_ADDR as u32));
+    let pa_div = pointer_audit(&j_facp(2, 0x0000_9E00_0000, 0x0009_A000));
+    let pa_ok = pa_none == PointerAudit::None
+        && pa_x == PointerAudit::XOnly(J_ADDR)
+        && pa_d == PointerAudit::DsdtOnly(0x0009_A000)
+        && pa_eq == PointerAudit::BothEqual(J_ADDR)
+        && pa_div == PointerAudit::BothDiverge {
+            x: 0x0000_9E00_0000,
+            d32: 0x0009_A000,
+        }
+        && pa_x.locatable()
+        && !pa_none.locatable()
+        && pa_div.name() == "both-diverge"
+        && pa_eq.consistent()
+        && !pa_div.consistent();
+    s.add("U41-深-02-指针双写四态", pa_ok, "");
+
+    // 深-03：校验和修复建议闭式——建议值写回后 checksum_ok 必真
+    // （「建议即修复」对拍：闭式 c' = c - S 代入新和恒零判据侧独立验）
+    // + 报告 kv 渲染行数闸（好/坏/截断三态行数 == 结构闭式）。
+    let bad = j_dsdt(b"VARIX1", true);
+    let repair_ok = match checksum_repair_suggestion(&bad, 96) {
+        Some(sug) => {
+            let mut fixed = bad.clone();
+            fixed[9] = sug;
+            crate::acpi::checksum_ok(&fixed, 96)
+        }
+        None => false,
+    };
+    // 好表建议 == 原 checksum（闭式对合法表自反恒等）。
+    let t_good = j_dsdt(b"VARIX1", false);
+    let mut gsum: u8 = 0;
+    for b in t_good.iter() {
+        gsum = gsum.wrapping_add(*b);
+    }
+    let repair_self = match checksum_repair_suggestion(&t_good, 96) {
+        Some(sug) => sug == t_good[9] && gsum == 0,
+        None => false,
+    };
+    // kv 行数闸三态：好链 8 行（4+4+0）、坏链 6 行（4+1+1）、截断 14 行
+    // （4+1+8+1——10 push 显 8）。
+    let f_ok = j_facp(2, J_ADDR, 0);
+    let r_good = boot_collect(&f_ok, Some((J_ADDR, &j_dsdt(b"VARIX1", false))));
+    let r_bad = boot_collect(&f_ok, Some((J_ADDR, &j_dsdt(b"VARIX1", true))));
+    let kv_good = report_kv_lines(&r_good);
+    let kv_bad = report_kv_lines(&r_bad);
+    let mut r_full = DsdtReport::new();
+    for _ in 0..(MAX_DIAGS + 2) {
+        r_full.push(DsCode::PTR_ZERO);
+    }
+    let kv_full = report_kv_lines(&r_full);
+    let kv_ok = kv_good.len() == report_kv_expected_len(&r_good)
+        && kv_bad.len() == report_kv_expected_len(&r_bad)
+        && kv_full.len() == report_kv_expected_len(&r_full)
+        && kv_good.len() == 8
+        && kv_bad.len() == 6
+        && kv_full.len() == 14
+        && kv_good[1] == "healthy=true"
+        && kv_bad[1] == "healthy=false"
+        && kv_full.last() == Some(&"diag.truncated=true".to_string());
+    s.add("U41-深-03-修复闭式与渲染闸", repair_ok && repair_self && kv_ok, "");
+
+    // ================= 五、判据自检（META） =================
 
     // META-3：码段独占——全部 0x2Exx，且 != 0x39/0x43/0x44/0x50..0x5D（防自判死）。
     let section_ok = ALL_CODES.iter().all(|c| (c.code() >> 8) == 0x2E)

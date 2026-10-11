@@ -299,6 +299,221 @@ pub fn committed_report() -> Option<DsdtReport> {
 }
 
 // ---------------------------------------------------------------------------
+// 五·二、深化十区：DSDT 消费面——采集链拿到表之后是「表怎么被审」：
+// 头部全字段审计（creator 面补齐）/ 指针双写一致性账 / 校验和修复
+// 建议闭式 / 报告双形态渲染。全部纯函数零 IO——审计面与采集面同构
+// （闭集显性、恰值对拍）；深化区不新增诊断码（复用五码闭集不占段）。
+// ---------------------------------------------------------------------------
+
+/// DSDT 表头全字段审计账（36 字节头逐段提取——creator 面 SdtHeader
+/// 不含，深化补齐；与 SdtHeader::parse 同字节源双路提取可对拍）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeaderAudit {
+    /// 签名（4 字节 ASCII）。
+    pub signature: [u8; 4],
+    /// 表长（length 域）。
+    pub length: u32,
+    /// revision。
+    pub revision: u8,
+    /// checksum 域原值（修复建议闭式的输入锚）。
+    pub checksum: u8,
+    /// OEM ID（10..16）。
+    pub oem_id: [u8; 6],
+    /// OEM Table ID（16..24）。
+    pub oem_table_id: [u8; 8],
+    /// Creator ID（28..32——工具链签名，规范可空格/零）。
+    pub creator_id: [u8; 4],
+    /// Creator Revision（32..36，小端 u32）。
+    pub creator_rev: u32,
+}
+
+/// 头部审计提取（36 字节界内逐段拷——残表 None 显性不猜）。
+pub fn header_audit(table: &[u8]) -> Option<HeaderAudit> {
+    if table.len() < SDT_HEADER_LEN {
+        return None;
+    }
+    let mut signature = [0u8; 4];
+    signature.copy_from_slice(&table[0..4]);
+    let mut oem_id = [0u8; 6];
+    oem_id.copy_from_slice(&table[10..16]);
+    let mut oem_table_id = [0u8; 8];
+    oem_table_id.copy_from_slice(&table[16..24]);
+    let mut creator_id = [0u8; 4];
+    creator_id.copy_from_slice(&table[28..32]);
+    Some(HeaderAudit {
+        signature,
+        length: u32::from_le_bytes([table[4], table[5], table[6], table[7]]),
+        revision: table[8],
+        checksum: table[9],
+        oem_id,
+        oem_table_id,
+        creator_id,
+        creator_rev: u32::from_le_bytes([table[32], table[33], table[34], table[35]]),
+    })
+}
+
+impl HeaderAudit {
+    /// 与 SdtHeader 对拍（同字节源双路提取恒等——双写对拍面）。
+    pub fn matches_sdt_header(&self, h: &SdtHeader) -> bool {
+        self.signature == h.signature
+            && self.length == h.length
+            && self.revision == h.revision
+            && self.checksum == h.checksum
+            && self.oem_id == h.oem_id
+            && self.oem_table_id == h.oem_table_id
+    }
+
+    /// creator 面可打印性（全零/全空格合法——其余字节须 ASCII 可打印
+    /// 0x20..0x7F，垃圾字符立案位由调用侧对拍）。
+    pub fn creator_printable(&self) -> bool {
+        self.creator_id
+            .iter()
+            .all(|&b| b == 0 || b == b' ' || (0x20..0x7F).contains(&b))
+    }
+
+    /// revision 分级（1=ACPI 1.0 时代表；2+=ACPI 2.0+ 长指针世代）。
+    pub const fn revision_class(self) -> u8 {
+        if self.revision >= 2 {
+            2
+        } else {
+            1
+        }
+    }
+}
+
+/// 指针双写四态账（X_DSDT 64 位与 DSDT 32 位双字段一致性——
+/// revision>=2 世代固件双写不一致是真实存在面，显性成账不猜）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointerAudit {
+    /// 双字段皆零（真无 DSDT——PTR_ZERO 对应态）。
+    None,
+    /// 仅 64 位字段非零（ACPI 2.0+ 规范态）。
+    XOnly(u64),
+    /// 仅 32 位字段非零（legacy 表在 rev2 壳内——回退链命中态）。
+    DsdtOnly(u64),
+    /// 双字段非零且相等（双写一致的过渡态——取 64 位不损）。
+    BothEqual(u64),
+    /// 双字段非零但不等（固件双写不一致——审计立案态）。
+    BothDiverge { x: u64, d32: u64 },
+}
+
+/// 从 FACP 表体读出指针双写账（读面越界按零处理——与 locate 同防）。
+pub fn pointer_audit(facp: &[u8]) -> PointerAudit {
+    let x = if facp.len() >= FACP_X_DSDT_OFFSET + 8 {
+        let b = &facp[FACP_X_DSDT_OFFSET..FACP_X_DSDT_OFFSET + 8];
+        u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+    } else {
+        0
+    };
+    let d32 = if facp.len() >= FACP_DSDT_OFFSET + 4 {
+        let b = &facp[FACP_DSDT_OFFSET..FACP_DSDT_OFFSET + 4];
+        u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as u64
+    } else {
+        0
+    };
+    match (x, d32) {
+        (0, 0) => PointerAudit::None,
+        (x, 0) => PointerAudit::XOnly(x),
+        (0, d) => PointerAudit::DsdtOnly(d),
+        (x, d) if x == d => PointerAudit::BothEqual(x),
+        (x, d) => PointerAudit::BothDiverge { x, d32: d },
+    }
+}
+
+impl PointerAudit {
+    /// 定位可用性（非 None 即有指针可定位——locate_dsdt_ptr 命中面）。
+    pub const fn locatable(&self) -> bool {
+        !matches!(self, PointerAudit::None)
+    }
+
+    /// 双写一致（None 视为平凡一致——无字段无可不一致）。
+    pub const fn consistent(&self) -> bool {
+        matches!(
+            self,
+            PointerAudit::None | PointerAudit::XOnly(_) | PointerAudit::DsdtOnly(_) | PointerAudit::BothEqual(_)
+        )
+    }
+
+    /// 账形态名（快照/渲染单点）。
+    pub const fn name(self) -> &'static str {
+        match self {
+            PointerAudit::None => "none",
+            PointerAudit::XOnly(_) => "x-only",
+            PointerAudit::DsdtOnly(_) => "dsdt-only",
+            PointerAudit::BothEqual(_) => "both-equal",
+            PointerAudit::BothDiverge { .. } => "both-diverge",
+        }
+    }
+}
+
+/// 校验和修复建议（坏表 → 期望 checksum 字节闭式）。
+///
+/// 闭式：合法表全表和 ≡ 0 (mod 256)。当前全表和 S（含 checksum 字节
+/// c），合法 checksum 应为 c' = c - S (mod 256)——代入新和
+/// S - c + c' = 0 恒成立。修复建议是诊断输出不是自动改写（固件表
+/// 只读面——建议入报告由人/上层决断）。
+pub fn checksum_repair_suggestion(table: &[u8], length: usize) -> Option<u8> {
+    if length == 0 || length > table.len() || length < 10 {
+        return None;
+    }
+    let mut sum: u8 = 0;
+    for b in table[..length].iter() {
+        sum = sum.wrapping_add(*b);
+    }
+    let current = table[9];
+    Some(current.wrapping_sub(sum))
+}
+
+/// 报告 kv 渲染（与 F0201 引导报告协议同构——头行 + 摘要行 +
+/// 诊断逐行，行数闭式：2 + diag_count 显示行 + 截断行按需 1）。
+pub fn report_kv_lines(r: &DsdtReport) -> alloc::vec::Vec<String> {
+    let mut out: alloc::vec::Vec<String> = alloc::vec::Vec::new();
+    out.push("# varix-dsdt-report".to_string());
+    out.push(alloc::format!("healthy={}", r.healthy));
+    out.push(alloc::format!("diag_count={}", r.diag_count));
+    out.push(alloc::format!("truncated={}", r.truncated));
+    match &r.info {
+        Some(info) => {
+            out.push(alloc::format!("dsdt_addr={:#x}", info.dsdt_addr));
+            out.push(alloc::format!("length={}", info.length));
+            out.push(alloc::format!("revision={}", info.revision));
+            let printable_oem: String = info
+                .oem_id
+                .iter()
+                .map(|&b| if (0x20..0x7F).contains(&b) { b as char } else { '.' })
+                .collect();
+            out.push(alloc::format!("oem_id={}", printable_oem));
+        }
+        None => out.push("dsdt_addr=n/a".to_string()),
+    }
+    let mut i = 0usize;
+    while i < r.diag_count && i < MAX_DIAGS {
+        if let Some(code) = r.diags[i] {
+            out.push(alloc::format!("diag.{}=0x{:04X}", i, code.code()));
+        }
+        i += 1;
+    }
+    if r.truncated {
+        out.push("diag.truncated=true".to_string());
+    }
+    out
+}
+
+/// 报告渲染行数闸（kv 行数 == 结构闭式——渲染确定性对拍锚）。
+pub fn report_kv_expected_len(r: &DsdtReport) -> usize {
+    // 头 1 + healthy 1 + diag_count 1 + truncated 1 + info 段 4（Some：
+    // addr/length/revision/oem_id）或 1（None：dsdt_addr=n/a）
+    // + 诊断逐行 + 截断行按需。
+    let info_len = if r.info.is_some() { 4 } else { 1 };
+    let shown = if r.diag_count < MAX_DIAGS {
+        r.diag_count
+    } else {
+        MAX_DIAGS
+    };
+    4 + info_len + shown + if r.truncated { 1 } else { 0 }
+}
+
+// ---------------------------------------------------------------------------
 // 六、测试支撑（判据 J1 全链：定位/提取/坏表不阻塞）
 // ---------------------------------------------------------------------------
 
