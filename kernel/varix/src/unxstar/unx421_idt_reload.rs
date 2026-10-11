@@ -219,10 +219,11 @@ impl IdtGate {
         if self.dpl > 3 {
             return false;
         }
-        if (gate as usize) < EXC_GATES && self.ist == 0 {
-            return false;
+        if matches!(self.kind, GateKind::Reserved) {
+            // 显性保留位不装载入口，豁免 IST 规则（但类型必须规范）
+            return matches!(self.gtype, GateType::Interrupt);
         }
-        if matches!(self.kind, GateKind::Reserved) && !matches!(self.gtype, GateType::Interrupt) {
+        if (gate as usize) < EXC_GATES && self.ist == 0 {
             return false;
         }
         true

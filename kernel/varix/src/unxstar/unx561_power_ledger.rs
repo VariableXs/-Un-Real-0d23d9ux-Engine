@@ -556,19 +556,16 @@ pub fn run_unx561_checks() -> CheckSet {
         s.add("C561-07-封账后写拒", good, if good { "" } else { "冻结失效" });
     }
 
-    // C561-08 复读漂移点名字块（第 2 块基址变）
+    // C561-08 复读漂移点名字块（第 2 块基址变；漂移簿独立构造）
     {
         let mut a = build();
         let _ = a.seal();
-        let mut b = build();
-        let _ = b.put(
-            2,
-            PmBlock {
-                base: 0x601,
-                width: 2,
-                space: RegSpace::Io,
-            },
-        );
+        let mut b = PowerLedger::new();
+        let _ = b.put(0, PmBlock { base: 0x604, width: 2, space: RegSpace::Io });
+        let _ = b.put(1, PmBlock { base: 0x604, width: 2, space: RegSpace::Io });
+        let _ = b.put(2, PmBlock { base: 0x601, width: 2, space: RegSpace::Io });
+        let _ = b.put(3, PmBlock { base: 0x602, width: 2, space: RegSpace::Io });
+        let _ = b.put(4, PmBlock { base: 0x608, width: 1, space: RegSpace::Io });
         let r = a.reread_consistent(&b);
         let good = matches!(r, Err(PowerError::Drift { block: 2 }));
         s.add("C561-08-漂移点名块", good, if good { "" } else { "漂移未点名" });
