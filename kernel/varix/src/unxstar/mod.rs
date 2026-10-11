@@ -1650,6 +1650,7 @@ pub mod unx122doc_freeze;
 pub mod unx123_deadlock;
 pub mod unx124_faultinj;
 pub mod unx125_latency;
+pub mod unx126_summary;
 pub mod unx702_acpi80;
 pub mod unx722_verfp;
 pub mod unx742_upgrade;
