@@ -19,6 +19,10 @@ pub mod unx121_extbootstate;
 pub mod unx141_isogen;
 // unx161_rtremap — UNX-F0161 Runtime Services 虚拟地址重映射深化版（两态机 Physical→Virtual 单向不可逆 DoubleRemap 闸/映射表三闸 对齐·重叠·覆盖/服务八闭集双地址账 resolve 解析单点/旧地址断零机制 Virtual 期物理访问显性拒+计数/悬空服务显性 ServiceUnmapped 守恒揭破半映射态/RtEntry 定格换算段内等值平移/RemapSnap 快照FNV往返/0x34 段十六码）
 pub mod unx161_rtremap;
+// unx201_bootreport — UNX-F0201 引导报告生成器全景版（五族24字段闭集 齐备率千分制 显性Na算齐备静默缺失不算/build齐备率硬闸 不齐备不出门携带缺清单/七阶段守恒账 Σ段==全程 checked_add 破坏即TimeNotConserved立案/异常账append-only 容量32满即显性拒 三级severity 派生计数单点真源/kv行协议+文本报告双形态单一真源交叉对拍 行数闸+键覆盖闸/敏感字段默认脱敏0xREDACTED/FNV1a-64快照往返 内容变指纹变/ReportCode 0x36段十六码 segment_guard双写对拍）
+pub mod unx201_bootreport;
+// unx181_initplan — UNX-F0181 初始化顺序编排器（依赖图驱动：单一声明源五类静态校验未知依赖-自依赖-重复边-阶段单向-互斥对称/双实现拓扑序分层Kahn+朴素逐点对拍确定性/环检出100% Kahn剩余+DFS三色提取具体环路径/计划不变量四闸恰一次-依赖前置-wave一致-串行组跨wave/确定性模拟执行LCG种子+tick注入+账本守恒五终态/FNV快照往返/0x35 段十码）
+pub mod unx181_initplan;
 
 /// UNX 册域标签（F475 闭环登记用）。
 pub const UNX_DOMAIN: &str = "unxstar";
@@ -32,7 +36,7 @@ pub const UNX_DOMAIN: &str = "unxstar";
 pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(UNX_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 7] = [
+    let blocks: [(&'static str, CheckSet); 8] = [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
         ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
@@ -40,6 +44,7 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         ("UNX-F0121", unx121_extbootstate::run_unx121_checks()),
         ("UNX-F0141", unx141_isogen::run_unx141_checks()),
         ("UNX-F0161", unx161_rtremap::run_unx161_checks()),
+        ("UNX-F0201", unx201_bootreport::run_unx201_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();

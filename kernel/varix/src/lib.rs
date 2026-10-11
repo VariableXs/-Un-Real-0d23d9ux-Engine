@@ -67,6 +67,7 @@ pub mod compatstar;
 /// 音量 OSD/音频路由/网络状态/隐藏文件/快捷键注册表/减少动效/字号无障碍/
 /// 文本截断/窗口置顶/热角/指针精度，五十项判据实装层。
 pub mod h1star;
+pub mod float;
 pub mod banner;
 pub mod bootopt;
 pub mod bootcfg;
@@ -641,6 +642,10 @@ pub mod svstar2;
 // 全册 Rust、no_std；SIMD 基元按 cfg(target_feature) 编译期派发（AVX2 主力/
 // AVX512 加宽/SSE4 保底/NEON 供 ARM），无运行时探测特权面。
 pub mod cgpu;
+// CoRun Varix STAR II · Unxreal 册（UNX-F0001~F64000）内核功能落位。
+// 引导基座/文件存储/Linux 人格/Win 人格等十六部八十域的分域模块树；
+// 域聚合 run_unxstar_checks 挂 CheckSet 域标签 unxstar。
+pub mod unxstar;
 // Varix STAR I · 泳道二 A 应用兼容域·后段（AI-C2 · F021-F040）：二十项功能。
 // 目录名 compatstar2：compatstar/ 已被 AI-C1（F001-F020，在途）占用，按
 // secstar → secstar2 先例顺延，两包互不重叠。
