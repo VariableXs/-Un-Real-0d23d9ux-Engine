@@ -972,6 +972,8 @@ pub mod vew01_sdk_arch;
 /// 四层架构（设备/混音/空间/内容，层序即权限序，反向依赖即越权）；
 /// 音频三律（不炸耳/可静音/诚实音量）一律为红线，静音掉不算合规；
 /// AA 域（F5593）十件承接追补，缺件之层不得冻结接口。
+// ve5609_audiodebug — VE-F5609 音频调试支持（调试三件+双排序+同源核+快照导出+越权闸；0xD4C0 段）
+pub mod ve5609_audiodebug;
 pub mod veab01_audioarch;
 pub mod veab02_audioout;
 /// VE-AB · AB01 批次 · 音频域总架构域自检（VE-F5601）
