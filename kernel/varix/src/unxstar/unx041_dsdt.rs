@@ -515,6 +515,136 @@ pub fn report_kv_expected_len(r: &DsdtReport) -> usize {
 }
 
 // ---------------------------------------------------------------------------
+// 五·三、深化十一区：DSDT 表内容审计面——表头审完是「载荷怎么被审」：
+// AML 载荷 op 码普查（知名码闭集计数）/ 分段校验和链（坏块定位）/
+// 表版本演进 diff（分叉点闭式）。全部纯函数零 IO——深化区不新增
+// 诊断码（复用五码闭集不占段，深化十区同纪律）。
+// ---------------------------------------------------------------------------
+
+/// AML 知名单字节 op 码闭集（ACPI 规范面：Zero/One/Name/Scope/Buffer/
+/// Package/Method/Return 八码——普查面只认闭集内码，其余字节走流）。
+pub const AML_KNOWN_SINGLE: [u8; 8] = [0x00, 0x01, 0x08, 0x10, 0x11, 0x12, 0x14, 0xA4];
+
+/// AML 扩展前缀（0x5B——与次码合成两字节扩展码）。
+pub const AML_EXT_PREFIX: u8 = 0x5B;
+
+/// AML 载荷普查账（op 码分布面——表内容「长什么样」的闭式画像）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AmlCensus {
+    /// 扩展码计数（0x5B 前缀对出现次数——尾孤前缀也计）。
+    pub ext_ops: u32,
+    /// 知名单字节码计数。
+    pub known_single: u32,
+    /// 扫过字节数（= 载荷长——全流扫）。
+    pub bytes_scanned: u64,
+    /// 载荷长（表长 - 36 头；短于头按 0 钳）。
+    pub aml_len: u64,
+}
+
+/// AML 载荷普查单点（逐字节扫描：0x5B 前缀吞次码步进 2——扩展码是
+/// 两字节原子；尾孤前缀（无次码）计一次终止；知名码命中计数）。
+pub fn aml_census(table: &[u8]) -> AmlCensus {
+    let head: usize = if table.len() >= 36 { 36 } else { table.len() };
+    let aml = &table[head..];
+    let mut c = AmlCensus {
+        ext_ops: 0,
+        known_single: 0,
+        bytes_scanned: 0,
+        aml_len: aml.len() as u64,
+    };
+    let mut i = 0usize;
+    while i < aml.len() {
+        let b = aml[i];
+        if b == AML_EXT_PREFIX {
+            c.ext_ops += 1;
+            // 扩展码两字节原子（尾孤前缀步进 2 直接终止）。
+            i += 2;
+        } else {
+            let mut k = 0usize;
+            let mut hit = false;
+            while k < AML_KNOWN_SINGLE.len() {
+                if b == AML_KNOWN_SINGLE[k] {
+                    hit = true;
+                    break;
+                }
+                k += 1;
+            }
+            if hit {
+                c.known_single += 1;
+            }
+            i += 1;
+        }
+    }
+    c.bytes_scanned = c.aml_len;
+    c
+}
+
+/// 分段校验和链（逐 16 字节块 u8 wrap 和——单点校验和只说「坏没坏」
+/// 不说「坏在哪」：链面把全表 wrap 和拆成块账，单字节翻转恰好改变
+/// 一个块账——坏块定位面）。
+pub const BLOCK_BYTES: usize = 16;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChecksumChain {
+    /// 逐块 wrap 和（尾块不足 16 字节按实长）。
+    pub block_sums: alloc::vec::Vec<u8>,
+    /// 全表 wrap 和（= 逐块 wrap 和再 wrap 聚合——结合律恒等）。
+    pub whole_sum: u8,
+}
+
+/// 分段校验和链单点（空表 → 零块零和）。
+pub fn checksum_chain(table: &[u8]) -> ChecksumChain {
+    let mut block_sums = alloc::vec::Vec::new();
+    let mut i = 0usize;
+    while i < table.len() {
+        let end = if i + BLOCK_BYTES > table.len() { table.len() } else { i + BLOCK_BYTES };
+        let mut s: u8 = 0;
+        while i < end {
+            s = s.wrapping_add(table[i]);
+            i += 1;
+        }
+        block_sums.push(s);
+    }
+    let mut whole: u8 = 0;
+    let mut k = 0usize;
+    while k < block_sums.len() {
+        whole = whole.wrapping_add(block_sums[k]);
+        k += 1;
+    }
+    ChecksumChain { block_sums, whole_sum: whole }
+}
+
+/// 表版本演进 diff（同 OEM 两版本表对拍——逐字节比对至首个差异：
+/// 共同前缀 + 分叉点 + 双侧尾巴。同表恒等 / 单字节变恰一分叉 / 头
+/// 同尾全异——供应商表更新审计的最小对拍面）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TableDiff {
+    /// 共同前缀长（逐字节相等的最长前缀）。
+    pub same_prefix: usize,
+    /// 分叉点（= 同前缀长；同表 None）。
+    pub diverge_at: Option<usize>,
+    /// a 侧尾巴长。
+    pub a_tail: usize,
+    /// b 侧尾巴长。
+    pub b_tail: usize,
+}
+
+/// 表 diff 单点。
+pub fn diff_tables(a: &[u8], b: &[u8]) -> TableDiff {
+    let mut i = 0usize;
+    while i < a.len() && i < b.len() && a[i] == b[i] {
+        i += 1;
+    }
+    let identical = i == a.len() && i == b.len();
+    TableDiff {
+        same_prefix: i,
+        diverge_at: if identical { None } else { Some(i) },
+        a_tail: a.len() - i,
+        b_tail: b.len() - i,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 六、测试支撑（判据 J1 全链：定位/提取/坏表不阻塞）
 // ---------------------------------------------------------------------------
 
