@@ -132,6 +132,9 @@ pub mod cgb09_debugviz;
 // cgb10_graphcache — CGPU-F0170 帧图构建结果缓存（缓存键=表面集+资源集序无关哈希+计数混入+明细对拍防碰撞/四代环形槽位+TTL+满员逐最旧/增量三算子Add-Remove级联-Replace+base键校验+未动节点编译代数保留/增量=全量结构全等对拍/失效五因定表+环形账本+失效后必miss/命中率千分比遥测/构建成本模型+节约收益实测/32判据）
 pub mod cgb10_graphcache;
 
+// cgb11_budgetint — CGPU-F0171 帧图预算集成（逐任务预算标签校验 F0005 三要素对接+ladder四律+显性非法清单/成本预估 F0004 对接口径基价表写死可对拍/图级Σ预估 vs 帧预算余量三态 Ok-Tight储备线10%-Over/超支降级建议单 Low先降同级大est先降+Critical豁免+逐档回收转正即停+到底进skip候选只建议不执行/仲裁四态映射 Granted-Degraded-Queued-Rejected带清单+判定步数账红线200/集成门面全链一报告/30判据五族）
+pub mod cgb11_budgetint;
+
 // cgf04_hwid — CGPU-F0804 硬件身份识别（三要素身份vendor/device/驱动版本+虚拟化五类诚实标注三证据保守推定+防伪七探针行为地板交叉验证立案+档案schema序列化往返指纹链0x5E段）
 pub mod cgf04_hwid;
 pub mod cgc01_carbitration;
@@ -141,6 +144,8 @@ pub mod cgc02_budgetmodel;
 pub mod cgc02_framebudget;
 // cgc03_budgetaccount — CGPU-F0323 预算账户模型（账户树四级系统根→域→功能→表面配额继承三律：上限钳制拒/保底不越顶合围/超订显性注册许激活拒+清单点名；四属性不变量组 min≤used≤cap+借出面=cap-min；生命周期四态定表注册→激活⇄冻结→注销+级联孤儿回收有账逐个留痕+Closed 子不占账收敛激活；借出账本三纪律保底不可借/借入不超上限/Σ借出=Σ借入对账；F0217 双向反馈正向三维字典序仲裁池尽拒低优+反向满足率<60% 高优提关键性+10 留痕；0x3C 段）
 pub mod cgc03_budgetaccount;
+// cgc04_applyproto — CGPU-F0324 预算申请协议（标签三要素预估来自 F0004 成本模型 predict 选路+单任务上限钳制钳制不是拒绝/两路申请时机静态批量+运行期动态补申双约束轮次2总额50%+静态重申拒/批量仲裁整图一次轮次+1低优先先裁逐条留痕图预算 12.5ms 耗尽显性拒/原子归还批准-消费一次性返还+泄漏检测归还+消费==批准+重复归还拒+终结态复活拒/申请账本滚动 256 六类事件+全程量守恒对账批准==消费+归还+在途/纪元漂移留痕/快照保空段指纹+3图12任务参考探针五口径 零unwrap 0x67段）
+pub mod cgc04_applyproto;
 // cgb08_framegraph — CGPU-F0168 帧图与 GPU 队列映射深化版（三队列+八类别规则表/多 GPU 路由五规则确定性/屏障跟写特例/读写集一致性三态校验+跨卡搬运计划器/映射开销四段账/三队列用例走查/映射回放漂移检测/帧间稳定性四级/负载分布+热点检测/遥测六指标/0x61 段六码）
 pub mod cgb08_framegraph;
 // cgd04_framegap — CGPU-F0484 帧间隔统计深化版（六桶直方图+形态五分类/整数方差+isqrt 抖动/jank 三级阈值恰边界/分级账+事故场景/周趋势四桶+整数斜率五态/健康度三因子万分制/P50/P95/P99 整数分位/场景归因对比/审计账三态查询/0x63 段六码）
@@ -186,6 +191,18 @@ pub mod cgg03_nvdifftable;
 pub mod cgi03_bwaccount;
 // vck03_hettask — CGPU-F1603 异构任务模型与标签（B域Task侧车扩展不改核/schema版本化协商闭集/三维功耗标签F1458复用+Boost不可延迟互斥/NPU功耗系数表四档写死/亲和三级NpuOnly-PreferNpu-Any/any按能效序选路静态表写死/NPU系数表外/批维度micro≤batch外层步数向上取整/DSP deadline错过=失败显性回执不静默/提交前校验规则表五规则/能力位图复用F1602 FEAT_BATCH/REALTIME/0x41xx 八码）
 pub mod vck03_hettask;
+// cgc05_framecontract — CGPU-F0006 80帧合同与承诺报告（三档基准A/B/C合同文本冻结FNV指纹/硬件下限拒签/每帧记账帧间隔+五账户耗时+降质动作/10秒800帧聚合兑现率ppm桶计数分位/三级处置状态机单帧超时→帧内降质-连续5秒P95失守→降质链-连续60秒→书面报告/书面报告归因定位到账户五账户累计超支最大者+建议闭集/0x42xx 八码）
+pub mod cgc05_framecontract;
+// cge05_surfacepool — CGPU-F0009 网页表面池与可见性仲裁（30表面池容量64/可见性三档全帧率-1/2帧率-冻结渲染后台只留事件/1帧复活清idle+清驱逐标记/三因子份额面积×优先级×变化率每帧重排/风暴合批≥8请求按4帧轮转交错分摊肉眼无损/内存封顶32-16-8MB超限先压缩再驱逐后台帧缓冲驱逐后仍超显性/后台页面全速开关行为确定/0x43xx 六码）
+pub mod cge05_surfacepool;
+// cgi04_uploaddl — CGPU-F0010 上传下载带宽调度器（每帧1.5ms拷贝时间片大资产8MB强制分片2MB粒度跨帧渐进/mipmap可见性优先低分辨率级先传高级别后台补齐4倍几何/下载独立0.5ms片对称限速读回不抢帧带宽/拥塞归因队列深度≥64与PCIe利用率≥900kppm双源联动→放置建议可CPU任务留CPU F0004消费/时间片超发内部不变量/遥测全量/链路口径复用F1282/0x44xx 六码）
+pub mod cgi04_uploaddl;
+// cgm07_pacemodel — CGPU-F0486 呈现节奏模型（VSync/无同步/合成器三模式帧间隔行为/权衡声明撕裂-延迟-抖动三维评分+策略文本闭集/窗口形态适配矩阵全屏独占三模式直通无边框窗口VSync语义D02抑制联动接管/模式探测器锁相度≤10%+抖动≤1ms→VSync或Composer按合成器活跃二分-抖动>2ms不锁相→Unsynced-其余歧义显性拒/行为对拍抖动超模式声明上界立案/0x45xx 五码）
+pub mod cgm07_pacemodel;
+// cgf07_certgrade — CGPU-F0806 认证分级（四级判据量化金=三档全原画质达标/银=A/B主要场景/铜=降质后达标/不认证=降质仍不达标/证据三档齐备才可判级/公开认证卡随硬件可查F0808透明/铜级→O域降质配方预载清单三配方闭集联动声明/复核工单状态机Submitted→Regrading→Resolved改级必须附新证据同逻辑重判防拍脑袋/与F0805考卷体系分工/0x46xx 五码）
+pub mod cgf07_certgrade;
+// cgg04_nvram — CGPU-F0964 NVIDIA显存与预算（4-24GB六档档位表±512MB归档容差/池五闭集呈现-纹理-几何-管线-系统/默认配额15-40-20-10-15%小档保呈现大档重纹理/扣账单池超配额显性拒不静默透支/压力三级70%-90%阈值告急→降质链预判信号F0008接缝/回收建议按可回收优先级管线>纹理>几何呈现系统不可动/透明报告五池用量单点/H域F0852理念联动声明/0x47xx 六码）
+pub mod cgg04_nvram;
 
 /// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
 pub const CGPU_DOMAIN: &str = "cgpu";
