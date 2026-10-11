@@ -1087,6 +1087,7 @@ pub mod vead08_physreplay;
 pub mod vead09_telemetry;
 // vef66_multilink — VE-F5414 网络与S域多用户联动（多人化标注+交互词典统一口径驳回O(1)+偏好随账户走本地兜底 0xB9 段）
 pub mod vef66_multilink;
+pub mod vef67_netext;
 pub mod vef63_apifreeze;
 pub mod vef64_netdocs;
 pub mod vef65_netsim;
@@ -1565,6 +1566,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F5410", vef63_apifreeze::run_vef63_checks()),
         ("VE-F5411", vef64_netdocs::run_vef64_checks()),
         ("VE-F5412", vef65_netsim::run_vef65_checks()),
+("VE-F5415", vef67_netext::run_vef67_checks()),
         ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks()),
         ("VE-F1623", vef26_vfetch_checks::run_vef26_checks()),
         ("VE-F1624", vef27_morphtarget_checks::run_vef27_checks()),
