@@ -1374,6 +1374,29 @@ pub fn run_unx041b_checks() -> CheckSet {
         s.fail("U041D-深-01-表集扫描与批量验和", "清单面失效");
     }
 
+    // 深-02：PkgLength 编解码往返恰值（1/2/3/4 字节四档+残流 None+
+    // 编码最小性）。
+    if probe_pkg_length() {
+        s.ok("U041D-深-02-AML包长编解码");
+    } else {
+        s.fail("U041D-深-02-AML包长编解码", "编码面失效");
+    }
+
+    // 深-03：NameSeg 恰值（合法四段/首字符闸/补齐规范化/越界 None）。
+    if probe_name_seg() {
+        s.ok("U041D-深-03-AML名段合法性");
+    } else {
+        s.fail("U041D-深-03-AML名段合法性", "名段面失效");
+    }
+
+    // 深-04：OpCode 分类与包边界扫描恰值（单双字节头/知名码/包步进/
+    // 越界声明截断立案）。
+    if probe_op_scan() {
+        s.ok("U041D-深-04-AML操作码与包扫描");
+    } else {
+        s.fail("U041D-深-04-AML操作码与包扫描", "扫描面失效");
+    }
+
     // --- 判据元 ---
     // 元-01：零 panic 面（自扫）+ 空态平凡 + 快照往返 + 版本非空。
     let src = include_str!("unx041_dsdt_deep.rs");
@@ -1653,4 +1676,286 @@ pub fn probe_table_set() -> bool {
     let (ok_n, bads) = batch_checksum_gate(&[&good, &bad]);
     let gate_ok = ok_n == 1 && bads.len() == 1 && bads[0] == 1;
     cls_ok && scan2_ok && gate_ok
+}
+
+// ===========================================================================
+// 深化九区：AML 词法面——DSDT 表体是 ACPI Machine Language 字节流，
+// 词法层是「字节怎么读」的第一层：PkgLength 包长编码（变长 1..4 字节）
+// / NameSeg 四字符名段 / OpCode 分类（单双字节头）/ 包边界扫描。
+// 全部纯函数零 IO——词法面与表集面同构（边界显性不猜）。
+// ===========================================================================
+
+/// **AML PkgLength 解码**（lead byte 高 2 位 = 后续字节数 n∈0..3，
+/// 值 = lead 低 6 位 | 后续字节逐 8 位从 bit 6 升位——ACPI 规范变长
+/// 编码单点）。
+///
+/// 返回 (长度值, 编码总字节数)；残流（n 声明超实际）显性 None。
+pub fn aml_pkg_length_decode(bytes: &[u8]) -> Option<(u32, usize)> {
+    if bytes.is_empty() {
+        return None;
+    }
+    let lead = bytes[0];
+    let n = (lead >> 6) as usize;
+    if bytes.len() < n + 1 {
+        return None;
+    }
+    let mut value = (lead & 0x3F) as u32;
+    let mut i = 0usize;
+    while i < n {
+        value |= (bytes[i + 1] as u32) << (6 + 8 * i);
+        i += 1;
+    }
+    Some((value, n + 1))
+}
+
+/// **AML PkgLength 编码**（最小字节序编码——值面选 n：0x3F 内 1 字节、
+/// 0xFFF 内 2 字节、0xF_FFFF 内 3 字节、更大 4 字节——编码往返恒等
+/// 的正向面）。
+pub fn aml_pkg_length_encode(value: u32) -> [u8; 4] {
+    let n = if value <= 0x3F {
+        0usize
+    } else if value <= 0xFFF {
+        1
+    } else if value <= 0xF_FFFF {
+        2
+    } else {
+        3
+    };
+    let lead = ((n as u8) << 6) | ((value & 0x3F) as u8);
+    let b1 = ((value >> 6) & 0xFF) as u8;
+    let b2 = ((value >> 14) & 0xFF) as u8;
+    let b3 = ((value >> 22) & 0xFF) as u8;
+    [lead, b1, b2, b3]
+}
+
+/// PkgLength 编码字节数（值面闭式——扫描面预算用）。
+pub const fn aml_pkg_length_size(value: u32) -> usize {
+    if value <= 0x3F {
+        1
+    } else if value <= 0xFFF {
+        2
+    } else if value <= 0xF_FFFF {
+        3
+    } else {
+        4
+    }
+}
+
+/// **NameSeg 合法性**（4 字符段：首字符字母、余字符字母数字下划线、
+/// 全长恒 4）。
+pub fn aml_name_seg_ok(seg: &[u8]) -> bool {
+    if seg.len() != 4 {
+        return false;
+    }
+    let alpha = |b: u8| (b'A'..=b'Z').contains(&b) || (b'a'..=b'z').contains(&b);
+    let alnum_us = |b: u8| alpha(b) || (b'0'..=b'9').contains(&b) || b == b'_';
+    alpha(seg[0]) && alnum_us(seg[1]) && alnum_us(seg[2]) && alnum_us(seg[3])
+}
+
+/// NameSeg 规范化（补 '_' 至 4 字符——"AB" → "AB__" 显示语义；
+/// 越界/空串显性 None——AML 名段只有 ASCII 字母数字下划线）。
+pub fn aml_name_seg_pad(seg: &str) -> Option<[u8; 4]> {
+    let b = seg.as_bytes();
+    if b.len() > 4 || b.is_empty() {
+        return None;
+    }
+    let mut out = [b'_'; 4];
+    let mut i = 0usize;
+    while i < b.len() {
+        out[i] = b[i];
+        i += 1;
+    }
+    if aml_name_seg_ok(&out) {
+        Some(out)
+    } else {
+        None
+    }
+}
+
+/// OpCode 头分类闭集（单字节 / 0x5B 双字节扩展 / 保留域显性）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AmlOpHead {
+    /// 单字节操作码（值域显性）。
+    Single(u8),
+    /// 0x5B 扩展双字节头（第二字节显性——ExtOpPrefix 面）。
+    Extended(u8),
+}
+
+impl AmlOpHead {
+    /// 从流首解头（空流/残扩展头 None——词法面边界显性）。
+    pub fn of(bytes: &[u8]) -> Option<AmlOpHead> {
+        if bytes.is_empty() {
+            return None;
+        }
+        if bytes[0] == 0x5B {
+            if bytes.len() < 2 {
+                return None; // 扩展头残尾
+            }
+            Some(AmlOpHead::Extended(bytes[1]))
+        } else {
+            Some(AmlOpHead::Single(bytes[0]))
+        }
+    }
+
+    /// 总头长（1 或 2——扫描面步进预算）。
+    pub const fn head_len(&self) -> usize {
+        match self {
+            AmlOpHead::Single(_) => 1,
+            AmlOpHead::Extended(_) => 2,
+        }
+    }
+}
+
+/// 常见 OpCode 语义名（词法分类账——知名码面闭集，未知码显性）。
+pub fn aml_op_name(h: AmlOpHead) -> Option<&'static str> {
+    match h {
+        AmlOpHead::Single(0x00) => Some("ZeroOp"),
+        AmlOpHead::Single(0x01) => Some("OneOp"),
+        AmlOpHead::Single(0x08) => Some("NameOp"),
+        AmlOpHead::Single(0x0A) => Some("BytePrefix"),
+        AmlOpHead::Single(0x0B) => Some("WordPrefix"),
+        AmlOpHead::Single(0x0C) => Some("DWordPrefix"),
+        AmlOpHead::Single(0x0E) => Some("QWordPrefix"),
+        AmlOpHead::Single(0x10) => Some("ScopeOp"),
+        AmlOpHead::Single(0x14) => Some("MethodOp"),
+        AmlOpHead::Extended(0x82) => Some("ExtNamePathOp"),
+        AmlOpHead::Extended(0x80) => Some("ExtOpRegionOp"),
+        _ => None,
+    }
+}
+
+/// **包边界扫描账**（字节流 → 逐包跳转——PkgLength 驱动步进：
+/// 每步解包长 → 步进包体，计数与越界全显性——AML 结构面的
+/// 「几个顶层包」清单账）。
+pub struct PkgScan {
+    /// 顶层包数。
+    pub packages: u32,
+    /// 步进总字节（消耗面——完整扫完时 == 流长）。
+    pub consumed: usize,
+    /// 越界/残流/零包长截断位（真值 = 扫描被截断）。
+    pub truncated: bool,
+}
+
+/// **包边界扫描**（单层扫描——不递归嵌套（嵌套面由调用方深入）；
+/// PkgLength 值域含编码自身（ACPI 规范）——整包步进 value 字节即可）。
+pub fn aml_pkg_scan(bytes: &[u8]) -> PkgScan {
+    let mut out = PkgScan {
+        packages: 0,
+        consumed: 0,
+        truncated: false,
+    };
+    let mut off = 0usize;
+    while off < bytes.len() {
+        match aml_pkg_length_decode(&bytes[off..]) {
+            Some((value, _enc_len)) => {
+                if value == 0 {
+                    // 零包长无意义（包至少含自身编码）——截断立案。
+                    out.truncated = true;
+                    break;
+                }
+                out.packages += 1;
+                let step = value as usize;
+                if off + step > bytes.len() {
+                    // 声明包体越界——残流截断立案不猜。
+                    out.truncated = true;
+                    out.consumed = bytes.len();
+                    return out;
+                }
+                off += step;
+                out.consumed = off;
+            }
+            None => {
+                out.truncated = true;
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// 深化面参考探针——PkgLength 编解码往返恰值（1/2/3/4 字节四档）。
+pub fn probe_pkg_length() -> bool {
+    // 一字节档：0..=0x3F。
+    let (v1, n1) = match aml_pkg_length_decode(&[0x2A]) {
+        Some(x) => x,
+        None => return false,
+    };
+    let one_ok = v1 == 0x2A && n1 == 1;
+    // 两字节档：lead 高位声明 n=1，值 = 低 4 位 | b1<<4。
+    let enc2 = aml_pkg_length_encode(0x123);
+    let (v2, n2) = match aml_pkg_length_decode(&enc2) {
+        Some(x) => x,
+        None => return false,
+    };
+    let two_ok = v2 == 0x123 && n2 == 2 && aml_pkg_length_size(0x123) == 2;
+    // 三字节档。
+    let enc3 = aml_pkg_length_encode(0x1_2345);
+    let (v3, n3) = match aml_pkg_length_decode(&enc3) {
+        Some(x) => x,
+        None => return false,
+    };
+    let three_ok = v3 == 0x1_2345 && n3 == 3 && aml_pkg_length_size(0x1_2345) == 3;
+    // 四字节档。
+    let enc4 = aml_pkg_length_encode(0x2_3456_789);
+    let (v4, n4) = match aml_pkg_length_decode(&enc4) {
+        Some(x) => x,
+        None => return false,
+    };
+    let four_ok = v4 == 0x2_3456_789 && n4 == 4 && aml_pkg_length_size(0x2_3456_789) == 4;
+    // 残流显性 None（lead 声明 3 后续字节但只有 1）。
+    let ragged = aml_pkg_length_decode(&[0xC0, 0x01]).is_none();
+    // 编码最小性：0x3F 单字节、0x40 双字节。
+    let min_ok = aml_pkg_length_size(0x3F) == 1 && aml_pkg_length_size(0x40) == 2;
+    one_ok && two_ok && three_ok && four_ok && ragged && min_ok
+}
+
+/// 深化面参考探针——NameSeg 恰值（合法四段/非法首数字/越界/补齐）。
+pub fn probe_name_seg() -> bool {
+    let ok1 = aml_name_seg_ok(b"ABCD");
+    let ok2 = aml_name_seg_ok(b"A_1_");
+    // 首字符数字非法。
+    let bad1 = !aml_name_seg_ok(b"1BCD");
+    // 长度不为 4 非法。
+    let bad2 = !aml_name_seg_ok(b"ABC");
+    // 补齐："AB" → "AB__" 合法；"ABCD" 原样；空串/超长 None。
+    let p1 = match aml_name_seg_pad("AB") {
+        Some(v) => v == *b"AB__",
+        None => false,
+    };
+    let p2 = match aml_name_seg_pad("ABCD") {
+        Some(v) => v == *b"ABCD",
+        None => false,
+    };
+    let bad3 = aml_name_seg_pad("").is_none() && aml_name_seg_pad("ABCDE").is_none();
+    ok1 && ok2 && bad1 && bad2 && p1 && p2 && bad3
+}
+
+/// 深化面参考探针——OpCode 分类与包扫描恰值（知名码/扩展头/包步进）。
+pub fn probe_op_scan() -> bool {
+    // 单字节头分类（NameOp 0x08）。
+    let s1 = match AmlOpHead::of(&[0x08, 0x00]) {
+        Some(h) => h,
+        None => return false,
+    };
+    let s1_ok = s1 == AmlOpHead::Single(0x08)
+        && aml_op_name(s1) == Some("NameOp")
+        && s1.head_len() == 1;
+    // 扩展头分类（0x5B 0x82）。
+    let s2 = match AmlOpHead::of(&[0x5B, 0x82]) {
+        Some(h) => h,
+        None => return false,
+    };
+    let s2_ok = s2 == AmlOpHead::Extended(0x82) && s2.head_len() == 2;
+    // 残扩展头（0x5B 无尾）显性 None。
+    let ragged = AmlOpHead::of(&[0x5B]).is_none();
+    // 包扫描：两包流（包一长 7 = 编码 1 + 体 6；包二长 3 = 编码 1 +
+    // 体 2——lead 低 6 位即值，n=0 单字节档）。
+    let flow: [u8; 10] = [0x07, 1, 2, 3, 4, 5, 6, 0x03, 7, 8];
+    let scan = aml_pkg_scan(&flow);
+    let scan_ok = scan.packages == 2 && scan.consumed == flow.len() && !scan.truncated;
+    // 越界声明流：lead 声明长 100（0x64 单字节档）但流只有 5 字节——截断立案。
+    let bad_flow: [u8; 5] = [0x64, 1, 2, 3, 4];
+    let scan_bad = aml_pkg_scan(&bad_flow);
+    let bad_ok = scan_bad.packages == 1 && scan_bad.truncated;
+    s1_ok && s2_ok && ragged && scan_ok && bad_ok
 }
