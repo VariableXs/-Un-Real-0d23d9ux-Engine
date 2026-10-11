@@ -1020,3 +1020,21 @@ pub fn run_unx20_t306() -> crate::checks::CheckSet {
     set.add("UNX-F0302", ok, if ok { "" } else { "unx20-t306 family sub-checks red" });
     set
 }
+// unx283_stackwalk ↔ UNX-F0283 栈回溯帧步行器（rBP 链+保守扫描混合；0x4c00 段）
+pub mod unx283_stackwalk;
+// unx382_bumpline ↔ UNX-F0382 bump 分配器（单向下水线；0x4c10 段）
+pub mod unx382_bumpline;
+// unx402_tscinv ↔ UNX-F0402 TSC 不变量探测（0x4c20 段）
+pub mod unx402_tscinv;
+// unx422_excgate ↔ UNX-F0422 异常门注册账 32 向量全覆盖（0x4c30 段）
+pub mod unx422_excgate;
+// unx442_rsdpver ↔ UNX-F0442 RSDP 校验与版本账（0x4c40 段）
+pub mod unx442_rsdpver;
+// unx482_pxfmt4 ↔ UNX-F0482 像素格式判定四分发（0x4c50 段 0x4c58 分区）
+pub mod unx482_pxfmt4;
+// unx502_uartio ↔ UNX-F0502 串口输出原语三件（0x4c70 段）
+pub mod unx502_uartio;
+// unx562_pm1cnt ↔ UNX-F0562 PM1a_CNT 控制块账 SLP 位只读（0x4c80 段）
+pub mod unx562_pm1cnt;
+// unx383_slabsize ↔ UNX-F0383 尺寸档 slab 族 32/64/128/512（0x4c90 段）
+pub mod unx383_slabsize;
