@@ -98,6 +98,8 @@ pub mod cgm06_scaling;
 // cgp08_perf —— CGPU-F2408 遥测性能（自身开销总账：五段设施逐段有预算有实测对账/开销换算器 ppm↔步↔微秒三口径/F0482 实测注入 640ppm 与 F1558 红线 L0≤0.05ms 与 F2401 使命三条口径只引用不重定义/超标处置建议账留痕可复算/零 IO 零墙钟零 panic）
 pub mod cgp08_perf;
 pub mod cgp08_perf_checks;
+pub mod cgp09_privacy;
+pub mod cgp09_privacy_checks;
 pub mod cga01_simdprim;
 pub mod cga01_simdprim_checks;
 pub mod cge01_domain;
@@ -247,7 +249,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 38] = [
+    let blocks: [(&'static str, CheckSet); 40] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -268,6 +270,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F0486", cgm07_pacemodel_checks::run_cgm07_checks()),
         ("CGPU-F0487", cgd06_latencyledger_checks::run_cgd06_ledger_checks()),
         ("CGPU-F1603", vck03_hettask_checks::run_vck03_checks()),
+        ("CGPU-F2409", cgp09_privacy_checks::run_cgp09_checks()),
         ("CGPU-F1604", vck04_probe::run_vck04_checks()),
         ("CGPU-F1605", vck05_taskgraph::run_vck05_checks()),
         ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
