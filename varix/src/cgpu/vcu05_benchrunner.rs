@@ -892,5 +892,1213 @@ pub fn run_vcu05_checks() -> crate::checks::CheckSet {
     }
     s.add("诊断码十二码互异", distinct && codes[0] == 0xBF01 && codes[11] == 0xBF0C, "");
 
+    // ── v2 深化判据（依赖/重跑/分位/对拍/预算/读屏）──
+    let p2 = run_probes_v2();
+    s.add("依赖合法挂线", p2.dep_legal, "");
+    s.add("依赖未知拒", p2.dep_unknown_block, "");
+    s.add("依赖环拒回滚", p2.dep_cycle_block, "");
+    s.add("依赖出队闸恰值", p2.dep_ready_exact, "");
+    s.add("重跑消解出分", p2.rerun_resolves, "");
+    s.add("重跑上限拒", p2.rerun_cap_block, "");
+    s.add("重跑分批保留", p2.rerun_batches_kept, "");
+    s.add("重跑耗尽无分", p2.rerun_exhausted_no_score, "");
+    s.add("分位插值恰值", p2.percentile_exact, "");
+    s.add("分位序自洽", p2.percentile_ordered, "");
+    s.add("对拍三态恰值", p2.diff_regression_exact && p2.diff_improvement_exact && p2.diff_nochange_exact, "");
+    s.add("对拍缺口账", p2.diff_gap_ledger, "");
+    s.add("对拍劣化清单", p2.diff_regression_list, "");
+    s.add("预算爆点恰值", p2.budget_blown_exact, "");
+    s.add("预算余量恰值", p2.budget_remain_exact, "");
+    s.add("对拍预算读屏形", p2.readout_shape, "");
+
+    // v2 扩码五码互异且不与 v1 十二码冲突。
+    let codes2 = [
+        RnrCodeV2::RnDepCycle.code(),
+        RnrCodeV2::RnDepUnknown.code(),
+        RnrCodeV2::RnRerunExhausted.code(),
+        RnrCodeV2::RnBudgetExhausted.code(),
+        RnrCodeV2::RnDiffMisaligned.code(),
+    ];
+    let mut distinct2 = true;
+    let mut i = 0;
+    while i < codes2.len() {
+        let mut j = i + 1;
+        while j < codes2.len() {
+            if codes2[i] == codes2[j] {
+                distinct2 = false;
+            }
+            j += 1;
+        }
+        // 与 v1 十二码也不得冲突。
+        if codes.contains(&codes2[i]) {
+            distinct2 = false;
+        }
+        i += 1;
+    }
+    s.add(
+        "诊断码扩码五码",
+        distinct2 && codes2[0] == 0xBF0D && codes2[4] == 0xBF11,
+        "",
+    );
+
+    // ── v2.3 编排层判据 ──
+    let p23 = run_probes_v23();
+    s.add("分层拓扑恰值", p23.wave_shape_exact, "");
+    s.add("轮次深度恰值", p23.wave_depth_exact, "");
+    s.add("搁浅显性不吞", p23.wave_stranded_visible, "");
+    s.add("编排未知场景拒", p23.runner_unknown_block, "");
+    s.add("编排重跑透传", p23.runner_rerun_passthrough, "");
+    s.add("终判分列出分Failed", p23.runner_finalize_split, "");
+    s.add("预算爆partial置位", p23.runner_partial_flag, "");
+    s.add("编排双跑确定", p23.runner_determinism, "");
+    s.add("轮次读屏形", p23.wave_line_shape, "");
+
     s
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 深化段 v2（依赖闭包调度 / 重跑账 / 深分位 / 基线对拍 / 预算闸）
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// v1 跑通"调度→计时→采集"三功能直排。v2 把运行器放进**真实基准语境**：
+//
+// 1. **依赖闭包调度**：基准场景常有先决（"开着 4K 纹理跑"必须先有
+//    "默认纹理跑"锚点）。场景可挂前置名账——出队时前置未 Done 的
+//    场景**跳过不阻塞别家**（依赖死锁不传染）。**环依赖在挂线时整
+//    条拒**（三色 DFS 探环——挂线即拒比出队时死转好：确定性键不能
+//    含环）。
+// 2. **重跑账**：v1 噪声闸只竖 RerunFlag 不给出口。v2 补消费面——
+//    rerun 上限 2 次，每轮样本**分批保留**（第一批 ≠ 被覆盖——噪声
+//    本身是数据）；重跑后仍噪 → 显性 Failed(噪声)，绝不静默出分。
+// 3. **深分位**：P50/P90/P95/P99/Min/Max 六分位——定点线性插值
+//    （idx = p×(n−1)/1000，整数位取 a、千分位残差混 b−a×残/1000——
+//    零浮点的插值恰值可手算）。
+// 4. **基线对拍**：两份汇总（基线 vs 当前）逐场景对比——中位劣化
+//    >5%（500bps）→ RegressionFlag、改善 >5% → ImprovementFlag、
+//    带内 → NoChange；场景集不对齐（缺场景/多场景）→ 显性缺口账
+//    不硬比。
+// 5. **预算闸**：全套基准总 tick 预算注入——超预算中断且已完成的
+//    结果带 partial 标注（部分结果 ≠ 完整结果，混着出就是造假）。
+
+/// 重跑上限（判据"重跑策略"——超限即 Failed 不无限烧 tick）。
+pub const RERUN_CAP: u32 = 2;
+
+/// 对比阈值（500bps = 5%）。
+pub const DIFF_LINE_BPS: u64 = 500;
+
+/// bps 单位基。
+pub const BPS_ONE: u64 = 10_000;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v2 扩码（0xBF0D~0xBF11——五码，十二码闭集扩至十七码）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// v2 扩码（0xBFxx 段续——深化面五码）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RnrCodeV2 {
+    /// 0xBF0D 依赖环（挂线时 DFS 探出——确定性键不能含环）。
+    RnDepCycle,
+    /// 0xBF0E 依赖未知（前置名不在场景账）。
+    RnDepUnknown,
+    /// 0xBF0F 重跑耗尽（rerun 上限 2 次仍噪——显性 Failed 不静默出分）。
+    RnRerunExhausted,
+    /// 0xBF10 预算耗尽（总 tick 预算超——中断带 partial 标注）。
+    RnBudgetExhausted,
+    /// 0xBF11 对比账不对齐（场景集缺口——不硬比）。
+    RnDiffMisaligned,
+}
+
+impl RnrCodeV2 {
+    /// 稳定码值。
+    pub const fn code(self) -> u16 {
+        match self {
+            RnrCodeV2::RnDepCycle => 0xBF0D,
+            RnrCodeV2::RnDepUnknown => 0xBF0E,
+            RnrCodeV2::RnRerunExhausted => 0xBF0F,
+            RnrCodeV2::RnBudgetExhausted => 0xBF10,
+            RnrCodeV2::RnDiffMisaligned => 0xBF11,
+        }
+    }
+
+    /// 中文名。
+    pub const fn name(self) -> &'static str {
+        match self {
+            RnrCodeV2::RnDepCycle => "依赖环",
+            RnrCodeV2::RnDepUnknown => "依赖未知",
+            RnrCodeV2::RnRerunExhausted => "重跑耗尽",
+            RnrCodeV2::RnBudgetExhausted => "预算耗尽",
+            RnrCodeV2::RnDiffMisaligned => "对比账不对齐",
+        }
+    }
+
+    /// 中文详情。
+    pub const fn detail(self) -> &'static str {
+        match self {
+            RnrCodeV2::RnDepCycle => "依赖环：前置闭包含自身——挂线即拒确定性键禁环",
+            RnrCodeV2::RnDepUnknown => "依赖未知：前置场景不在账——拒绝挂线不猜",
+            RnrCodeV2::RnRerunExhausted => "重跑耗尽：rerun上限2次仍噪——显性Failed绝不静默出分",
+            RnrCodeV2::RnBudgetExhausted => "预算耗尽：总tick预算超——中断已完成结果带partial标注",
+            RnrCodeV2::RnDiffMisaligned => "对比账不对齐：场景集缺口——显性缺口账不硬比",
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 依赖闭包（三色 DFS 探环 + 出队闸）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 三色标记（DFS 探环——白未访/灰在栈/黑已毕）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum DfsColor {
+    White,
+    Gray,
+    Black,
+}
+
+/// 依赖线账（场景名 → 前置名账；与 Scheduler 并行持有——不改 v1 结构）。
+#[derive(Clone, Debug)]
+pub struct DepGraph {
+    /// 边表（from 依赖 to——from 出队需 to Done）。
+    pub edges: Vec<(String, String)>,
+}
+
+impl DepGraph {
+    /// 空图。
+    pub const fn new() -> DepGraph {
+        DepGraph { edges: Vec::new() }
+    }
+
+    /// 挂线（挂线即验：前置必须已在场景账 → RnDepUnknown；
+    /// 挂线后从 from DFS 探环 → RnDepCycle 整条回滚不入账）。
+    pub fn attach(
+        &mut self,
+        from: &str,
+        to: &str,
+        known: &[String],
+    ) -> Result<(), RnrCodeV2> {
+        if !known.iter().any(|k| k == to) {
+            return Err(RnrCodeV2::RnDepUnknown);
+        }
+        self.edges.push((String::from(from), String::from(to)));
+        if self.has_cycle_from(from, known) {
+            self.edges.pop(); // 回滚——半拉子依赖比没有更危险
+            return Err(RnrCodeV2::RnDepCycle);
+        }
+        Ok(())
+    }
+
+    /// 从 start 三色 DFS 探环（known 闭集内走——不越账）。
+    ///
+    /// 迭代栈式 DFS：白转灰压栈（先压 cur 自身占位，再压全部后继）；
+    /// 弹出灰节点时若无后继可走（占位弹出）转黑。重访灰 = 环。
+    /// n ≤ 32——重复入栈的常数可忽略，正确性优先于剪枝。
+    fn has_cycle_from(&self, start: &str, known: &[String]) -> bool {
+        // 颜色账（名字比较——场景闭集小，线性查可接受）。
+        let mut names: Vec<&str> = Vec::new();
+        let mut colors: Vec<DfsColor> = Vec::new();
+        for k in known {
+            names.push(k.as_str());
+            colors.push(DfsColor::White);
+        }
+        let color_idx = |names: &[&str], n: &str| -> Option<usize> {
+            names.iter().position(|x| *x == n)
+        };
+        let mut stack: Vec<&str> = Vec::new();
+        stack.push(start);
+        while let Some(cur) = stack.pop() {
+            let ci = match color_idx(&names, cur) {
+                Some(i) => i,
+                None => continue,
+            };
+            match colors[ci] {
+                DfsColor::Gray => {
+                    // 占位弹出：cur 的后继已全部处理完——转黑。
+                    // 但若占位弹出时又见灰，说明是从别的路径重访——
+                    // 环判定在"弹到灰且它不是占位"时立。区分法：
+                    // 占位重压时计数。简化实现：白转灰时把 cur 的
+                    // 后继直接判——后继==start 且 start 已灰即环。
+                    colors[ci] = DfsColor::Black;
+                    for (f, t) in &self.edges {
+                        if f.as_str() == cur && t.as_str() == start {
+                            // 后继回到起点（已灰）——环。
+                            if colors[color_idx(&names, start).unwrap_or(0)] != DfsColor::White {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                DfsColor::Black => continue,
+                DfsColor::White => {
+                    colors[ci] = DfsColor::Gray;
+                    let successors: Vec<&str> = self
+                        .edges
+                        .iter()
+                        .filter(|(f, _)| f.as_str() == cur)
+                        .map(|(_, t)| t.as_str())
+                        .collect();
+                    stack.push(cur); // 占位——下次弹出转黑
+                    for t in successors {
+                        stack.push(t);
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// 出队闸：from 的全部前置是否 Done（done 集由调用方从 Scheduler 态出）。
+    pub fn ready(&self, from: &str, done: &[String]) -> bool {
+        self.edges
+            .iter()
+            .filter(|(f, _)| f.as_str() == from)
+            .all(|(_, t)| done.iter().any(|d| d == t.as_str()))
+    }
+
+    /// 依赖指纹（边集 FNV——对拍用）。
+    pub fn fingerprint(&self) -> u64 {
+        let mut s = fnv1a_str(FNV_OFFSET, "vcu05-depgraph");
+        for (f, t) in &self.edges {
+            s = fnv1a_str(s, f);
+            s = fnv1a_str(s, t);
+        }
+        s
+    }
+}
+
+impl Default for DepGraph {
+    fn default() -> Self {
+        DepGraph::new()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 深分位（定点线性插值——零浮点）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 定点分位（判据"采集"深化面：p ∈ [0,1000] 千分位）。
+///
+/// 升序后 idx = p×(n−1)/1000：整数位 i、千分位残差 r——
+/// 结果 = a[i] + (a[i+1]−a[i])×r/1000（i+1 越界时 r 恒 0——数学上
+/// p=1000 时 idx=n−1 整除无残差，越界分支是防线不是常态路径）。
+pub fn percentile_ns(sorted: &[u64], p: u64) -> Result<u64, RnrCode> {
+    if sorted.is_empty() {
+        return Err(RnrCode::RnRunsShort);
+    }
+    if p > 1000 {
+        return Err(RnrCode::RnMetricRange);
+    }
+    let n = sorted.len();
+    let num = p * (n as u64 - 1);
+    let i = (num / 1000) as usize;
+    let r = num % 1000;
+    let a = sorted[i.min(n - 1)];
+    if r == 0 || i + 1 >= n {
+        return Ok(a);
+    }
+    let b = sorted[i + 1];
+    Ok(a + (b - a) * r / 1000)
+}
+
+/// 六分位快照（Min/P50/P90/P95/P99/Max——随场景账走）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PercentileSet {
+    /// 最小。
+    pub min: u64,
+    /// P50。
+    pub p50: u64,
+    /// P90。
+    pub p90: u64,
+    /// P95。
+    pub p95: u64,
+    /// P99。
+    pub p99: u64,
+    /// 最大。
+    pub max: u64,
+}
+
+impl PercentileSet {
+    /// 从跑样算全套（内部升序一次——六分位共享）。
+    pub fn compute(runs: &[u64]) -> Result<PercentileSet, RnrCode> {
+        if runs.is_empty() {
+            return Err(RnrCode::RnRunsShort);
+        }
+        let mut v: Vec<u64> = runs.to_vec();
+        v.sort_unstable();
+        let mn = v[0];
+        let mx = v[v.len() - 1];
+        let p50 = percentile_ns(&v, 500)?;
+        let p90 = percentile_ns(&v, 900)?;
+        let p95 = percentile_ns(&v, 950)?;
+        let p99 = percentile_ns(&v, 990)?;
+        Ok(PercentileSet { min: mn, p50, p90, p95, p99, max: mx })
+    }
+
+    /// 指纹。
+    pub const fn fingerprint(&self) -> u64 {
+        let s = fnv1a_u64(FNV_OFFSET, self.min);
+        let s = fnv1a_u64(s, self.p50);
+        let s = fnv1a_u64(s, self.p90);
+        let s = fnv1a_u64(s, self.p95);
+        let s = fnv1a_u64(s, self.p99);
+        fnv1a_u64(s, self.max)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 重跑账（RerunFlag 的消费面——分批保留不覆盖）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 单场景重跑账。
+#[derive(Clone, Debug)]
+pub struct RerunLedger {
+    /// 分批样本（第 0 批 = 首测，第 1..=RERUN_CAP 批 = 重跑——全保留）。
+    pub batches: Vec<Vec<u64>>,
+    /// 已重跑次数。
+    pub reruns: u32,
+    /// 终判（None=未定 / Some(Ok(中位))=出分 / Some(Err)=Failed(噪声)）。
+    pub verdict: Option<Result<u64, RnrCodeV2>>,
+}
+
+impl RerunLedger {
+    /// 新账（首测批入账并即时判——噪则暂记 Err 待 rerun 消解）。
+    pub fn new(first_batch: &[u64]) -> Result<RerunLedger, RnrCode> {
+        let med = median_ns(first_batch)?;
+        let noisy = is_noisy(first_batch, med)?;
+        let mut lg = RerunLedger {
+            batches: Vec::new(),
+            reruns: 0,
+            verdict: None,
+        };
+        lg.batches.push(first_batch.to_vec());
+        lg.verdict = Some(if noisy {
+            Err(RnrCodeV2::RnRerunExhausted)
+        } else {
+            Ok(med)
+        });
+        Ok(lg)
+    }
+
+    /// 重跑一轮（批样本入账——第 reruns+1 批；全历史并判）。
+    /// 超上限拒 RnRerunExhausted（终判已锁）。
+    pub fn rerun(&mut self, batch: &[u64]) -> Result<(), RnrCodeV2> {
+        if self.reruns >= RERUN_CAP {
+            return Err(RnrCodeV2::RnRerunExhausted);
+        }
+        self.batches.push(batch.to_vec());
+        self.reruns += 1;
+        // 全历史并判（合并批取中位——样本越多中位越稳）。
+        let mut all: Vec<u64> = Vec::new();
+        for b in &self.batches {
+            all.extend_from_slice(b);
+        }
+        self.verdict = Some(match median_ns(&all) {
+            Ok(med) => match is_noisy(&all, med) {
+                Ok(false) => Ok(med),
+                _ => Err(RnrCodeV2::RnRerunExhausted),
+            },
+            Err(_) => Err(RnrCodeV2::RnRerunExhausted),
+        });
+        Ok(())
+    }
+
+    /// 是否仍可 rerun（出分即不可；Failed 且 reruns 未满可）。
+    pub const fn can_rerun(&self) -> bool {
+        match &self.verdict {
+            None => true,
+            Some(Ok(_)) => false,
+            Some(Err(_)) => self.reruns < RERUN_CAP,
+        }
+    }
+
+    /// 出分（只有 Ok 才有分——Failed 无分这是纪律）。
+    pub const fn score(&self) -> Option<u64> {
+        match &self.verdict {
+            Some(Ok(m)) => Some(*m),
+            _ => None,
+        }
+    }
+
+    /// 账指纹（分批全量 FNV——分批保留的可审计性）。
+    pub fn fingerprint(&self) -> u64 {
+        let mut s = fnv1a_u64(FNV_OFFSET, self.reruns as u64);
+        for b in &self.batches {
+            s = fnv1a_u64(s, b.len() as u64);
+            for v in b {
+                s = fnv1a_u64(s, *v);
+            }
+        }
+        s
+    }
+}
+
+/// 噪声闸复用（极差/中位 > NOISE_LINE_BPS → 噪）。
+fn is_noisy(runs: &[u64], median: u64) -> Result<bool, RnrCode> {
+    if runs.is_empty() {
+        return Err(RnrCode::RnRunsShort);
+    }
+    let mn = *runs.iter().min().ok_or(RnrCode::RnRunsShort)?;
+    let mx = *runs.iter().max().ok_or(RnrCode::RnRunsShort)?;
+    if median == 0 {
+        return Err(RnrCode::RnMetricRange);
+    }
+    Ok((mx - mn) * BPS_ONE / median > NOISE_LINE_BPS)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 基线对拍（两份汇总逐场景——三态旗 + 缺口账）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 单场景对拍结论。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DiffVerdict {
+    /// 劣化 >5%（当前中位比基线大 5% 以上——慢了）。
+    Regression,
+    /// 改善 >5%（快了）。
+    Improvement,
+    /// 带内（±5% 内——变化在噪声语义内不解读）。
+    NoChange,
+}
+
+impl DiffVerdict {
+    /// 中文名。
+    pub const fn zh(self) -> &'static str {
+        match self {
+            DiffVerdict::Regression => "劣化",
+            DiffVerdict::Improvement => "改善",
+            DiffVerdict::NoChange => "带内",
+        }
+    }
+}
+
+/// 定点对拍（基线 med × 当前 med → bps 变化率 + 三态旗）。
+/// bps 变化率 = (cur − base)×BPS_ONE/base（正 = 变慢 = 劣化方向）。
+pub fn diff_verdict(base_med: u64, cur_med: u64) -> Result<(u64, DiffVerdict), RnrCode> {
+    if base_med == 0 {
+        return Err(RnrCode::RnMetricRange);
+    }
+    let delta = (cur_med as i128) - (base_med as i128);
+    // bps = delta×1e4/base——i128 中转防溢出，取绝对值出旗向。
+    let bps = ((delta * (BPS_ONE as i128)) / (base_med as i128)) as i64;
+    let mag = bps.unsigned_abs();
+    let v = if bps > 0 && mag > DIFF_LINE_BPS {
+        DiffVerdict::Regression
+    } else if bps < 0 && mag > DIFF_LINE_BPS {
+        DiffVerdict::Improvement
+    } else {
+        DiffVerdict::NoChange
+    };
+    Ok((mag, v))
+}
+
+/// 全量对拍报告（缺口账显性——不硬比）。
+#[derive(Clone, Debug)]
+pub struct BaselineDiff {
+    /// 对齐场景的对拍行（场景名 | bps | 旗）。
+    pub rows: Vec<(String, u64, DiffVerdict)>,
+    /// 仅基线有（当前缺——回归测试没跑全）。
+    pub only_base: Vec<String>,
+    /// 仅当前有（基线缺——新场景无锚）。
+    pub only_cur: Vec<String>,
+}
+
+impl BaselineDiff {
+    /// 跑对拍（同名场景中位对中位——基线/当前均为 名→中位 映射）。
+    pub fn run(
+        base: &[(String, u64)],
+        cur: &[(String, u64)],
+    ) -> Result<BaselineDiff, RnrCode> {
+        let mut rows: Vec<(String, u64, DiffVerdict)> = Vec::new();
+        let mut only_base: Vec<String> = Vec::new();
+        let mut only_cur: Vec<String> = Vec::new();
+        for (n, bm) in base {
+            match cur.iter().find(|(cn, _)| cn == n) {
+                Some((_, cm)) => {
+                    let (bps, v) = diff_verdict(*bm, *cm)?;
+                    rows.push((n.clone(), bps, v));
+                }
+                None => only_base.push(n.clone()),
+            }
+        }
+        for (n, _) in cur {
+            if !base.iter().any(|(bn, _)| bn == n) {
+                only_cur.push(n.clone());
+            }
+        }
+        // 缺口是事实不是错误——返回带缺口的账（RnDiffMisaligned 由
+        // 调用方按需立：全自动闸语境下缺账即拒）。
+        Ok(BaselineDiff { rows, only_base, only_cur })
+    }
+
+    /// 是否对齐（零缺口）。
+    pub const fn aligned(&self) -> bool {
+        self.only_base.is_empty() && self.only_cur.is_empty()
+    }
+
+    /// 劣化清单（旗 = Regression 的场景名——回归面直接可查）。
+    pub fn regressions(&self) -> Vec<String> {
+        self.rows
+            .iter()
+            .filter(|(_, _, v)| *v == DiffVerdict::Regression)
+            .map(|(n, _, _)| n.clone())
+            .collect()
+    }
+
+    /// 读屏行（对齐状况 + 劣化数 + 改善数）。
+    pub fn line(&self) -> String {
+        let mut s = String::from("对拍|对齐:");
+        s.push_str(if self.aligned() { "是" } else { "否" });
+        let reg = self
+            .rows
+            .iter()
+            .filter(|(_, _, v)| *v == DiffVerdict::Regression)
+            .count();
+        let imp = self
+            .rows
+            .iter()
+            .filter(|(_, _, v)| *v == DiffVerdict::Improvement)
+            .count();
+        s.push_str("|劣化:");
+        push_dec(&mut s, reg as u64);
+        s.push_str("|改善:");
+        push_dec(&mut s, imp as u64);
+        if !self.only_base.is_empty() {
+            s.push_str("|基线独有:");
+            push_dec(&mut s, self.only_base.len() as u64);
+        }
+        if !self.only_cur.is_empty() {
+            s.push_str("|当前独有:");
+            push_dec(&mut s, self.only_cur.len() as u64);
+        }
+        s
+    }
+}
+
+/// 手写十进制（本文件 v1 无 push_dec——补一个极简版）。
+fn push_dec(s: &mut String, mut v: u64) {
+    if v == 0 {
+        s.push('0');
+        return;
+    }
+    let mut buf = [0u8; 20];
+    let mut n = 0;
+    while v > 0 {
+        buf[n] = b'0' + (v % 10) as u8;
+        v /= 10;
+        n += 1;
+    }
+    let mut i = n;
+    while i > 0 {
+        i -= 1;
+        s.push(buf[i] as char);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 预算闸（总 tick 预算——超支中断带 partial 标注）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 预算闸账。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct BudgetGate {
+    /// 预算总量（tick）。
+    pub budget_ticks: u64,
+    /// 已耗（tick 累计——注入面）。
+    pub spent_ticks: u64,
+    /// 是否已爆。
+    pub blown: bool,
+}
+
+impl BudgetGate {
+    /// 新闸。
+    pub const fn new(budget_ticks: u64) -> BudgetGate {
+        BudgetGate { budget_ticks, spent_ticks: 0, blown: false }
+    }
+
+    /// 记一笔耗时（返回 Err(RnBudgetExhausted) = 本笔后爆）。
+    pub const fn spend(&mut self, ticks: u64) -> Result<(), RnrCodeV2> {
+        self.spent_ticks += ticks;
+        if self.spent_ticks > self.budget_ticks {
+            self.blown = true;
+            return Err(RnrCodeV2::RnBudgetExhausted);
+        }
+        Ok(())
+    }
+
+    /// 余量。
+    pub const fn remain(&self) -> u64 {
+        if self.spent_ticks >= self.budget_ticks {
+            0
+        } else {
+            self.budget_ticks - self.spent_ticks
+        }
+    }
+
+    /// 耗尽率（bps——u128 中转）。
+    pub const fn burn_bps(&self) -> u64 {
+        if self.budget_ticks == 0 {
+            return BPS_ONE;
+        }
+        ((self.spent_ticks as u128) * (BPS_ONE as u128) / (self.budget_ticks as u128)) as u64
+    }
+
+    /// 读屏行。
+    pub fn line(&self) -> String {
+        let mut s = String::from("预算|耗:");
+        push_dec(&mut s, self.spent_ticks);
+        s.push('/');
+        push_dec(&mut s, self.budget_ticks);
+        s.push_str("tick|");
+        push_dec(&mut s, self.burn_bps());
+        s.push_str("bps|");
+        s.push_str(if self.blown { "已爆" } else { "在途" });
+        s
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 深化探针 v2（依赖/重跑/分位/对拍/预算——五组手算恰值）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 深化探针汇总。
+pub struct ProbeV2Report {
+    /// 依赖：合法挂线放行。
+    pub dep_legal: bool,
+    /// 依赖：未知前置拒（0xBF0E）。
+    pub dep_unknown_block: bool,
+    /// 依赖：环拒（A→B→A——0xBF0D 且边回滚）。
+    pub dep_cycle_block: bool,
+    /// 依赖：出队闸恰值（前置 Done 才 ready）。
+    pub dep_ready_exact: bool,
+    /// 重跑：首测噪暂记、一次重跑消解出分。
+    pub rerun_resolves: bool,
+    /// 重跑：三次重跑拒（上限 2）。
+    pub rerun_cap_block: bool,
+    /// 重跑：分批保留（三批全在账）。
+    pub rerun_batches_kept: bool,
+    /// 重跑：两次重跑仍噪终判 Failed 无分。
+    pub rerun_exhausted_no_score: bool,
+    /// 分位：插值恰值（[100,200,300,400] P50=250/P90=370/P95=385/P99=397）。
+    pub percentile_exact: bool,
+    /// 分位：六件自洽（min ≤ p50 ≤ p99 ≤ max）。
+    pub percentile_ordered: bool,
+    /// 对拍：劣化恰值（base 100 cur 110 → 1000bps 劣化）。
+    pub diff_regression_exact: bool,
+    /// 对拍：改善恰值（base 100 cur 90 → 1000bps 改善）。
+    pub diff_improvement_exact: bool,
+    /// 对拍：带内恰值（base 100 cur 104 → 400bps 带内）。
+    pub diff_nochange_exact: bool,
+    /// 对拍：缺口账（仅基线/仅当前各一）。
+    pub diff_gap_ledger: bool,
+    /// 对拍：劣化清单恰值。
+    pub diff_regression_list: bool,
+    /// 预算：恰值爆点（预算 1000 花 999 不爆、再花 2 爆）。
+    pub budget_blown_exact: bool,
+    /// 预算：余量与耗尽率恰值。
+    pub budget_remain_exact: bool,
+    /// 读屏：对拍行与预算行形。
+    pub readout_shape: bool,
+}
+
+/// 跑深化探针 v2。
+pub fn run_probes_v2() -> ProbeV2Report {
+    // ── 依赖 ──
+    let known: Vec<String> = ["base", "hi_tex", "lo_tex"]
+        .iter()
+        .map(|s| String::from(*s))
+        .collect();
+    let mut dg = DepGraph::new();
+    let legal = dg.attach("hi_tex", "base", &known).is_ok();
+    let unknown = matches!(
+        dg.attach("lo_tex", "ghost", &known),
+        Err(RnrCodeV2::RnDepUnknown)
+    );
+    // 环：base→hi_tex→base？base 不在 from 位……构造 A→B→A：
+    let known2: Vec<String> = ["a", "b"]
+        .iter()
+        .map(|s| String::from(*s))
+        .collect();
+    let mut dg2 = DepGraph::new();
+    let _ = dg2.attach("a", "b", &known2);
+    let cyc = matches!(dg2.attach("b", "a", &known2), Err(RnrCodeV2::RnDepCycle));
+    let edges_after = dg2.edges.len() == 1; // 回滚——只留 a→b
+    // 出队闸：a Done 后 b ready。
+    let done_a: Vec<String> = vec![String::from("a")];
+    let ready_before = !dg2.ready("b", &[]);
+    let ready_after = dg2.ready("b", &done_a);
+
+    // ── 重跑 ──
+    // 首测噪：{100, 200, 100, 200, 100} 中位 100 极差 100 → 10000bps > 1000 噪。
+    let mut rl = match RerunLedger::new(&[100, 200, 100, 200, 100]) {
+        Ok(x) => x,
+        Err(_) => return ProbeV2Report::all_fail(),
+    };
+    let noisy_first = rl.score().is_none();
+    // 一次重跑消解：{100,101,100,101,100}。
+    let _ = rl.rerun(&[100, 101, 100, 101, 100]);
+    let resolved = rl.score() == Some(100) && rl.reruns == 1;
+    // 分批保留：两批都在。
+    let kept = rl.batches.len() == 2;
+    // 上限：已 reruns=1，可再一次；第三次拒。
+    let can2 = rl.can_rerun();
+    let _ = rl.rerun(&[100, 100, 100, 100, 100]);
+    let cap = !rl.can_rerun()
+        && matches!(rl.rerun(&[100]), Err(RnrCodeV2::RnRerunExhausted));
+    // 两次重跑仍噪 → Failed 无分。
+    let mut rn = RerunLedger::new(&[100, 300, 100, 300, 100]).unwrap_or_else(|_| {
+        RerunLedger {
+            batches: Vec::new(),
+            reruns: 0,
+            verdict: Some(Err(RnrCodeV2::RnRerunExhausted)),
+        }
+    });
+    let _ = rn.rerun(&[100, 400, 100, 400, 100]);
+    let _ = rn.rerun(&[100, 500, 100, 500, 100]);
+    let exhausted = rn.score().is_none() && !rn.can_rerun() && rn.reruns == 2;
+    let rerun_ok = noisy_first && resolved && kept && can2 && cap && exhausted;
+
+    // ── 分位 ──
+    // [100,200,300,400]：idx(p)=p×3/1000。
+    // P50: idx=1500/1000=1 r=500 → 200+(300-200)×500/1000=250。
+    // P90: idx=2700/1000=2 r=700 → 300+(400-300)×700/1000=370。
+    // P95: idx=2850/1000=2 r=850 → 385。
+    // P99: idx=2970/1000=2 r=970 → 397。
+    let set = PercentileSet::compute(&[400, 100, 300, 200]).unwrap_or(PercentileSet {
+        min: 0,
+        p50: 0,
+        p90: 0,
+        p95: 0,
+        p99: 0,
+        max: 0,
+    });
+    let pct_exact = set.min == 100
+        && set.max == 400
+        && set.p50 == 250
+        && set.p90 == 370
+        && set.p95 == 385
+        && set.p99 == 397;
+    let pct_ordered = set.min <= set.p50 && set.p50 <= set.p99 && set.p99 <= set.max;
+    // 整除面：[1,2,3] P50 → idx=1×2/1000=2 r=0 → 3（p=500,n=3: 500×2=1000, /1000=1, r=0 → a[1]=2）。
+    // 修正手算：n=3 → (n-1)=2；P50: 500×2=1000 → i=1, r=0 → 2。
+    let p50_odd = percentile_ns(&[1, 2, 3], 500).unwrap_or(0) == 2;
+
+    // ── 对拍 ──
+    let reg = diff_verdict(100, 110).unwrap_or((0, DiffVerdict::NoChange));
+    let imp = diff_verdict(100, 90).unwrap_or((0, DiffVerdict::NoChange));
+    let nc = diff_verdict(100, 104).unwrap_or((0, DiffVerdict::NoChange));
+    let diff_exact = reg == (1000, DiffVerdict::Regression)
+        && imp == (1000, DiffVerdict::Improvement)
+        && nc == (400, DiffVerdict::NoChange);
+    // 缺口账。
+    let base: Vec<(String, u64)> = vec![
+        (String::from("s1"), 100),
+        (String::from("s2"), 200),
+        (String::from("s3"), 300),
+    ];
+    let cur: Vec<(String, u64)> = vec![
+        (String::from("s1"), 105),
+        (String::from("s2"), 240),
+        (String::from("s4"), 50),
+    ];
+    let bd = BaselineDiff::run(&base, &cur).unwrap_or(BaselineDiff {
+        rows: Vec::new(),
+        only_base: Vec::new(),
+        only_cur: Vec::new(),
+    });
+    let gap = !bd.aligned()
+        && bd.only_base == vec![String::from("s3")]
+        && bd.only_cur == vec![String::from("s4")]
+        && bd.rows.len() == 2;
+    // 劣化清单：s2（240/200=1200bps>500 劣化）、s1（50bps 带内）。
+    let reg_list = bd.regressions() == vec![String::from("s2")];
+
+    // ── 预算 ──
+    let mut bg = BudgetGate::new(1000);
+    let not_blown = bg.spend(999).is_ok();
+    let blown = matches!(bg.spend(2), Err(RnrCodeV2::RnBudgetExhausted)) && bg.blown;
+    let budget_exact = not_blown && blown;
+    // 余量/耗尽率：预算 1000 已花 999 → 余 1、9990bps。
+    let mut bg2 = BudgetGate::new(1000);
+    let _ = bg2.spend(999);
+    let remain_exact = bg2.remain() == 1 && bg2.burn_bps() == 9990;
+
+    // ── 读屏 ──
+    let dl = bd.line();
+    let bl = bg2.line();
+    let readout = dl.contains("对齐:否")
+        && dl.contains("劣化:1")
+        && dl.contains("基线独有:1")
+        && bl.contains("999/1000tick")
+        && bl.contains("9990bps")
+        && bl.contains("在途");
+
+    ProbeV2Report {
+        dep_legal: legal,
+        dep_unknown_block: unknown,
+        dep_cycle_block: cyc && edges_after,
+        dep_ready_exact: ready_before && ready_after,
+        rerun_resolves: rerun_ok && resolved,
+        rerun_cap_block: cap,
+        rerun_batches_kept: kept,
+        rerun_exhausted_no_score: exhausted,
+        percentile_exact: pct_exact && p50_odd,
+        percentile_ordered: pct_ordered,
+        diff_regression_exact: diff_exact,
+        diff_improvement_exact: diff_exact,
+        diff_nochange_exact: diff_exact,
+        diff_gap_ledger: gap,
+        diff_regression_list: reg_list,
+        budget_blown_exact: budget_exact,
+        budget_remain_exact: remain_exact,
+        readout_shape: readout,
+    }
+}
+
+impl ProbeV2Report {
+    /// 全败底稿（unwrap 免除路径——探针异常时保持结构完整）。
+    fn all_fail() -> ProbeV2Report {
+        ProbeV2Report {
+            dep_legal: false,
+            dep_unknown_block: false,
+            dep_cycle_block: false,
+            dep_ready_exact: false,
+            rerun_resolves: false,
+            rerun_cap_block: false,
+            rerun_batches_kept: false,
+            rerun_exhausted_no_score: false,
+            percentile_exact: false,
+            percentile_ordered: false,
+            diff_regression_exact: false,
+            diff_improvement_exact: false,
+            diff_nochange_exact: false,
+            diff_gap_ledger: false,
+            diff_regression_list: false,
+            budget_blown_exact: false,
+            budget_remain_exact: false,
+            readout_shape: false,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v2.3 DepsAwareRunner（运行编排层——三功能 + 依赖 + 重跑 + 预算的整体）
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// v1 判据原文"运行器实现"——调度器/计时/采集三件有了，但"运行器"
+// 作为整体缺一个编排面：什么顺序跑（依赖感知）、跑了噪不噪（重跑账）、
+// 烧了多少 tick（预算闸）、最后交什么账（终判收集）。本段把四者串成
+// 一个确定的整体——编排层自身零投机：顺序由全序键 + 依赖闭包推出，
+// 不引入任何"看情况"。
+
+/// 分层拓扑轮次账（wave k = 依赖恰在 k−1 轮全完成的场景集）。
+///
+/// 分层拓扑序是"并行度"的确定投影：同轮场景互不依赖（理论可并行），
+/// 轮数 = 关键路径长。轮次指纹随编排走——双跑对拍的粒度从"整体序"
+/// 细化到"分层序"。
+pub struct WaveLedger {
+    /// 轮次账（wave 下标 → 场景名账——按全序键序）。
+    pub waves: Vec<Vec<String>>,
+}
+
+impl WaveLedger {
+    /// 从依赖线 + 全场景名账算分层拓扑（Kahn 分层法——零递归）。
+    ///
+    /// 无环由挂线闸保证；若调用方硬灌环账，轮次算不满全部场景——
+    /// 返回的账 + `stranded`（搁浅名单）显性呈现，不静默吞。
+    pub fn compute(names: &[String], deps: &DepGraph) -> (WaveLedger, Vec<String>) {
+        let mut remaining: Vec<String> = names.to_vec();
+        let mut done: Vec<String> = Vec::new();
+        let mut waves: Vec<Vec<String>> = Vec::new();
+        let mut guard = 0;
+        while !remaining.is_empty() && guard <= names.len() + 1 {
+            // 本轮 = 依赖全在 done 的（按全序键序——names 传入前已排序）。
+            let mut wave: Vec<String> = Vec::new();
+            let mut next: Vec<String> = Vec::new();
+            for n in &remaining {
+                if deps.ready(n, &done) {
+                    wave.push(n.clone());
+                } else {
+                    next.push(n.clone());
+                }
+            }
+            if wave.is_empty() {
+                // 一轮空 = 有环搁浅（挂线闸不该放进来——防线仍显性）。
+                return (WaveLedger { waves }, next);
+            }
+            done.extend(wave.iter().cloned());
+            waves.push(wave);
+            remaining = next;
+            guard += 1;
+        }
+        (WaveLedger { waves }, Vec::new())
+    }
+
+    /// 总轮数（关键路径长）。
+    pub const fn depth(&self) -> usize {
+        self.waves.len()
+    }
+
+    /// 轮次指纹。
+    pub fn fingerprint(&self) -> u64 {
+        let mut s = fnv1a_str(FNV_OFFSET, "vcu05-wave");
+        s = fnv1a_u64(s, self.waves.len() as u64);
+        for w in &self.waves {
+            for n in w {
+                s = fnv1a_str(s, n);
+            }
+            s = fnv1a_u64(s, 0xFFFF); // 轮界哨
+        }
+        s
+    }
+
+    /// 读屏（轮次行：轮0:a,b|轮1:c）。
+    pub fn line(&self) -> String {
+        let mut s = String::from("轮次|");
+        let mut i = 0;
+        while i < self.waves.len() {
+            if i > 0 {
+                s.push('|');
+            }
+            push_dec(&mut s, i as u64);
+            s.push(':');
+            let mut first = true;
+            for n in &self.waves[i] {
+                if !first {
+                    s.push(',');
+                }
+                s.push_str(n);
+                first = false;
+            }
+            i += 1;
+        }
+        s
+    }
+}
+
+/// 编排器（整体面——持有 v1 调度器 + 依赖线 + 重跑账表 + 预算闸）。
+pub struct DepsAwareRunner {
+    /// 调度器（v1 复用）。
+    pub sched: Scheduler,
+    /// 依赖线。
+    pub deps: DepGraph,
+    /// 重跑账表（场景名 → 重跑账）。
+    pub reruns: Vec<(String, RerunLedger)>,
+    /// 预算闸。
+    pub budget: BudgetGate,
+    /// partial 标注（预算爆后置位——部分结果 ≠ 完整结果）。
+    pub partial: bool,
+}
+
+impl DepsAwareRunner {
+    /// 新编排器（预算注入）。
+    pub const fn new(budget_ticks: u64) -> DepsAwareRunner {
+        DepsAwareRunner {
+            sched: Scheduler::new(),
+            deps: DepGraph::new(),
+            reruns: Vec::new(),
+            budget: BudgetGate::new(budget_ticks),
+            partial: false,
+        }
+    }
+
+    /// 场景全名账（入账序——挂线 known 闭集）。
+    pub fn known_names(&self) -> Vec<String> {
+        self.sched.scenarios.iter().map(|s| s.name.clone()).collect()
+    }
+
+    /// 挂依赖线（挂线即探环——确定性键禁环）。
+    pub fn link(&mut self, from: &str, to: &str) -> Result<(), RnrCodeV2> {
+        let known = self.known_names();
+        self.deps.attach(from, to, &known)
+    }
+
+    /// 记一批跑样（场景必须已在账——重跑账懒建）。
+    pub fn record_batch(&mut self, name: &str, batch: &[u64]) -> Result<(), RnrCode> {
+        if !self.sched.scenarios.iter().any(|s| s.name == name) {
+            return Err(RnrCode::RnScenarioUnknown);
+        }
+        match self.reruns.iter_mut().find(|(n, _)| n == name) {
+            Some((_, lg)) => {
+                // 已有账 → 这是重跑轮。
+                lg.rerun(batch).map_err(|_| RnrCode::RnNoisy)?;
+            }
+            None => {
+                let lg = RerunLedger::new(batch)?;
+                self.reruns.push((String::from(name), lg));
+            }
+        }
+        Ok(())
+    }
+
+    /// 分层拓扑轮次（全序键序入 Kahn——names 按调度序预处理）。
+    pub fn waves(&self) -> (WaveLedger, Vec<String>) {
+        // 按全序键排序场景名（与 v1 order_fingerprint 同一插入排序口径）。
+        let mut idx: Vec<usize> = (0..self.sched.scenarios.len()).collect();
+        for i in 1..idx.len() {
+            let mut j = i;
+            while j > 0
+                && scheduling_order(&self.sched.scenarios[idx[j]], &self.sched.scenarios[idx[j - 1]])
+            {
+                idx.swap(j, j - 1);
+                j -= 1;
+            }
+        }
+        let names: Vec<String> = idx
+            .iter()
+            .map(|&i| self.sched.scenarios[i].name.clone())
+            .collect();
+        WaveLedger::compute(&names, &self.deps)
+    }
+
+    /// 终判收集（出分账 / Failed 账分列——Failed 无分是纪律）。
+    /// 预算爆 → partial 置位（账面诚实）。
+    pub fn finalize(&mut self) -> (Vec<(String, u64)>, Vec<(String, RnrCodeV2)>) {
+        if self.budget.blown {
+            self.partial = true;
+        }
+        let mut scored: Vec<(String, u64)> = Vec::new();
+        let mut failed: Vec<(String, RnrCodeV2)> = Vec::new();
+        for (n, lg) in &self.reruns {
+            match lg.score() {
+                Some(m) => scored.push((n.clone(), m)),
+                None => failed.push((n.clone(), RnrCodeV2::RnRerunExhausted)),
+            }
+        }
+        (scored, failed)
+    }
+
+    /// 编排指纹（调度序 + 依赖线 + 轮次 + 重跑账 + 预算态——全量对拍面）。
+    pub fn fingerprint(&self) -> u64 {
+        let mut s = self.sched.order_fingerprint();
+        s = fnv1a_u64(s, self.deps.fingerprint());
+        let (w, _) = self.waves();
+        s = fnv1a_u64(s, w.fingerprint());
+        for (n, lg) in &self.reruns {
+            s = fnv1a_str(s, n);
+            s = fnv1a_u64(s, lg.fingerprint());
+        }
+        s = fnv1a_u64(s, self.budget.spent_ticks);
+        s = fnv1a_u64(s, self.partial as u64);
+        s
+    }
+}
+
+/// v2.3 编排探针汇总。
+pub struct ProbeV23Report {
+    /// 分层拓扑恰值（base→hi_tex 依赖：轮0=[base] 轮1=[hi_tex,lo_tex]——全序键 lo_tex<hi_tex）。
+    pub wave_shape_exact: bool,
+    /// 轮次深度恰值（2）。
+    pub wave_depth_exact: bool,
+    /// 搁浅显性（硬灌环账 → stranded 非空不静默）。
+    pub wave_stranded_visible: bool,
+    /// 编排：record 未知场景拒。
+    pub runner_unknown_block: bool,
+    /// 编排：重跑经编排层透传（record_batch 二次即 rerun 轮）。
+    pub runner_rerun_passthrough: bool,
+    /// 编排：终判分列（出分/Failed）。
+    pub runner_finalize_split: bool,
+    /// 编排：预算爆 → partial 置位。
+    pub runner_partial_flag: bool,
+    /// 编排：双跑指纹一致。
+    pub runner_determinism: bool,
+    /// 轮次读屏形。
+    pub wave_line_shape: bool,
+}
+
+/// 跑编排探针。
+pub fn run_probes_v23() -> ProbeV23Report {
+    // 构造：base、lo_tex（优先级 1）、hi_tex（优先级 2）——全序键序
+    // lo_tex(p1) < hi_tex(p2)；hi_tex 依赖 base。
+    let mut r = DepsAwareRunner::new(10_000);
+    let _ = r.sched.enqueue("hi_tex", 2);
+    let _ = r.sched.enqueue("base", 0);
+    let _ = r.sched.enqueue("lo_tex", 1);
+    let link_ok = r.link("hi_tex", "base").is_ok();
+
+    let (w, stranded) = r.waves();
+    // 轮0 = 依赖已满足者：base（无依赖）+ lo_tex（无依赖）——全序键序
+    // lo_tex 在前？lo_tex p1 < base p0——不对：base p0 最先。轮0=[base,lo_tex]。
+    let wave0 = w.waves.first().cloned().unwrap_or_default();
+    let wave1 = w.waves.get(1).cloned().unwrap_or_default();
+    let shape = wave0 == vec![String::from("base"), String::from("lo_tex")]
+        && wave1 == vec![String::from("hi_tex")]
+        && stranded.is_empty()
+        && w.depth() == 2
+        && link_ok;
+
+    // 搁浅显性：手工构造带环账硬灌 compute。
+    let names: Vec<String> = ["x", "y"].iter().map(|s| String::from(*s)).collect();
+    let mut cyc = DepGraph::new();
+    let known = names.clone();
+    let _ = cyc.attach("x", "y", &known);
+    let known2: Vec<String> = vec![String::from("x"), String::from("y"), String::from("loop")];
+    // 三角环：y→x（已有）+ x→loop + loop→y。
+    let _ = cyc.attach("x", "loop", &known2);
+    // 此时 x→y→? y 无出边……构造真环：loop→x。
+    let mut cyc2 = DepGraph::new();
+    let _ = cyc2.attach("loop", "x", &known2);
+    let _ = cyc2.attach("x", "loop", &known2); // 探环应拒——用 raw edges 直灌绕过闸
+    let (w2, stranded2) = {
+        // 直灌环边（绕过挂线闸——防线纵深测试：compute 自身要能显性搁浅）。
+        let mut raw = DepGraph::new();
+        raw.edges.push((String::from("x"), String::from("loop")));
+        raw.edges.push((String::from("loop"), String::from("x")));
+        raw.edges.push((String::from("y"), String::from("x")));
+        WaveLedger::compute(&names, &raw)
+    };
+    let stranded_visible = !stranded2.is_empty() && w2.waves.first().map(|v| v.contains(&String::from("y"))).unwrap_or(false);
+    let _ = (cyc, cyc2);
+
+    // 编排：未知场景拒。
+    let unk = matches!(r.record_batch("ghost", &[100]), Err(RnrCode::RnScenarioUnknown));
+    // 重跑透传：base 首批噪 → 二批经同一 record_batch 消解。
+    let _ = r.record_batch("base", &[100, 200, 100, 200, 100]);
+    let _ = r.record_batch("base", &[100, 101, 100, 101, 100]);
+    let passthrough = r
+        .reruns
+        .iter()
+        .find(|(n, _)| n == "base")
+        .map(|(_, lg)| lg.reruns == 1 && lg.score() == Some(100))
+        .unwrap_or(false);
+    // 终判分列：base 出分；lo_tex 灌两轮仍噪 → Failed。
+    let _ = r.record_batch("lo_tex", &[100, 900, 100, 900, 100]);
+    let _ = r.record_batch("lo_tex", &[100, 950, 100, 950, 100]);
+    let _ = r.record_batch("lo_tex", &[100, 990, 100, 990, 100]);
+    let (scored, failed) = r.finalize();
+    let split = scored.contains(&(String::from("base"), 100))
+        && failed.len() == 1
+        && failed[0].0 == "lo_tex";
+    // 预算爆 → partial。
+    let mut r2 = DepsAwareRunner::new(500);
+    let _ = r2.sched.enqueue("s", 0);
+    let _ = r2.record_batch("s", &[100, 100, 100, 100, 100]);
+    let _ = r2.budget.spend(600);
+    let _ = r2.finalize();
+    let partial_flag = r2.partial;
+    // 双跑。
+    let build = || -> DepsAwareRunner {
+        let mut x = DepsAwareRunner::new(10_000);
+        let _ = x.sched.enqueue("hi_tex", 2);
+        let _ = x.sched.enqueue("base", 0);
+        let _ = x.sched.enqueue("lo_tex", 1);
+        let _ = x.link("hi_tex", "base");
+        let _ = x.record_batch("base", &[100, 101, 100, 101, 100]);
+        let _ = x.record_batch("hi_tex", &[200, 201, 200, 201, 200]);
+        x
+    };
+    let det = build().fingerprint() == build().fingerprint();
+    // 轮次读屏。
+    let wl = w.line();
+    let wave_line = wl.contains("轮次|0:base,lo_tex|1:hi_tex");
+
+    ProbeV23Report {
+        wave_shape_exact: shape,
+        wave_depth_exact: w.depth() == 2,
+        wave_stranded_visible: stranded_visible,
+        runner_unknown_block: unk,
+        runner_rerun_passthrough: passthrough,
+        runner_finalize_split: split,
+        runner_partial_flag: partial_flag,
+        runner_determinism: det,
+        wave_line_shape: wave_line,
+    }
 }
