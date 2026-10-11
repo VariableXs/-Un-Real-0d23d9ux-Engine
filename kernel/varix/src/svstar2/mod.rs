@@ -1041,6 +1041,7 @@ pub mod vew02_manifest;
 pub mod vew03_loader;
 pub mod vew04_sandbox;
 pub mod vew05_trust;
+pub mod unx06_arbiter;
 pub mod ves04_flow;
 pub mod ves04_checks;
 pub mod ves05_bridge;
@@ -1558,6 +1559,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0233", veb233_dualscreen::run_veb233_checks()),
         ("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks()),
         ("CGPU-F1122", vch02_ledger_checks::run_vch02_checks()),
+        ("UNX-F0061", unx06_arbiter::run_unx06_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
