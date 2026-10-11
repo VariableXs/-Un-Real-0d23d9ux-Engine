@@ -755,7 +755,5 @@ pub fn run_unx20_tb01() -> crate::checks::CheckSet {
     set.add("UNX-F0581", ok, if ok { "" } else { "unx20-tb01 family sub-checks red" });
     set
 }
-// unx122_stagewatchdog — UNX-F0122 阶段看门狗（每阶段独立时限const表+毫秒精度下取整不早触发+冻结现场四件进诊断模式+喂狗重置+幂等sweep/0x94段12码）
-pub mod unx122_stagewatchdog;
-// unx142_gptesp — UNX-F0142 GPT/ESP分区镜像生成器（保护MBR 0xEE+主备GPT头镜像CRC32自校验+128槽表项ESP类型GUID+FNV确定性GUID零随机可复现+FAT32 BPB小端逐字节装配+FSInfo双签名三指针+FAT首簇标记0x0FFFFFF8/0x0FFFFFFF+回读解析双写对拍(sgdisk校验语义:签名/修订/CRC复验/表项数/主备互指)+CRC篡改检出+最小盘面67扇区闸/LBA越界/重叠拒/0x95段12码）
+// unx142_gptesp — UNX-F0142 GPT/ESP分区镜像生成器（保护MBR+主备GPT头CRC自校验+确定性GUID+FAT32 BPB/FSInfo装配+回读双写对拍sgdisk校验语义+镜像幂等/0x95段12码）
 pub mod unx142_gptesp;
