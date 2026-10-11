@@ -2,6 +2,7 @@
 //! | [`cgi01_bandwidth`] | CGPU-F1281 | I 域开工与带宽总架构（**五主题闭集**PCIe带宽仲裁/共享内存带宽/上传下载调度/带宽遥测/瓶颈归因冻结、本域160项全挂靠表外不立题；**账户化**四类传输（纹理上传/下载/交换/流送）各开预算账户——每笔传输先申请余额不足即拒绝并计数留痕、退款只做消费迁移、账本守恒净消费口径自检；**边界**H域管显存驻留/I域管传输带宽/VE-AD存储流F5801+管到达三段各管一段、接口复用F0405集成面声明逐句可grep；**十组**规划表组名+起止单号逐字取自总纲批次锚点、F1281-F1440首尾连续无缺口、宣告行读屏可查；零panic面零IO零墙钟） |
 //! | [`cgi01_bandwidth_checks`] | CGPU-F1281 域自检（判据五条映射：五主题闭集+标签独立重排全等、账户化申请/拒绝/退款/守恒全链+未开账户必拒反向语料、边界三域分工逐句grep、十组表与判据侧独立重排逐条全等+组间起止连续校验；守恒式与使用率判据侧独立重算） |
 //! | [`cga10_bandwidth_sched`] | CGPU-F0010 | 上传下载带宽调度器（**上传限速帧超时零贡献**——每帧 1.5ms 拷贝时间片（锚点原文恰值）耗尽立即让路渲染绝不超时挤占 yield 计数留痕+16KB/µs 速率标定单帧容量 24,576,000B 手算锚；**大资产强制分片**——4K 纹理 32MB 级超单帧容量构造面即 enforce chunked 留痕 E_BW_BIG_UNCHUNKED 跨帧渐进；**mipmap 可见性优先**——先传 1/64 面积 preview 级可见发生在帧 1 完成在帧 2 可见时刻远早于完成时刻；**读回不抢帧带宽**——下载低优先独立切片 750µs（上传之后消费）与上传对称限速互不挤占；**拥塞归因**——队列深度≥8 与 PCIe 利用率≥900‰ 双条件联动迟滞防抖（连续 2 帧紧才标定E_BW_CONGESTION/连续 3 帧松才解除——单帧尖峰不误报）+双条件叠加 PCIe 停顿独立告警 E_BW_PCIE_STALL；**联动放置决策**——PlacementHint keep_on_cpu 带宽紧时可 CPU 计算任务留 CPU 对接 CGPU-F0004 信号面纯数据不依赖；**遥测全量**——上/下字节账+切片四元画像+利用率千分比累计口径手算锚 1137‰+分片/让路/拒绝计数 0x3E 段五码互异 reason 全量显性） |
+//! | [`cgj05_nvml`] | CGPU-F1445 | NVIDIA NVML 功耗查询（**双值联动**——nvmlDeviceGetPowerUsage 毫瓦读取+nvmlDeviceGetEnforcedPowerLimit 限值读取余量千分比立算 (limit-power)×1000/limit 手算锚 250000/300000→166‰ 超限钳 0 不显负；**三同步联合**——utilization/频率/功耗同 stamp 采样能效=util‰×1000/power_mw 手算锚 750‰/250000mW→3 F1465 能效画像输入 stamp 失配显性作废 E_NV_DESYNC 不静默混账；**驱动限速检测**——thermal slowdown/sw power cap 事件标志四态读取 F1479 节流检测输入位；**采样开销熔断**——单次调用耗时测量≤0.5ms 锚点恰值预算连续 3 次超时→E_NV_TIMEOUT_TRIP 熔断 Open 拒采不静默拖帧 reset 冷却恢复；**多卡枚举**——每卡独立采样器 B 域多 GPU 任务图对接一卡失败不影响他卡独立失败语义汇总账只计成功卡；**三级失败语义**——NVML 初始化失败→WMI 备路→再失败显性无传感器态不是静默零值 E_NV_NO_SENSOR 立案；**双平台单实现双验证**——Windows/Linux 同输入功耗逐字相等平台差异只在传感器路径不在数值语义；mock 全真调可编程延迟/失败模式对拍非假绿；0x4C 段五码互异 reason 全量显性） |
 //! | [`cgd02_frametimer`] | CGPU-F0482 | 全帧精确计时器（**四段**输入采样→提交→GPU执行→呈现上屏全链分段闭段才出时长、重叠/倒序记账异常可判定检出；**双源**QPC/GPU时间戳闭集、同段双源跨度对账漂移超容差标注；**校准**CPU/GPU时钟域线性对齐两对样本完全确定映射、换算残差逐点给账超阈标注（换算误差可测）非单调样本拒绝标定；**开销**<0.1%帧预算实测值注入核算640ppm手算对账超标标注；零墙钟——时间戳全上游注入计时器只做账务对齐异常检测、零panic面零IO） |
 //! | [`cgd02_frametimer_checks`] | CGPU-F0482 域自检（判据五条映射：四段开合时长+未闭段None反向+重叠倒序异常、双源闭集+漂移控制、线性标定+残差逐点+反向拒绝、开销实测核算+红线标注；时长/比率/ppm全部判据侧手算写死对账；stamp独立重排全等） |
 //! vcj01_powerarch — CGPU-F1441 J 域开工与功耗架构总览（域使命/五主题十组/三处核验/五段流水线/边界/采样不耗样本/风险回退/0x52xx）
@@ -53,6 +54,7 @@ pub mod cgd03_frameledger_checks;
 pub mod cgd04_frameinterval;
 pub mod vcj01_powerarch;
 pub mod cgj02_sensorabs;
+pub mod cgj05_nvml;
 pub mod vcj01_powerarch_checks;
 pub mod cga02_threadpool;
 pub mod cga02_threadpool_checks;
@@ -299,6 +301,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     let blocks: [(&'static str, CheckSet); 43] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
+("CGPU-F1445", cgj05_nvml::run_cgj05_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
         ("CGPU-E0002", cge02_lifecycle_checks::run_cge02_checks()),
