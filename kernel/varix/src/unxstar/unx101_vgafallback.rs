@@ -1327,6 +1327,28 @@ pub fn run_unx101_checks() -> CheckSet {
         s.fail("U101-深-02-滚动区域语义", "区域面失效");
     }
 
+    // 深-03：擦除六态闭式恰值（行内/屏内区间端点手算+边界空区间）。
+    if probe_erase_semantics() {
+        s.ok("U101-深-03-擦除闭集语义");
+    } else {
+        s.fail("U101-深-03-擦除闭集语义", "擦除面失效");
+    }
+
+    // 深-04：宽度分类与推进恰值（控制/窄/宽三态+反滚对称恒等）。
+    if probe_width_semantics() {
+        s.ok("U101-深-04-宽度分类语义");
+    } else {
+        s.fail("U101-深-04-宽度分类语义", "宽度面失效");
+    }
+
+    // 深-05：双缓冲 diff 恰值（同构恒等+单格变+单行 12 字差+
+    // 刷新率整除恰值——最小刷新面）。
+    if probe_buffer_diff() {
+        s.ok("U101-深-05-缓冲diff恰值");
+    } else {
+        s.fail("U101-深-05-缓冲diff恰值", "diff面失效");
+    }
+
     s
 }
 
@@ -1574,4 +1596,243 @@ pub fn probe_scroll_region() -> bool {
     let pairs_ok = region_scroll_pairs(5, 10) == 400
         && region_scroll_pairs(0, VGA_ROWS - 1) == (VGA_ROWS - 1) * VGA_COLS;
     bad1 && bad2 && h_ok && full_ok && pairs_ok
+}
+
+// ---------------------------------------------------------------------------
+// 深化七区：文本缓冲操作扩展面——光标/滚动之外是「格子怎么被擦、
+// 字符占多宽、屏幕怎么最小刷新」的显示适配面：擦除闭集（ANSI EL/ED
+// 语义纯函数化）/ 字符宽度分类（CJK 双宽推进）/ 反向滚动对称面 /
+// 双缓冲 diff（最小刷新账）。全部纯函数零 IO——与移动/滚动面同构。
+// ---------------------------------------------------------------------------
+
+/// 擦除范围闭集（ANSI EL/ED 六态——行内三态 + 屏内三态全显性）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EraseScope {
+    /// 行内：光标（含）到行尾。
+    LineRight,
+    /// 行内：行首到光标（含）。
+    LineLeft,
+    /// 行内：整行。
+    LineAll,
+    /// 屏内：光标（含）到屏尾。
+    ScreenBelow,
+    /// 屏内：屏首到光标（含）。
+    ScreenAbove,
+    /// 屏内：全屏。
+    ScreenAll,
+}
+
+impl EraseScope {
+    /// 六态闭集。
+    pub const ALL: [EraseScope; 6] = [
+        EraseScope::LineRight,
+        EraseScope::LineLeft,
+        EraseScope::LineAll,
+        EraseScope::ScreenBelow,
+        EraseScope::ScreenAbove,
+        EraseScope::ScreenAll,
+    ];
+}
+
+/// **擦除格闭式**（scope + 光标 → 擦除格清单 [start, end) 左闭右开——
+/// 平铺索引面；擦除不动光标位（擦除是内容操作不是移动操作））。
+///
+/// 闭式纪律：边界光标（行尾列/屏尾行）各态手算恰值——左闭右开
+/// 区间端点单调（start <= end 恒成立，空区间 = 无可擦）。
+pub const fn erase_range(scope: EraseScope, pos: CursorPos) -> (usize, usize) {
+    let row_start = pos.row * VGA_COLS;
+    let row_end = row_start + VGA_COLS;
+    let cur = row_start + pos.col;
+    match scope {
+        EraseScope::LineRight => (cur, row_end),
+        EraseScope::LineLeft => (row_start, cur + 1),
+        EraseScope::LineAll => (row_start, row_end),
+        EraseScope::ScreenBelow => (cur, VGA_COLS * VGA_ROWS),
+        EraseScope::ScreenAbove => (0, cur + 1),
+        EraseScope::ScreenAll => (0, VGA_COLS * VGA_ROWS),
+    }
+}
+
+/// 擦除格数（闭式差——账面用）。
+pub const fn erase_count(scope: EraseScope, pos: CursorPos) -> usize {
+    let (s, e) = erase_range(scope, pos);
+    e - s
+}
+
+/// 字符宽度分类（显示适配面——VGA 字符推进列数闭式）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CharWidth {
+    /// 控制字符（退格/回车/换行——推进 0，语义由流面管）。
+    Control,
+    /// 窄字符（ASCII 可打印——推进 1）。
+    Narrow,
+    /// 宽字符（CJK 全角——推进 2，占双格）。
+    Wide,
+}
+
+/// 宽度单点（字节面分类：0x00..0x20 控制面窄表显性——0x08 退格/
+/// 0x0A 换行/0x0D 回车是流语义不计推进；CJK 双宽按 U+FF01..U+FF60
+/// 全角区与 CJK 区段在 UTF-8 首字节面的近似：0xEF 首字节（U+E000..
+/// U+FFFF 三字节序列）按宽计——显示适配近似闭式，不解析完整 UTF-8）。
+pub const fn width_of(c: u8) -> CharWidth {
+    if c < 0x20 {
+        CharWidth::Control
+    } else if c < 0x7F {
+        CharWidth::Narrow
+    } else {
+        // 扩展字节面：UTF-8 首字节 0xEF（CJK/全角三字节序列起点）
+        // 按宽计，其余扩展窄（Latin-1 补充等单宽近似）。
+        if c == 0xEF {
+            CharWidth::Wide
+        } else {
+            CharWidth::Narrow
+        }
+    }
+}
+
+/// 宽度 → 推进列数（写面推进闭式——宽字符占双格）。
+pub const fn advance_of(w: CharWidth) -> usize {
+    match w {
+        CharWidth::Control => 0,
+        CharWidth::Narrow => 1,
+        CharWidth::Wide => 2,
+    }
+}
+
+/// **反向滚动迁移格数**（bottom 行进 top——正向滚动的对称面：
+/// (bottom-top)*VGA_COLS 同式，方向反演账面恒等）。
+pub const fn scroll_down_pairs(top: usize, bottom: usize) -> usize {
+    (bottom - top) * VGA_COLS
+}
+
+/// **双缓冲 diff 账**（最小刷新面——逐格对拍，变化格 (row, col)
+/// 清单枚举序确定；渲染驱动只重画变化格的优化账）。
+pub struct BufferDiff {
+    /// 变化格（行优先枚举序）。
+    pub cells: Vec<(usize, usize)>,
+    /// 对拍格总数（恒 == 2000——对拍完整性锚）。
+    pub compared: usize,
+}
+
+impl BufferDiff {
+    /// **逐格对拍**（双缓冲全格——字符与属性任一变即立案）。
+    pub fn of(a: &VgaTextBuffer, b: &VgaTextBuffer) -> BufferDiff {
+        let mut cells = Vec::new();
+        let mut compared = 0usize;
+        let mut row = 0usize;
+        while row < VGA_ROWS {
+            let mut col = 0usize;
+            while col < VGA_COLS {
+                compared += 1;
+                match (a.cell(row, col), b.cell(row, col)) {
+                    (Some((ca, aa)), Some((cb, ab))) => {
+                        if ca != cb || aa != ab {
+                            cells.push((row, col));
+                        }
+                    }
+                    _ => cells.push((row, col)), // 读失败按异物立案（不可达面）
+                }
+                col += 1;
+            }
+            row += 1;
+        }
+        BufferDiff { cells, compared }
+    }
+
+    /// 零差平凡真（同构屏）。
+    pub fn identical(&self) -> bool {
+        self.cells.is_empty() && self.compared == VGA_COLS * VGA_ROWS
+    }
+
+    /// 刷新率（千分制）：变化格 * 1000 / 总格——最小刷新账。
+    pub fn permille(&self) -> u32 {
+        ((self.cells.len() as u32) * 1000) / (self.compared as u32)
+    }
+}
+
+/// 深化面参考探针——擦除六态闭式恰值（边界光标手算对拍）。
+pub fn probe_erase_semantics() -> bool {
+    // 光标 (2, 40)：行内三态——行平铺起 160、光标格 200。
+    let pos = CursorPos { row: 2, col: 40 };
+    let lr = erase_range(EraseScope::LineRight, pos);
+    let ll = erase_range(EraseScope::LineLeft, pos);
+    let la = erase_range(EraseScope::LineAll, pos);
+    let line_ok = lr == (200, 240)
+        && erase_count(EraseScope::LineRight, pos) == 40
+        && ll == (160, 201)
+        && erase_count(EraseScope::LineLeft, pos) == 41
+        && la == (160, 240)
+        && erase_count(EraseScope::LineAll, pos) == 80;
+    // 屏内三态——屏总 2000 格。
+    let sb = erase_range(EraseScope::ScreenBelow, pos);
+    let sa = erase_range(EraseScope::ScreenAbove, pos);
+    let sall = erase_range(EraseScope::ScreenAll, pos);
+    let screen_ok = sb == (200, 2000)
+        && erase_count(EraseScope::ScreenBelow, pos) == 1800
+        && sa == (0, 201)
+        && erase_count(EraseScope::ScreenAbove, pos) == 201
+        && sall == (0, 2000)
+        && erase_count(EraseScope::ScreenAll, pos) == 2000;
+    // 边界光标：行尾列 79（最后可写列）的 LineRight 恰 1 格——
+    // EL 语义含光标格自身（闭式 (cur, row_end) 端点差 1）；行首
+    // 列 0 的 LineLeft 同理恰 1 格（区间两端对称）。
+    let end_pos = CursorPos { row: 3, col: VGA_COLS - 1 };
+    let edge_ok = erase_count(EraseScope::LineRight, end_pos) == 1
+        && erase_count(EraseScope::LineLeft, CursorPos { row: 3, col: 0 }) == 1
+        && erase_count(EraseScope::LineAll, end_pos) == VGA_COLS;
+    line_ok && screen_ok && edge_ok
+}
+
+/// 深化面参考探针——宽度分类与推进恰值（控制/窄/宽三态）。
+pub fn probe_width_semantics() -> bool {
+    let w_ok = width_of(0x08) == CharWidth::Control
+        && width_of(0x0A) == CharWidth::Control
+        && width_of(0x0D) == CharWidth::Control
+        && width_of(0x1F) == CharWidth::Control
+        && width_of(b'A') == CharWidth::Narrow
+        && width_of(0x7E) == CharWidth::Narrow
+        && width_of(0xEF) == CharWidth::Wide
+        && width_of(0x80) == CharWidth::Narrow;
+    let a_ok = advance_of(CharWidth::Control) == 0
+        && advance_of(CharWidth::Narrow) == 1
+        && advance_of(CharWidth::Wide) == 2;
+    // 反滚对称：scroll_down_pairs == region_scroll_pairs（同式反演）。
+    let sym_ok = scroll_down_pairs(5, 10) == region_scroll_pairs(5, 10)
+        && scroll_down_pairs(0, VGA_ROWS - 1) == (VGA_ROWS - 1) * VGA_COLS;
+    w_ok && a_ok && sym_ok
+}
+
+/// 深化面参考探针——双缓冲 diff 恰值（同构恒等 + 单格变恰 1 +
+/// 单行写 12 字符恰 12 差异 + 刷新率恰值）。
+pub fn probe_buffer_diff() -> bool {
+    let a = VgaTextBuffer::new();
+    let d0 = BufferDiff::of(&a, &a);
+    if !d0.identical() || d0.permille() != 0 {
+        return false;
+    }
+    // 单格变：b 在 (5, 20) 写 'X'（属性默认同——字符面差异恰 1）。
+    let mut b = VgaTextBuffer::new();
+    b.cur_row = 5;
+    b.cur_col = 20;
+    b.put_char(b'X');
+    let d1 = BufferDiff::of(&a, &b);
+    let one_ok = d1.cells.len() == 1
+        && d1.cells[0] == (5, 20)
+        && d1.compared == VGA_COLS * VGA_ROWS
+        && d1.permille() == 0; // 1*1000/2000 = 0（整除下取）
+    // 写一行 12 字符：恰 12 差异格（行 5 列 0..12）。
+    let mut c = VgaTextBuffer::new();
+    c.cur_row = 5;
+    c.cur_col = 0;
+    let mut k = 0usize;
+    while k < 12 {
+        c.put_char(b'0' + k as u8);
+        k += 1;
+    }
+    let d2 = BufferDiff::of(&a, &c);
+    let twelve_ok = d2.cells.len() == 12
+        && d2.cells[0] == (5, 0)
+        && d2.cells[11] == (5, 11)
+        && d2.permille() == 6; // 12*1000/2000 = 6
+    one_ok && twelve_ok
 }
