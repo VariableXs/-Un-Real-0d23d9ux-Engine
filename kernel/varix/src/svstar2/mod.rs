@@ -174,9 +174,8 @@
 //! | [`vez14_examples`] | F5214 特效示例（示例是库的活广告——分叉的示例比没有示例更毒：**同源映射**——真实库 API 闭集 12 面（F5203-F5211 提炼），示例 API 集 ⊆ 此面才上架，任一不在即分叉 E_EX_DIVERGE 下架（撤出可导入面不是删除）；**三例目录**——粒子编排/氛围组合/转场串场三例闭集+kind 唯一+描述非空，缺例→补录排程点名 E_EX_MISSING（补录 O(缺)）；**沙箱试跑直打真实现**——粒子例三张 Additive 卡过 F5208 叠加闸全 Added/氛围例 schema 登记+越界钳制+预设导出导入往返闭合直打 F5207/转场例 Exclusive 双卡第二枚被拒（三例跑通=三条核心管线全活着），导入名冲突→沙箱提示 E_EX_IMPORT_CONFLICT（不是拒绝服务换个名就能进），试跑失败→E_EX_RUN_FAIL 下架（管线死示例死）；**版本戳+日验证同口径**——build 号+域指纹 FNV 双对拍与 F5213 同口径，日验证台账日序严格递增（倒填日 E_EX_STALE）+新鲜度最新记录距今 ≤1 日（日验证停了示例就在悄悄腐烂）；Z 域字符串码五码互异） | VE 册 #VE-F5214 |
 //! | [`vez15_fuzz`] | F5215 特效 fuzz（fuzz 不是随机乱砸——**差分预言机**是判定核心：畸形 preset 语料喂 F5207 三闸，真实现行为与本地重推镜像对拍，错位即行为漂移立案（回归级发现）；四类目标闭集（schema 畸形/组合越界/引用伪造/闪烁边界）各配真实现直打探针——组合语料过 F5208 无票+超支双闸验账实守恒，伪造引用过 F5214 同源口径闸（拦住记 Clean 放行才立案），闪烁语料全界扫描直打 F5211 红线（恰界过/越界拦+修正幂等——光敏重点覆盖）；**发现即立案**——立案簿编号单调+光敏案优先级 1 先出+报告脱敏（只出编号/目标/指纹/裁决码永不含原文——输入是攻击面报告不得成为注入面）；**最小化器保崩删减**——每删一段重放探测器仍失守才保留（ddmin 单遍），首查不崩/删空两失败面立 MINFAIL 案；**限额闸先查后放**——单轮语料 64/立案 128 双记账 O(1)，超限 E_FZ_QUOTA 拒续；语法生成器 LCG 确定性同种子同序列（立案可复现——确定优先律延伸），语料池 FNV 指纹去重每轮取干 O(语料数)；Z 域字符串码五码互异） | VE 册 #VE-F5215 |
 //! | [`vez16_perf`] | F5216 特效性能（特效没有免费午餐——**价签可见是诚实承诺**：逐特效性能画像 [`PerfProfiler`] 逐特效累计采样→均价价签 µs/帧，价签可见=查询返回明细（总账会藏胖子），**画像失真→采样校准**——样本 <3 低置信 [`Confidence`] 显性标注不冒充确定值+零开销样本拒收 E_PF_BADSAMPLE（测量事故不是快特效）；**特效降级阶梯**——帧紧张按语义权重降级 [`SemWeight`] 三档环境权重最低先减/转场居中/战斗最高最后减（环境少一朵花玩家不在意战斗少一记刀光玩家当场举报），降载 O(1) 预排序游标单步推进 [`DegradeLadder`]（权重升序+同权重价签降序先减收益最大），**降级无序→语义权重断言**（降级单权重序单调不减序乱即 E_PF_UNORDERED 立案不静默乱减），降级单读屏可达 [`DegradePlan::spoken`] 可读名单「环境粒子已降级」不是黑箱掉帧；**特效性能预算双层**——子系统预算+组合预算两本账（子系统内省余量≠组合安全）任一层超支即超支，三档 [`BudgetVerdict`] Ok/Tight/Over 同 U07 口径（余量 >10% Ok/0<≤10% Tight/≤0 Over——used≥budget 短路 Over margin 不做负数减法）；**预算失准→实测回灌**——基线与实测均值偏差 >20% 即校准 [`Feedback`] 新基线=实测均值双向漂移都校（事实压过假设）O(样本) 一遍求和；Z 域字符串码五码互异） | VE 册 #VE-F5216 |
-//! | [`vez17_bridge`] | F6005 物理与渲染对接（抖动即缺陷自动检出+对接三件+水位降载策略公开） | VE 册 #VE-F6005 |
-//! | [`vez18_dbg`] | F6006 物理调试支持（调试三件+时间旅行快照环+预算声明降级预告+权限递增链+出机闸） | VE 册 #VE-F6006 |
-//! | [`vez19_determ`] | F6007 物理确定性（同种子同果 LCG+三重防护定点/序锁定/差异清单+零容忍+种子重标定） | VE 册 #VE-F6007 |
+//! | [`vez17_bridge`] | F6005 物理与渲染对接（物理插值是消除画面抖动的关键，**抖动即缺陷**：插值缺失导致的画面抖动自动检出 [`PoseBridge::sample_pose`] Err 即立案不静默硬切；**对接三件**——位姿输出 [`PoseSnap`] 双快照线性插值 alpha 越界钳制不外推+插值缓冲 [`InterpBuf`] 有界 FIFO 容量 4 双快照齐才插（单快照硬切即抖动源）+剔除协同 [`PoseBridge::cull_reconcile`] 物理坐标与渲染剔除共享同一位姿源偏差超阈值即位姿漂移标定立案（两边看到的不是同一个世界）；**插值缓冲水位可见** water_permile 千分比全量可查；水位告急含**自动降载**——丢最旧一张每帧至多一张防雪崩被丢计入 OVERLOAD 账不静默；自动降载含**策略公开** [`DEGRADE_POLICY_DOC`]；公开含**策略文档** [`policy_spoken`] 可读名单降载不是黑箱丢帧；越权登记闸 E_BR_UNREGISTERED 幂等登记；对接 O(可见实体) [`PoseBridge::sample_all`] 逐实体 O(1) 合计线性；Z 域字符串码五码互异） | VE 册 #VE-F6005 |
+//! | [`vez18_dbg`] | F6006 物理调试支持（物理为什么这样动必须可查——三律可预期的执行层 X03 口径延伸；**调试三件**——物理体线框视图 [`circle_wire`]/[`aabb_wire`] 圆 12 段/AABB 4 段闭式 降采样档位减段不减体（看的体一个不少看的花纹变简）+约束可视化 [`PhysDebugger::constraint_view`] 约束对双锚可视线挂空体拒+步进单帧 [`PhysDebugger::step_once`] 推一帧记一迹 Editor 专属；**时间旅行**——[`TravelRing`] 快照环容量 8 逐帧回看 travel_back 越界钳制不 panic 回看只读历史不篡改；**性能预算声明** VIEW_BUDGET_US=100µs 超标动作含**降级预告**——预告是「下次降」不是「这步已降」pending 与 apply 分离卡顿前给预期降级有底 Quarter 到底不降没了；**越权开启→拒绝** 权限递增链 Off<Viewer<Editor Viewer 可看不可步进；**调试数据不出机**——导出闸默认关显式开三步 Closed→Armed→Open 脱敏导出 ExportDigest 只出统计不出坐标（类型面无坐标字段）；视图卡顿→降采样 Full→Half→Quarter；视图 O(物理体数)；Z 域字符串码五码互异） | VE 册 #VE-F6006 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -397,7 +396,6 @@
 //! | [`vef22_checks`] | F1619 域自检（15 项五族：审计 2=全绿+证据逐行非空 / 算子 3=不相交+多项式替代双向在册+LE 显式在册 / 双跑 4=全语料一致且摘要非零+脏化再跑+**不同档位摘要互异（防对拍空转）**+重排双跑 / 跨版本 4=承诺审计+判据侧独立重算 56 字节参考流摘要相等+条款闭集+解码重编码闭环不变 / 判据 2=实挂条数实取+名字互异） | VE 册 #VE-F1619 |
 //! | [`vead03_materials`] | F6003 物理材质与表面（材质库**千分比整数备案**（F1619 字节级确定纪律在物理域延续）+MaterialId 直引 O(1) 查库；安全默认是**降级路径不是默认值**——兜底必带 SafeDefaultNote 标注，静默兜底把配置错误变成看起来正常的物理；组合实测矩阵每格带 measured 备案位与 owner **责任段**，冲突检测上报追责到段；未测组合推导值强制标注不伪装实测；pair 上三角对称归一索引；越权改→审计簿留痕可按表面回放，满容拒收计数不静默覆盖旧痕） | VE 册 #VE-F6003 |
 //! | [`vead03_checks`] | F6003 域自检（16 项六族：库 3=字段合法域+名字 id 双向可逆+越界兜底标注 / 安全 2=默认中庸无极值+未注册标注原因码 / 预览 3=备案逐字段相等+未测标注+对称归一越界拒绝 / 冲突 3=干净零上报（无假阳）+注入点名带责任段（无漏报）+**容差边界夹逼对钉** / 审计 3=留痕+越权拒+回放满容如实 / 判据 2=实挂条数实取+名字互异） | VE 册 #VE-F6003 |
-//! | [`vead04_bindgraph`] | F6004 物理与场景图绑定（**Y05 两律类型化**：BindMode 三态把权属写进类型——Strict 物理权威/Interactive 编辑器权威/Detached 同步停；**权限矩阵双写对拍** PERM_MATRIX const 表↔perm_rule 推导 3×6=18 格逐格对拍，运行时/调试不碰结构、编辑器不驱同步、查询全员开放；**绑定是旁路观察者**——结构操作不碰物理喂入摘要（同序列裸绑 vs 穿插结构操作 digest 逐位相等判据实证）；**渲染帧取插值位姿不取硬步位姿**——prev/cur 双位姿账+alpha 千分位整数定点插值（位置线性+四元数 Q14 NLERP 最短弧+Newton isqrt 归一，残差 ≤2 钉死），alpha=0 恰 prev/1000 恰 cur 端点钉死、越域显性拒、单步退化诚实；**批量 all-or-nothing 事务**——全量预检含批量内互斥，坏项整体拒逐项点名零副作用，MAX_BATCH=64 预算保护理由同源常量；**失效三路**——节点销毁→挂起池对外可查（复活前提校验 NotSuspended 拒无条件换绑）、同步失效→代次检出 Stale 点名+重绑恢复（缺席保守置失效不猜）、越权→拒绝+审计留痕点名到操作者×操作×目标；账实一致性探针正反双账对拍、审计满容拒记计数不覆盖旧痕；0x4B 段十六码两两互异 reason 全码可读） | VE 册 #VE-F6004 |
 //! | [`vc61_goverview`] | CGPU-F0961 G 域开工与 NVIDIA 总览（GPU 兼容矩阵六主题闭集（NVIDIA/Mali/Adreno/火线/老旧下限/认证发布）——主题位缺号或串号域收口对不齐账；六代覆盖表 RTX 50/40/30/20+GTX 16/10 逐代登记；特性盘点 **6 代×4 特性=24 格三态全登记**（Yes/Partial/No——部分支持单列是 F1185 在兼容矩阵的形态，No 格必带缺席说明）；十组规划 G01-G10 区间互斥可机检（重叠=两组抢单、缝隙=单号无主，开工日红不是收口日）；F01 认证体系复用声明逐条锚定对端+实例化差异实质非空——复用不锚定=另起炉灶遮羞布） | VE 册 #CGPU-F0961 |
 //! | [`vc61_goverview_checks`] | CGPU-F0961 域自检（11 项六族：主题 1=闭集可逆+未知拒绝 / 代际 1=短码可逆+架构名非空 / 特性 3=24 格全查+No/Partial 说明非空+**锚点格三态如实**（GTX16 无 RT 核心/RTX20 首代 Partial）/ 规划 3=审计绿+严格不等式方向+域边界字面钉死 / 复用 2=对端含 F01+差异实质非空 / 判据 2=实挂条数实取+名字互异） | VE 册 #CGPU-F0961 |
 //! | [`vef26_vfetch`] | F1623 顶点拉取优化（F1609 重排的**运行时落地端口** prefetch_reorder 委托 meshbatch 不复制算法——进管线一次重排每帧吃现成收益；LRU 命中率模拟器=验收量尺（纯函数整数运算，F1619 确定性纪律的量尺延续：量尺不确定测量就是玄学）；实例布局 AoS/SoA 双模式可配语义等价（布局是拉取策略不是数据变形）；FetchLedger 实时快照（F1630 调试数据消费点）；收益入册用命中率差+未命中操作计数（无墙钟不伪造毫秒数），跨缓存大小不可直比口径在册） | VE 册 #VE-F1623 |
@@ -628,7 +626,6 @@ pub mod vez15_fuzz;
 pub mod vez16_perf;
 pub mod vez17_bridge;
 pub mod vez18_dbg;
-pub mod vez19_determ;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
@@ -991,8 +988,6 @@ pub mod veab03_spatial;
 pub mod veab03_spatial_checks;
 // veab05_music — VE-F5605 音乐系统骨架（三态横纵九格矩阵全定义+乐句边界感知不硬切+节奏档可配+边界超时容错硬切留痕+同tick冲突优先级仲裁+曲缺占位静音+调试锁+读屏三段O(1) 0x5C段）
 // veab07_audioasset — VE-F5607 音频资产管线（导入压缩流送三段+格式注册制+双标注可查+按需滚动预取+提前三秒本地回退+体检三数 0xA0 段）
-// veab07_audioassets — VE-F5607 音频资产管线深化版（与并行速写位并存深化为准：三段管线编排/格式注册制重复未注册显性拒/双标注账面落定可查/失真查表闭式零浮点/按需滚动预取/窗内失败提前三秒降级/回退滞回显性恢复/量账守恒 0x53 段）
-pub mod veab07_audioassets;
 pub mod veab07_audioasset;
 // veab06_voice — VE-F5606 语音系统骨架（可靠通道三问句衔接+按权裁剪预算守恒+零记录隐私红线三违例阻断+说话板只示状态+延迟五段预算超段点名+静噪EWMA门限自适应+码率三档阶梯降级+设备占用提示 O(帧) 0x5D段）
 pub mod veab06_voice;
@@ -1004,8 +999,6 @@ pub mod vef62_nettelemetry;
 pub mod veab05_music;
 // veac02_agent — VE-F5802 AI Agent 模型（三段抽象单向流+注册制契约四件齐才准入+能力边界闭集越界拒+越幅钳制审计+资源三帽守恒+契约变更通知闸全员确认才生效+O(n)运行 0x62段）
 pub mod veac02_agent;
-// vch03_budgettier — CGPU-F1123 预算池分级（三级池语义与配额分级表+账户树守恒+水位线）
-pub mod vch03_budgettier;
 pub mod veac01_aicore;
 pub mod veac01_aicore_checks;
 pub mod vc21_budgetarch;
@@ -1080,8 +1073,6 @@ pub mod vef22_checks;
 pub mod vef25_math;
 pub mod vead03_materials;
 pub mod vead03_checks;
-pub mod vead04_bindgraph;
-pub mod vef63_apifreeze;
 pub mod vc61_goverview;
 pub mod vc61_goverview_checks;
 pub mod vef26_vfetch;
@@ -1277,7 +1268,6 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F5216", vez16_perf::run_vez16_checks()),
 ("VE-F6005", vez17_bridge::run_vez17_checks()),
 ("VE-F6006", vez18_dbg::run_vez18_checks()),
-("VE-F6007", vez19_determ::run_vez19_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
@@ -1553,8 +1543,6 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1619", vef22_checks::run_vef22_checks()),
         ("VE-F1622", vef25_math::run_vef25_checks()),
         ("VE-F6003", vead03_checks::run_vead03_checks()),
-        ("VE-F6004", vead04_bindgraph::run_vead04_checks()),
-        ("VE-F5410", vef63_apifreeze::run_vef63_checks()),
         ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks()),
         ("VE-F1623", vef26_vfetch_checks::run_vef26_checks()),
         ("VE-F1624", vef27_morphtarget_checks::run_vef27_checks()),
