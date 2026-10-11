@@ -1349,6 +1349,31 @@ pub fn run_unx101_checks() -> CheckSet {
         s.fail("U101-深-05-缓冲diff恰值", "diff面失效");
     }
 
+    // 深-06：属性字节双语义——16 色闭集互异 + 双模式往返恒等 +
+    // bit7 双语义恰值（闪烁模式 bit7=blink 背景钳 3 位 / 亮背景
+    // 模式 bit7 归背景第四位）+ 默认属性 0x07。
+    if probe_attr_byte() {
+        s.ok("U101-深-06-属性字节双语义");
+    } else {
+        s.fail("U101-深-06-属性字节双语义", "属性面失效");
+    }
+
+    // 深-07：SGR 编码面——默认属性恰串 + 亮色码恰值 + 反解往返 +
+    // 坏串全拒（缺前缀/段数/参越界/非数）。
+    if probe_sgr_stream() {
+        s.ok("U101-深-07-SGR编码往返");
+    } else {
+        s.fail("U101-深-07-SGR编码往返", "SGR面失效");
+    }
+
+    // 深-08：拷贝方向账——六例恰值（分离/紧邻/重叠低向/重叠高向/
+    // 原地/零长）+ 滚动拷贝计划恰值（上滚正向/下滚反向/步数账）。
+    if probe_copy_direction() {
+        s.ok("U101-深-08-拷贝方向账");
+    } else {
+        s.fail("U101-深-08-拷贝方向账", "拷贝面失效");
+    }
+
     s
 }
 
@@ -1835,4 +1860,376 @@ pub fn probe_buffer_diff() -> bool {
         && d2.cells[11] == (5, 11)
         && d2.permille() == 6; // 12*1000/2000 = 6
     one_ok && twelve_ok
+}
+
+// ===========================================================================
+// 深化八区：属性字节双语义 / ANSI SGR 编码 / 重叠拷贝方向账——后备
+// 通道不只「写格子」：属性面（VGA 硬件属性字节的 bit7 双语义闸）、
+// 互操作面（VGA 缓冲 → ANSI 终端流的 SGR 重放编码——后备显示挂到
+// 串口终端上的翻译层）、安全面（重叠拷贝方向判定——帧缓冲大块
+// memmove 在真机翻车教训的纯函数镜像：方向选错 = 自我覆盖）。
+// 色彩闭集复用核心区 [`VgaColor`]（bits/from_bits 单点）——深化区
+// 只增 zh 人读名与亮色判定两个 const 面，不重复定义闭集本体。
+// ===========================================================================
+
+impl VgaColor {
+    /// 中文名（互异非空——深化区增面）。
+    pub const fn zh(self) -> &'static str {
+        match self {
+            VgaColor::Black => "黑",
+            VgaColor::Blue => "蓝",
+            VgaColor::Green => "绿",
+            VgaColor::Cyan => "青",
+            VgaColor::Red => "红",
+            VgaColor::Magenta => "品红",
+            VgaColor::Brown => "棕",
+            VgaColor::LightGray => "浅灰",
+            VgaColor::DarkGray => "深灰",
+            VgaColor::LightBlue => "亮蓝",
+            VgaColor::LightGreen => "亮绿",
+            VgaColor::LightCyan => "亮青",
+            VgaColor::LightRed => "亮红",
+            VgaColor::LightMagenta => "亮品红",
+            VgaColor::Yellow => "黄",
+            VgaColor::White => "白",
+        }
+    }
+
+    /// 亮色判定（8..15——SGR 亮色码域，深化区增面）。
+    pub const fn is_light(self) -> bool {
+        self.bits() >= 8
+    }
+}
+
+/// bit7 双语义模式闸：VGA 属性字节最高位在「闪烁允许」模式下是
+/// 闪烁位（背景钳 3 位 = 8 色），在「闪烁禁止（亮背景）」模式下是
+/// 背景第四位（背景 16 色、无闪烁）——同一字节两种读法。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BlinkMode {
+    /// bit7 = 闪烁位（背景 8 色）。
+    Blinking,
+    /// bit7 = 背景亮色位（背景 16 色无闪烁）。
+    BrightBg,
+}
+
+/// VGA 属性字节面（前景 4 位 / 背景 3 或 4 位（模式依赖）/ 闪烁位）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct AttrByte {
+    pub fg: VgaColor,
+    pub bg: VgaColor,
+    pub blink: bool,
+}
+
+/// 默认属性（0x07 黑底浅灰字——VGA BIOS 经典值）。
+pub const ATTR_DEFAULT: u8 = 0x07;
+
+impl AttrByte {
+    /// 装配（bg 亮色 + Blinking 模式 = 语义冲突——背景钳回 3 位域）。
+    pub const fn pack(a: AttrByte, mode: BlinkMode) -> u8 {
+        let fg = a.fg.bits() & 0x0F;
+        match mode {
+            BlinkMode::Blinking => {
+                let bg = a.bg.bits() & 0x07;
+                let blink = if a.blink { 0x80 } else { 0x00 };
+                fg | (bg << 4) | blink
+            }
+            BlinkMode::BrightBg => fg | (a.bg.bits() << 4),
+        }
+    }
+
+    /// 拆解（模式化读法单点）。
+    pub const fn unpack(byte: u8, mode: BlinkMode) -> AttrByte {
+        let fg = VgaColor::from_bits(byte & 0x0F);
+        match mode {
+            BlinkMode::Blinking => {
+                let bg = VgaColor::from_bits((byte >> 4) & 0x07);
+                let fg = match fg {
+                    Some(c) => c,
+                    None => VgaColor::Black,
+                };
+                let bg = match bg {
+                    Some(c) => c,
+                    None => VgaColor::Black,
+                };
+                AttrByte { fg, bg, blink: byte & 0x80 != 0 }
+            }
+            BlinkMode::BrightBg => {
+                let fg = match fg {
+                    Some(c) => c,
+                    None => VgaColor::Black,
+                };
+                let bg = match VgaColor::from_bits((byte >> 4) & 0x0F) {
+                    Some(c) => c,
+                    None => VgaColor::Black,
+                };
+                AttrByte { fg, bg, blink: false }
+            }
+        }
+    }
+
+    /// 十六进制线格式（aa——外带诊断面）。
+    pub fn wire(a: AttrByte, mode: BlinkMode) -> String {
+        alloc::format!("{:02x}", AttrByte::pack(a, mode))
+    }
+}
+
+/// **SGR 重放编码**（VGA 属性 → ANSI SGR 选择GraphicRendition 序列
+/// ——后备缓冲 dump 到串口终端的翻译面；reset 起手清历史态）。
+pub fn sgr_reset() -> String {
+    String::from("\x1b[0m")
+}
+
+/// 属性 → SGR 序列（`\x1b[0;<fg>;<bg>m`：前景 30..37 暗 / 90..97 亮；
+/// 背景 40..47 暗 / 100..107 亮——BrightBg 模式下背景亮色才有亮码）。
+pub fn attr_to_sgr(a: AttrByte, mode: BlinkMode) -> String {
+    let fg_ord = a.fg.bits();
+    let fg_code: u8 = if fg_ord >= 8 { 90 + fg_ord - 8 } else { 30 + fg_ord };
+    let bg_ord = match mode {
+        BlinkMode::Blinking => a.bg.bits() & 0x07,
+        BlinkMode::BrightBg => a.bg.bits(),
+    };
+    let bg_code: u8 = if bg_ord >= 8 { 100 + bg_ord - 8 } else { 40 + bg_ord };
+    alloc::format!("\x1b[0;{};{}m", fg_code, bg_code)
+}
+
+/// SGR 十进制参数解析（1..3 位数字，闭式钳 255）。
+fn parse_sgr_param(s: &str) -> Option<u8> {
+    if s.is_empty() || s.len() > 3 {
+        return None;
+    }
+    let mut v: u16 = 0;
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    while i < b.len() {
+        let d = (b[i] as u16).wrapping_sub(b'0' as u16);
+        if d > 9 {
+            return None;
+        }
+        v = v * 10 + d;
+        i += 1;
+    }
+    if v > 255 {
+        return None;
+    }
+    Some(v as u8)
+}
+
+/// SGR 参数 → 色（30..37 暗 / 90..97 亮 → 前景；40..47 / 100..107 →
+/// 背景；其余码域 None——只吃颜色码，字型码不吃）。
+fn sgr_param_color(code: u8, bright: bool) -> Option<VgaColor> {
+    if code >= 30 && code <= 37 {
+        VgaColor::from_bits(code - 30)
+    } else if code >= 90 && code <= 97 {
+        VgaColor::from_bits(code - 90 + 8)
+    } else if !bright && code >= 40 && code <= 47 {
+        VgaColor::from_bits(code - 40)
+    } else if bright && code >= 100 && code <= 107 {
+        VgaColor::from_bits(code - 100 + 8)
+    } else {
+        None
+    }
+}
+
+/// SGR 序列反解（`\x1b[0;<fg>;<bg>m` 三段闸——前缀/段数/色码域/
+/// 亮暗互斥（前景亮码配背景暗码域，全亮或全暗均可）全显性）。
+pub fn sgr_to_attr(s: &str) -> Option<AttrByte> {
+    if !s.starts_with("\x1b[0;") || !s.ends_with('m') {
+        return None;
+    }
+    let body = &s[4..s.len() - 1];
+    let parts: Vec<&str> = body.split(';').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let fg_code = parse_sgr_param(parts[0])?;
+    let bg_code = parse_sgr_param(parts[1])?;
+    let fg = sgr_param_color(fg_code, true)?;
+    // 背景码域收紧：只吃 40..47 暗 / 100..107 亮（前景码不吃）。
+    let bg = if bg_code >= 40 && bg_code <= 47 {
+        sgr_param_color(bg_code, false)?
+    } else if bg_code >= 100 && bg_code <= 107 {
+        sgr_param_color(bg_code, true)?
+    } else {
+        return None;
+    };
+    Some(AttrByte { fg, bg, blink: false })
+}
+
+/// **重叠拷贝方向判定**（帧缓冲 memmove 语义纯函数镜像——方向选错
+/// = 源区未读先被覆盖 = 自我覆盖事故）：
+/// - 零长或原地 → None（无操作）；
+/// - 不重叠或目的在源下方（dst < src）→ Forward（低地址向高安全）；
+/// - 重叠且目的在源上方（dst > src）→ Backward（高地址向低安全）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CopyDir {
+    /// 正向（低地址 → 高地址逐单元拷）。
+    Forward,
+    /// 反向（高地址 → 低地址逐单元拷）。
+    Backward,
+}
+
+/// 方向判定（src/dst 为单元下标，len 为单元数）。
+pub const fn copy_dir(src: usize, dst: usize, len: usize) -> Option<CopyDir> {
+    if len == 0 || src == dst {
+        return None;
+    }
+    // 重叠判定：[src, src+len) ∩ [dst, dst+len) 非空。
+    let overlap = dst < src + len && src < dst + len;
+    if overlap && dst > src {
+        Some(CopyDir::Backward)
+    } else {
+        Some(CopyDir::Forward)
+    }
+}
+
+/// **滚动拷贝计划**（整屏行滚动 = 缓冲区大块移动——shift 正 = 内容
+/// 上滚（源在目的下方 = dst < src → Forward）；shift 负 = 下滚 →
+/// Backward；shift 0 → None。步数账 = 拷贝单元数）。
+pub const fn copy_plan(rows: usize, cols: usize, shift: isize) -> Option<(CopyDir, usize)> {
+    if shift == 0 || rows == 0 || cols == 0 {
+        return None;
+    }
+    // 包裹取绝对值（isize::MIN 取负会 panic——零 panic 面纪律）。
+    let mag = if shift < 0 {
+        (0isize).wrapping_sub(shift) as usize
+    } else {
+        shift as usize
+    };
+    if mag >= rows {
+        return None;
+    }
+    let len = (rows - mag) * cols;
+    if shift > 0 {
+        Some((CopyDir::Forward, len))
+    } else {
+        Some((CopyDir::Backward, len))
+    }
+}
+
+/// 深-06 判据：属性字节双语义——16 色闭集互异 + 双模式往返恒等 +
+/// bit7 双语义恰值 + 默认属性 0x07 + 线格式。
+pub fn probe_attr_byte() -> bool {
+    // 十六色闭集：序数互异 + 反解往返 + 中文名互异非空。
+    let mut colors_ok = VgaColor::ALL.len() == 16;
+    let mut i = 0usize;
+    while i < 16 && colors_ok {
+        let c = VgaColor::ALL[i];
+        colors_ok = colors_ok
+            && c.bits() == i as u8
+            && VgaColor::from_bits(i as u8) == Some(c)
+            && !c.zh().is_empty();
+        let mut j = i + 1;
+        while j < 16 {
+            if c.zh() == VgaColor::ALL[j].zh() {
+                colors_ok = false;
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    let oob = VgaColor::from_bits(16).is_none();
+    // 双模式往返：全 256 字节 × 全 256 字节（pack∘unpack 恒等）。
+    let mut round_ok = true;
+    let mut b = 0u32;
+    while b < 256 {
+        let byte = b as u8;
+        if AttrByte::pack(AttrByte::unpack(byte, BlinkMode::Blinking), BlinkMode::Blinking) != byte {
+            round_ok = false;
+        }
+        if AttrByte::pack(AttrByte::unpack(byte, BlinkMode::BrightBg), BlinkMode::BrightBg) != byte {
+            round_ok = false;
+        }
+        b += 1;
+    }
+    // bit7 双语义恰值：0xFF 在闪烁模式 = 白字/浅灰底/闪；亮背景模式
+    // = 白字/白底/不闪——同一字节两种读法。
+    let blinky = AttrByte::unpack(0xFF, BlinkMode::Blinking);
+    let bright = AttrByte::unpack(0xFF, BlinkMode::BrightBg);
+    let dual_ok = blinky.fg == VgaColor::White
+        && blinky.bg == VgaColor::LightGray
+        && blinky.blink
+        && bright.fg == VgaColor::White
+        && bright.bg == VgaColor::White
+        && !bright.blink;
+    // 装配冲突语义：BrightBg 属性走 Blinking 装配 → 背景钳 3 位
+    // （White 0x0F & 0x07 = 0x07 → 0x77 非亮色）。
+    let clamp = AttrByte::pack(
+        AttrByte { fg: VgaColor::LightGray, bg: VgaColor::White, blink: false },
+        BlinkMode::Blinking,
+    ) == 0x77;
+    // 默认属性恰值：0x07 = 浅灰字黑底不闪。
+    let def = AttrByte::unpack(ATTR_DEFAULT, BlinkMode::Blinking);
+    let def_ok = def.fg == VgaColor::LightGray && def.bg == VgaColor::Black && !def.blink;
+    // 线格式恰值。
+    let wire_ok = AttrByte::wire(def, BlinkMode::Blinking) == "07";
+    colors_ok && oob && round_ok && dual_ok && clamp && def_ok && wire_ok
+}
+
+/// 深-07 判据：SGR 编码面——reset 恰串 + 默认属性恰串 + 亮色码恰值
+/// + 反解往返恒等 + 坏串全拒（缺前缀/缺尾/段数/色码域/非数）。
+pub fn probe_sgr_stream() -> bool {
+    let reset_ok = sgr_reset() == "\x1b[0m";
+    // 默认属性 → "\x1b[0;37;40m"（浅灰前景暗码 / 黑底暗码）。
+    let def = AttrByte::unpack(ATTR_DEFAULT, BlinkMode::Blinking);
+    let enc = attr_to_sgr(def, BlinkMode::Blinking);
+    let enc_ok = enc == "\x1b[0;37;40m";
+    // 亮红前景（0x0C）+ 黑底 → "\x1b[0;94;40m"。
+    let lite = AttrByte { fg: VgaColor::LightRed, bg: VgaColor::Black, blink: false };
+    let lite_enc = attr_to_sgr(lite, BlinkMode::Blinking);
+    let lite_ok = lite_enc == "\x1b[0;94;40m";
+    // 亮背景模式：白底 → "\x1b[0;37;107m"。
+    let wb = AttrByte { fg: VgaColor::LightGray, bg: VgaColor::White, blink: false };
+    let wb_enc = attr_to_sgr(wb, BlinkMode::BrightBg);
+    let wb_ok = wb_enc == "\x1b[0;37;107m";
+    // 反解往返：编码串反解回属性（blink 面不进 SGR——往返恒等按
+    // blink=false 比对）。
+    let rt = sgr_to_attr(&enc);
+    let rt_ok = match rt {
+        Some(a) => a.fg == def.fg && a.bg == def.bg && !a.blink,
+        None => false,
+    };
+    let rt2 = sgr_to_attr(&wb_enc);
+    let rt2_ok = match rt2 {
+        Some(a) => a.fg == VgaColor::LightGray && a.bg == VgaColor::White,
+        None => false,
+    };
+    // 坏串全拒。
+    let bad_ok = sgr_to_attr("\x1b[0;37m").is_none()
+        && sgr_to_attr("\x1b[0;37;40").is_none()
+        && sgr_to_attr("[0;37;40m").is_none()
+        && sgr_to_attr("\x1b[1;37;40m").is_none()
+        && sgr_to_attr("\x1b[0;99;40m").is_none()
+        && sgr_to_attr("\x1b[0;37;48m").is_none()
+        && sgr_to_attr("\x1b[0;3a;40m").is_none()
+        && sgr_to_attr("\x1b[0;377;40m").is_none();
+    reset_ok && enc_ok && lite_ok && wb_ok && rt_ok && rt2_ok && bad_ok
+}
+
+/// 深-08 判据：拷贝方向账——六例恰值（分离正向/紧邻正向/重叠高向
+/// 反向/重叠低向正向/原地 None/零长 None）+ 滚动计划恰值（上滚正向
+/// 步数 = (25-1)*80 / 下滚反向 / 全滚 None / 零滚动 None）+ 步数账。
+pub fn probe_copy_direction() -> bool {
+    // 分离区（dst 完全在源右侧之外）→ Forward。
+    let apart = copy_dir(0, 100, 50) == Some(CopyDir::Forward);
+    // 紧邻（dst == src+len 无重叠）→ Forward。
+    let adjacent = copy_dir(0, 50, 50) == Some(CopyDir::Forward);
+    // 重叠且 dst > src（高向）→ Backward。
+    let high = copy_dir(0, 10, 50) == Some(CopyDir::Backward);
+    // 重叠且 dst < src（低向）→ Forward。
+    let low = copy_dir(10, 0, 50) == Some(CopyDir::Forward);
+    // 原地 → None；零长 → None。
+    let inplace = copy_dir(7, 7, 50).is_none() && copy_dir(0, 9, 0).is_none();
+    let dir_ok = apart && adjacent && high && low && inplace;
+    // 滚动计划：上滚 1 行（内容上移）→ Forward + (25-1)*80=1920 步。
+    let up = copy_plan(VGA_ROWS, VGA_COLS, 1) == Some((CopyDir::Forward, (VGA_ROWS - 1) * VGA_COLS));
+    // 下滚 2 行 → Backward + 23*80=1840 步。
+    let down = copy_plan(VGA_ROWS, VGA_COLS, -2) == Some((CopyDir::Backward, (VGA_ROWS - 2) * VGA_COLS));
+    // 全滚（mag >= rows）→ None；零滚动 → None。
+    let edge = copy_plan(VGA_ROWS, VGA_COLS, 25).is_none() && copy_plan(VGA_ROWS, VGA_COLS, 0).is_none();
+    // 步数账闭式：拷贝步数恒 = (rows - |shift|) * cols。
+    let steps_ok = match copy_plan(25, 80, 3) {
+        Some((_, n)) => n == 22 * 80,
+        None => false,
+    };
+    dir_ok && up && down && edge && steps_ok
 }
