@@ -2,7 +2,6 @@
 //! | [`cgi01_bandwidth`] | CGPU-F1281 | I 域开工与带宽总架构（**五主题闭集**PCIe带宽仲裁/共享内存带宽/上传下载调度/带宽遥测/瓶颈归因冻结、本域160项全挂靠表外不立题；**账户化**四类传输（纹理上传/下载/交换/流送）各开预算账户——每笔传输先申请余额不足即拒绝并计数留痕、退款只做消费迁移、账本守恒净消费口径自检；**边界**H域管显存驻留/I域管传输带宽/VE-AD存储流F5801+管到达三段各管一段、接口复用F0405集成面声明逐句可grep；**十组**规划表组名+起止单号逐字取自总纲批次锚点、F1281-F1440首尾连续无缺口、宣告行读屏可查；零panic面零IO零墙钟） |
 //! | [`cgi01_bandwidth_checks`] | CGPU-F1281 域自检（判据五条映射：五主题闭集+标签独立重排全等、账户化申请/拒绝/退款/守恒全链+未开账户必拒反向语料、边界三域分工逐句grep、十组表与判据侧独立重排逐条全等+组间起止连续校验；守恒式与使用率判据侧独立重算） |
 //! | [`cga10_bandwidth_sched`] | CGPU-F0010 | 上传下载带宽调度器（**上传限速帧超时零贡献**——每帧 1.5ms 拷贝时间片（锚点原文恰值）耗尽立即让路渲染绝不超时挤占 yield 计数留痕+16KB/µs 速率标定单帧容量 24,576,000B 手算锚；**大资产强制分片**——4K 纹理 32MB 级超单帧容量构造面即 enforce chunked 留痕 E_BW_BIG_UNCHUNKED 跨帧渐进；**mipmap 可见性优先**——先传 1/64 面积 preview 级可见发生在帧 1 完成在帧 2 可见时刻远早于完成时刻；**读回不抢帧带宽**——下载低优先独立切片 750µs（上传之后消费）与上传对称限速互不挤占；**拥塞归因**——队列深度≥8 与 PCIe 利用率≥900‰ 双条件联动迟滞防抖（连续 2 帧紧才标定E_BW_CONGESTION/连续 3 帧松才解除——单帧尖峰不误报）+双条件叠加 PCIe 停顿独立告警 E_BW_PCIE_STALL；**联动放置决策**——PlacementHint keep_on_cpu 带宽紧时可 CPU 计算任务留 CPU 对接 CGPU-F0004 信号面纯数据不依赖；**遥测全量**——上/下字节账+切片四元画像+利用率千分比累计口径手算锚 1137‰+分片/让路/拒绝计数 0x3E 段五码互异 reason 全量显性） |
-//! | [`vcw06_docsearch`] | CGPU-F3526 | 文档搜索（**全文检索+过滤双闸**——倒排索引 BTreeMap/BTreeSet B 族确定性序 term→文档集+词频账；**多词 AND 交集**查询多词全部命中才返回 OR 是噪音放大器；**CJK 单字切分+拉丁词切分同一分词器不分支**——中文按字英文按词双语通吃；**TF 千分比密度计分** Σ词频×1000/文档词总数长文档稀释+同分 doc_id 升序**确定性排序不是运气排序**；**类型/标签双维过滤**先过滤后检索缩小面 kind 四类闭集+tag 六标签闭集闭集外显性拒 E_DS_BAD_KIND/E_DS_BAD_TAG 不静默空结果；**空查询显性拒** E_DS_EMPTY_QUERY 空串查询是 bug 不是零结果；**索引缺词→空结果非错误**查无此词是正常业务态与闭集外拒分开；**热词账** 查询分词逐词计数 F3527 文档遥测输入只计数不记用户+热词榜计数降序同计数字典序确定性；0xE1 段三码互异 reason 全量显性） |
 //! | [`cgd02_frametimer`] | CGPU-F0482 | 全帧精确计时器（**四段**输入采样→提交→GPU执行→呈现上屏全链分段闭段才出时长、重叠/倒序记账异常可判定检出；**双源**QPC/GPU时间戳闭集、同段双源跨度对账漂移超容差标注；**校准**CPU/GPU时钟域线性对齐两对样本完全确定映射、换算残差逐点给账超阈标注（换算误差可测）非单调样本拒绝标定；**开销**<0.1%帧预算实测值注入核算640ppm手算对账超标标注；零墙钟——时间戳全上游注入计时器只做账务对齐异常检测、零panic面零IO） |
 //! | [`cgd02_frametimer_checks`] | CGPU-F0482 域自检（判据五条映射：四段开合时长+未闭段None反向+重叠倒序异常、双源闭集+漂移控制、线性标定+残差逐点+反向拒绝、开销实测核算+红线标注；时长/比率/ppm全部判据侧手算写死对账；stamp独立重排全等） |
 //! vcj01_powerarch — CGPU-F1441 J 域开工与功耗架构总览（域使命/五主题十组/三处核验/五段流水线/边界/采样不耗样本/风险回退/0x52xx）
@@ -89,7 +88,6 @@ pub mod vcw04_apiref;
 pub mod vcw04_apiref_checks;
 // vcw05_docsync — CGPU-F3525 文档版本与代码同步（三态对齐规则写死落后/超前两害超前更危险/指纹+契约词双漂移立案幂等销账留痕不删/同步结论压发布门呼应文档即契约/0x34xx 三码）
 pub mod vcw05_docsync;
-pub mod vcw06_docsearch;
 pub mod vcx84_bandwidth;
 // vct05_secboundary — CGPU-F3045 对接安全边界（信封检视器+复用声明账+会话剖面+越界逐码显性拒）
 pub mod vct05_secboundary;
@@ -317,7 +315,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-V3362", vcv02_philosophy::run_vcv02_checks()),
         ("CGPU-W0001", vcw01_sdkdoc_checks::run_vcw01_checks()),
         ("CGPU-F0482", cgd02_frametimer_checks::run_cgd02_checks()),
-("CGPU-F3526", vcw06_docsearch::run_vcw06_checks()),
         ("CGPU-F0483", cgd03_frameledger_checks::run_cgd03_checks()),
         ("CGPU-F0485", cgd05_ratecontract_checks::run_cgd05_checks()),
         ("CGPU-F0486", cgm07_pacemodel_checks::run_cgm07_checks()),
@@ -568,3 +565,9 @@ pub mod vck42_compatmx;
 pub mod vck43_usercap;
 // vck44_mktgov — CGPU-F1725 异构市场与生态治理（市场三道闸+激励预留0xA801/FNV签名对拍0xA802/下架四步单调+时限0xA803/统计白名单匿名0xA804/五组自检/0xA8xx 五码）
 pub mod vck44_mktgov;
+// vck61_goreport — CGPU-F1742 K域预备报告GO/NO-GO（八节结构复用0xB901/GO五条件逐条判定同源对拍0xB902/NO-GO纪律一票否决0xB903/工程+质量+K10就绪三态双签0xB904/四组自检/0xB9xx 五码）
+pub mod vck61_goreport;
+// vck62_rehearsal — CGPU-F1743 预备演练（K10流程干跑五要素预生成0xBA01/彩排三查0xBA02/开发者+用户双旅程四步单调走查0xBA03/执行记录8步指纹入附录0xBA04/四组自检/0xBAxx 五码）
+pub mod vck62_rehearsal;
+// vck63_k09close — CGPU-F1744 K09组收口双签（15项接口+自查工具5函数FNV冻结v1 0xBB01/8组-10对-74清点总数字恰值0xBB02/五资产确认0xBB03/补齐三数字+K10移交GO确认0xBB04/双签/六组自检/0xBBxx 五码）
+pub mod vck63_k09close;
