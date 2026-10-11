@@ -904,6 +904,8 @@ pub mod unx2105_exportpoint;
 pub mod unx2106_exportledger;
 // unx2107_paramfreeze —— UNX-F2107 参数冻结（导出格式版本/刷新节拍/权限位：四列纪律+冻结指纹钉死+F1635版本对齐+F1897扩容通道凭证，0xD3 段六码）
 pub mod unx2107_paramfreeze;
+// unx2102_scheddebug —— UNX-F2102 sched_debug 调试面（全量dump只读：只读语义指纹断言+dump账本一致+权限位在册，0xCD 段六码）
+pub mod unx2108_scenbook;
 
 
 
