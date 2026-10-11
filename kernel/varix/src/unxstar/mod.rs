@@ -87,7 +87,7 @@ pub const UNX_DOMAIN: &str = "unxstar";
 pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(UNX_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 44] = [
+    let blocks: [(&'static str, CheckSet); 69] = [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
         ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
@@ -910,6 +910,10 @@ pub mod unx2108_scenbook;
 pub mod unx2109_ktestfamily;
 // unx2110_lockfreeread —— UNX-F2110 导出并发读基准（无锁读开销账：格式冻结F1773体例+seqlock逻辑建模+撕裂零发生+补测占位，0xD7 段六码）
 pub mod unx2110_lockfreeread;
+// unx2111_c5conaccount —— UNX-F2111 与C5用户态生态对账（读侧消费签名+解析样例互验+格式漂移注入10/10检出，0xD9 段六码）
+pub mod unx2111_c5conaccount;
+// unx2112_o1conaccount —— UNX-F2112 与O1对标采样对账（导出面×对标采样接口版本三一致+F2019/F2074接口族双锚对齐+采样谱27格封闭，0xDA 段六码）
+pub mod unx2112_o1conaccount;
 
 
 
@@ -1644,6 +1648,8 @@ pub mod unx120_notify;
 pub mod unx121storm_stress;
 pub mod unx122doc_freeze;
 pub mod unx123_deadlock;
+pub mod unx124_faultinj;
+pub mod unx125_latency;
 pub mod unx702_acpi80;
 pub mod unx722_verfp;
 pub mod unx742_upgrade;
@@ -2624,84 +2630,5 @@ pub fn run_wb22_unx22() -> crate::checks::CheckSet {
     set
 }
 
-// ===================== AI-WB3 · CoRun UNX-A4 批 40 单深化版（0x12C0~0x2A80 段四十码） =====================
-// unx2321_unisign3 ↔ UNX-F2321 CoRun·UNX-A3-B37（册目标 310 行；诊断码段 0x12C0–0x12FF）
-pub mod unx2321_unisign3;
-// unx2341_udomregress ↔ UNX-F2341 CoRun·UNX-A3-B38（册目标 330 行；诊断码段 0x13C0–0x13FF）
-pub mod unx2341_udomregress;
-// unx2361_udecLARE3 ↔ UNX-F2361 CoRun·UNX-A3-B39（册目标 310 行；诊断码段 0x15C0–0x15FF）
-pub mod unx2361_udecLARE3;
-// unx2381_ufinalacct ↔ UNX-F2381 CoRun·UNX-A3-B40（册目标 350 行；诊断码段 0x1640–0x167F）
-pub mod unx2381_ufinalacct;
-// unx2402_ufreemap ↔ UNX-F2402 CoRun·UNX-A4-B01（册目标 300 行；诊断码段 0x16C0–0x16FF）
-pub mod unx2402_ufreemap;
-// unx2422_uorder14 ↔ UNX-F2422 CoRun·UNX-A4-B02（册目标 300 行；诊断码段 0x1740–0x177F）
-pub mod unx2422_uorder14;
-// unx2442_urefill ↔ UNX-F2442 CoRun·UNX-A4-B03（册目标 300 行；诊断码段 0x17C0–0x17FF）
-pub mod unx2442_urefill;
-// unx2482_uorder9raw ↔ UNX-F2482 CoRun·UNX-A4-B05（册目标 300 行；诊断码段 0x18C0–0x18FF）
-pub mod unx2482_uorder9raw;
-// unx2502_uhptime ↔ UNX-F2502 CoRun·UNX-A4-B06（册目标 280 行；诊断码段 0x1A80–0x1ABF）
-pub mod unx2502_uhptime;
-// unx2562_uaspcreate ↔ UNX-F2562 CoRun·UNX-A4-B09（册目标 300 行；诊断码段 0x1BC0–0x1BFF）
-pub mod unx2562_uaspcreate;
-// unx2582_uvmainject ↔ UNX-F2582 CoRun·UNX-A4-B10（册目标 300 行；诊断码段 0x1C40–0x1C7F）
-pub mod unx2582_uvmainject;
-// unx2602_upfentry ↔ UNX-F2602 CoRun·UNX-A4-B11（册目标 300 行；诊断码段 0x1C80–0x1CBF）
-pub mod unx2602_upfentry;
-// unx2622_upcidbook ↔ UNX-F2622 CoRun·UNX-A4-B12（册目标 300 行；诊断码段 0x1CC0–0x1CFF）
-pub mod unx2622_upcidbook;
-// unx2642_uptebatchro ↔ UNX-F2642 CoRun·UNX-A4-B13（册目标 280 行；诊断码段 0x1D40–0x1D7F）
-pub mod unx2642_uptebatchro;
-// unx2662_ulookup ↔ UNX-F2662 CoRun·UNX-A4-B14（册目标 280 行；诊断码段 0x1D80–0x1DBF）
-pub mod unx2662_ulookup;
-// unx2682_ucacheif ↔ UNX-F2682 CoRun·UNX-A4-B15（册目标 340 行；诊断码段 0x1DC0–0x1DFF）
-pub mod unx2682_ucacheif;
-// unx2702_ulrufield ↔ UNX-F2702 CoRun·UNX-A4-B16（册目标 340 行；诊断码段 0x1E40–0x1E7F）
-pub mod unx2702_ulrufield;
-// unx2722_uanonevict ↔ UNX-F2722 CoRun·UNX-A4-B17（册目标 300 行；诊断码段 0x1E80–0x1EBF）
-pub mod unx2722_uanonevict;
-// unx2762_umaptbl ↔ UNX-F2762 CoRun·UNX-A4-B19（册目标 300 行；诊断码段 0x1EC0–0x1EFF）
-pub mod unx2762_umaptbl;
-// unx2782_ubuddymerge ↔ UNX-F2782 CoRun·UNX-A4-B20（册目标 360 行；诊断码段 0x1F40–0x1F7F）
-pub mod unx2782_ubuddymerge;
-// unx2801_ubigpoolcap ↔ UNX-F2801 CoRun·UNX-A4-B21（册目标 300 行；诊断码段 0x1F80–0x1FBF）
-pub mod unx2801_ubigpoolcap;
-// unx2841_ubigasp ↔ UNX-F2841 CoRun·UNX-A4-B23（册目标 340 行；诊断码段 0x20C0–0x20FF）
-pub mod unx2841_ubigasp;
-// unx2861_ubigmatrix ↔ UNX-F2861 CoRun·UNX-A4-B24（册目标 340 行；诊断码段 0x2140–0x217F）
-pub mod unx2861_ubigmatrix;
-// unx2901_ucachestress ↔ UNX-F2901 CoRun·UNX-A4-B26（册目标 340 行；诊断码段 0x21C0–0x21FF）
-pub mod unx2901_ucachestress;
-// unx2941_udomstress ↔ UNX-F2941 CoRun·UNX-A4-B28（册目标 340 行；诊断码段 0x2240–0x227F）
-pub mod unx2941_udomstress;
-// unx2981_udomclose ↔ UNX-F2981 CoRun·UNX-A4-B30（册目标 280 行；诊断码段 0x22C0–0x22FF）
-pub mod unx2981_udomclose;
-// unx3001_udualchain ↔ UNX-F3001 CoRun·UNX-A4-B31（册目标 400 行；诊断码段 0x2340–0x237F）
-pub mod unx3001_udualchain;
-// unx3021_utier3 ↔ UNX-F3021 CoRun·UNX-A4-B32（册目标 420 行；诊断码段 0x23C0–0x23FF）
-pub mod unx3021_utier3;
-// unx3061_upowerloss ↔ UNX-F3061 CoRun·UNX-A4-B34（册目标 420 行；诊断码段 0x24C0–0x24FF）
-pub mod unx3061_upowerloss;
-// unx3081_utierfinal ↔ UNX-F3081 CoRun·UNX-A4-B35（册目标 360 行；诊断码段 0x2580–0x25BF）
-pub mod unx3081_utierfinal;
-// unx3101_uregfreeze ↔ UNX-F3101 CoRun·UNX-A4-B36（册目标 400 行；诊断码段 0x25C0–0x25FF）
-pub mod unx3101_uregfreeze;
-// unx3121_ureconall ↔ UNX-F3121 CoRun·UNX-A4-B37（册目标 400 行；诊断码段 0x2640–0x267F）
-pub mod unx3121_ureconall;
-// unx3141_ubaseline ↔ UNX-F3141 CoRun·UNX-A4-B38（册目标 400 行；诊断码段 0x2680–0x26BF）
-pub mod unx3141_ubaseline;
-// unx3161_uregexec ↔ UNX-F3161 CoRun·UNX-A4-B39（册目标 400 行；诊断码段 0x26C0–0x26FF）
-pub mod unx3161_uregexec;
-// unx3181_udomainfinal ↔ UNX-F3181 CoRun·UNX-A4-B40（册目标 220 行；诊断码段 0x2740–0x277F）
-pub mod unx3181_udomainfinal;
-// unx3361_utimewin ↔ UNX-F3361 CoRun·UNX-A5-B09（册目标 320 行；诊断码段 0x2780–0x27BF）
-pub mod unx3361_utimewin;
-// unx3381_usamplelib ↔ UNX-F3381 CoRun·UNX-A5-B10（册目标 400 行；诊断码段 0x27C0–0x27FF）
-pub mod unx3381_usamplelib;
-// unx3401_uktestdesign ↔ UNX-F3401 CoRun·UNX-A5-B11（册目标 420 行；诊断码段 0x2880–0x28BF）
-pub mod unx3401_uktestdesign;
-// unx3421_udualbackend ↔ UNX-F3421 CoRun·UNX-A5-B12（册目标 440 行；诊断码段 0x28C0–0x28FF）
-pub mod unx3421_udualbackend;
-// unx3461_umountarch ↔ UNX-F3461 CoRun·UNX-A5-B14（册目标 340 行；诊断码段 0x2940–0x297F）
-pub mod unx3461_umountarch;
+pub mod unx982_throttle;
+pub mod unx983_stormgrade;
