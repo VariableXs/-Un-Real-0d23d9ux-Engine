@@ -135,6 +135,25 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         ("UNX-F0584", unx584_unkparam::run_unx584_checks()),
         ("UNX-F2101", unx2101_schedstat::run_unx2101_checks()),
         ("UNX-F2221", unx2221_freeledge::run_f2221_checks()),
+        ("UNX-F0883", unx0883_migwin::run_t883_checks()),
+        ("UNX-F1026", unx1026_hpetcand::run_t1026_checks()),
+        ("UNX-F1103", unx1103_disptab::run_t1103_checks()),
+        ("UNX-F1302", unx1302_tickretire::run_t1302_checks()),
+        ("UNX-F1482", unx1482_gaplist::run_t1482_checks()),
+        ("UNX-F1503", unx1503_quadfsm::run_t1503_checks()),
+        ("UNX-F1903", unx1903_xsaveamort::run_t1903_checks()),
+        ("UNX-F1941", unx1941_nmiipi::run_t1941_checks()),
+        ("UNX-F1961", unx1961_freqdom::run_t1961_checks()),
+        ("UNX-F1981", unx1981_twogov::run_t1981_checks()),
+        ("UNX-F2001", unx2001_schedutil::run_t2001_checks()),
+        ("UNX-F2021", unx2021_cstates::run_t2021_checks()),
+        ("UNX-F2081", unx2081_qdepth::run_t2081_checks()),
+        ("UNX-F2102", unx2102_sdebug::run_t2102_checks()),
+        ("UNX-F2141", unx2141_triface::run_t2141_checks()),
+        ("UNX-F2161", unx2161_stressorg::run_t2161_checks()),
+        ("UNX-F2181", unx2181_regbook::run_t2181_checks()),
+        ("UNX-F2201", unx2201_freezectl::run_t2201_checks()),
+        ("UNX-F2241", unx2241_finalchain::run_t2241_checks()),
         ("UNX-F2222", unx2222_rollver::run_f2222_checks()),
         ("UNX-F0505", unx505_loopback::run_f505_checks()),
         ("UNX-F1723", unx1723_migledger::run_f1723_checks()),
@@ -662,6 +681,16 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         );
     }
     {
+        // WB22 批次（第三波 22 单）：drill 入口逐单折叠为一个族集。
+        let sub = run_wb22_unx22();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F-WB22",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
         // UNX-21 批次（本会话深编）：逐单折叠为一个族集。
         let sub = run_unx21_batch();
         let passed = sub.all_passed() && !sub.truncated();
@@ -869,6 +898,8 @@ pub mod unx2102_scheddebug;
 pub mod unx2103_sysfstune;
 // unx2104_exportmatrix —— UNX-F2104 导出格式注入矩阵（第二十二矩阵：四族八形态全检出+预期声明完备率100%+零误报，0xCF 段六码）
 pub mod unx2104_exportmatrix;
+// unx2105_exportpoint —— UNX-F2105 单点导出（三面状态汇总：第26处单点在册+签名/单位/同窗三列齐备+B09汇聚对拍，0xD1 段六码）
+pub mod unx2105_exportpoint;
 
 
 
@@ -1498,6 +1529,44 @@ pub mod unx044_nstree;
 pub mod unx404_hpetcap_deep;
 // unx464_devid —— UNX-F0464 设备身份账深化版（三元组三读一致/100%覆盖对账/vendor名录26条PCI SIG/TLV往返，0xCB01~0xCB13 段）
 pub mod unx464_devid;
+// unx0883_migwin —— UNX-F0883 迁移在途事件不丢账（四态窗口/三账守恒/IRR 镜像/10 万迁移演练，0x4E00 段）
+pub mod unx0883_migwin;
+// unx1026_hpetcand —— UNX-F1026 HPET 候选深化（五档候选/三维质量分/格式统一 v1，0x4E80 段）
+pub mod unx1026_hpetcand;
+// unx1103_disptab —— UNX-F1103 分发表深化（256 槽直取/10^7 零失配/P99≤50/64 桶分布，0x5A00 段）
+pub mod unx1103_disptab;
+// unx1302_tickretire —— UNX-F1302 tick 退役深化（五测绘点/无缝守恒闸/基线对拍，0x5A80 段）
+pub mod unx1302_tickretire;
+// unx1482_gaplist —— UNX-F1482 断言缺口盘点深化（40 批三列/密度红线/大关差额，0x5B00 段）
+pub mod unx1482_gaplist;
+// unx1503_quadfsm —— UNX-F1503 四态矩阵深化（12 边覆盖 100%/自环零执行，0x6680 段）
+pub mod unx1503_quadfsm;
+// unx1903_xsaveamort —— UNX-F1903 XSAVE 摊销深化（16 tick 窗/窗闭强制落盘/保真指纹，0x6780 段）
+pub mod unx1903_xsaveamort;
+// unx1941_nmiipi —— UNX-F1941 NMI IPI 通道深化（不可屏蔽语义/三隔离/不丢不重 10/10，0x6880 段）
+pub mod unx1941_nmiipi;
+// unx1961_freqdom —— UNX-F1961 频域划分深化（8核4域 SMT 对映射/policy 注册表/聚合最高请求者赢，0x6A80 段）
+pub mod unx1961_freqdom;
+// unx1981_twogov —— UNX-F1981 双基 governor 深化（performance/powersave 恒档/即时生效零滞后，0x6B80 段）
+pub mod unx1981_twogov;
+// unx2001_schedutil —— UNX-F2001 schedutil 直耦深化（util→频映射/调度点直调零滞后/速率限幅，0x6C80 段）
+pub mod unx2001_schedutil;
+// unx2021_cstates —— UNX-F2021 idle 状态表深化（C0/C1/C2/C6 三列登记/能力声明交叉/越界防护 10/10，0x6D80 段）
+pub mod unx2021_cstates;
+// unx2081_qdepth —— UNX-F2081 队列水位深化（峰谷账/持续超阈 K=8/红线 4096 对齐 F1762，0x6E80 段）
+pub mod unx2081_qdepth;
+// unx2102_sdebug —— UNX-F2102 sched_debug 调试面深化（全量 dump 只读/哈希不变核/RO 权限在册，0x6F80 段）
+pub mod unx2102_sdebug;
+// unx2141_triface —— UNX-F2141 三面联合回归组织法（3面×3册矩阵/四步单向流/三交叉联测，0x7580 段）
+pub mod unx2141_triface;
+// unx2161_stressorg —— UNX-F2161 域级压测组织面（三轴档位积/预告-正式两段连续性/F1899 衔接三点，0x7780 段）
+pub mod unx2161_stressorg;
+// unx2181_regbook —— UNX-F2181 回归主账扩容（38+64=102 正路径+12 联测=114/五列 F1885/旧账零改动，0x7880 段）
+pub mod unx2181_regbook;
+// unx2201_freezectl —— UNX-F2201 判据冻结总控器（三段时序/600 条点名+29 族/哈希固化/版本锚绑定，0x7980 段）
+pub mod unx2201_freezectl;
+// unx2241_finalchain —— UNX-F2241 段级终验断言链（五步终跑/60 ID 连续/300字×20=6000 加法链/exit=0 留痕，0x7E80 段）
+pub mod unx2241_finalchain;
 // unx583_wlparams_deep —— UNX-F0583 白名单参数表深化并存版（24键三型冻结/FNV指纹/注入6/6全拒千分位恰1000，0x9E01~0x9E0F 段）
 // unx584_unkparam —— UNX-F0584 未知参数账注（显性弃置）：16槽定容弃置簿（原文/时点/位置三件套齐）+槽满显性拒不覆盖+时点单调+去重合并+UTF-8 边界安全截断+零执行断言（弃置键不可被语义层取值）/0xC100 段
 // unx2101_schedstat —— UNX-F2101 /proc/schedstat 导出面（三字段格式冻结）：版本册在册制+逐字冻结模板+导出/解析共用唯一行形状真源+往返逐字节对拍+逐CPU单调锚/0xD100 段
@@ -2458,7 +2527,88 @@ pub mod unx1822_stackguard;
 pub mod unx1842_ipivec_deep;
 // unx1862_mmmask ↔ UNX-F1862 地址空间活跃核追踪（mm 活跃 mask + 切换挂点同步 + 跨 mm 交集为空 + 击落必达 + 迁移翻转原子性；0xB100 段十六码）
 pub mod unx1862_mmmask;
+// unx1863_shootbegin ↔ UNX-F1863 击落发起原语（先本地 flush 再远程广播 + 先登记后发送硬闸 + 次序账三段单调 + 广播判定六项 + 过渡态改道 + 空集零广播短路；0xB110 段十码）
+pub mod unx1863_shootbegin;
 // unx1882_swipi ↔ UNX-F1882 切换×IPI 跨链回归（切换四段建模 + 竞态处置矩阵 10/10 全对 + F1807 寄存器保持性与死点 + F1847 三禁；0xB120 段十六码）
 pub mod unx1882_swipi;
 // unx1902_lazysave_deep ↔ UNX-F1902 惰性保存策略深化（保存时机三态判定表 12 格 + 三态逐例 10 例 + CR0.TS→#NM 闭环 + 往返保真 + 账守恒；0xB140 段十六码）
 pub mod unx1902_lazysave_deep;
+
+// ===================== WB22 批次（第三波 22 文件，0xD300~0xD4C0 段） =====================
+// unx45_sbtopo — UNX-F0045 _SB 设备拓扑提取（HID/EISA 闭集+ADR 冲突闸+拓扑指纹冻结+三类注入/0xD300 段）
+pub mod unx45_sbtopo;
+// unx703_memassert — UNX-F0703 内存图断言补全 ≥60（e820 五面覆盖+排序/合并/区间和 ±4KB/六类枚举+可解引/0xD310 段）
+pub mod unx703_memassert;
+// unx723_evalsla — UNX-F0723 升级评估流程账（四步闭集+留痕四列+SLA 7 日整型钟+超期红账/0xD320 段）
+pub mod unx723_evalsla;
+// unx743_evichain — UNX-F0743 域经证据链核验（解引 100%+断链隔离重挂+指纹对拍+零悬空/0xD330 段）
+pub mod unx743_evichain;
+// unx783_batchfinal — UNX-F0783 批册终态核（40 批 [已深化]+800 总账守恒+20 段核+骨架零残留/0xD340 段）
+pub mod unx783_batchfinal;
+// unx803_irqpool — UNX-F0803 IRQ 向量池化（0x20..0x8F 112 槽+首配分配+万次零悬空+越界留账/0xD350 段）
+pub mod unx803_irqpool;
+// unx823_eoiguard — UNX-F0823 EOI 单点封装（五类分账 IRQ/MSI/IPI/spurious/NMI+对偶恒等+直写拦截/0xD360 段）
+pub mod unx823_eoiguard;
+// unx1241_armingbody — UNX-F1241 Arming 态武装序列（五步闭集+段间栅栏+泵停确认+事件通道 100%/0xD380 段）
+pub mod unx1241_armingbody;
+// unx1261_irqsteady — UNX-F1261 Irq 态稳态本体（四段链 10^7 零丢失+泵零活动+标志一致/0xD390 段）
+pub mod unx1261_irqsteady;
+// unx1281_clockmap — UNX-F1281 clock.rs 轮询测绘（9 点双锚+接管映射 100%+F0961 对齐/0xD3A0 段）
+pub mod unx1281_clockmap;
+// unx1321_equivproto — UNX-F1321 等价验证协议（五步闭集+四维对拍+唯一判定出口+可重复/0xD3B0 段）
+pub mod unx1321_equivproto;
+// unx1341_stressmaster — UNX-F1341 分发压测总谱（54 场景闭集+执行矩阵 486 格+版本只增/0xD3C0 段）
+pub mod unx1341_stressmaster;
+// unx1361_budgetaudit — UNX-F1361 延迟预算复核（全量 1000‰+偏差 ≤10% 红线+五段定位/0xD3D0 段）
+pub mod unx1361_budgetaudit;
+// unx1381_indexledger — UNX-F1381 分发接管面总谱索引（F1101..F1400 400 条+批映射恒等+导出指纹/0xD3E0 段）
+pub mod unx1381_indexledger;
+// unx1401_vlatledger — UNX-F1401 全向量延迟账本（224 户闭集+64 槽一致+双规划账对齐/0xD3F0 段）
+pub mod unx1401_vlatledger;
+// unx1603_onlinebitmap — UNX-F1603 缺席核账与在线位图（人口一致+缺席位零恒+幽灵在线抓/0xD400 段）
+pub mod unx1603_onlinebitmap;
+// unx2121_cosnap — UNX-F2121 统计族同窗快照（四族同窗四元组+不可变+F1768 三条款对齐/0xD440 段）
+pub mod unx2121_cosnap;
+// unx2223_hashchain — UNX-F2223 全域哈希链滚动重算（620 行双口径一致+存量不变+篡改检出/0xD470 段）
+pub mod unx2223_hashchain;
+// unx2241_segfinal — UNX-F2241 段级终验五步（ID 连续 60+骨架 6000+字数红线+加法链+三账对回/0xD480 段）
+pub mod unx2241_segfinal;
+// unx2261_sediment — UNX-F2261 沉淀轴总控（三段编排+四类素材点收+三线滚动+时序/0xD490 段）
+pub mod unx2261_sediment;
+// unx2281_expansion — UNX-F2281 扩容轴总控（三段编排+增量清点+EX/图族/教训三线/0xD4A0 段）
+pub mod unx2281_expansion;
+// unx2301_axfinal — UNX-F2301 域经轴收官（收口 B34-B36+三件终验+F2317 交接/0xD4B0 段）
+pub mod unx2301_axfinal;
+
+/// WB22 批次域聚合（22 单：drill 验收入口逐单折叠，族内任一红即整族红）。
+pub fn run_wb22_unx22() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-unx22");
+    let entries: [(&'static str, bool, &'static str); 22] = [
+        ("UNX-F0045", unx45_sbtopo::drill_sbtopo().0, "wb22 sbtopo red"),
+        ("UNX-F0703", unx703_memassert::drill_memassert().0, "wb22 memassert red"),
+        ("UNX-F0723", unx723_evalsla::drill_evalsla().0, "wb22 evalsla red"),
+        ("UNX-F0743", unx743_evichain::drill_evichain().0, "wb22 evichain red"),
+        ("UNX-F0783", unx783_batchfinal::drill_batchfinal().0, "wb22 batchfinal red"),
+        ("UNX-F0803", unx803_irqpool::drill_irqpool().0, "wb22 irqpool red"),
+        ("UNX-F0823", unx823_eoiguard::drill_eoiguard().0, "wb22 eoiguard red"),
+        ("UNX-F1241", unx1241_armingbody::drill_armingbody().0, "wb22 armingbody red"),
+        ("UNX-F1261", unx1261_irqsteady::drill_irqsteady().0, "wb22 irqsteady red"),
+        ("UNX-F1281", unx1281_clockmap::drill_clockmap().0, "wb22 clockmap red"),
+        ("UNX-F1321", unx1321_equivproto::drill_equivproto().0, "wb22 equivproto red"),
+        ("UNX-F1341", unx1341_stressmaster::drill_stressmaster().0, "wb22 stressmaster red"),
+        ("UNX-F1361", unx1361_budgetaudit::drill_budgetaudit().0, "wb22 budgetaudit red"),
+        ("UNX-F1381", unx1381_indexledger::drill_indexledger().0, "wb22 indexledger red"),
+        ("UNX-F1401", unx1401_vlatledger::drill_vlatledger().0, "wb22 vlatledger red"),
+        ("UNX-F1603", unx1603_onlinebitmap::drill_onlinebitmap().0, "wb22 onlinebitmap red"),
+        ("UNX-F2121", unx2121_cosnap::drill_cosnap().0, "wb22 cosnap red"),
+        ("UNX-F2223", unx2223_hashchain::drill_hashchain().0, "wb22 hashchain red"),
+        ("UNX-F2241", unx2241_segfinal::drill_segfinal().0, "wb22 segfinal red"),
+        ("UNX-F2261", unx2261_sediment::drill_sediment().0, "wb22 sediment red"),
+        ("UNX-F2281", unx2281_expansion::drill_expansion().0, "wb22 expansion red"),
+        ("UNX-F2301", unx2301_axfinal::drill_axfinal().0, "wb22 axfinal red"),
+    ];
+    for (tag, ok, detail) in entries.iter() {
+        set.add(tag, *ok, if *ok { "" } else { detail });
+    }
+    set
+}
