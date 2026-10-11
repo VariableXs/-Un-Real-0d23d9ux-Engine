@@ -86,6 +86,7 @@ pub mod vcw04_apiref;
 pub mod vcw04_apiref_checks;
 // vcw05_docsync — CGPU-F3525 文档版本与代码同步（三态对齐规则写死落后/超前两害超前更危险/指纹+契约词双漂移立案幂等销账留痕不删/同步结论压发布门呼应文档即契约/0x34xx 三码）
 pub mod vcw05_docsync;
+pub mod vcx84_bandwidth;
 pub mod cgm02_display;
 pub mod cgm02_display_checks;
 pub mod cgm03_edid;
@@ -334,6 +335,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F1605", vck05_taskgraph::run_vck05_checks()),
         ("CGPU-F1607", vck07_sync::run_vck07_checks()),
         ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
+        ("CGPU-X3684", vcx84_bandwidth::run_vcx84_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
