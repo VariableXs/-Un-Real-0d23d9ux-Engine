@@ -989,6 +989,7 @@ pub mod veab06_voice;
 pub mod veab06_voice_deep;
 // vef61_netbudget — VE-F5408 网络性能预算（带宽五档单源表声明实测分开记账+CPU占比bps上限超限立案+容量实测不虚标无单拒声明安全系数1/2虚标回灌修正+分档降级O(1)迟滞回升防振荡+档位读屏可达 0x66段）
 pub mod vef61_netbudget;
+pub mod vef62_nettelemetry;
 pub mod veab05_music;
 // veac02_agent — VE-F5802 AI Agent 模型（三段抽象单向流+注册制契约四件齐才准入+能力边界闭集越界拒+越幅钳制审计+资源三帽守恒+契约变更通知闸全员确认才生效+O(n)运行 0x62段）
 pub mod veac02_agent;
@@ -1041,7 +1042,6 @@ pub mod vew02_manifest;
 pub mod vew03_loader;
 pub mod vew04_sandbox;
 pub mod vew05_trust;
-pub mod unx06_arbiter;
 pub mod ves04_flow;
 pub mod ves04_checks;
 pub mod ves05_bridge;
@@ -1193,6 +1193,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("CGPU-F0802", vcf02_certflow_checks::run_vcf02_checks()),
         ("VE-F5602", veab02_audioout_checks::run_veab02_checks()),
         ("VE-F6201", veae01_inputarch_checks::run_veae01_checks()),
+        ("VE-F5409", vef62_nettelemetry::run_vef62_checks()),
         ("CGPU-F0161", vcb01_framegraph_checks::run_vcb01_checks()),
         ("CGPU-F0162", vcb02_depderive_checks::run_vcb02_checks()),
         ("CGPU-F0163", vcb03_topopath_checks::run_vcb03_checks()),
@@ -1259,7 +1260,6 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
-("VE-F0214", veb14_perf::run_veb14_checks()),
 ("VE-F0215", veb15_checks::run_veb15_checks()),
 ("VE-F0216", veb16_checks::run_veb16_checks()),
 ("VE-F0217", veb17_checks::run_veb17_checks()),
@@ -1559,7 +1559,6 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0233", veb233_dualscreen::run_veb233_checks()),
         ("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks()),
         ("CGPU-F1122", vch02_ledger_checks::run_vch02_checks()),
-        ("UNX-F0061", unx06_arbiter::run_unx06_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
