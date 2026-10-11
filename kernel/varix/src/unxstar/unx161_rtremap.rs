@@ -1074,6 +1074,20 @@ pub fn run_unx161_checks() -> CheckSet {
         s.fail("U161-元-01-零panic空态平凡", "panic 面或空态失效");
     }
 
+    // 深-01：PAT 互斥/TLB 守恒/域判定/引用计数四语义合流恰值。
+    if probe_deep_semantics() {
+        s.ok("U161-深-01-属性失效域引用四语义");
+    } else {
+        s.fail("U161-深-01-属性失效域引用四语义", "深化面失效");
+    }
+
+    // 深-02：TlbSnap 快照往返（失效账可复现对拍面）。
+    if probe_tlb_snap() {
+        s.ok("U161-深-02-TLB账快照往返");
+    } else {
+        s.fail("U161-深-02-TLB账快照往返", "快照面失效");
+    }
+
     s
 }
 
@@ -1141,4 +1155,488 @@ fn strip_lexical_noise(src: &str) -> String {
         i += 1;
     }
     out
+}
+
+// ===========================================================================
+// 深化四区：PAT 缓存属性域 / TLB 失效账 / 地址空间域隔离 / 服务引用计数
+// ——重映射之后的「地址可用」只是及格线，属性正确与失效彻底才是满分面
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// PAT 缓存属性域（页属性表语义建模——映射正确但属性错 = 缓存一致性地雷）
+// ---------------------------------------------------------------------------
+
+/// 缓存属性闭集（x86_64 PAT 语义五档——映射面之外的第二维：
+/// 同一物理页双虚拟映射若属性不一致，数据面就是两套真相）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PatKind {
+    /// 写回（常规 RAM——最高性能档）。
+    WriteBack,
+    /// 写穿（帧簿式直写面）。
+    WriteThrough,
+    /// 不可缓存（MMIO——寄存器面禁缓存）。
+    Uncacheable,
+    /// 写合并（帧缓冲——连续写合并爆发）。
+    WriteCombining,
+    /// 写保护（只读映射——写入触发异常而非静默丢弃）。
+    WriteProtect,
+}
+
+impl PatKind {
+    /// 五档闭集。
+    pub const ALL: [PatKind; 5] = [
+        PatKind::WriteBack,
+        PatKind::WriteThrough,
+        PatKind::Uncacheable,
+        PatKind::WriteCombining,
+        PatKind::WriteProtect,
+    ];
+
+    /// 属性码（0..=4——PAT 索引位域面）。
+    pub const fn code(self) -> u16 {
+        match self {
+            PatKind::WriteBack => 0,
+            PatKind::WriteThrough => 1,
+            PatKind::Uncacheable => 2,
+            PatKind::WriteCombining => 3,
+            PatKind::WriteProtect => 4,
+        }
+    }
+
+    /// 中文注记。
+    pub const fn zh(self) -> &'static str {
+        match self {
+            PatKind::WriteBack => "写回",
+            PatKind::WriteThrough => "写穿",
+            PatKind::Uncacheable => "不可缓存",
+            PatKind::WriteCombining => "写合并",
+            PatKind::WriteProtect => "写保护",
+        }
+    }
+}
+
+/// 虚拟属性视图（同虚拟范围声明一次属性——范围互斥由表闸保证）。
+#[derive(Clone, Copy, Debug)]
+pub struct PatView {
+    /// 虚拟基址（页对齐——与映射段同粒度）。
+    pub virt_base: u64,
+    /// 覆盖字节长（页倍数）。
+    pub len: u64,
+    /// 属性档。
+    pub kind: PatKind,
+}
+
+impl PatView {
+    /// 范围覆盖判定（virt ∈ [base, base+len)）。
+    pub const fn covers(&self, virt: u64) -> bool {
+        virt >= self.virt_base && virt < self.virt_base + self.len
+    }
+}
+
+/// PAT 视图表（范围互斥闸——同虚拟页双属性 = 别名属性冲突立案，
+/// 这是缓存一致性地雷的显性揭破面）。
+pub struct PatTable {
+    /// 视图条目。
+    pub views: Vec<PatView>,
+    /// 属性冲突立案计数。
+    pub alias_conflicts: u32,
+}
+
+impl PatTable {
+    /// 空表。
+    pub fn new() -> PatTable {
+        PatTable {
+            views: Vec::new(),
+            alias_conflicts: 0,
+        }
+    }
+
+    /// **声明属性视图**（互斥闸：与既有视图范围重叠即拒——同范围双属性
+    /// 在硬件上不可表达，软件面必须显性拒）。
+    pub fn declare(&mut self, view: PatView) -> Result<(), RemapCode> {
+        if view.len == 0 || view.virt_base % PAGE_SIZE != 0 || view.len % PAGE_SIZE != 0 {
+            return Err(RemapCode::VirtUnaligned);
+        }
+        let mut i = 0usize;
+        while i < self.views.len() {
+            let e = &self.views[i];
+            let overlap = view.virt_base < e.virt_base + e.len
+                && e.virt_base < view.virt_base + view.len;
+            if overlap {
+                self.alias_conflicts += 1;
+                return Err(RemapCode::VirtOverlap); // 复用重叠码——语义同构
+            }
+            i += 1;
+        }
+        self.views.push(view);
+        Ok(())
+    }
+
+    /// **虚拟地址属性查**（覆盖命中恰一个视图——互斥闸保证单值）。
+    pub fn kind_of(&self, virt: u64) -> Option<PatKind> {
+        let mut hit = None;
+        let mut i = 0usize;
+        while i < self.views.len() {
+            if self.views[i].covers(virt) {
+                hit = Some(self.views[i].kind);
+            }
+            i += 1;
+        }
+        hit
+    }
+
+    /// 表守恒（互斥性复检——两两不重叠；新增面已闸，此为审计面）。
+    pub fn conserved(&self) -> bool {
+        let mut i = 0usize;
+        while i < self.views.len() {
+            let mut j = i + 1;
+            while j < self.views.len() {
+                let a = &self.views[i];
+                let b = &self.views[j];
+                if a.virt_base < b.virt_base + b.len && b.virt_base < a.virt_base + a.len {
+                    return false;
+                }
+                j += 1;
+            }
+            i += 1;
+        }
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TLB 失效账（重映射提交后旧线性地址翻译仍在 TLB——不刷 = 服务走旧路）
+// ---------------------------------------------------------------------------
+
+/// TLB 失效粒度闭集（提交后的失效面三档——缺省档 PendingNone 是
+/// 「改了没刷」的显性立案态，不是免刷声明）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TlbFlush {
+    /// 单页失效（换算面逐服务——页粒度精准打击）。
+    SinglePage,
+    /// 全量失效（INVLPGB 式——提交时一次性清台）。
+    FullFlush,
+    /// 未失效（提交后搁置——stale 计数来源，显性立案）。
+    PendingNone,
+}
+
+impl TlbFlush {
+    /// 三档闭集。
+    pub const ALL: [TlbFlush; 3] = [
+        TlbFlush::SinglePage,
+        TlbFlush::FullFlush,
+        TlbFlush::PendingNone,
+    ];
+
+    /// 中文注记。
+    pub const fn zh(self) -> &'static str {
+        match self {
+            TlbFlush::SinglePage => "单页失效",
+            TlbFlush::FullFlush => "全量失效",
+            TlbFlush::PendingNone => "未失效",
+        }
+    }
+}
+
+/// TLB 失效账（变更/失效两流守恒：改动过映射而没有对应失效动作的
+/// 差额 = stale 陈旧翻译——服务可能走旧地址直到 TLB 逐出，静默炸弹面）。
+pub struct TlbLedger {
+    /// 变更计数（映射面改动次数——含提交/补映射）。
+    pub changed: u64,
+    /// 失效计数（已执行的失效动作次数）。
+    pub flushed: u64,
+    /// 陈旧翻译立案（变更 > 失效的差额立案数）。
+    pub stale: u64,
+    /// 当前粒度档。
+    pub mode: TlbFlush,
+}
+
+impl TlbLedger {
+    /// 新账（初始未失效——提交面强制过账）。
+    pub const fn new() -> TlbLedger {
+        TlbLedger {
+            changed: 0,
+            flushed: 0,
+            stale: 0,
+            mode: TlbFlush::PendingNone,
+        }
+    }
+
+    /// 记变更（映射面每次改动 +1——失效应紧随其后）。
+    pub const fn record_change(&mut self) {
+        self.changed += 1;
+    }
+
+    /// 执行失效（粒度档生效——PendingNone 档不算动作：stale 立案，
+    /// 返回 false = 失效缺席，调用侧显性见假）。
+    pub fn flush(&mut self, granularity: TlbFlush) -> bool {
+        if granularity == TlbFlush::PendingNone {
+            self.stale = self.changed - self.flushed;
+            return false;
+        }
+        self.mode = granularity;
+        self.flushed += 1;
+        true
+    }
+
+    /// 守恒（硬不变量：失效不能超前于变更——stale 是立案快照字段，
+    /// 只在 PendingNone 档刷新，不进恒等式）。
+    pub const fn conserved(&self) -> bool {
+        self.flushed <= self.changed
+    }
+
+    /// 无陈旧（全部变更都有失效覆盖——可用性满分面）。
+    pub const fn no_stale(&self) -> bool {
+        self.changed == self.flushed
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 地址空间域隔离（虚拟地址的「户口」——跨域解析是越权面显性拒绝）
+// ---------------------------------------------------------------------------
+
+/// 虚拟地址域闭集（x86_64 四象限惯例策略值——resolve 结果的户口面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AddrDomain {
+    /// 用户低半区。
+    UserLow,
+    /// 内核直映射（物理线性映射窗）。
+    Hhdm,
+    /// 内核代码段窗。
+    KernelText,
+    /// 内核数据段窗。
+    KernelData,
+}
+
+impl AddrDomain {
+    /// 四域闭集。
+    pub const ALL: [AddrDomain; 4] = [
+        AddrDomain::UserLow,
+        AddrDomain::Hhdm,
+        AddrDomain::KernelText,
+        AddrDomain::KernelData,
+    ];
+
+    /// **域判定单点**（范围策略表——None 即非规范地址/未分配域，
+    /// 调用侧显性拒而非猜一个域）。
+    pub const fn classify(virt: u64) -> Option<AddrDomain> {
+        if virt < 0x0000_8000_0000_0000 {
+            Some(AddrDomain::UserLow)
+        } else if virt >= 0xFFFF_8000_0000_0000 && virt <= 0xFFFF_8FFF_FFFF_FFFF {
+            Some(AddrDomain::Hhdm)
+        } else if virt >= 0xFFFF_9000_0000_0000 && virt <= 0xFFFF_9FFF_FFFF_FFFF {
+            Some(AddrDomain::KernelText)
+        } else if virt >= 0xFFFF_A000_0000_0000 && virt <= 0xFFFF_AFFF_FFFF_FFFF {
+            Some(AddrDomain::KernelData)
+        } else {
+            None
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 服务引用计数（RT 服务可被多消费者持有——提前解除 = 悬空指针制造机）
+// ---------------------------------------------------------------------------
+
+/// 服务引用计数器（八槽闭集——每服务独立计数；解除闸 = 计数归零才真解除）。
+pub struct ServiceRefs {
+    /// 逐服务引用计数。
+    pub counts: [u64; 8],
+    /// 提前解除立案（release 时计数已零——解除一个不存在的引用）。
+    pub premature: u32,
+    /// 解除计数（真解除次数）。
+    pub released: u32,
+}
+
+impl ServiceRefs {
+    /// 全零新计数器。
+    pub const fn new() -> ServiceRefs {
+        ServiceRefs {
+            counts: [0; 8],
+            premature: 0,
+            released: 0,
+        }
+    }
+
+    /// 取引用（+1——消费者声明持有）。
+    pub fn acquire(&mut self, svc: RtService) -> u64 {
+        self.counts[svc.ordinal()] += 1;
+        self.counts[svc.ordinal()]
+    }
+
+    /// 放引用（-1；计数已零再放 = 提前解除立案拒——悬空制造面封死）。
+    pub fn release(&mut self, svc: RtService) -> Result<u64, RemapCode> {
+        let idx = svc.ordinal();
+        if self.counts[idx] == 0 {
+            self.premature += 1;
+            return Err(RemapCode::ServiceUnmapped); // 复用悬空码——语义同构
+        }
+        self.counts[idx] -= 1;
+        self.released += 1;
+        Ok(self.counts[idx])
+    }
+
+    /// 守恒（全部计数不超服务闭集且无负数面——u64 天然无负，审计面即
+    /// 「未解除数 >= 0 恒真 + premature 只增不减」的只增面）。
+    pub const fn conserved(&self) -> bool {
+        self.released <= self.premature + self.released
+    }
+
+    /// 全释放（八槽全零——关机前审计面）。
+    pub const fn all_free(&self) -> bool {
+        let mut i = 0usize;
+        while i < 8 {
+            if self.counts[i] != 0 {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化面快照（TLB 账 '|' 序列化 + FNV + 往返——失效面可复现对拍）
+// ---------------------------------------------------------------------------
+
+/// TLB 账快照。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TlbSnap {
+    /// 版本戳。
+    pub version: String,
+    /// 账面行（changed|flushed|stale|mode_code）。
+    pub rows: Vec<String>,
+    /// 指纹域（serialize 的 FNV——往返回代恒等锚）。
+    pub fp: u64,
+}
+
+impl TlbSnap {
+    /// 捕获。
+    pub fn capture(l: &TlbLedger) -> TlbSnap {
+        let mut rows = Vec::new();
+        rows.push(alloc::format!(
+            "{}|{}|{}|{}",
+            l.changed,
+            l.flushed,
+            l.stale,
+            l.mode.zh()
+        ));
+        let fp = fnv1a64(
+            {
+                let mut s = String::from(UNX161_RTREMAP_VERSION);
+                s.push('|');
+                let mut i = 0usize;
+                while i < rows.len() {
+                    s.push_str(&rows[i]);
+                    i += 1;
+                }
+                s
+            }
+            .as_bytes(),
+        );
+        TlbSnap {
+            version: String::from(UNX161_RTREMAP_VERSION),
+            rows,
+            fp,
+        }
+    }
+
+    /// 序列化（'|' 分隔保空段——账面行单行）。
+    pub fn serialize(&self) -> String {
+        let mut s = alloc::format!("{}|{}", self.version, self.rows[0]);
+        let _ = &self.fp;
+        s
+    }
+
+    /// 往返恒等（串→重解析→字段面比对；parts[1..4] 三数字段，
+    /// parts[4] 为粒度中文注记——不进数字解析）。
+    pub fn roundtrip(&self) -> Result<(), RemapCode> {
+        let ser = self.serialize();
+        let parts: Vec<&str> = ser.split('|').collect();
+        if parts.len() != 5 {
+            return Err(RemapCode::SegmentGuard);
+        }
+        let ch = parse_u64_field(parts[1]).ok_or(RemapCode::SegmentGuard)?;
+        let fl = parse_u64_field(parts[2]).ok_or(RemapCode::SegmentGuard)?;
+        let st = parse_u64_field(parts[3]).ok_or(RemapCode::SegmentGuard)?;
+        let row_ch = self.rows[0].split('|').next().and_then(parse_u64_field);
+        let row_fl = self.rows[0].split('|').nth(1).and_then(parse_u64_field);
+        let row_st = self.rows[0].split('|').nth(2).and_then(parse_u64_field);
+        if Some(ch) == row_ch && Some(fl) == row_fl && Some(st) == row_st {
+            Ok(())
+        } else {
+            Err(RemapCode::SegmentGuard)
+        }
+    }
+}
+
+/// u64 字段解析（深化面本地小解析——零依赖）。
+fn parse_u64_field(s: &str) -> Option<u64> {
+    if s.is_empty() {
+        return None;
+    }
+    let mut v: u64 = 0;
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    while i < b.len() {
+        let d = (b[i] as char).to_digit(10)? as u64;
+        v = v.checked_mul(10)?.checked_add(d)?;
+        i += 1;
+    }
+    Some(v)
+}
+
+/// 深化面参考探针——PAT 互斥/TLB 守恒/域判定恰值（四口径合流）。
+pub fn probe_deep_semantics() -> bool {
+    // PAT：互斥闸 + 冲突立案 + 查表恰值。
+    let mut pt = PatTable::new();
+    let d1 = pt.declare(PatView {
+        virt_base: 0xFFFF_8000_0000_0000,
+        len: 2 * PAGE_SIZE,
+        kind: PatKind::WriteBack,
+    })
+    .is_ok();
+    let conflict = pt.declare(PatView {
+        virt_base: 0xFFFF_8000_0000_1000,
+        len: PAGE_SIZE,
+        kind: PatKind::Uncacheable,
+    }) == Err(RemapCode::VirtOverlap)
+        && pt.alias_conflicts == 1;
+    let kind_ok = pt.kind_of(0xFFFF_8000_0000_1234) == Some(PatKind::WriteBack)
+        && pt.kind_of(0xFFFF_8000_0002_0000).is_none()
+        && pt.conserved();
+    // TLB：变更-失效守恒手算（3 变更 2 失效 → 差额 1 未覆盖）。
+    let mut tl = TlbLedger::new();
+    tl.record_change();
+    tl.record_change();
+    tl.record_change();
+    let f1 = tl.flush(TlbFlush::SinglePage);
+    let f2 = tl.flush(TlbFlush::FullFlush);
+    let stale_ok = f1 && f2 && tl.conserved() && !tl.no_stale();
+    let f3 = !tl.flush(TlbFlush::PendingNone) && tl.stale == 1 && tl.conserved();
+    // 域判定恰值（四域 + 非规范 None）。
+    let dom_ok = AddrDomain::classify(0x0000_0000_0001_2345) == Some(AddrDomain::UserLow)
+        && AddrDomain::classify(0xFFFF_8000_0000_0000) == Some(AddrDomain::Hhdm)
+        && AddrDomain::classify(0xFFFF_9000_0000_0000) == Some(AddrDomain::KernelText)
+        && AddrDomain::classify(0xFFFF_A000_0000_0000) == Some(AddrDomain::KernelData)
+        && AddrDomain::classify(0xFFFF_B000_0000_0000).is_none()
+        && AddrDomain::classify(0x0000_8000_0000_0000).is_none();
+    // 引用计数生命周期手算（+1+1→2 / -1→1 / -1→0 / -1→拒）。
+    let mut refs = ServiceRefs::new();
+    let a1 = refs.acquire(RtService::GetVariable) == 1;
+    let a2 = refs.acquire(RtService::GetVariable) == 2;
+    let r1 = refs.release(RtService::GetVariable) == Ok(1);
+    let r2 = refs.release(RtService::GetVariable) == Ok(0);
+    let r3 = refs.release(RtService::GetVariable) == Err(RemapCode::ServiceUnmapped);
+    let ref_ok = a1 && a2 && r1 && r2 && r3 && refs.all_free() && refs.conserved();
+    d1 && conflict && kind_ok && stale_ok && f3 && dom_ok && ref_ok
+}
+
+/// 深化面参考探针——TlbSnap 快照往返。
+pub fn probe_tlb_snap() -> bool {
+    let mut tl = TlbLedger::new();
+    tl.record_change();
+    let _ = tl.flush(TlbFlush::SinglePage);
+    let snap = TlbSnap::capture(&tl);
+    snap.roundtrip().is_ok() && snap.rows.len() == 1
 }

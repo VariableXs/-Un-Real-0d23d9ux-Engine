@@ -1302,6 +1302,36 @@ pub fn run_unx141_checks() -> CheckSet {
         s.fail("U141-组-02-四口径探针全真", "探针失效");
     }
 
+    // 深-01：路径表 L/M 双端镜像恰值（同数据两表示字节面手算对拍）。
+    if probe_path_table_mirror() {
+        s.ok("U141-深-01-路径表双端镜像");
+    } else {
+        s.fail("U141-深-01-路径表双端镜像", "端序面失效");
+    }
+
+    // 深-02：路径表总长闭式双口径对账（手算闭式 == 构造输出——回填值
+    // 单点语义）。
+    if probe_path_table_total() {
+        s.ok("U141-深-02-路径表总长闭式");
+    } else {
+        s.fail("U141-深-02-路径表总长闭式", "闭式面失效");
+    }
+
+    // 深-03：Joliet 转义三态 + UCS-2 扩展 + 深度闸恰值。
+    if probe_joliet_seq() {
+        s.ok("U141-深-03-Joliet转义与深度闸");
+    } else {
+        s.fail("U141-深-03-Joliet转义与深度闸", "转义面失效");
+    }
+
+    // 深-04：描述符序列闸三态（正例/异物/终止符缺席——xorriso 拒收面
+    // 再前置）。
+    if probe_descriptor_sequence() {
+        s.ok("U141-深-04-描述符序列闸");
+    } else {
+        s.fail("U141-深-04-描述符序列闸", "序列面失效");
+    }
+
     // 元-01：零 panic 面 + 快照往返 + 空态平凡 + 字节面助手恰值。
     let src = include_str!("unx141_isogen.rs");
     let clean = strip_lexical_noise(src);
@@ -1403,4 +1433,399 @@ fn strip_lexical_noise(src: &str) -> String {
         i += 1;
     }
     out
+}
+
+// ===========================================================================
+// 深化三区：路径表（Path Table L/M 双端表）/ Joliet SVD / 描述符序列闸 /
+// 目录深度闸——字节级算术深化面（同源数据多表示零漂移纪律）
+// ===========================================================================
+
+/// 大端 u16 写入（M 路径表端序面）。
+pub fn put_be16(out: &mut Vec<u8>, v: u16) {
+    out.push((v >> 8) as u8);
+    out.push((v & 0xFF) as u8);
+}
+
+/// 大端 u32 写入（M 路径表端序面）。
+pub fn put_be32(out: &mut Vec<u8>, v: u32) {
+    out.push((v >> 24) as u8);
+    out.push(((v >> 16) & 0xFF) as u8);
+    out.push(((v >> 8) & 0xFF) as u8);
+    out.push((v & 0xFF) as u8);
+}
+
+/// 路径表条目（ISO9660 6.8——目录链的扁平索引面：读目录不必扫全盘，
+/// 先查路径表拿 LBA 再直跳——目录定位 O(1) 锚）。
+#[derive(Clone, Debug)]
+pub struct PathTableEntry {
+    /// 目录标识符（规范化后 ASCII 大写——路径表不走 Joliet 层）。
+    pub name: String,
+    /// 目录区 LBA（本目录第一扇区）。
+    pub dir_lba: u32,
+    /// 父目录在路径表中的记录序号（根 = 1——层级链锚）。
+    pub parent_idx: u16,
+}
+
+/// 路径表记录长度闭式（6.8.1.2：8 字节头 + 标识符长 + 奇数长补
+/// 1 个零字节——记录长度恒偶，扇区边界算术的奇偶护栏）。
+pub const fn pt_record_len(name_len: usize) -> usize {
+    let base = 8 + name_len;
+    if base % 2 == 0 {
+        base
+    } else {
+        base + 1
+    }
+}
+
+/// 路径表字节级构造（L 格式小端 + M 格式大端——同一数据两种端序
+/// 双表落盘，读取端按宿主端序选表：可移植性不是运行时转换是预生成）。
+/// 返回 (L 表, M 表)。
+pub fn build_path_table(entries: &[PathTableEntry]) -> (Vec<u8>, Vec<u8>) {
+    let mut l_tab: Vec<u8> = Vec::new();
+    let mut m_tab: Vec<u8> = Vec::new();
+    let mut ei = 0usize;
+    while ei < entries.len() {
+        let e = &entries[ei];
+        let name_b = e.name.as_bytes();
+        let rec_len = pt_record_len(name_b.len());
+        // ---- L 记录（小端）----
+        let base_l = l_tab.len();
+        l_tab.push(rec_len as u8); // 记录长度
+        l_tab.push(0); // 扩展属性记录长度（无——0 即短格式）
+        put_le32(&mut l_tab, e.dir_lba); // 目录区 LBA
+        put_le16(&mut l_tab, e.parent_idx); // 父记录号
+        let mut ci = 0usize;
+        while ci < name_b.len() {
+            l_tab.push(name_b[ci]);
+            ci += 1;
+        }
+        if name_b.len() % 2 == 1 {
+            l_tab.push(0); // 奇补
+        }
+        // 长度恰配对账（生成器内部一致性——段算术错了后面全错）。
+        if l_tab.len() - base_l != rec_len {
+            // 理论不可达（rec_len 与写入算术同源）——防御性截断。
+            l_tab.truncate(base_l);
+        }
+        // ---- M 记录（大端镜像——字节面逐段反端序）----
+        let base_m = m_tab.len();
+        m_tab.push(rec_len as u8);
+        m_tab.push(0);
+        put_be32(&mut m_tab, e.dir_lba);
+        put_be16(&mut m_tab, e.parent_idx);
+        let mut ci2 = 0usize;
+        while ci2 < name_b.len() {
+            m_tab.push(name_b[ci2]);
+            ci2 += 1;
+        }
+        if name_b.len() % 2 == 1 {
+            m_tab.push(0);
+        }
+        if m_tab.len() - base_m != rec_len {
+            m_tab.truncate(base_m);
+        }
+        ei += 1;
+    }
+    (l_tab, m_tab)
+}
+
+/// Joliet 转义序列闭集（SVD 偏移 88..91 三字节声明——UCS-2 层级三选一：
+/// 读取端凭转义序列判定名字面覆盖域，不是猜是声明）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum JolietEscape {
+    /// %/@（UCS-2 Level 1——BMP 基本面，无补充表）。
+    Level1,
+    /// %/C（Level 2——ISO 8859-1 覆盖声明）。
+    Level2,
+    /// %/E（Level 3——全 BMP 补充面）。
+    Level3,
+}
+
+impl JolietEscape {
+    /// 转义三字节恰值（0x25 0x2F 前缀 + 层字母 @/C/E）。
+    pub const fn bytes(self) -> [u8; 3] {
+        match self {
+            JolietEscape::Level1 => [0x25, 0x2F, 0x40],
+            JolietEscape::Level2 => [0x25, 0x2F, 0x43],
+            JolietEscape::Level3 => [0x25, 0x2F, 0x45],
+        }
+    }
+}
+
+/// ASCII → UCS-2 大端（Joliet 名字面——每字符 2 字节高零低码；
+/// 非 ASCII 图形字符统一 '_' 换基——字节面确定性，不用字符语义猜）。
+pub fn ascii_to_ucs2be(name: &str) -> Vec<u8> {
+    let b = name.as_bytes();
+    let mut out: Vec<u8> = Vec::new();
+    let mut i = 0usize;
+    while i < b.len() {
+        let c = b[i];
+        let ch = if c.is_ascii_graphic() || c == b' ' {
+            c.to_ascii_uppercase()
+        } else {
+            b'_'
+        };
+        out.push(0x00);
+        out.push(ch);
+        i += 1;
+    }
+    out
+}
+
+/// Joliet SVD 构造（Type 2 补充卷描述符——与 PVD 同源数据派生：
+/// 同一 total_blocks/同一时间戳/同一逻辑块大小，端序面双写——
+/// 单源多表示零漂移纪律，PVD 改了 SVD 必须同步改）。
+pub fn build_svd(
+    escape: JolietEscape,
+    volume_id: &str,
+    total_blocks: u32,
+    ts: &[u8; 7],
+) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::new();
+    out.push(2); // Type 2 补充卷描述符
+    out.extend_from_slice(b"CD001");
+    out.push(1); // 版本
+    // 转义序列域（32 字节——前 3 字节转义，其余零填充）。
+    let esc = escape.bytes();
+    let mut k = 0usize;
+    while k < 32 {
+        if k < 3 {
+            out.push(esc[k]);
+        } else {
+            out.push(0);
+        }
+        k += 1;
+    }
+    // 卷空间大小（双端 u32——小端在前大端在后）。
+    put_le32(&mut out, total_blocks);
+    put_be32(&mut out, total_blocks);
+    // 卷标识 32 字节 UCS-2 大端（16 字符容量——超出截断）。
+    let vid = ascii_to_ucs2be(volume_id);
+    let mut vi = 0usize;
+    while vi < 32 {
+        if vi < vid.len() {
+            out.push(vid[vi]);
+        } else {
+            out.push(0);
+        }
+        vi += 1;
+    }
+    // 卷集大小/卷序号（双端 u16——单卷集单卷）。
+    put_le16(&mut out, 1);
+    put_be16(&mut out, 1);
+    put_le16(&mut out, 1);
+    put_be16(&mut out, 1);
+    // 逻辑块大小（双端——与 PVD 单源 BLOCK_SIZE）。
+    put_le16(&mut out, BLOCK_SIZE as u16);
+    put_be16(&mut out, BLOCK_SIZE as u16);
+    // 路径表大小（占位——路径表排布后回填）。
+    put_le32(&mut out, 0);
+    put_be32(&mut out, 0);
+    // L/M 路径表 LBA 占位四槽（排布后回填）。
+    put_le32(&mut out, 0);
+    put_le32(&mut out, 0);
+    put_be32(&mut out, 0);
+    put_be32(&mut out, 0);
+    // 根目录记录 34 字节占位（与 PVD 同构——排布后回填）。
+    let mut ri = 0usize;
+    while ri < 34 {
+        out.push(0);
+        ri += 1;
+    }
+    // 卷集标识 32 字节 UCS-2。
+    let cs = ascii_to_ucs2be("VARIX");
+    let mut ci2 = 0usize;
+    while ci2 < 32 {
+        if ci2 < cs.len() {
+            out.push(cs[ci2]);
+        } else {
+            out.push(0);
+        }
+        ci2 += 1;
+    }
+    // Publisher / Data Preparer / Application / Copyright / Abstract /
+    // Bibliographic 六个 32 字节域占位（规范允许全零空置——空置即声明
+    // 「未指定」显性语义，不是遗漏）。
+    let mut z = 0usize;
+    while z < 6 * 32 {
+        out.push(0);
+        z += 1;
+    }
+    // 卷创建日期 17 字节（ASCII——与 PVD 同一 ts 单源）。
+    for &c in iso_ts_ascii(ts).as_bytes() {
+        out.push(c);
+    }
+    // 修改/生效/失效日期 3x17 占位（全零串——「未指定」声明面）。
+    let mut z2 = 0usize;
+    while z2 < 3 * 17 {
+        out.push(b'0');
+        z2 += 1;
+    }
+    out.push(1); // 文件结构版本（规范恒 1）
+    // 对齐扇区（描述符恒整扇区——链扫描算术的前提）。
+    while out.len() % BLOCK_SIZE as usize != 0 {
+        out.push(0);
+    }
+    out
+}
+
+/// 描述符序列闸（8.3：扇区 16 起描述符链——PVD 必须 >=1、终止符恰在
+/// 链尾、中间 Type 只允许 0（引导记录）/1（PVD）/2（SVD）——序列面
+/// 异物即拒。xorriso 拒收面再前置）。
+pub fn verify_descriptor_sequence(img: &[u8]) -> Result<(), IsoCode> {
+    if img.len() < (VD_START_LBA as usize + 1) * BLOCK_SIZE as usize {
+        return Err(IsoCode::LbaUnaligned);
+    }
+    let mut lba = VD_START_LBA as usize;
+    let mut pvd_seen = false;
+    loop {
+        let off = lba * BLOCK_SIZE as usize;
+        if off + 8 > img.len() {
+            return Err(IsoCode::TerminatorMissing); // 链走到尽头仍无终止符
+        }
+        let t = img[off];
+        if t == 255 {
+            if !pvd_seen {
+                return Err(IsoCode::PvdMagic); // 终止符前无 PVD——序列非法
+            }
+            return Ok(());
+        }
+        if t == 1 || t == 2 {
+            if &img[off + 1..off + 6] != b"CD001" {
+                return Err(IsoCode::PvdMagic);
+            }
+            if t == 1 {
+                pvd_seen = true;
+            }
+        } else if t != 0 {
+            return Err(IsoCode::PvdMagic); // 序列面异物（Type 3..254 非法档）
+        } // t == 0：引导记录 VD——合法链成员（El Torito 面所在）
+        lba += 1;
+        if lba > VD_START_LBA as usize + 64 {
+            return Err(IsoCode::TerminatorMissing); // 扫描上限——防死循环
+        }
+    }
+}
+
+/// 目录层级深度上限（6.8.1：层级 1..=8——根为 1，最深 8 层；
+/// 超深目录层次是读取端栈溢出的经典来源，前置闸即拒绝）。
+pub const MAX_DIR_DEPTH: usize = 8;
+
+/// 深度闸（1..=8 合法——0 层与越深都拒）。
+pub const fn dir_depth_ok(depth: usize) -> bool {
+    depth >= 1 && depth <= MAX_DIR_DEPTH
+}
+
+/// 路径表字节数恰值（记录长闭式逐条累计——路径表 SVD 回填值的手算
+/// 单点：与 build_path_table 输出长度必须相等，不等即排布事故）。
+pub const fn path_table_total_bytes(entries_name_lens: &[usize]) -> usize {
+    let mut total = 0usize;
+    let mut i = 0usize;
+    while i < entries_name_lens.len() {
+        total += pt_record_len(entries_name_lens[i]);
+        i += 1;
+    }
+    total
+}
+
+/// 深化面参考探针——路径表 L/M 镜像恰值（同数据双端字节面手算对拍）。
+pub fn probe_path_table_mirror() -> bool {
+    let entries = [
+        PathTableEntry {
+            name: String::from("ROOTDIR"),
+            dir_lba: 0x0000_1234,
+            parent_idx: 1,
+        },
+        PathTableEntry {
+            name: String::from("SUB"),
+            dir_lba: 0x0000_ABCD,
+            parent_idx: 1,
+        },
+    ];
+    let (l, m) = build_path_table(&entries);
+    // 总长闭式恰值：ROOTDIR(7)→8+7=15 奇→16；SUB(3)→8+3=11 奇→12。28。
+    if l.len() != 28 || m.len() != 28 {
+        return false;
+    }
+    // L 记录 1：len=16/attr=0/LBA 小端 34 12 00 00/父 小端 01 00。
+    let l1_ok = l[0] == 16
+        && l[1] == 0
+        && l[2] == 0x34
+        && l[3] == 0x12
+        && l[6] == 0x01
+        && l[7] == 0x00;
+    // M 记录 1：同位置大端 00 00 12 34 / 00 01。
+    let m1_ok = m[0] == 16
+        && m[1] == 0
+        && m[2] == 0x00
+        && m[3] == 0x00
+        && m[4] == 0x12
+        && m[5] == 0x34
+        && m[6] == 0x00
+        && m[7] == 0x01;
+    // 名字节同位同值（端序只翻数字段不翻名字段——首尾 R 恰值）。
+    let name_same = l[8] == b'R' && m[8] == b'R' && l[14] == b'R' && m[14] == b'R';
+    // L 记录 2 起点 = 16：len=12 恰值（M 同位镜像）。
+    let l2_ok = l[16] == 12 && m[16] == 12;
+    l1_ok && m1_ok && name_same && l2_ok
+}
+
+/// 深化面参考探针——Joliet 转义/UCS-2 扩展/深度闸恰值。
+pub fn probe_joliet_seq() -> bool {
+    // 转义三态恰值。
+    let esc_ok = JolietEscape::Level1.bytes() == [0x25, 0x2F, 0x40]
+        && JolietEscape::Level2.bytes() == [0x25, 0x2F, 0x43]
+        && JolietEscape::Level3.bytes() == [0x25, 0x2F, 0x45];
+    // UCS-2 扩展手算："AB" → 00 41 00 42；"a b" → 00 41 00 20 00 42。
+    let u1 = ascii_to_ucs2be("AB");
+    let u2 = ascii_to_ucs2be("a b");
+    let ucs_ok = u1 == [0x00, 0x41, 0x00, 0x42]
+        && u2 == [0x00, 0x41, 0x00, 0x20, 0x00, 0x42];
+    // 深度闸恰值。
+    let depth_ok = dir_depth_ok(1) && dir_depth_ok(8) && !dir_depth_ok(0)
+        && !dir_depth_ok(9);
+    esc_ok && ucs_ok && depth_ok
+}
+
+/// 深化面参考探针——描述符序列闸三态（正例过闸/异物拒/终止符缺席拒）。
+pub fn probe_descriptor_sequence() -> bool {
+    // 正例：现有 generate 产物（PVD 在 16、终止符在 18）。
+    let mut m = IsoManifest::new("SEQT");
+    let _ = m.add_file("S.DAT", b"sq", false);
+    let img = match generate(&mut m) {
+        Ok(i) => i,
+        Err(_) => return false,
+    };
+    if verify_descriptor_sequence(&img.bytes).is_err() {
+        return false;
+    }
+    // 反例一：PVD 类型抹成 9——序列异物拒。
+    let mut broken = img.bytes.clone();
+    let pvd_off = VD_START_LBA as usize * BLOCK_SIZE as usize;
+    broken[pvd_off] = 9;
+    if verify_descriptor_sequence(&broken).is_ok() {
+        return false;
+    }
+    // 反例二：终止符改 PVD 类型——链走到数据区尽头无终止符拒。
+    let mut broken2 = img.bytes.clone();
+    let term_off = img.term_lba as usize * BLOCK_SIZE as usize;
+    broken2[term_off] = 1;
+    if verify_descriptor_sequence(&broken2).is_ok() {
+        return false;
+    }
+    true
+}
+
+/// 路径表总长恰值探针（闭式 vs 构造输出双口径对账）。
+pub fn probe_path_table_total() -> bool {
+    let entries = [
+        PathTableEntry { name: String::from("A"), dir_lba: 16, parent_idx: 1 },
+        PathTableEntry { name: String::from("BC"), dir_lba: 17, parent_idx: 1 },
+        PathTableEntry { name: String::from("DEF"), dir_lba: 18, parent_idx: 2 },
+    ];
+    let lens = [1usize, 2, 3];
+    let expect = path_table_total_bytes(&lens);
+    let (l, m) = build_path_table(&entries);
+    // 闭式：A(1)→8+1=9 奇→10；BC(2)→10；DEF(3)→11 奇→12。32。
+    expect == 32 && l.len() == 32 && m.len() == 32
 }
