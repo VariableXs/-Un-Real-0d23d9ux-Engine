@@ -1306,13 +1306,13 @@ pub mod unx1001_tsync;
 pub mod unx1021_hpetprobe;
 // unx1041_clockarb ↔ UNX-F1041 主时钟源仲裁器（0x4ce0 段）
 pub mod unx1041_clockarb;
-// unx941_irqtwostage ↔ UNX-F0941 两级分发骨架（0x4ca0 段）
-pub mod unx941_irqtwostage;
-// unx981_irqstorm ↔ UNX-F0981 中断风暴检测器（0x4cb0 段）
-pub mod unx981_irqstorm;
-// unx1001_tsync ↔ UNX-F1001 TSC 跨核同步校验（0x4cc0 段）
-pub mod unx1001_tsync;
-// unx1021_hpetprobe ↔ UNX-F1021 HPET 探测与能力账（0x4cd0 段）
-pub mod unx1021_hpetprobe;
-// unx1041_clockarb ↔ UNX-F1041 主时钟源仲裁器（0x4ce0 段）
-pub mod unx1041_clockarb;
+// unx1002_tsccaps ↔ UNX-F1002 TSC 特性探测（0x4cf0 段）
+pub mod unx1002_tsccaps;
+// unx1022_timeout1 ↔ UNX-F1022 单次超时器底座（0x4d40 段）
+pub mod unx1022_timeout1;
+// unx1042_arbtrigger ↔ UNX-F1042 仲裁触发条件清单（0x4d50 段）
+pub mod unx1042_arbtrigger;
+// unx1101_disptab ↔ UNX-F1101 C 分发表 256 槽（0x4d60 段）
+pub mod unx1101_disptab;
+// unx1121_irqsign ↔ UNX-F1121 register_irq 签名冻结（0x4d70 段）
+pub mod unx1121_irqsign;
