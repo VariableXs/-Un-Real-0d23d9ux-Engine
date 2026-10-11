@@ -1317,6 +1317,8 @@ pub mod unx2103_sysfstune;
 pub mod unx2104_exportmatrix;
 // unx2102_scheddebug —— UNX-F2102 sched_debug 调试面（全量dump只读：只读语义指纹断言+dump账本一致+权限位在册，0xCD 段六码）
 pub mod unx2105_exportpoint;
+// unx2102_scheddebug —— UNX-F2102 sched_debug 调试面（全量dump只读：只读语义指纹断言+dump账本一致+权限位在册，0xCD 段六码）
+pub mod unx2106_exportledger;
 
 
 
