@@ -289,7 +289,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 37] = [
+    let blocks: [(&'static str, CheckSet); 43] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -436,3 +436,15 @@ pub mod cgg11_nvdoc;
 pub mod cgf15_certbench;
 // cgi11_bwbench — CGPU-F1290 带宽基准（三基准有效带宽各代PCIe实测vs理论闭集常量比≥75%红线0x7B01+仲裁开销50µs/轮红线0x7B02+批合并收益≥20%节时比负收益即红0x7B03/口径版本防挑参0x7B05/入册回归漂移立案0x7B04/五代全测端到端/四组自检/0x7Bxx 五码）
 pub mod cgi11_bwbench;
+// cgf16_certcons — CGPU-F0814 认证一致性（判定确定性同硬件同考卷同判定异判0x7C01/跨硬件归一化口径折算未归一比裸分0x7C02/判据变更ADR门无ADR0x7C03+重认证强制缺席0x7C04旧成绩跨版本失效/链闭合对账0x7C05/四组自检/0x7Cxx 五码）
+pub mod cgf16_certcons;
+// cgi12_bwcons — CGPU-F1291 带宽一致性（仲裁确定性同负载同分配异分配0x7D01/跨代归一Gen3/4/5折Gen1当量未归一0x7D02/仲裁语义变更ADR门无ADR0x7D03/语义账对拍不平0x7D04/ADR链断环0x7D05/四组自检/0x7Dxx 五码）
+pub mod cgi12_bwcons;
+// cgg12_nvbench — CGPU-F0972 NVIDIA基准（SKU成绩公开账六代D08逐代公开缺代0x7E01未公开拒/NVENC吞吐红线0x7E02/DLSS预留数据显性Empty不造假假数据0x7E03/入册回归漂移0x7E04口径防挑参0x7E05/四组自检/0x7Exx 五码）
+pub mod cgg12_nvbench;
+// vck12_hetsim — CGPU-F1612 异构模拟器（统一模拟框架F1454扩展声明NPU批处理模型+DSP实时调度模拟游离0x7F01/校准两态诚实真机vs文档典型值显性标注混标0x7F02/用途表四闭集CI-调度-回退-能效越表0x7F03/真机trace回放F1454复用漂移0x7F04/行为覆盖四类正常-满载-失败-抖动缺角0x7F05/五组自检/0x7Fxx 五码）
+pub mod vck12_hetsim;
+// vck13_hetsec — CGPU-F1613 异构安全边界（NPU模型=不可信输入三关格式-大小上限-沙箱缺一0x8101/DMA隔离IOMMU四域越界0x8102平台能力声明/配额防护超时+配额占死引擎0x8103/供应链签名校验预留失签0x8104/隐私生命周期推理数据不落持久区落盘0x8105/五组自检/0x81xx 五码）
+pub mod vck13_hetsec;
+// vck14_hetapi — CGPU-F1614 异构API冻结v1（14函数闭集五组注册2-查询2-提交3-同步3-遥测4缺函数0x8201/三要素签名-语义-错误路径缺一0x8202/只增承诺冻结篡改0x8203十年/扩展位新引擎类型F0406开放精神缺席0x8204/跨域对齐B/J域签名一致漂移0x8205/五组自检/0x82xx 五码）
+pub mod vck14_hetapi;
