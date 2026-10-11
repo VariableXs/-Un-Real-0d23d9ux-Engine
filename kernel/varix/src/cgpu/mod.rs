@@ -91,6 +91,10 @@ pub mod vcw04_apiref;
 pub mod vcw04_apiref_checks;
 // vcw05_docsync — CGPU-F3525 文档版本与代码同步（三态对齐规则写死落后/超前两害超前更危险/指纹+契约词双漂移立案幂等销账留痕不删/同步结论压发布门呼应文档即契约/0x34xx 三码）
 pub mod vcw05_docsync;
+// vcw07b_docsec_deep — CGPU-F3528 文档安全深化版（裁决书留痕可追责/三面同实例真复用+引擎指纹同源/降级最严闸零泄漏/跨版本两向差异签字结案/误杀申诉只追加不抹账/0x7680 段十二码）
+pub mod vcw07b_docsec_deep;
+// vcw09_docsite — CGPU-F3529 文档站（路由归一双射+路径穿越拒+静态幂等零动态零外链+增量最小重建传递闭包+拓扑环拒+三账守恒/0x7700 段十二码）
+pub mod vcw09_docsite;
 // vcw08_doctelem — CGPU-F3527 文档遥测（计数不记人隐私红线本体/访问计数+搜索热词聚合口径无用户维度字段/滚动定容覆盖+滚动计数留痕+守恒式 total==环内+滚掉/隐私抽检导出禁 user/session/ip/identity 词形检出即拒/P 域 cgp02 口径复用/0xE2 段四码）
 pub mod vcw08_doctelem;
 
@@ -312,7 +316,9 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 50] = [
+    let blocks: [(&'static str, CheckSet); 52] = [
+        ("CGPU-F3528-DEEP", vcw07b_docsec_deep::run_cgpu_f3528_deep_checks()),
+        ("CGPU-F3529", vcw09_docsite::run_cgpu_f3529_checks()),
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
