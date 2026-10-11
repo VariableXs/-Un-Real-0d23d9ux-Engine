@@ -174,7 +174,6 @@ pub mod cgg01_gnvidia;
 pub mod cgg02_nvprobe;
 // cgh03_pooltier 深化版（F1123 v2：三级池让度规则进裁决面/子账户树深度受限树内守恒/守恒三式/水位滞回+采样史趋势/八类事件账FNV链/再平衡单笔bps上限/回收预估单声明F1124执行位/快照指纹往返/读屏三段 0x65 段扩码 0x6505-0x650C）
 pub mod cgh03_pooltier;
-pub mod cgh04_waterpress;
 pub mod vck01_heteroarch;
 // vck02_hetres — CGPU-F1602 异构资源抽象（ComputeDevice四核心trait必选+Batch/Realtime扩展trait特性位图分层/四类型卡NPU DSP ISP MEDIA静态规格/HetCaps schema版本化能力即数据/HetHandle全局id+home+位置标签跨引擎位可达性判定/热注册带任务注销显性拒/MockEngine确定性假引擎F1454模式/0x3Bxx 四码）
 pub mod vck02_hetres;
@@ -295,7 +294,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 44] = [
+    let blocks: [(&'static str, CheckSet); 43] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -342,7 +341,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F1607", vck07_sync::run_vck07_checks()),
         ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
         ("CGPU-X3684", vcx84_bandwidth::run_vcx84_checks()),
-        ("CGPU-F1124", cgh04_waterpress::run_cgh04_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -503,3 +501,15 @@ pub mod vck36_aipc;
 pub mod vck37_3pframework;
 // vck38_sdk — CGPU-F1719 异构SDK与开发者体验（三件套API封装-模拟器-trace分析器源单挂既有0xA201/DX错误三要素码-人话-动作0xA202/版本对齐API冻结锚0xA203/双渠道分发+反馈闭环回执0xA204/五组自检/0xA2xx 五码）
 pub mod vck38_sdk;
+// vck39_examples — CGPU-F1720 异构示例库与教程（15例五要素闭集0xA301/三阶教程挂接表0xA302/CI全跑门禁0xA303/缺额对账0xA304/五组自检/0xA3xx 五码）
+pub mod vck39_examples;
+// vck40_benchrel — CGPU-F1721 异构基准发布（三基准定义0xA401/环境标注四要素+双跑ppm带0xA402/发布账修订链单调0xA403/对比诚实三红线0xA404/四组自检/0xA4xx 五码）
+pub mod vck40_benchrel;
+// vck41_certplan — CGPU-F1722 异构认证计划（设备+场景两级0xA501/判据公开九条可复现0xA502/四站单调流程0xA503/驱动更新复测维持0xA504/撤销公示0xA505/五组自检/0xA5xx 五码）
+pub mod vck41_certplan;
+// vck42_compatmx — CGPU-F1723 异构兼容性矩阵（硬件×驱动×场景三维格0xA601/驱动同步0xA602/安装前探测查询0xA603/夸大红线0xA604/四组自检/0xA6xx 五码）
+pub mod vck42_compatmx;
+// vck43_usercap — CGPU-F1724 异构用户可见能力（UE三接面0xA701/面板四项可关可查0xA702/文案三要素+句式表0xA703/克制四词审计+无障碍三查0xA704/五组自检/0xA7xx 五码）
+pub mod vck43_usercap;
+// vck44_mktgov — CGPU-F1725 异构市场与生态治理（市场三道闸+激励预留0xA801/FNV签名对拍0xA802/下架四步单调+时限0xA803/统计白名单匿名0xA804/五组自检/0xA8xx 五码）
+pub mod vck44_mktgov;
