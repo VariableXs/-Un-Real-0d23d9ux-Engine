@@ -663,3 +663,5 @@ pub fn run_cgpu20_vcw06() -> crate::checks::CheckSet {
 }
 // vck68_guestcap — CGPU-F1764 能力探测与虚拟化感知（guest探测模式判读矛盾保守仲裁+探测矩阵const表12格压舱+诚实三验证态自报/host背书/无背书虚标拦截视同不存在+host协商四步闭集交集语义越权留痕封印指纹重放确定+探测缓存K01模式纪元键控陈旧显性+失败三连保守模式最小集非猜测缺省/0xBD段12码）
 pub mod vck68_guestcap;
+// vct06_stackbudget — CGPU-F3046 对接性能预算（协议栈每帧<0.1ms=100_000ns恰值+七层闭集逐层预算和恰总线构造守恒+层超支/栈超支/静默贪吃贴边95%连击8帧三态显性+tick注入差分倒流拒+批化摊销恰值(fixed/B+per_item)与拐点(fixed<b(b+1))+修正建议单证据闸不拍脑袋+幂等闸+双跑确定+快照FNV/0xBE段12码）
+pub mod vct06_stackbudget;
