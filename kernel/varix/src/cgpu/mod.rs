@@ -581,3 +581,5 @@ pub mod vck65_k10metric;
 pub mod vck66_k10scene;
 // vck67_k10disc — CGPU-F1748 K域三纪律终审（三开销恰值100/100/50µs回读0xBF01/采样≤50‰+降级四档连续0xBF02/不造假30路径零违例0xBF03/五断言CI固化+违例零未决0xBF04/五组自检/0xBFxx 五码）
 pub mod vck67_k10disc;
+// vck68_guestcap — CGPU-F1764 能力探测与虚拟化感知（guest探测模式判读矛盾保守仲裁+探测矩阵const表压舱+诚实三验证态虚标拦截+host协商四步交集语义越权留痕+探测缓存K01+失败三连保守模式/0xBD段12码）
+pub mod vck68_guestcap;
