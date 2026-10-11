@@ -659,6 +659,226 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
             if passed { "" } else if sub.truncated() { "unx21 family truncated" } else { "unx21 family red" },
         );
     }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2401();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2401",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2421();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2421",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2441();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2441",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2461();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2461",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2481();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2481",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2501();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2501",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2521();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2521",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2541();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2541",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2561();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2561",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2581();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2581",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2601();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2601",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2621();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2621",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2641();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2641",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2661();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2661",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2681();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2681",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2701();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2701",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2721();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2721",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2741();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2741",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2761();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2761",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
+    {
+        // WB22 批次（第三波 A4 内存管理域 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20/wb21 family 折叠范式一致）。
+        let sub = run_wb22_u2781();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F2781",
+            passed,
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        );
+    }
     set
 }
 /// UNX-F0642 域聚合。
@@ -2399,3 +2619,648 @@ pub mod unx1562_a3sign;
 pub mod unx1602_cputopo;
 pub mod unx1621b_percurv;
 pub mod unx943_tophalfline;
+
+// ==========================================================================
+// WB22 批次（20 任务 × 12 深编模块，CoRun UNX-A4 内存管理域判据逐条落地）
+// 施工：AI-WB22 · 纯功能线 no_std+alloc · 全部自检由域聚合器统一调用
+// ==========================================================================
+pub mod unx2401_u2401barrier;
+pub mod unx2401_u2401bgrid;
+pub mod unx2401_u2401bmx;
+pub mod unx2401_u2401core;
+pub mod unx2401_u2401dual;
+pub mod unx2401_u2401grid;
+pub mod unx2401_u2401map;
+pub mod unx2401_u2401merge;
+pub mod unx2401_u2401mix;
+pub mod unx2401_u2401mx;
+pub mod unx2401_u2401pipe;
+pub mod unx2401_u2401sm;
+pub mod unx2421_u2421barrier;
+pub mod unx2421_u2421bgrid;
+pub mod unx2421_u2421bmx;
+pub mod unx2421_u2421core;
+pub mod unx2421_u2421dual;
+pub mod unx2421_u2421grid;
+pub mod unx2421_u2421map;
+pub mod unx2421_u2421merge;
+pub mod unx2421_u2421mix;
+pub mod unx2421_u2421mx;
+pub mod unx2421_u2421pipe;
+pub mod unx2421_u2421sm;
+pub mod unx2441_u2441barrier;
+pub mod unx2441_u2441bgrid;
+pub mod unx2441_u2441bmx;
+pub mod unx2441_u2441core;
+pub mod unx2441_u2441dual;
+pub mod unx2441_u2441grid;
+pub mod unx2441_u2441map;
+pub mod unx2441_u2441merge;
+pub mod unx2441_u2441mix;
+pub mod unx2441_u2441mx;
+pub mod unx2441_u2441pipe;
+pub mod unx2441_u2441sm;
+pub mod unx2461_u2461barrier;
+pub mod unx2461_u2461bgrid;
+pub mod unx2461_u2461bmx;
+pub mod unx2461_u2461core;
+pub mod unx2461_u2461dual;
+pub mod unx2461_u2461grid;
+pub mod unx2461_u2461map;
+pub mod unx2461_u2461merge;
+pub mod unx2461_u2461mix;
+pub mod unx2461_u2461mx;
+pub mod unx2461_u2461pipe;
+pub mod unx2461_u2461sm;
+pub mod unx2481_u2481barrier;
+pub mod unx2481_u2481bgrid;
+pub mod unx2481_u2481bmx;
+pub mod unx2481_u2481core;
+pub mod unx2481_u2481dual;
+pub mod unx2481_u2481grid;
+pub mod unx2481_u2481map;
+pub mod unx2481_u2481merge;
+pub mod unx2481_u2481mix;
+pub mod unx2481_u2481mx;
+pub mod unx2481_u2481pipe;
+pub mod unx2481_u2481sm;
+pub mod unx2501_u2501barrier;
+pub mod unx2501_u2501bgrid;
+pub mod unx2501_u2501bmx;
+pub mod unx2501_u2501core;
+pub mod unx2501_u2501dual;
+pub mod unx2501_u2501grid;
+pub mod unx2501_u2501map;
+pub mod unx2501_u2501merge;
+pub mod unx2501_u2501mix;
+pub mod unx2501_u2501mx;
+pub mod unx2501_u2501pipe;
+pub mod unx2501_u2501sm;
+pub mod unx2521_u2521barrier;
+pub mod unx2521_u2521bgrid;
+pub mod unx2521_u2521bmx;
+pub mod unx2521_u2521core;
+pub mod unx2521_u2521dual;
+pub mod unx2521_u2521grid;
+pub mod unx2521_u2521map;
+pub mod unx2521_u2521merge;
+pub mod unx2521_u2521mix;
+pub mod unx2521_u2521mx;
+pub mod unx2521_u2521pipe;
+pub mod unx2521_u2521sm;
+pub mod unx2541_u2541barrier;
+pub mod unx2541_u2541bgrid;
+pub mod unx2541_u2541bmx;
+pub mod unx2541_u2541core;
+pub mod unx2541_u2541dual;
+pub mod unx2541_u2541grid;
+pub mod unx2541_u2541map;
+pub mod unx2541_u2541merge;
+pub mod unx2541_u2541mix;
+pub mod unx2541_u2541mx;
+pub mod unx2541_u2541pipe;
+pub mod unx2541_u2541sm;
+pub mod unx2561_u2561barrier;
+pub mod unx2561_u2561bgrid;
+pub mod unx2561_u2561bmx;
+pub mod unx2561_u2561core;
+pub mod unx2561_u2561dual;
+pub mod unx2561_u2561grid;
+pub mod unx2561_u2561map;
+pub mod unx2561_u2561merge;
+pub mod unx2561_u2561mix;
+pub mod unx2561_u2561mx;
+pub mod unx2561_u2561pipe;
+pub mod unx2561_u2561sm;
+pub mod unx2581_u2581barrier;
+pub mod unx2581_u2581bgrid;
+pub mod unx2581_u2581bmx;
+pub mod unx2581_u2581core;
+pub mod unx2581_u2581dual;
+pub mod unx2581_u2581grid;
+pub mod unx2581_u2581map;
+pub mod unx2581_u2581merge;
+pub mod unx2581_u2581mix;
+pub mod unx2581_u2581mx;
+pub mod unx2581_u2581pipe;
+pub mod unx2581_u2581sm;
+pub mod unx2601_u2601barrier;
+pub mod unx2601_u2601bgrid;
+pub mod unx2601_u2601bmx;
+pub mod unx2601_u2601core;
+pub mod unx2601_u2601dual;
+pub mod unx2601_u2601grid;
+pub mod unx2601_u2601map;
+pub mod unx2601_u2601merge;
+pub mod unx2601_u2601mix;
+pub mod unx2601_u2601mx;
+pub mod unx2601_u2601pipe;
+pub mod unx2601_u2601sm;
+pub mod unx2621_u2621barrier;
+pub mod unx2621_u2621bgrid;
+pub mod unx2621_u2621bmx;
+pub mod unx2621_u2621core;
+pub mod unx2621_u2621dual;
+pub mod unx2621_u2621grid;
+pub mod unx2621_u2621map;
+pub mod unx2621_u2621merge;
+pub mod unx2621_u2621mix;
+pub mod unx2621_u2621mx;
+pub mod unx2621_u2621pipe;
+pub mod unx2621_u2621sm;
+pub mod unx2641_u2641barrier;
+pub mod unx2641_u2641bgrid;
+pub mod unx2641_u2641bmx;
+pub mod unx2641_u2641core;
+pub mod unx2641_u2641dual;
+pub mod unx2641_u2641grid;
+pub mod unx2641_u2641map;
+pub mod unx2641_u2641merge;
+pub mod unx2641_u2641mix;
+pub mod unx2641_u2641mx;
+pub mod unx2641_u2641pipe;
+pub mod unx2641_u2641sm;
+pub mod unx2661_u2661barrier;
+pub mod unx2661_u2661bgrid;
+pub mod unx2661_u2661bmx;
+pub mod unx2661_u2661core;
+pub mod unx2661_u2661dual;
+pub mod unx2661_u2661grid;
+pub mod unx2661_u2661map;
+pub mod unx2661_u2661merge;
+pub mod unx2661_u2661mix;
+pub mod unx2661_u2661mx;
+pub mod unx2661_u2661pipe;
+pub mod unx2661_u2661sm;
+pub mod unx2681_u2681barrier;
+pub mod unx2681_u2681bgrid;
+pub mod unx2681_u2681bmx;
+pub mod unx2681_u2681core;
+pub mod unx2681_u2681dual;
+pub mod unx2681_u2681grid;
+pub mod unx2681_u2681map;
+pub mod unx2681_u2681merge;
+pub mod unx2681_u2681mix;
+pub mod unx2681_u2681mx;
+pub mod unx2681_u2681pipe;
+pub mod unx2681_u2681sm;
+pub mod unx2701_u2701barrier;
+pub mod unx2701_u2701bgrid;
+pub mod unx2701_u2701bmx;
+pub mod unx2701_u2701core;
+pub mod unx2701_u2701dual;
+pub mod unx2701_u2701grid;
+pub mod unx2701_u2701map;
+pub mod unx2701_u2701merge;
+pub mod unx2701_u2701mix;
+pub mod unx2701_u2701mx;
+pub mod unx2701_u2701pipe;
+pub mod unx2701_u2701sm;
+pub mod unx2721_u2721barrier;
+pub mod unx2721_u2721bgrid;
+pub mod unx2721_u2721bmx;
+pub mod unx2721_u2721core;
+pub mod unx2721_u2721dual;
+pub mod unx2721_u2721grid;
+pub mod unx2721_u2721map;
+pub mod unx2721_u2721merge;
+pub mod unx2721_u2721mix;
+pub mod unx2721_u2721mx;
+pub mod unx2721_u2721pipe;
+pub mod unx2721_u2721sm;
+pub mod unx2741_u2741barrier;
+pub mod unx2741_u2741bgrid;
+pub mod unx2741_u2741bmx;
+pub mod unx2741_u2741core;
+pub mod unx2741_u2741dual;
+pub mod unx2741_u2741grid;
+pub mod unx2741_u2741map;
+pub mod unx2741_u2741merge;
+pub mod unx2741_u2741mix;
+pub mod unx2741_u2741mx;
+pub mod unx2741_u2741pipe;
+pub mod unx2741_u2741sm;
+pub mod unx2761_u2761barrier;
+pub mod unx2761_u2761bgrid;
+pub mod unx2761_u2761bmx;
+pub mod unx2761_u2761core;
+pub mod unx2761_u2761dual;
+pub mod unx2761_u2761grid;
+pub mod unx2761_u2761map;
+pub mod unx2761_u2761merge;
+pub mod unx2761_u2761mix;
+pub mod unx2761_u2761mx;
+pub mod unx2761_u2761pipe;
+pub mod unx2761_u2761sm;
+pub mod unx2781_u2781barrier;
+pub mod unx2781_u2781bgrid;
+pub mod unx2781_u2781bmx;
+pub mod unx2781_u2781core;
+pub mod unx2781_u2781dual;
+pub mod unx2781_u2781grid;
+pub mod unx2781_u2781map;
+pub mod unx2781_u2781merge;
+pub mod unx2781_u2781mix;
+pub mod unx2781_u2781mx;
+pub mod unx2781_u2781pipe;
+pub mod unx2781_u2781sm;
+
+/// UNX-F2401 物理内存图消费与四态归一 域聚合（WB22 批次）。
+pub fn run_wb22_u2401() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2401");
+    let mut ok = true;
+    if !unx2401_u2401barrier::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401bgrid::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401bmx::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401core::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401dual::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401grid::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401map::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401merge::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401mix::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401mx::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401pipe::run_u2401_checks().all_passed() { ok = false; }
+    if !unx2401_u2401sm::run_u2401_checks().all_passed() { ok = false; }
+    set.add("UNX-F2401", ok, if ok { "" } else { "wb22-u2401 family sub-checks red" });
+    set
+}
+
+/// UNX-F2421 order-0 页快速路径 域聚合（WB22 批次）。
+pub fn run_wb22_u2421() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2421");
+    let mut ok = true;
+    if !unx2421_u2421barrier::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421bgrid::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421bmx::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421core::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421dual::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421grid::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421map::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421merge::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421mix::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421mx::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421pipe::run_u2421_checks().all_passed() { ok = false; }
+    if !unx2421_u2421sm::run_u2421_checks().all_passed() { ok = false; }
+    set.add("UNX-F2421", ok, if ok { "" } else { "wb22-u2421 family sub-checks red" });
+    set
+}
+
+/// UNX-F2441 每 CPU 页池结构（32 页批量） 域聚合（WB22 批次）。
+pub fn run_wb22_u2441() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2441");
+    let mut ok = true;
+    if !unx2441_u2441barrier::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441bgrid::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441bmx::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441core::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441dual::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441grid::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441map::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441merge::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441mix::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441mx::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441pipe::run_u2441_checks().all_passed() { ok = false; }
+    if !unx2441_u2441sm::run_u2441_checks().all_passed() { ok = false; }
+    set.add("UNX-F2441", ok, if ok { "" } else { "wb22-u2441 family sub-checks red" });
+    set
+}
+
+/// UNX-F2461 水线三档判定（min/low/high） 域聚合（WB22 批次）。
+pub fn run_wb22_u2461() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2461");
+    let mut ok = true;
+    if !unx2461_u2461barrier::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461bgrid::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461bmx::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461core::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461dual::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461grid::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461map::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461merge::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461mix::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461mx::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461pipe::run_u2461_checks().all_passed() { ok = false; }
+    if !unx2461_u2461sm::run_u2461_checks().all_passed() { ok = false; }
+    set.add("UNX-F2461", ok, if ok { "" } else { "wb22-u2461 family sub-checks red" });
+    set
+}
+
+/// UNX-F2481 大页族总纲（2M/1G 透明与显式两条路） 域聚合（WB22 批次）。
+pub fn run_wb22_u2481() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2481");
+    let mut ok = true;
+    if !unx2481_u2481barrier::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481bgrid::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481bmx::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481core::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481dual::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481grid::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481map::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481merge::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481mix::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481mx::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481pipe::run_u2481_checks().all_passed() { ok = false; }
+    if !unx2481_u2481sm::run_u2481_checks().all_passed() { ok = false; }
+    set.add("UNX-F2481", ok, if ok { "" } else { "wb22-u2481 family sub-checks red" });
+    set
+}
+
+/// UNX-F2501 大页映射前向接口冻结（→B10 交接冻结件） 域聚合（WB22 批次）。
+pub fn run_wb22_u2501() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2501");
+    let mut ok = true;
+    if !unx2501_u2501barrier::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501bgrid::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501bmx::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501core::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501dual::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501grid::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501map::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501merge::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501mix::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501mx::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501pipe::run_u2501_checks().all_passed() { ok = false; }
+    if !unx2501_u2501sm::run_u2501_checks().all_passed() { ok = false; }
+    set.add("UNX-F2501", ok, if ok { "" } else { "wb22-u2501 family sub-checks red" });
+    set
+}
+
+/// UNX-F2521 碎片指数定义与计算（B02 前向引用兑现） 域聚合（WB22 批次）。
+pub fn run_wb22_u2521() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2521");
+    let mut ok = true;
+    if !unx2521_u2521barrier::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521bgrid::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521bmx::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521core::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521dual::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521grid::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521map::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521merge::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521mix::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521mx::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521pipe::run_u2521_checks().all_passed() { ok = false; }
+    if !unx2521_u2521sm::run_u2521_checks().all_passed() { ok = false; }
+    set.add("UNX-F2521", ok, if ok { "" } else { "wb22-u2521 family sub-checks red" });
+    set
+}
+
+/// UNX-F2541 alloc_pages/free_pages 冻结接口总账（正式冻结版） 域聚合（WB22 批次）。
+pub fn run_wb22_u2541() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2541");
+    let mut ok = true;
+    if !unx2541_u2541barrier::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541bgrid::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541bmx::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541core::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541dual::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541grid::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541map::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541merge::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541mix::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541mx::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541pipe::run_u2541_checks().all_passed() { ok = false; }
+    if !unx2541_u2541sm::run_u2541_checks().all_passed() { ok = false; }
+    set.add("UNX-F2541", ok, if ok { "" } else { "wb22-u2541 family sub-checks red" });
+    set
+}
+
+/// UNX-F2561 AddressSpace 成熟体总纲（现存 addrspace.rs 接管） 域聚合（WB22 批次）。
+pub fn run_wb22_u2561() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2561");
+    let mut ok = true;
+    if !unx2561_u2561barrier::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561bgrid::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561bmx::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561core::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561dual::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561grid::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561map::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561merge::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561mix::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561mx::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561pipe::run_u2561_checks().all_passed() { ok = false; }
+    if !unx2561_u2561sm::run_u2561_checks().all_passed() { ok = false; }
+    set.add("UNX-F2561", ok, if ok { "" } else { "wb22-u2561 family sub-checks red" });
+    set
+}
+
+/// UNX-F2581 VMA 区间树结构总纲（红黑树类，按地址排序） 域聚合（WB22 批次）。
+pub fn run_wb22_u2581() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2581");
+    let mut ok = true;
+    if !unx2581_u2581barrier::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581bgrid::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581bmx::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581core::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581dual::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581grid::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581map::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581merge::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581mix::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581mx::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581pipe::run_u2581_checks().all_passed() { ok = false; }
+    if !unx2581_u2581sm::run_u2581_checks().all_passed() { ok = false; }
+    set.add("UNX-F2581", ok, if ok { "" } else { "wb22-u2581 family sub-checks red" });
+    set
+}
+
+/// UNX-F2601 现存 pfh.rs 接管声明（#PF 处理器收编） 域聚合（WB22 批次）。
+pub fn run_wb22_u2601() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2601");
+    let mut ok = true;
+    if !unx2601_u2601barrier::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601bgrid::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601bmx::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601core::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601dual::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601grid::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601map::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601merge::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601mix::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601mx::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601pipe::run_u2601_checks().all_passed() { ok = false; }
+    if !unx2601_u2601sm::run_u2601_checks().all_passed() { ok = false; }
+    set.add("UNX-F2601", ok, if ok { "" } else { "wb22-u2601 family sub-checks red" });
+    set
+}
+
+/// UNX-F2621 每进程 CR3 语义与上下文切换内存侧（A3 每核上下文消费） 域聚合（WB22 批次）。
+pub fn run_wb22_u2621() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2621");
+    let mut ok = true;
+    if !unx2621_u2621barrier::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621bgrid::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621bmx::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621core::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621dual::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621grid::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621map::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621merge::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621mix::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621mx::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621pipe::run_u2621_checks().all_passed() { ok = false; }
+    if !unx2621_u2621sm::run_u2621_checks().all_passed() { ok = false; }
+    set.add("UNX-F2621", ok, if ok { "" } else { "wb22-u2621 family sub-checks red" });
+    set
+}
+
+/// UNX-F2641 fork 地址空间复制原语（冻结接口 5 正式版） 域聚合（WB22 批次）。
+pub fn run_wb22_u2641() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2641");
+    let mut ok = true;
+    if !unx2641_u2641barrier::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641bgrid::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641bmx::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641core::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641dual::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641grid::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641map::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641merge::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641mix::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641mx::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641pipe::run_u2641_checks().all_passed() { ok = false; }
+    if !unx2641_u2641sm::run_u2641_checks().all_passed() { ok = false; }
+    set.add("UNX-F2641", ok, if ok { "" } else { "wb22-u2641 family sub-checks red" });
+    set
+}
+
+/// UNX-F2661 页缓存结构总纲（radix 树类，4K 页粒度——§73 好条范本） 域聚合（WB22 批次）。
+pub fn run_wb22_u2661() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2661");
+    let mut ok = true;
+    if !unx2661_u2661barrier::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661bgrid::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661bmx::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661core::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661dual::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661grid::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661map::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661merge::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661mix::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661mx::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661pipe::run_u2661_checks().all_passed() { ok = false; }
+    if !unx2661_u2661sm::run_u2661_checks().all_passed() { ok = false; }
+    set.add("UNX-F2661", ok, if ok { "" } else { "wb22-u2661 family sub-checks red" });
+    set
+}
+
+/// UNX-F2681 命中率账本总账与 JSON 导出冻结 域聚合（WB22 批次）。
+pub fn run_wb22_u2681() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2681");
+    let mut ok = true;
+    if !unx2681_u2681barrier::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681bgrid::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681bmx::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681core::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681dual::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681grid::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681map::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681merge::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681mix::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681mx::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681pipe::run_u2681_checks().all_passed() { ok = false; }
+    if !unx2681_u2681sm::run_u2681_checks().all_passed() { ok = false; }
+    set.add("UNX-F2681", ok, if ok { "" } else { "wb22-u2681 family sub-checks red" });
+    set
+}
+
+/// UNX-F2701 LRU active/inactive 双链结构地基 域聚合（WB22 批次）。
+pub fn run_wb22_u2701() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2701");
+    let mut ok = true;
+    if !unx2701_u2701barrier::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701bgrid::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701bmx::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701core::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701dual::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701grid::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701map::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701merge::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701mix::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701mx::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701pipe::run_u2701_checks().all_passed() { ok = false; }
+    if !unx2701_u2701sm::run_u2701_checks().all_passed() { ok = false; }
+    set.add("UNX-F2701", ok, if ok { "" } else { "wb22-u2701 family sub-checks red" });
+    set
+}
+
+/// UNX-F2721 扫描器主循环与扫描节拍 域聚合（WB22 批次）。
+pub fn run_wb22_u2721() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2721");
+    let mut ok = true;
+    if !unx2721_u2721barrier::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721bgrid::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721bmx::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721core::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721dual::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721grid::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721map::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721merge::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721mix::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721mx::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721pipe::run_u2721_checks().all_passed() { ok = false; }
+    if !unx2721_u2721sm::run_u2721_checks().all_passed() { ok = false; }
+    set.add("UNX-F2721", ok, if ok { "" } else { "wb22-u2721 family sub-checks red" });
+    set
+}
+
+/// UNX-F2741 水线三档判定与唤醒回调 域聚合（WB22 批次）。
+pub fn run_wb22_u2741() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2741");
+    let mut ok = true;
+    if !unx2741_u2741barrier::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741bgrid::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741bmx::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741core::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741dual::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741grid::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741map::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741merge::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741mix::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741mx::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741pipe::run_u2741_checks().all_passed() { ok = false; }
+    if !unx2741_u2741sm::run_u2741_checks().all_passed() { ok = false; }
+    set.add("UNX-F2741", ok, if ok { "" } else { "wb22-u2741 family sub-checks red" });
+    set
+}
+
+/// UNX-F2761 四级压力档判定器（水位+产出双因子） 域聚合（WB22 批次）。
+pub fn run_wb22_u2761() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2761");
+    let mut ok = true;
+    if !unx2761_u2761barrier::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761bgrid::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761bmx::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761core::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761dual::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761grid::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761map::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761merge::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761mix::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761mx::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761pipe::run_u2761_checks().all_passed() { ok = false; }
+    if !unx2761_u2761sm::run_u2761_checks().all_passed() { ok = false; }
+    set.add("UNX-F2761", ok, if ok { "" } else { "wb22-u2761 family sub-checks red" });
+    set
+}
+
+/// UNX-F2781 回收-分配联动总闸 域聚合（WB22 批次）。
+pub fn run_wb22_u2781() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("WB22-u2781");
+    let mut ok = true;
+    if !unx2781_u2781barrier::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781bgrid::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781bmx::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781core::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781dual::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781grid::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781map::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781merge::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781mix::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781mx::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781pipe::run_u2781_checks().all_passed() { ok = false; }
+    if !unx2781_u2781sm::run_u2781_checks().all_passed() { ok = false; }
+    set.add("UNX-F2781", ok, if ok { "" } else { "wb22-u2781 family sub-checks red" });
+    set
+}
