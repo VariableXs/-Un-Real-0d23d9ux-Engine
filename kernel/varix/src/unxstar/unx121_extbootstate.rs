@@ -32,6 +32,7 @@
 //! [`segment_guard`]）。no_std 零 unwrap 零 panic 面。
 
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
@@ -1104,6 +1105,40 @@ pub fn run_unx121_checks() -> CheckSet {
         s.fail("U121-深-05-幂等叠层账", "叠层面失效");
     }
 
+    // 深-06：环压缩编码——混合四项线往返恒等 + 再编码幂等 + 空账
+    // 平凡（FNV 偏移基自洽）+ 篡改双路（载荷/指纹）显性拒 + 逐项
+    // 坏例全拒（历史账可外带协议单点）。
+    if probe_hist_wire() {
+        s.ok("U121-深-06-环线格式指纹");
+    } else {
+        s.fail("U121-深-06-环线格式指纹", "环线面失效");
+    }
+
+    // 深-07：谓词解释账——15 格全枚举两 ctx 恰值（零值/满值闭式）
+    // + 聚合账守恒恰值 + 线往返 + 结构性拒（拒因结构化单点）。
+    if probe_cond_explain() {
+        s.ok("U121-深-07-解释账十五格");
+    } else {
+        s.fail("U121-深-07-解释账十五格", "解释面失效");
+    }
+
+    // 深-08：告警聚合——已知流恰值（3 告警特闸/条件/特闸）+ 在账
+    // 守恒（Σ per_code ≡ 行数）+ 并列取最低码 + 容量压力闭式 1250bp
+    // + 线往返（桶账 rollup 单点）。
+    if probe_alert_rollup() {
+        s.ok("U121-深-08-告警聚合守恒");
+    } else {
+        s.fail("U121-深-08-告警聚合守恒", "聚合面失效");
+    }
+
+    // 深-09：状态驻留账——混合六项恰值三态各 2 + 守恒 + 实机流
+    // 驻留 Σ ≡ 历史账长 + 线往返（账本时间维度投影单点）。
+    if probe_residency() {
+        s.ok("U121-深-09-驻留账守恒");
+    } else {
+        s.fail("U121-深-09-驻留账守恒", "驻留面失效");
+    }
+
     s
 }
 
@@ -1649,4 +1684,693 @@ pub fn probe_degrade_stack() -> bool {
     let o0 = degrade_stack_run(0);
     let zero_ok = o0.moved == 5 && o0.final_state == ExtState::Degraded;
     stack_ok && tail_ok && zero_ok
+}
+
+// ===========================================================================
+// 深化九区：环压缩编码 / 谓词解释账 / 告警聚合 / 状态驻留账——历史与
+// 告警两大账本的「可外带、可归因、可守恒」三面：
+// ① 环账出线：HistItem 紧凑线格式（M/X/C 三标签 + 逗号字段 + 分号项间）
+//    + 顶层四段 wire（标签|计数|FNV 指纹|载荷）——指纹失配即篡改显性拒；
+// ② 拒因结构化：CondFailReason 五桶闭集——把双层闸的拒码提升为结构化
+//    归因（格面/无失败史/步越界/零步降级/无档），15 格全枚举两套写法
+//    对拍（cond_explain 复合语义 vs 手排期望表恰值）；
+// ③ 拒因聚合账：CondLedger 从历史账逐项归因（Moved→Pass /
+//    MatrixDenied→格面 / CondDenied→码映射桶），pass+Σfail 恒等项数；
+// ④ 告警聚合：AlertRollup 桶账 rollup——在账守恒（Σ per_code ≡ 行数）
+//    + 容量压力万分比闭式 + 并列取最低码；
+// ⑤ 驻留账：state_residency 逐历史项所处态计数——账本的时间维度投影，
+//    Σ驻留 ≡ 项数。
+// ===========================================================================
+
+/// 拒因五桶闭集（双层闸拒因的结构化归因面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CondFailReason {
+    /// 无失败史（RecoverWithoutFail——Probe→Recover / Degraded→Recover 共因）。
+    NoFailHistory,
+    /// 步进越界（RecoverStepOverflow——三步走完仍步进）。
+    StepOverflow,
+    /// 零步降级（Recover→Degraded 但步数为 0——有据闸）。
+    DegradedNoStep,
+    /// 降级档缺失（DegradeReasonMissing——无档不叠）。
+    NoDegradeTier,
+    /// 矩阵外格（matrix_cell None——第一层闸拒）。
+    CellIllegal,
+}
+
+impl CondFailReason {
+    /// 五闭集。
+    pub const ALL: [CondFailReason; 5] = [
+        CondFailReason::NoFailHistory,
+        CondFailReason::StepOverflow,
+        CondFailReason::DegradedNoStep,
+        CondFailReason::NoDegradeTier,
+        CondFailReason::CellIllegal,
+    ];
+
+    /// 序数（桶索引面）。
+    pub const fn ordinal(self) -> usize {
+        match self {
+            CondFailReason::NoFailHistory => 0,
+            CondFailReason::StepOverflow => 1,
+            CondFailReason::DegradedNoStep => 2,
+            CondFailReason::NoDegradeTier => 3,
+            CondFailReason::CellIllegal => 4,
+        }
+    }
+
+    /// 中文名（互异）。
+    pub const fn zh(self) -> &'static str {
+        match self {
+            CondFailReason::NoFailHistory => "无失败史",
+            CondFailReason::StepOverflow => "步进越界",
+            CondFailReason::DegradedNoStep => "零步降级",
+            CondFailReason::NoDegradeTier => "降级档缺失",
+            CondFailReason::CellIllegal => "矩阵外格",
+        }
+    }
+}
+
+/// 拒码→拒因映射（const 纯函数——语义特闸码与矩阵码归格面桶，
+/// ConditionNotMet 需格面上下文消歧：仅出自 (Recover, RecoverDone)
+/// 零步格；其余条件码一一对应）。
+pub const fn cond_fail_reason_of(cur: ExtState, ev: ExtEvent, code: BootExtCode) -> CondFailReason {
+    match code {
+        BootExtCode::RecoverWithoutFail => CondFailReason::NoFailHistory,
+        BootExtCode::RecoverStepOverflow => CondFailReason::StepOverflow,
+        BootExtCode::DegradeReasonMissing => CondFailReason::NoDegradeTier,
+        BootExtCode::ConditionNotMet => {
+            if matches!(cur, ExtState::Recover) && matches!(ev, ExtEvent::RecoverDone) {
+                CondFailReason::DegradedNoStep
+            } else {
+                CondFailReason::CellIllegal
+            }
+        }
+        _ => CondFailReason::CellIllegal,
+    }
+}
+
+/// 条件解释裁决（Pass 带目标态 / Fail 带结构化拒因）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CondVerdict {
+    /// 可迁移（双层闸全通——带矩阵目标态）。
+    Pass(ExtState),
+    /// 拒（带结构化拒因）。
+    Fail(CondFailReason),
+}
+
+/// **条件解释器**（矩阵格 × 条件谓词的复合语义单点——与 dispatch 的
+/// 双层闸同序：格 None→格面拒；格 Some 谓词过→Pass；谓词拒→码映射）。
+pub fn cond_explain(cur: ExtState, ev: ExtEvent, ctx: &CondCtx) -> CondVerdict {
+    match matrix_cell(cur, ev) {
+        None => CondVerdict::Fail(CondFailReason::CellIllegal),
+        Some(target) => match condition_ok(cur, ev, target, ctx) {
+            None => CondVerdict::Pass(target),
+            Some(code) => CondVerdict::Fail(cond_fail_reason_of(cur, ev, code)),
+        },
+    }
+}
+
+/// **拒因聚合账**（从历史账逐项归因的聚合视图）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CondLedger {
+    /// 放行数（Moved 项）。
+    pub pass: u64,
+    /// 逐桶拒因计数（下标 = CondFailReason::ordinal）。
+    pub fail_by_reason: [u32; 5],
+    /// 首次拒的项下标（无拒为 None）。
+    pub first_fail: Option<usize>,
+}
+
+impl CondLedger {
+    /// 空账。
+    pub fn new() -> CondLedger {
+        CondLedger { pass: 0, fail_by_reason: [0; 5], first_fail: None }
+    }
+
+    /// 拒总数。
+    pub fn fail_total(&self) -> u64 {
+        let mut t: u64 = 0;
+        let mut i = 0usize;
+        while i < 5 {
+            t += self.fail_by_reason[i] as u64;
+            i += 1;
+        }
+        t
+    }
+
+    /// **账守恒**：pass + Σfail ≡ 源项数（聚合不丢项）。
+    pub fn conserved(&self, items_len: usize) -> bool {
+        self.pass + self.fail_total() == items_len as u64
+    }
+}
+
+impl Default for CondLedger {
+    fn default() -> Self {
+        CondLedger::new()
+    }
+}
+
+/// 历史账逐项归因（聚合单点）：Moved→Pass（发生即已过双层闸）；
+/// MatrixDenied→格面桶；CondDenied→码映射（带项内格面上下文消歧）。
+pub fn cond_ledger_run(items: &[HistItem]) -> CondLedger {
+    let mut lg = CondLedger::new();
+    let mut i = 0usize;
+    while i < items.len() {
+        let verdict = match items[i] {
+            HistItem::Moved(_s, _e, t) => CondVerdict::Pass(t),
+            HistItem::MatrixDenied(_s, _e) => CondVerdict::Fail(CondFailReason::CellIllegal),
+            HistItem::CondDenied(s, e, c) => CondVerdict::Fail(cond_fail_reason_of(s, e, c)),
+        };
+        match verdict {
+            CondVerdict::Pass(_) => lg.pass += 1,
+            CondVerdict::Fail(r) => {
+                lg.fail_by_reason[r.ordinal()] += 1;
+                if lg.first_fail.is_none() {
+                    lg.first_fail = Some(i);
+                }
+            }
+        }
+        i += 1;
+    }
+    lg
+}
+
+/// 聚合账线格式（L|pass|f0,f1,f2,f3,f4|first；first 无拒为 -）。
+pub fn cond_ledger_wire(lg: &CondLedger) -> String {
+    let first = match lg.first_fail {
+        Some(i) => alloc::format!("{}", i),
+        None => String::from("-"),
+    };
+    alloc::format!(
+        "L|{}|{},{},{},{},{}|{}",
+        lg.pass,
+        lg.fail_by_reason[0],
+        lg.fail_by_reason[1],
+        lg.fail_by_reason[2],
+        lg.fail_by_reason[3],
+        lg.fail_by_reason[4],
+        first
+    )
+}
+
+/// 聚合账反解（结构性校验：first 若在账须 < pass+Σfail）。
+pub fn cond_ledger_unwire(s: &str) -> Option<CondLedger> {
+    let parts: Vec<&str> = s.split('|').collect();
+    if parts.len() != 4 || parts[0] != "L" {
+        return None;
+    }
+    let pass = parse_u64(parts[1])?;
+    let buckets: Vec<&str> = parts[2].split(',').collect();
+    if buckets.len() != 5 {
+        return None;
+    }
+    let mut fail_by_reason = [0u32; 5];
+    let mut i = 0usize;
+    while i < 5 {
+        fail_by_reason[i] = parse_u64(buckets[i])? as u32;
+        i += 1;
+    }
+    let first_fail = if parts[3] == "-" {
+        None
+    } else {
+        let idx = parse_u64(parts[3])? as usize;
+        if idx >= (pass as usize) + (fail_by_reason[0] as usize)
+            + (fail_by_reason[1] as usize)
+            + (fail_by_reason[2] as usize)
+            + (fail_by_reason[3] as usize)
+            + (fail_by_reason[4] as usize)
+        {
+            return None;
+        }
+        Some(idx)
+    };
+    Some(CondLedger { pass, fail_by_reason, first_fail })
+}
+
+/// 告警聚合视图（桶账 rollup——在账守恒的读出面）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AlertRollup {
+    /// 非零桶数。
+    pub buckets: u32,
+    /// Σ per_code（在账守恒：≡ rows.len()——per_code 只在成功 push 时递增）。
+    pub total: u64,
+    /// 计数最大码（并列取最低码；全空 0）。
+    pub top_code: u16,
+    /// 最大桶计数。
+    pub top_count: u32,
+    /// 容量压力万分比（rows.len()×10000 / ALERT_CAP）。
+    pub cap_pressure_bp: u32,
+}
+
+/// 告警账 rollup（桶账聚合单点）。
+pub fn alert_rollup(alerts: &AlertList) -> AlertRollup {
+    let mut buckets: u32 = 0;
+    let mut total: u64 = 0;
+    let mut top_code: u16 = 0;
+    let mut top_count: u32 = 0;
+    let mut i = 0usize;
+    while i < 16 {
+        let c = alerts.per_code[i];
+        if c > 0 {
+            buckets += 1;
+            total += c as u64;
+            // 并列取最低码（先到先得——严格大于才换）。
+            if c > top_count {
+                top_count = c;
+                top_code = SEG_BASE + i as u16;
+            }
+        }
+        i += 1;
+    }
+    let cap_pressure_bp = (alerts.rows.len() as u32 * 10_000) / ALERT_CAP as u32;
+    AlertRollup { buckets, total, top_code, top_count, cap_pressure_bp }
+}
+
+/// rollup 线格式（A|buckets|total|code十六四|top_count|bp）。
+pub fn alert_rollup_wire(r: &AlertRollup) -> String {
+    alloc::format!(
+        "A|{}|{}|{:04x}|{}|{}",
+        r.buckets, r.total, r.top_code.wrapping_sub(SEG_BASE), r.top_count, r.cap_pressure_bp
+    )
+}
+
+/// rollup 反解（结构性校验：空账须 total=0 桶=0）。
+pub fn alert_rollup_unwire(s: &str) -> Option<AlertRollup> {
+    let parts: Vec<&str> = s.split('|').collect();
+    if parts.len() != 6 || parts[0] != "A" {
+        return None;
+    }
+    let buckets = parse_u64(parts[1])? as u32;
+    let total = parse_u64(parts[2])?;
+    let code_off = parse_hex_u64(parts[3])?;
+    if code_off > 15 {
+        return None;
+    }
+    let top_count = parse_u64(parts[4])? as u32;
+    let cap_pressure_bp = parse_u64(parts[5])? as u32;
+    if buckets == 0 && (total != 0 || top_count != 0) {
+        return None;
+    }
+    if buckets > 0 && (total == 0 || top_count == 0) {
+        return None;
+    }
+    Some(AlertRollup {
+        buckets,
+        total,
+        top_code: SEG_BASE + code_off as u16,
+        top_count,
+        cap_pressure_bp,
+    })
+}
+
+/// **状态驻留账**（逐历史项发生时机器所处态的计数——账本的时间维度
+/// 投影：每条账（无论迁/拒）都发生在某个态里）。
+pub fn state_residency(items: &[HistItem]) -> [u64; 3] {
+    let mut r = [0u64; 3];
+    let mut i = 0usize;
+    while i < items.len() {
+        let occ = match items[i] {
+            HistItem::Moved(s, _e, _t) => s,
+            HistItem::MatrixDenied(s, _e) => s,
+            HistItem::CondDenied(s, _e, _c) => s,
+        };
+        r[occ.ordinal()] += 1;
+        i += 1;
+    }
+    r
+}
+
+/// 驻留账守恒（Σ驻留 ≡ 项数）。
+pub const fn residency_conserved(r: &[u64; 3], items_len: usize) -> bool {
+    r[0] + r[1] + r[2] == items_len as u64
+}
+
+/// 驻留账线格式（R|probe|recover|degraded）。
+pub fn residency_wire(r: &[u64; 3]) -> String {
+    alloc::format!("R|{}|{}|{}", r[0], r[1], r[2])
+}
+
+/// 驻留账反解。
+pub fn residency_unwire(s: &str) -> Option<[u64; 3]> {
+    let parts: Vec<&str> = s.split('|').collect();
+    if parts.len() != 4 || parts[0] != "R" {
+        return None;
+    }
+    Some([parse_u64(parts[1])?, parse_u64(parts[2])?, parse_u64(parts[3])?])
+}
+
+/// 十六进制解析（小写/大写通吃，长度 1..=16）。
+fn parse_hex_u64(s: &str) -> Option<u64> {
+    if s.is_empty() || s.len() > 16 {
+        return None;
+    }
+    let mut v: u64 = 0;
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    while i < b.len() {
+        let c = b[i];
+        let d: u64 = if c >= b'0' && c <= b'9' {
+            (c - b'0') as u64
+        } else if c >= b'a' && c <= b'f' {
+            (c - b'a') as u64 + 10
+        } else if c >= b'A' && c <= b'F' {
+            (c - b'A') as u64 + 10
+        } else {
+            return None;
+        };
+        v = v.wrapping_mul(16).wrapping_add(d);
+        i += 1;
+    }
+    Some(v)
+}
+
+// ---------------------------------------------------------------------------
+// 环压缩编码（HistItem 紧凑线格式 + 四段 wire + FNV 指纹防篡改）
+// ---------------------------------------------------------------------------
+
+/// 环账线格式标签（版本化——格式漂移即拒）。
+pub const HIST_WIRE_TAG: &str = "u121h1";
+
+/// 空载荷指纹（fnv1a64 对空字节串 = FNV 偏移基——线面自洽常量）。
+pub const HIST_WIRE_EMPTY_FP: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// 单项紧凑编码（逗号字段：M,<so>,<eo>,<to> / X,<so>,<eo> /
+/// C,<so>,<eo>,<码偏移 2 位十六进制>——项内禁用顶层分隔符）。
+pub fn hist_item_encode(item: &HistItem) -> String {
+    match item {
+        HistItem::Moved(s, e, t) => {
+            alloc::format!("M,{},{},{}", s.ordinal(), e.ordinal(), t.ordinal())
+        }
+        HistItem::MatrixDenied(s, e) => alloc::format!("X,{},{}", s.ordinal(), e.ordinal()),
+        HistItem::CondDenied(s, e, c) => alloc::format!(
+            "C,{},{},{:02x}",
+            s.ordinal(),
+            e.ordinal(),
+            c.code().wrapping_sub(SEG_BASE)
+        ),
+    }
+}
+
+/// 单项反解（序数越界 / 码偏移越界 / 标签未知 / 字段数不符全拒）。
+pub fn hist_item_decode(s: &str) -> Option<HistItem> {
+    let f: Vec<&str> = s.split(',').collect();
+    match f.first() {
+        Some(&"M") => {
+            if f.len() != 4 {
+                return None;
+            }
+            let so = parse_u64(f[1])?;
+            let eo = parse_u64(f[2])?;
+            let to = parse_u64(f[3])?;
+            Some(HistItem::Moved(
+                ExtState::from_ordinal(so)?,
+                ExtEvent::from_ordinal(eo)?,
+                ExtState::from_ordinal(to)?,
+            ))
+        }
+        Some(&"X") => {
+            if f.len() != 3 {
+                return None;
+            }
+            let so = parse_u64(f[1])?;
+            let eo = parse_u64(f[2])?;
+            Some(HistItem::MatrixDenied(
+                ExtState::from_ordinal(so)?,
+                ExtEvent::from_ordinal(eo)?,
+            ))
+        }
+        Some(&"C") => {
+            if f.len() != 4 {
+                return None;
+            }
+            let so = parse_u64(f[1])?;
+            let eo = parse_u64(f[2])?;
+            let off = parse_hex_u64(f[3])?;
+            if off > 15 {
+                return None;
+            }
+            let code = BootExtCode::ALL.get(off as usize)?;
+            Some(HistItem::CondDenied(
+                ExtState::from_ordinal(so)?,
+                ExtEvent::from_ordinal(eo)?,
+                *code,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// 环账出线（四段：标签|项数|指纹|载荷；载荷项间分号——项内逗号
+/// 不冲突；指纹 = FNV(载荷)——篡改任一字节即失配拒）。
+pub fn hist_wire(items: &[HistItem]) -> String {
+    let mut payload = String::new();
+    let mut i = 0usize;
+    while i < items.len() {
+        if i > 0 {
+            payload.push(';');
+        }
+        payload.push_str(&hist_item_encode(&items[i]));
+        i += 1;
+    }
+    let fp = fnv1a64(payload.as_bytes());
+    alloc::format!("{}|{}|{:016x}|{}", HIST_WIRE_TAG, items.len(), fp, payload)
+}
+
+/// 环账入线（标签/计数/指纹三闸——计数不符、指纹失配、单项解析败
+/// 全部显性 None）。
+pub fn hist_unwire(s: &str) -> Option<Vec<HistItem>> {
+    let parts: Vec<&str> = s.split('|').collect();
+    if parts.len() != 4 || parts[0] != HIST_WIRE_TAG {
+        return None;
+    }
+    let n = parse_u64(parts[1])? as usize;
+    let fp = parse_hex_u64(parts[2])?;
+    let payload = parts[3];
+    if payload.as_bytes().len() != payload.len() {
+        return None;
+    }
+    // 指纹闸（先于项解析——篡改定位在载荷整体）。
+    if fnv1a64(payload.as_bytes()) != fp {
+        return None;
+    }
+    if n == 0 {
+        if payload.is_empty() {
+            return Some(Vec::new());
+        }
+        return None;
+    }
+    if payload.is_empty() {
+        return None;
+    }
+    let segs: Vec<&str> = payload.split(';').collect();
+    if segs.len() != n {
+        return None;
+    }
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < segs.len() {
+        out.push(hist_item_decode(segs[i])?);
+        i += 1;
+    }
+    Some(out)
+}
+
+/// 深-06 判据：环压缩编码——混合四项线往返恒等 + 再编码幂等 +
+/// 空账平凡 + 篡改（载荷/指纹）双路显性拒 + 逐项坏例全拒。
+pub fn probe_hist_wire() -> bool {
+    let items = [
+        HistItem::Moved(ExtState::Probe, ExtEvent::ProbeFail, ExtState::Recover),
+        HistItem::CondDenied(ExtState::Recover, ExtEvent::RecoverDone, BootExtCode::ConditionNotMet),
+        HistItem::MatrixDenied(ExtState::Degraded, ExtEvent::ProbeDone),
+        HistItem::Moved(ExtState::Recover, ExtEvent::RecoverStep, ExtState::Recover),
+    ];
+    let w = hist_wire(&items);
+    // 往返恒等。
+    let rt_ok = match hist_unwire(&w) {
+        Some(v) => v == items,
+        None => false,
+    };
+    // 再编码幂等（decode∘encode∘encode 一致）。
+    let w2 = match hist_unwire(&w) {
+        Some(v) => hist_wire(&v),
+        None => String::new(),
+    };
+    let idem_ok = w2 == w;
+    // 空账平凡（指纹 = FNV 偏移基——线面自洽）。
+    let w0 = hist_wire(&[]);
+    let empty_ok = w0
+        == alloc::format!("{}|0|{:016x}|", HIST_WIRE_TAG, HIST_WIRE_EMPTY_FP)
+        && hist_unwire(&w0) == Some(Vec::new());
+    // 篡改双路：载荷一位换 → 指纹失配拒；指纹一位换 → 失配拒。
+    let tamper_payload = w.replace('M', "Z");
+    let tamper_fp = {
+        let mut t = w.clone();
+        // 指纹段必以 'c' 开头（FNV 偏移基 cbf2…）——换首位即失配。
+        t.replace_range(10..11, "d");
+        t
+    };
+    let tamper_ok = hist_unwire(&tamper_payload).is_none() && hist_unwire(&tamper_fp).is_none();
+    // 逐项坏例：未知标签 / 序数越界 / 码偏移越界 / 字段数不符。
+    let bad_ok = hist_item_decode("Q,0").is_none()
+        && hist_item_decode("M,9,1,1").is_none()
+        && hist_item_decode("X,0,9").is_none()
+        && hist_item_decode("C,0,0,ff").is_none()
+        && hist_item_decode("M,0,1").is_none()
+        && hist_item_decode("X,0,1,2").is_none();
+    rt_ok && idem_ok && empty_ok && tamper_ok && bad_ok
+}
+
+/// 深-07 判据：谓词解释账——15 格全枚举两 ctx 恰值（零值 ctx：
+/// pass 1 / 无失败史 2 / 零步降级 1 / 无档 1 / 格面 10；满值 ctx：
+/// pass 5 / 格面 10）+ 聚合账守恒恰值 + 线往返 + 篡改拒。
+pub fn probe_cond_explain() -> bool {
+    // 零值 ctx（fail=0 / steps=0 / 无档）：恰值闭式。
+    let ctx0 = CondCtx { fail_count: 0, recover_steps: 0, degrade_reason_set: false };
+    let mut pass0: u32 = 0;
+    let mut buckets0 = [0u32; 5];
+    let mut si = 0usize;
+    while si < 3 {
+        let mut ei = 0usize;
+        while ei < 5 {
+            match cond_explain(ExtState::ALL[si], ExtEvent::ALL[ei], &ctx0) {
+                CondVerdict::Pass(_) => pass0 += 1,
+                CondVerdict::Fail(r) => buckets0[r.ordinal()] += 1,
+            }
+            ei += 1;
+        }
+        si += 1;
+    }
+    let grid0_ok = pass0 == 1
+        && buckets0[0] == 2
+        && buckets0[1] == 0
+        && buckets0[2] == 1
+        && buckets0[3] == 1
+        && buckets0[4] == 10;
+    // 满值 ctx（fail=2 / steps=2 / 有档）：合法五格全通。
+    let ctxf = CondCtx { fail_count: 2, recover_steps: 2, degrade_reason_set: true };
+    let mut passf: u32 = 0;
+    let mut cellf: u32 = 0;
+    let mut si = 0usize;
+    while si < 3 {
+        let mut ei = 0usize;
+        while ei < 5 {
+            match cond_explain(ExtState::ALL[si], ExtEvent::ALL[ei], &ctxf) {
+                CondVerdict::Pass(_) => passf += 1,
+                CondVerdict::Fail(r) => {
+                    if matches!(r, CondFailReason::CellIllegal) {
+                        cellf += 1;
+                    }
+                }
+            }
+            ei += 1;
+        }
+        si += 1;
+    }
+    let gridf_ok = passf == 5 && cellf == 10;
+    // 聚合账：混合五项恰值（pass 2 / 无失败史 1 / 零步降级 1 / 格面 1
+    // / 首拒下标 1）+ 守恒。
+    let hist = [
+        HistItem::Moved(ExtState::Probe, ExtEvent::ProbeFail, ExtState::Recover),
+        HistItem::CondDenied(ExtState::Recover, ExtEvent::RecoverDone, BootExtCode::ConditionNotMet),
+        HistItem::MatrixDenied(ExtState::Degraded, ExtEvent::ProbeDone),
+        HistItem::Moved(ExtState::Recover, ExtEvent::RecoverStep, ExtState::Recover),
+        HistItem::CondDenied(ExtState::Probe, ExtEvent::ProbeFail, BootExtCode::RecoverWithoutFail),
+    ];
+    let lg = cond_ledger_run(&hist);
+    let ledger_ok = lg.pass == 2
+        && lg.fail_by_reason[0] == 1
+        && lg.fail_by_reason[1] == 0
+        && lg.fail_by_reason[2] == 1
+        && lg.fail_by_reason[3] == 0
+        && lg.fail_by_reason[4] == 1
+        && lg.first_fail == Some(1)
+        && lg.conserved(hist.len())
+        && lg.fail_total() == 3;
+    // 线往返 + 结构性拒（first 越界 / 桶数不符）。
+    let wl = cond_ledger_wire(&lg);
+    let wire_ok = cond_ledger_unwire(&wl) == Some(lg.clone())
+        && cond_ledger_unwire("L|2|1,0,1,0,1|9").is_none()
+        && cond_ledger_unwire("L|2|1,0,1,0|0").is_none()
+        && cond_ledger_unwire("X|2|1,0,1,0,1|0").is_none();
+    grid0_ok && gridf_ok && ledger_ok && wire_ok
+}
+
+/// 深-08 判据：告警聚合——已知流恰值（3 告警：特闸/条件/特闸）+
+/// 在账守恒（Σ per_code ≡ 行数）+ 并列取最低码恰值 + 容量压力闭式
+/// （3×10000/24=1250bp）+ 线往返。
+pub fn probe_alert_rollup() -> bool {
+    // 已知流：特闸拒 + 失败进恢复 + 零步条件拒 + 特闸拒（恢复中
+    // 改行——须在 Recover 态窗口内发）+ 三步 + 完成降级 + 幂等自环。
+    let mut m = ExtBootState::new();
+    let _ = m.dispatch(ExtEvent::DegradeReq); // 特闸：无据降级
+    let _ = m.fail_event(); // →Recover
+    let _ = m.dispatch(ExtEvent::RecoverDone); // 条件拒：零步
+    let _ = m.dispatch(ExtEvent::ProbeFail); // 特闸：半路改行（Recover 态）
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverDone); // →Degraded
+    let _ = m.dispatch(ExtEvent::DegradeReq); // 幂等自环
+    // 流恰值（迁移 6 / 矩阵拒 2 / 条件拒 1）。
+    let flow_ok = m.moved == 6 && m.denied_matrix == 2 && m.denied_cond == 1;
+    // 聚合恰值：3 桶各 1；并列取最低码 = ConditionNotMet(0x3201)。
+    let ru = alert_rollup(&m.alerts);
+    let rollup_ok = ru.buckets == 3
+        && ru.total == 3
+        && ru.top_code == BootExtCode::ConditionNotMet.code()
+        && ru.top_count == 1
+        && ru.cap_pressure_bp == 1250
+        && ru.total == m.alerts.rows.len() as u64;
+    // 在账守恒直算：Σ per_code ≡ 行数。
+    let mut sum: u64 = 0;
+    let mut i = 0usize;
+    while i < 16 {
+        sum += m.alerts.per_code[i] as u64;
+        i += 1;
+    }
+    let conserved_ok = sum == m.alerts.rows.len() as u64;
+    // 线往返 + 空账平凡 + 桶账不一致拒。
+    let wa = alert_rollup_wire(&ru);
+    let wire_ok = alert_rollup_unwire(&wa) == Some(ru)
+        && alert_rollup_unwire("A|0|0|00|0|0").is_some()
+        && alert_rollup_unwire("A|0|3|01|1|1250").is_none()
+        && alert_rollup_unwire("A|3|0|01|0|0").is_none()
+        && alert_rollup_unwire("B|1|1|01|1|4166").is_none();
+    flow_ok && rollup_ok && conserved_ok && wire_ok
+}
+
+/// 深-09 判据：状态驻留账——混合六项恰值（三态各 2）+ 守恒 +
+/// 实机流驻留 Σ ≡ 历史账长 + 线往返 + 坏例拒。
+pub fn probe_residency() -> bool {
+    let items = [
+        HistItem::Moved(ExtState::Probe, ExtEvent::ProbeFail, ExtState::Recover),
+        HistItem::MatrixDenied(ExtState::Probe, ExtEvent::DegradeReq),
+        HistItem::CondDenied(ExtState::Recover, ExtEvent::RecoverDone, BootExtCode::ConditionNotMet),
+        HistItem::Moved(ExtState::Recover, ExtEvent::RecoverStep, ExtState::Recover),
+        HistItem::Moved(ExtState::Degraded, ExtEvent::DegradeReq, ExtState::Degraded),
+        HistItem::CondDenied(ExtState::Degraded, ExtEvent::RecoverDone, BootExtCode::RecoverWithoutFail),
+    ];
+    let r = state_residency(&items);
+    let exact_ok = r == [2, 2, 2] && residency_conserved(&r, items.len());
+    // 实机流（同深-08 已知流）：驻留 Σ ≡ 历史账长（环未溢出）。
+    let mut m = ExtBootState::new();
+    let _ = m.dispatch(ExtEvent::DegradeReq);
+    let _ = m.fail_event();
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverDone);
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverDone);
+    let _ = m.dispatch(ExtEvent::DegradeReq);
+    let rr = state_residency(m.recent_history());
+    let live_ok = residency_conserved(&rr, m.recent_history().len())
+        && rr[0] + rr[1] + rr[2] == 8;
+    // 线往返 + 坏例（标签错/段数错/非数）。
+    let wr = residency_wire(&rr);
+    let wire_ok = residency_unwire(&wr).map(|v| v == rr).unwrap_or(false)
+        && residency_unwire("R|1|2|3").is_some()
+        && residency_unwire("X|1|2|3").is_none()
+        && residency_unwire("R|1|2").is_none()
+        && residency_unwire("R|a|2|3").is_none();
+    exact_ok && live_ok && wire_ok
 }

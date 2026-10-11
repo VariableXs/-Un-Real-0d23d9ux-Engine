@@ -29,6 +29,7 @@
 
 use crate::acpi::{checksum_ok, SdtHeader, SDT_HEADER_LEN};
 use alloc::string::String;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 一、诊断项闭集（独占 0x2Exx 段）
