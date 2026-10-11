@@ -64,8 +64,6 @@ pub mod cga10_bandwidth_sched;
 pub mod vcg14_ressamp;
 pub mod vcg13_textrast;
 pub mod vca12_hwcompat;
-pub mod vcg13_textrast;
-pub mod vca12_hwcompat;
 pub mod vcl01_virtualarch;
 pub mod vcl01_virtualarch_checks;
 // vcl02_virtmode — CGPU-F1762 虚拟化模式分类（四模式定义表机制名冻结词表/五维0-3整数矩阵版本化matrix-v3/决策树显性if序四约束/同卡直通×分区×半虚拟互斥共存判定/损耗声明四行选型报告带原文/0x33xx 两码）
@@ -93,10 +91,14 @@ pub mod vcw04_apiref;
 pub mod vcw04_apiref_checks;
 // vcw05_docsync — CGPU-F3525 文档版本与代码同步（三态对齐规则写死落后/超前两害超前更危险/指纹+契约词双漂移立案幂等销账留痕不删/同步结论压发布门呼应文档即契约/0x34xx 三码）
 pub mod vcw05_docsync;
+// vcw08_doctelem — CGPU-F3527 文档遥测（计数不记人隐私红线本体/访问计数+搜索热词聚合口径无用户维度字段/滚动定容覆盖+滚动计数留痕+守恒式 total==环内+滚掉/隐私抽检导出禁 user/session/ip/identity 词形检出即拒/P 域 cgp02 口径复用/0xE2 段四码）
+pub mod vcw08_doctelem;
+
 pub mod vcx84_bandwidth;
 // vct05_secboundary — CGPU-F3045 对接安全边界（信封检视器+复用声明账+会话剖面+越界逐码显性拒）
 pub mod vct05_secboundary;
 // vcu04_scoringsys — CGPU-F3204 计分体系（三分链原始分/归一分/加权总分+计分表五闸显性拒+权重四档万分制守恒）
+pub mod vcu03_scenecls;
 pub mod vcu04_scoringsys;
 pub mod cgm02_display;
 pub mod cgm02_display_checks;
@@ -252,6 +254,14 @@ pub mod cgg06_nvpwr;
 pub mod cgg06_nvpwr_checks;
 // cgi06_txqueue — CGPU-F1285 传输队列管理（上传/下载双队列分列各自深度水位一条河堵塞不淹另一条/信用回压协议ACK回款水位滞回75%触发55%解除防振荡/优先级插队Emergency直插队首High快道连续插队4次强制队尾饿死保护/全量遥测入队-出队-拒收-插队-水位峰值/超额ACK协议违约钳上限报码/0x52xx 五码）
 pub mod cgi06_txqueue;
+// cgq01_txqueue — CGPU-F1285 双实现并存B面（水位门限令牌限速设计 独立于A面信用回压/分列+背压+插队+遥测四判据/0x750段）
+pub mod cgq01_txqueue;
+// cgj05_pwrfilt — CGPU-F1447 功耗数据管道与滤波（五级管道逐级独立可测/中值去尖刺+EMA定点平滑双滤波参数表分派/1s10s60s三窗三指标/背压覆盖写丢旧保新永不阻塞/SPSC环形/越限骤变事件旁路/1MB内存上限降采样）
+pub mod cgj05_pwrfilt;
+// vcw07_docsec — CGPU-F3528 文档安全（内部标注过滤三级闭集只放行Public/敏感子串双保险密钥样token样/三发布面安全复用同引擎判定一致/干净零误滤带密零漏滤）
+pub mod vcw07_docsec;
+// cgq02_txmerge — CGPU-F1286 传输批合并（小传输窗口合并大传输直通/5µs窗口三档权衡声明/同输入双跑指纹对拍确定性/事务数对比TLP头24B节省收益量化/批内+直通≡提交守恒对账）
+pub mod cgq02_txmerge;
 // vck04_hetprobe — CGPU-F1604 异构能力探测与登记（探测五步枚举→查询→隔离→登记→缓存公示每步乱序拒绝/实现矩阵NPU三路线CIM-Intel-XDNA DSP音频 ISP驱动查询静态闭集表/缓存键FNV驱动版本+设备ID命中复用异键热失效重探F1506模式/失败隔离ProbeFailed行剥离不污染登记表其余照常/虚拟化空态空枚举显性Empty/诚实登记NotSupported与ProbeFailed严格区分不造假/0x53xx 五码）
 pub mod vck04_hetprobe;
 pub mod vck05_taskgraph;
@@ -302,7 +312,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 44] = [
+    let blocks: [(&'static str, CheckSet); 50] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
@@ -563,18 +573,6 @@ pub mod vck58_gapfill;
 pub mod vck59_riskreg;
 // vck60_prescore — CGPU-F1741 20维度预评分（预演声明+20维互异0xB801/评分≤1000定点+证据锚0xB802/<800必处置0xB803/J域940基线对标均分只算不裁0xB804/三组自检/0xB8xx 五码）
 pub mod vck60_prescore;
-// vck39_examples — CGPU-F1720 异构示例库与教程（15例五要素闭集0xA301/三阶教程挂接表0xA302/CI全跑门禁0xA303/缺额对账0xA304/五组自检/0xA3xx 五码）
-pub mod vck39_examples;
-// vck40_benchrel — CGPU-F1721 异构基准发布（三基准定义0xA401/环境标注四要素+双跑ppm带0xA402/发布账修订链单调0xA403/对比诚实三红线0xA404/四组自检/0xA4xx 五码）
-pub mod vck40_benchrel;
-// vck41_certplan — CGPU-F1722 异构认证计划（设备+场景两级0xA501/判据公开九条可复现0xA502/四站单调流程0xA503/驱动更新复测维持0xA504/撤销公示0xA505/五组自检/0xA5xx 五码）
-pub mod vck41_certplan;
-// vck42_compatmx — CGPU-F1723 异构兼容性矩阵（硬件×驱动×场景三维格0xA601/驱动同步0xA602/安装前探测查询0xA603/夸大红线0xA604/四组自检/0xA6xx 五码）
-pub mod vck42_compatmx;
-// vck43_usercap — CGPU-F1724 异构用户可见能力（UE三接面0xA701/面板四项可关可查0xA702/文案三要素+句式表0xA703/克制四词审计+无障碍三查0xA704/五组自检/0xA7xx 五码）
-pub mod vck43_usercap;
-// vck44_mktgov — CGPU-F1725 异构市场与生态治理（市场三道闸+激励预留0xA801/FNV签名对拍0xA802/下架四步单调+时限0xA803/统计白名单匿名0xA804/五组自检/0xA8xx 五码）
-pub mod vck44_mktgov;
 // vck61_goreport — CGPU-F1742 K域预备报告GO/NO-GO（八节结构复用0xB901/GO五条件逐条判定同源对拍0xB902/NO-GO纪律一票否决0xB903/工程+质量+K10就绪三态双签0xB904/四组自检/0xB9xx 五码）
 pub mod vck61_goreport;
 // vck62_rehearsal — CGPU-F1743 预备演练（K10流程干跑五要素预生成0xBA01/彩排三查0xBA02/开发者+用户双旅程四步单调走查0xBA03/执行记录8步指纹入附录0xBA04/四组自检/0xBAxx 五码）

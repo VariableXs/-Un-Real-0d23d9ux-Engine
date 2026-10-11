@@ -6,6 +6,13 @@
 //! 后续各单在此追加注册——先推模块本体再补注册行，防孤儿登记 E0433。
 
 use alloc::string::String;
+// ===================== W020 批次（本会话深编 · cpio newc 魔数识别族，0x7500 段） =====================
+// unx603_newcmagic ↔ UNX-F0603 cpio newc 魔数识别引擎（0x070701）：魔数常量族/格式族判别闭集 Newc/NewcCrc/Odc/Bin/流式判别状态机 NoInput→Partial→Complete→Mismatch/通用识别器滑窗多命中歧义显性/版本账注 c_magic 登记封账指纹守恒/复合封账判定入口 judge_archive_head/段位守卫/0x7500 段十六码
+pub mod unx603_newcmagic;
+// unx603_fmtmatrix ↔ UNX-F0603 cpio 格式族能力矩阵与判别仲裁：四能力维度表 is_ascii/header_len/has_check/aligned4/priority + bin 二字节小端 0x71C7 检测 + 候选闭集按优先级确定性仲裁 + 格式登记册 append-only 封账指纹守恒 + 矩阵行序/优先级表逐行守卫/0x7510 段十六码
+pub mod unx603_fmtmatrix;
+// unx603_cmagic ↔ UNX-F0603 cpio c_magic 字段识别与 newc 整数字段编解码：c_magic 六字符判别定版本/newc 全部整数字段 ASCII-十六进制编解码（8 字符定长大端）/字段级 newc 头解析器（13 字段切分）/字段版本账注登记封账指纹守恒/字段名唯一性/编解码往返一致/0x7520 段十六码
+pub mod unx603_cmagic;
 pub mod unx041_dsdt;
 pub mod unx041_dsdt_checks;
 // unx041_dsdt_deep ↔ UNX-F0041 DSDT 遍历校验（既有深化模块，里程碑三：《统一协作总台账》通篇重述 RSDP 双窗/XSDT 直查 RSDT 回退/FACP 定位/X_DSDT 兼顾 32 位地址/DSDT 槽位遍历（SUOP-与-OVSP-辨识）/OEM ID 动态补全（枚举-倒查-逆推）/运行期 Info-Warn-Fatal/BootReport append-only 面/AML 全码段表/DsdtSnap 确定性 FNV+快照/0x2F 段十六进制码与 0x2E 既有码区分）
@@ -20,12 +27,16 @@ pub mod unx441_rsdp_scan;
 pub mod unx461_pci_route;
 // unx481_fb_ledger ↔ UNX-F0481 帧缓冲四要素账冻结（四字段在位掩码 + 复读一致 4/4 + stride/总字节推导对账 + 封账后写拒 + reseal 严格升版指纹必变；0x84 段）
 pub mod unx481_fb_ledger;
+// unx483_fbmap —— UNX-F0483 帧缓冲映射登记（B19 账 1/1 段 + 区外写拦截 100% + 单向状态机 + 快照指纹，0x98 段十二码）
+pub mod unx483_fbmap;
 // unx521_ktest_frame ↔ UNX-F0521 ktest 主框架总装（注册器名唯一定容 32 + 运行器泵动单步/全量同状态机 + 接入核审计注册⇄运行 6/6 + 截断显性拦截假绿；0x85 段）
 pub mod unx521_ktest_frame;
 // unx541_log_emit ↔ UNX-F0541 日志面总装（四级别冻结 Trace/Info/Warn/Fatal + emit 三参数（级别/组件/格式化文）+ 级别闸丢弃逐格记账 + 环满显性溢出不覆盖 + 10/10 全链接入核；0x86 段）
 pub mod unx541_log_emit;
 // unx561_power_ledger ↔ UNX-F0561 电源面定位总账（FADT 五块 PM1a_CNT/PM1b_CNT/PM1_STS/PM1_EN/PM2_CNT 基址+长度 + 直读一致 5/5 + IO/MMIO/FixedHw 空间分派 + 宽 1/2/4 合法 + 封条指纹掉电复验；0x87 段）
 pub mod unx561_power_ledger;
+// unx563_pm1sts —— UNX-F0563 PM1_STS 状态账（事件位闭集+W1C 零写防线+双读一致+封账状态机，0x9A 段十码）
+pub mod unx563_pm1sts;
 // unx601_initrd_ledger ↔ UNX-F0601 initrd 基址/长度账（三元组 base/len/FP 交接 1/1 + 64MB 预算界 + 4KB 对齐 + 页数上取整 + 三段抽样指纹复算 + 全页核对才封账；0x88 段）
 pub mod unx601_initrd_ledger;
 // unx621_pkg_aggregate ↔ UNX-F0621 域交接包聚合 12 包总装（源清单 F0349..F0617 十二包集合差核 + 每包七件套在位 + 索引冻结 + 有序聚合指纹；0x89 段）
@@ -75,7 +86,7 @@ pub const UNX_DOMAIN: &str = "unxstar";
 pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(UNX_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 31] = [
+    let blocks: [(&'static str, CheckSet); 39] = [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
         ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
@@ -107,6 +118,14 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         ("UNX-F0323", unx323_realmjmp::run_unx323_checks()),
         ("UNX-F0342", unx342_apsilence::run_unx342_checks()),
         ("UNX-F0362", unx362_resvwhite::run_unx362_checks()),
+        ("UNX-F0264", unx264_lineedit::run_unx264_checks()),
+        ("UNX-F0324", unx324_sipiseq::run_unx324_checks()),
+        ("UNX-F0643", unx643_drilllog::run_unx643_checks()),
+        ("UNX-F0683", unx683_boottrace::run_unx683_checks()),
+        ("UNX-F0206", unx206_excode::run_unx206_checks()),
+        ("UNX-F0245", unx245_randnode::run_unx245_checks()),
+        ("UNX-F0185", unx185_cpufeat::run_t185_checks()),
+        ("UNX-F1563", unx1563_a4sign::run_unx1563_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -206,6 +225,42 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         let passed = sub.all_passed() && !sub.truncated();
         set.add(
             "UNX-F0302",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t325();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "AP ID 核对域",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t684();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "固件路差异域",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t505();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "万次切换域",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t545();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "判据冻结域",
             passed,
             if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
         );
@@ -583,7 +638,6 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
             if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
         );
     }
-
     {
         // WB21 批次（第二波深化 20 单）：drill 入口逐单折叠为一个族集，
         // 族内任一红即整族红（与 wb20 family 折叠范式一致）。
@@ -593,6 +647,16 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
             "UNX-F-WB21",
             passed,
             if passed { "" } else if sub.truncated() { "wb21 family truncated" } else { "wb21 family red" },
+        );
+    }
+    {
+        // UNX-21 批次（本会话深编）：逐单折叠为一个族集。
+        let sub = run_unx21_batch();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F-UNX21",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx21 family truncated" } else { "unx21 family red" },
         );
     }
     set
@@ -767,6 +831,8 @@ pub mod unx283_pdedup;
 pub mod unx283_stackwalk_dv;
 // unx502_serialout —— UNX-F0502 串口输出原语（16550 语义模型 + 三件原语同源 + CR/LF 翻译账注，10/10 回环核，0x97 段八码）
 pub mod unx502_serialout;
+// unx503_serialin —— UNX-F0503 串口输入轮询（LSR 七位闭集+三态状态机+Rx 环守恒+64/64 闭环+空轮即返，0x99 段十码）
+pub mod unx503_serialin;
 // unx582_kvparse —— UNX-F0582 语法解析器（token/key=value，空格分词+等号劈分规则冻结，20 样本基准 20/20，0x98 段六码）
 pub mod unx582_kvparse;
 // unx403_tsccalib —— UNX-F0403 TSC 频率三方校准（PIT 5 秒窗/MSR 平台值/CPUID 0x15-0x16，两两差 bps ≤50 一致，超差取中位数立案，0x99 段六码）
@@ -775,10 +841,16 @@ pub mod unx403_tsccalib;
 pub mod unx384_alignalloc;
 // unx385_pairledger —— UNX-F0385 分配记账（申请/释放配对账，配对键=调用点+尺寸档双向可查，配对率 100%，0x9B 段七码）
 pub mod unx385_pairledger;
+// unx386_dualzone —— UNX-F0386 双区策略（DMA堆/通用堆，边界零重叠+路由100%+互借禁令，0xCA 段七码）
+pub mod unx386_dualzone;
+// unx387_oomtier —— UNX-F0387 堆耗尽显性路径（OOM分级账 warn80%/crit95%/dead100%触发精确+分级动作账齐，0xC3 段七码）
+pub mod unx387_oomtier;
 // unx1043_tscdeadline —— UNX-F1043 TSC-deadline 模式（LAPIC deadline 投递，10 万次零丢失，探测 10/10，p99≤10µs，0x9C 段七码）
 pub mod unx1043_tscdeadline;
 // unx1023_hpettick —— UNX-F1023 HPET 周期模式与 tick 生成（1ms tick 10^6 拍漂移<100µs，抖动 p99<10µs，丢拍检测 10/10，0x9D 段七码）
 pub mod unx1023_hpettick;
+// unx1025_hpetread —— UNX-F1025 HPET 读面（主计数器读与序纪律：读序状态机+双窗连贯+单调10^6+开销预算+TSC交叉，0xCC 段六码）
+pub mod unx1025_hpetread;
 
 
 
@@ -1344,6 +1416,20 @@ pub mod unx323_realmjmp;
 pub mod unx342_apsilence;
 // unx362_resvwhite ↔ UNX-F0362 保留区登记与白名单（逐段冻结+边界碰触拦截+修订出新版留档；0xA2 段）
 pub mod unx362_resvwhite;
+// unx264_lineedit ↔ UNX-F0264 终端行编辑器增强（历史16条循环淘汰留痕+前缀补全公共前缀扩展+Tab二义提示+边界输入不崩溃；0x6200 段）
+pub mod unx264_lineedit;
+// unx324_sipiseq ↔ UNX-F0324 INIT-SIPI-SIPI 序列封装（10ms/200µs 规范间隔早发即拒+向量 4K 对齐 8 位域双校验+重发 3 次升级 FullInit 放弃进隔离；0x6300 段）
+pub mod unx324_sipiseq;
+// unx643_drilllog ↔ UNX-F0643 演练记录簿（逐轮三列轮号/结论/时戳+序号连续零跳号+簿行=放行+拦截守恒恒等+簿满显性；0x6400 段）
+pub mod unx643_drilllog;
+// unx683_boottrace ↔ UNX-F0683 逐次引导留痕（五列行组装门缺列即拒+150/150 序号连续零跳号+F0646 履历对接投影 diff+零抹除快照对拍；0x6500 段）
+pub mod unx683_boottrace;
+// unx206_excode ↔ UNX-F0206 异常项分类码 E-引导异常字典（六分区闭集+三要素构造级零缺+重复码注册拒+全码幂等对拍+渲染确定性；0x6600 段）
+pub mod unx206_excode;
+// unx245_randnode ↔ UNX-F0245 早传第四步随机化决策节（槽位/熵摘要/开关态三要素+脱敏抽检禁绝对基址字节型+F0088 双写对账+封账唯一+幂等重放；0x6700 段）
+pub mod unx245_randnode;
+// unx1563_a4sign ↔ UNX-F1563 A4 内存域联签件（shootdown 三阶段协议消费面逐项核验+10 万轮零死锁复验+缺项点名+联签记录落档封指纹；0x6800 段）
+pub mod unx1563_a4sign;
 // unx382_bumpline ↔ UNX-F0382 bump 分配器（单向下水线；0x4c10 段）
 pub mod unx382_bumpline;
 // unx402_tscinv ↔ UNX-F0402 TSC 不变量探测（0x4c20 段）
@@ -1368,15 +1454,32 @@ pub mod unx462_bus0scan;
 pub mod unx482_pixfmt;
 // unx502_serialout_deep —— UNX-F0502 串口输出原语深化并存版（与 unx502_serialout 原版 857 行并存；三路同源对拍/UTF-8 五类故障/流控四态，0x9901~0x9910 段）
 pub mod unx502_serialout_deep;
-
 // unx043_amllex —— UNX-F0043 AML 词法层深化版（主码84+二级27闭集/NameSeg压缩解码/包长四档/覆盖率千分位对拍 iasl 12样本，0x0720~0x072F 段）
 pub mod unx043_amllex;
 // unx463_bridgewalk —— UNX-F0463 桥展开多总线深化版（显式栈递归/深度限8超限红/窗口一致性/环检测/悬空桥补红，0x7C01~0x7C16 段）
 pub mod unx463_bridgewalk;
 // unx942_dispatch —— UNX-F0942 分发入口统一路径深化版（五类分型10/10/步数开销2ns步/旁路收编清零/风暴熔断，0x8C01~0x8C11 段）
 pub mod unx942_dispatch;
+// unx943_tophalf —— UNX-F0943 top half 纪律（≤5µs 预算与最小化清单，0x4C50 段）
+pub mod unx943_tophalf;
 // unx1002_tscprobe —— UNX-F1002 TSC 特性探测深化版（三环境判定10/10/降级三档声明/频率三源对拍/启动报告九键，0x4CF0~0x4CFF 段）
 pub mod unx1002_tscprobe;
+// unx044_nstree —— UNX-F0044 AML 命名空间树深化版（_SB/_GPE/_PR 三机型各100节点iasl对拍/ScopeOp配对/路径三形态/重名立案，0x0A40~0x0A5F 段）
+pub mod unx044_nstree;
+// unx404_hpetcap_deep —— UNX-F0404 HPET 能力账深化并存版（ACPI表逐字段/能力三要素双读一致/使能位禁写红线，0x8201~0x8216 段）
+pub mod unx404_hpetcap_deep;
+// unx464_devid —— UNX-F0464 设备身份账深化版（三元组三读一致/100%覆盖对账/vendor名录26条PCI SIG/TLV往返，0xCB01~0xCB13 段）
+pub mod unx464_devid;
+// unx583_wlparams_deep —— UNX-F0583 白名单参数表深化并存版（24键三型冻结/FNV指纹/注入6/6全拒千分位恰1000，0x9E01~0x9E0F 段）
+pub mod unx583_wlparams_deep;
+// unx843_eoipath —— UNX-F0843 MSI/MSI-X EOI 路径深化版（十万事件行为矩阵100%一致/终结点四态裁决/泄漏账配平，0xB501~0xB511 段）
+pub mod unx843_eoipath;
+// unx1502_modeswitch —— UNX-F1502 万次切换回归深化版（10^4次逐次三列留痕/成功率恰1000‰/失败注入10/10必抓，0x9700~0x970F 段）
+pub mod unx1502_modeswitch;
+// unx1024_hpetalloc —— UNX-F1024 HPET 比较器分配器深化版（并发32零双占/十万次零泄漏/三型优先级预留纪律，0x4DA0~0x4DAF 段）
+pub mod unx1024_hpetalloc;
+// unx1543_crichain —— UNX-F1543 域级判据冻结深化版（F0801-F1600 800条FNV哈希链/篡改10/10检出/复验4800步红线内，0xF101~0xF110 段）
+pub mod unx1543_crichain;
 pub mod unx602_initrdro;
 pub mod unx602grid;
 pub mod unx602mx;
@@ -1416,6 +1519,7 @@ pub mod unx118_pauseresume;
 pub mod unx119_health;
 pub mod unx120_notify;
 pub mod unx121storm_stress;
+pub mod unx122doc_freeze;
 pub mod unx702_acpi80;
 pub mod unx722_verfp;
 pub mod unx742_upgrade;
@@ -2130,8 +2234,24 @@ pub mod unx1641_runqueue;
 pub mod unx1661_schedcls;
 // unx1681_timeslice — UNX-F1681 时间片模型深化版（基片×权重缩放+参数单点+路径唯一/0x5300 段）
 pub mod unx1681_timeslice;
+// unx184_initserial — UNX-F0184 init 串行性显式声明深化版（七阶段串行断言+ADR 放行留痕/0x4fb0 段）
+pub mod unx184_initserial;
+// unx205_reportuart — UNX-F0205 报文导出 UART 深化版（导出协议状态机+CRC16+1MB 零丢包/0x4fc0 段）
+pub mod unx205_reportuart;
+// unx0102_16550full — UNX-F0102 16550 串口全速通道深化版（寄存器模型+divisor=1+环回零错位/0x4fd0 段）
+pub mod unx0102_16550full;
+// unx224_takeover — UNX-F0224 升级接管登记表深化版（四字段完整性+缺项告警+交接对拍/0x4fe0 段）
+pub mod unx224_takeover;
+// unx244_cpupkg — UNX-F0244 CPU 特征包深化版（三段+Manifest+FNV+三面对账/0x4ff0 段）
+pub mod unx244_cpupkg;
+// unx264b_lineedit — UNX-F0264 行编辑器双实现 B 面（历史16循环+补全三态/0x5140 段）
+pub mod unx264b_lineedit;
+// unx343_appgt — UNX-F0343 AP 初始页表切换深化版（六步序列+CR3 账+翻译一致/0x5150 段）
+pub mod unx343_appgt;
 // unx1701_loadtrk — UNX-F1701 负载追踪模型深化版（几何衰减均值+双窗口档+分层声明/0x5310 段）
 pub mod unx1701_loadtrk;
+// unx1682_striple — UNX-F1682 三态基片表冻结深化版（档位/数值/适用类三列+F1663 对齐+表外零存在/0x53A0 段）
+pub mod unx1682_striple;
 // unx1721_balexec — UNX-F1721 均衡执行链深化版（六段签名链+跳段 10/10 拒绝/0x5320 段）
 pub mod unx1721_balexec;
 // unx1741_idlest — UNX-F1741 idle 三态状态机深化版（转换账一致+非法转换 10/10/0x5330 段）
@@ -2170,3 +2290,110 @@ pub fn run_wb21_unx20() -> crate::checks::CheckSet {
     set
 }
 pub mod unx882_rtereprog;
+
+// ===================== UNX-21 批次（本会话深编，0x6100~0x65cf 段） =====================
+// unx930_metrics ↔ UNX-F0930（UNX-21 深编）
+pub mod unx930_metrics;
+// unx930_thresh ↔ UNX-F0930（UNX-21 深编）
+pub mod unx930_thresh;
+// unx930_f0899def ↔ UNX-F0930（UNX-21 深编）
+pub mod unx930_f0899def;
+// unx930_alerting ↔ UNX-F0930（UNX-21 深编）
+pub mod unx930_alerting;
+// unx930_percentile ↔ UNX-F0930（UNX-21 深编）
+pub mod unx930_percentile;
+// unx930_healthroll ↔ UNX-F0930（UNX-21 深编）
+pub mod unx930_healthroll;
+// unx961_inventory ↔ UNX-F0961（UNX-21 深编）
+pub mod unx961_inventory;
+// unx961_profile ↔ UNX-F0961（UNX-21 深编）
+pub mod unx961_profile;
+// unx961_crosscheck ↔ UNX-F0961（UNX-21 深编）
+pub mod unx961_crosscheck;
+// unx961_takeovermap ↔ UNX-F0961（UNX-21 深编）
+pub mod unx961_takeovermap;
+// unx961_completeness ↔ UNX-F0961（UNX-21 深编）
+pub mod unx961_completeness;
+// unx961_obsaudit ↔ UNX-F0961（UNX-21 深编）
+pub mod unx961_obsaudit;
+
+/// UNX-21 批次域聚合（逐单折叠：族内任一红即整族红）。
+pub fn run_unx21_batch() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX21-batch");
+    let entries: [(&'static str, bool, &'static str); 2] = [
+        ("UNX-F0930", unx930_metrics::run_iph_checks().all_passed() && unx930_thresh::run_ipt_checks().all_passed() && unx930_f0899def::run_ipd_checks().all_passed() && unx930_alerting::run_ipa_checks().all_passed() && unx930_percentile::run_ippc_checks().all_passed() && unx930_healthroll::run_iphr_checks().all_passed(), "unx21 930 family sub-checks red"),
+        ("UNX-F0961", unx961_inventory::run_pms_checks().all_passed() && unx961_profile::run_pmp_checks().all_passed() && unx961_crosscheck::run_pmx_checks().all_passed() && unx961_takeovermap::run_pmt_checks().all_passed() && unx961_completeness::run_pmc_checks().all_passed() && unx961_obsaudit::run_pmo_checks().all_passed(), "unx21 961 family sub-checks red"),
+    ];
+    for (tag, ok, detail) in entries.iter() {
+        set.add(tag, *ok, if *ok { "" } else { detail });
+    }
+    set
+}
+
+// ==========================================================================
+pub mod unx325_apidmap;
+pub mod unx684_fwdiff;
+pub mod unx505_sw10k;
+pub mod unx545_judge800;
+// UNX 批次 5（CoRun 主册续单：F0325/F0684/F1502/F1543 + 现成族闭环）
+// ==========================================================================
+pub mod unx325grid;
+pub mod unx325mx;
+pub mod unx684grid;
+pub mod unx684mx;
+pub mod unx505grid;
+pub mod unx505mx;
+pub mod unx545grid;
+pub mod unx545mx;
+
+// --------------------------------------------------------------------------
+// UNX 批次 5 任务族聚合
+// --------------------------------------------------------------------------
+/// AP ID 核对域 域聚合。
+pub fn run_unx20_t325() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t325");
+    let mut ok = true;
+    if !unx325_apidmap::run_t325_checks().all_passed() { ok = false; }
+    if !unx325grid::run_t325_checks().all_passed() { ok = false; }
+    if !unx325mx::run_t325_checks().all_passed() { ok = false; }
+    set.add("AP ID 核对域", ok, if ok { "" } else { "unx20-t325 family sub-checks red" });
+    set
+}
+/// 固件路差异域 域聚合。
+pub fn run_unx20_t684() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t684");
+    let mut ok = true;
+    if !unx684_fwdiff::run_t684_checks().all_passed() { ok = false; }
+    if !unx684grid::run_t684_checks().all_passed() { ok = false; }
+    if !unx684mx::run_t684_checks().all_passed() { ok = false; }
+    set.add("固件路差异域", ok, if ok { "" } else { "unx20-t684 family sub-checks red" });
+    set
+}
+/// 万次切换域 域聚合。
+pub fn run_unx20_t505() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t505");
+    let mut ok = true;
+    if !unx505_sw10k::run_t505_checks().all_passed() { ok = false; }
+    if !unx505grid::run_t505_checks().all_passed() { ok = false; }
+    if !unx505mx::run_t505_checks().all_passed() { ok = false; }
+    set.add("万次切换域", ok, if ok { "" } else { "unx20-t505 family sub-checks red" });
+    set
+}
+/// 判据冻结域 域聚合。
+pub fn run_unx20_t545() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t545");
+    let mut ok = true;
+    if !unx545_judge800::run_t545_checks().all_passed() { ok = false; }
+    if !unx545grid::run_t545_checks().all_passed() { ok = false; }
+    if !unx545mx::run_t545_checks().all_passed() { ok = false; }
+    set.add("判据冻结域", ok, if ok { "" } else { "unx20-t545 family sub-checks red" });
+    set
+}
+// ---- AI-WBK batch6c: F0185/F0225/F0387b/F1562/F1602/F1621b ----
+pub mod unx185_cpufeat;
+pub mod unx225_diagdrill;
+pub mod unx387b_oomacct;
+pub mod unx1562_a3sign;
+pub mod unx1602_cputopo;
+pub mod unx1621b_percurv;
+pub mod unx943_tophalfline;
