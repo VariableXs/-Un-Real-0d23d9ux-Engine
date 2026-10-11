@@ -183,6 +183,7 @@ pub mod vcu02_benchmodel;
 pub mod cgc04_framearbiter;
 // cgd05_ratecontract — CGPU-F0485 帧率合同校验器（P95≤12.5ms/P99≤25ms/卡顿率≤0.5%三条款滚动窗600帧自动判定/0.5ms桶计数分位O(n+桶)/达标率每场景每时段履行报告/预警双源余量耗用80%+卡顿趋势Rising提前干预/预算修正建议单出单不执行C域消费/场景隔离清窗重计跨场景混算会撒谎/0x3Dxx 六码）
 pub mod cgd05_ratecontract;
+pub mod cgd05_ratecontract_checks;
 // cgf05_certsuite — CGPU-F0805 认证基准套件（全链考卷D08执行器+网页+2D/视频/3D分项五场景/金银铜三级深度矩阵覆盖面×用例密度×阈值放宽显性/认证即冻结指纹FNV落账/变更必须ADR申请账submitted状态批准外置/ADR批准后回起草态重认证才可再分发/分发包按级裁剪指纹复验防篡改/0x3Exx 七码）
 pub mod cgf05_certsuite;
 // cgg03_nvdifftable — CGPU-F0963 NVIDIA 驱动差异表（GameReady vs Studio双驱动线闭集/已知问题条目版本区间闭区间命中/症状六类规避动作五类冻结语义/收敛条目选路降级Observe留痕不阻断/发布即冻结演进走ADR账F0899复用/公开报告单点外部不直读表/版本三段解析主.次.热修/0x3Fxx 七码）
@@ -224,7 +225,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 34] = [
+    let blocks: [(&'static str, CheckSet); 35] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -241,6 +242,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-W0001", vcw01_sdkdoc_checks::run_vcw01_checks()),
         ("CGPU-F0482", cgd02_frametimer_checks::run_cgd02_checks()),
         ("CGPU-F0483", cgd03_frameledger_checks::run_cgd03_checks()),
+        ("CGPU-F0485", cgd05_ratecontract_checks::run_cgd05_checks()),
         ("CGPU-P0501", cgp01_adaptivearch_checks::run_cgp01_checks()),
         ("CGPU-P0502", cgp02_unifiedmodel_checks::run_cgp02_checks()),
         ("CGPU-O0701", vco01_degrade_checks::run_vco01_checks()),
