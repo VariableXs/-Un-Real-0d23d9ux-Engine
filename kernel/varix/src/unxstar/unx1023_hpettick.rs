@@ -269,7 +269,7 @@ impl HpetPeriodic {
     /// 长期漂移回放核（判据①）：回放 n 拍计划面，逐拍对账理想等差，
     /// 最大偏差 ns < 100µs。计划面由构造恒等差 ⇒ 偏差恒 0；此核是
     /// 「自动重装失效」的回归守卫（schedule_ticks 被改坏即红）。
-    pub fn drift_replay(&self, beats: u64) -> Result<u64, u16> {
+    pub fn drift_replay(&mut self, beats: u64) -> Result<u64, u16> {
         let mut max_dev_ns: u64 = 0;
         for k in 0..beats {
             let sched = self.schedule_ticks(k);
@@ -336,7 +336,7 @@ impl HpetPeriodic {
 
 /// C1：长期漂移——10^6 拍计划面回放最大偏差 0ns < 100µs（判据①主条）。
 fn check_c1_drift_long_run() -> bool {
-    let h = match HpetPeriodic::new(HPET_FREQ_HZ, PERIOD_TICKS) {
+    let mut h = match HpetPeriodic::new(HPET_FREQ_HZ, PERIOD_TICKS) {
         Ok(h) => h,
         Err(_) => return false,
     };
@@ -375,8 +375,8 @@ fn check_c3_loss_10_10() -> bool {
 
 /// C4：非法参数拒签——freq=0 出 0x9D01；period=0 出 0x9D02。
 fn check_c4_invalid_params() -> bool {
-    HpetPeriodic::new(0, PERIOD_TICKS) == Err(C_FREQ_ZERO)
-        && HpetPeriodic::new(HPET_FREQ_HZ, 0) == Err(C_PERIOD_INVALID)
+    matches!(HpetPeriodic::new(0, PERIOD_TICKS), Err(C_FREQ_ZERO))
+        && matches!(HpetPeriodic::new(HPET_FREQ_HZ, 0), Err(C_PERIOD_INVALID))
 }
 
 /// C5：计数器倒退拒签——投递时刻回写出 0x9D06；拍序倒退同出。
@@ -395,7 +395,7 @@ fn check_c5_backward() -> bool {
 
 /// C6：无样本恒真防线——无投递时 p99 守卫必须 false。
 fn check_c6_no_empty_true() -> bool {
-    let h = match HpetPeriodic::new(HPET_FREQ_HZ, PERIOD_TICKS) {
+    let mut h = match HpetPeriodic::new(HPET_FREQ_HZ, PERIOD_TICKS) {
         Ok(h) => h,
         Err(_) => return false,
     };
@@ -404,7 +404,7 @@ fn check_c6_no_empty_true() -> bool {
 
 /// C7：整数换算——10MHz 下 100 tick = 10000ns、10000 tick = 1ms = 1000000ns。
 fn check_c7_conversion() -> bool {
-    let h = match HpetPeriodic::new(HPET_FREQ_HZ, PERIOD_TICKS) {
+    let mut h = match HpetPeriodic::new(HPET_FREQ_HZ, PERIOD_TICKS) {
         Ok(h) => h,
         Err(_) => return false,
     };
