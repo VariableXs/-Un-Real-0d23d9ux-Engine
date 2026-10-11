@@ -75,6 +75,7 @@ pub mod vct02_layers;
 pub mod vct02_layers_checks;
 pub mod vcv01_realverify;
 pub mod vcv01_realverify_checks;
+pub mod vcv02_philosophy;
 pub mod vcw01_sdkdoc;
 pub mod vcw01_sdkdoc_checks;
 pub mod vcw02_infoarch;
@@ -289,6 +290,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-Q2562", vcq02_metrics_checks::run_vcq02_checks()),
         ("CGPU-T3041", vct01_tbridge_checks::run_vct01_checks()),
         ("CGPU-V3361", vcv01_realverify_checks::run_vcv01_checks()),
+        ("CGPU-V3362", vcv02_philosophy::run_vcv02_checks()),
         ("CGPU-W0001", vcw01_sdkdoc_checks::run_vcw01_checks()),
         ("CGPU-F0482", cgd02_frametimer_checks::run_cgd02_checks()),
         ("CGPU-F0483", cgd03_frameledger_checks::run_cgd03_checks()),
