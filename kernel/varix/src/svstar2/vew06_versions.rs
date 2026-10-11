@@ -40,6 +40,7 @@
 
 use alloc::format;
 use alloc::string::{String, ToString};
+use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vew05_trust::TrustChain;

@@ -142,13 +142,13 @@ pub struct XlateLedger {
 
 impl XlateLedger {
     /// 守恒式①：入 ≡ 直通 + 改写贡献（每次 \n→\r\n 贡献 1 入字节；\n→\r 同）。
-    pub fn input_conserves(&self) -> bool {
+    pub const fn input_conserves(&self) -> bool {
         let translated_inputs = self.nl_to_crlf + self.nl_to_cr;
         self.input_bytes == self.passthrough_bytes + translated_inputs
     }
 
     /// 守恒式②：FIFO 入口 ≡ 直通 + 改写产出（\n→\r\n 产 2 字节，\n→\r 产 1 字节）。
-    pub fn output_conserves(&self) -> bool {
+    pub const fn output_conserves(&self) -> bool {
         let produced = self.passthrough_bytes + self.nl_to_crlf * 2 + self.nl_to_cr;
         self.fifo_in_bytes == produced
     }
@@ -456,7 +456,7 @@ impl SerialPort {
     /// 同账两次摘要必同指纹（确定性）；任何账目变动必变指纹。
     pub fn summary_fingerprint(&self) -> u64 {
         let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        let mut m = |h: &mut u64, b: u8| {
+        let m = |h: &mut u64, b: u8| {
             *h ^= b as u64;
             *h = h.wrapping_mul(0x0000_0100_0000_01b3);
         };

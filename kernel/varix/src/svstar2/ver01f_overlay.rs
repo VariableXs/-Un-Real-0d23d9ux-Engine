@@ -611,6 +611,8 @@ pub struct Resolved {
     pub source: String,
     /// 胜出值。
     pub value: String,
+    /// 胜出者定义点（写入点坐标——持久化溯源用）。
+    pub site: Site,
     /// 胜出者是否来自未登记来源。
     pub unaudited: bool,
     /// 胜出者是否来自第三方扩展。
@@ -1021,6 +1023,7 @@ impl OverlayStack {
             level: win.level,
             source: win.source.clone(),
             value: win.value.clone(),
+            site: win.site,
             unaudited: win.unaudited,
             third_party: win.third_party,
             shadowed_levels,

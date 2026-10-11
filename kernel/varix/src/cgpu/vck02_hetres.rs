@@ -180,6 +180,8 @@ pub enum EngineKind {
     Isp,
     /// MEDIA（编解码固定）。
     Media,
+    /// GPU（通用图形/计算引擎——跨卡资源一致性同步用）。
+    Gpu,
 }
 
 impl EngineKind {
@@ -190,6 +192,7 @@ impl EngineKind {
             EngineKind::Dsp => "DSP",
             EngineKind::Isp => "ISP",
             EngineKind::Media => "MEDIA",
+            EngineKind::Gpu => "GPU",
         }
     }
 
@@ -200,6 +203,7 @@ impl EngineKind {
             EngineKind::Dsp => "硬实时档+细粒度任务（FEAT_REALTIME 常见）",
             EngineKind::Isp => "流水线固定功能（传感器直通，无通用任务面）",
             EngineKind::Media => "编解码固定（H.264/H.265/AV1 档位固定）",
+            EngineKind::Gpu => "通用图形/计算档+跨卡一致性（FEAT_COHERENCE 相关）",
         }
     }
 }

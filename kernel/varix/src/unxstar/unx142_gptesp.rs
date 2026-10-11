@@ -55,7 +55,7 @@ pub const GPT_ENTRIES_LBA: u64 = 2;
 /// ESP 类型 GUID（字节序混合端——UEFI 规范定义的内存字节序）。
 pub const ESP_TYPE_GUID: [u8; 16] = [
     0x28, 0x73, 0x2A, 0xC1, // C12A7328（首三组小端）
-    0x1F, 0x11, 0xD2, // F81F-11D2
+    0xF8, 0x1F, 0x11, 0xD2, // F81F-11D2
     0xBA, 0x4B, // BA4B
     0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B, // 00A0C93EC93B（后两组大端直排）
 ];
@@ -94,7 +94,7 @@ pub const FNV_OFFSET: u64 = 0xcbf29ce484222325;
 pub const FNV_PRIME: u64 = 0x100000001b3;
 
 /// u64 混入。
-pub const fn fnv1a_u64(mut s: u64, v: u64) -> u64 {
+pub const fn fnv1a_u64(mut s: u64, mut v: u64) -> u64 {
     let mut i = 0;
     while i < 8 {
         s = (s ^ (v & 0xFF)) * FNV_PRIME;

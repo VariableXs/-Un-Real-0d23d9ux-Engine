@@ -66,7 +66,7 @@ pub const FNV_OFFSET: u64 = 0xcbf29ce484222325;
 pub const FNV_PRIME: u64 = 0x100000001b3;
 
 /// u64 混入。
-pub const fn fnv1a_u64(mut s: u64, v: u64) -> u64 {
+pub const fn fnv1a_u64(mut s: u64, mut v: u64) -> u64 {
     let mut i = 0;
     while i < 8 {
         s = (s ^ (v & 0xFF)) * FNV_PRIME;
