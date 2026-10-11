@@ -87,6 +87,10 @@ pub mod vcw04_apiref_checks;
 // vcw05_docsync — CGPU-F3525 文档版本与代码同步（三态对齐规则写死落后/超前两害超前更危险/指纹+契约词双漂移立案幂等销账留痕不删/同步结论压发布门呼应文档即契约/0x34xx 三码）
 pub mod vcw05_docsync;
 pub mod vcx84_bandwidth;
+// vct05_secboundary — CGPU-F3045 对接安全边界（信封检视器+复用声明账+会话剖面+越界逐码显性拒）
+pub mod vct05_secboundary;
+// vcu04_scoringsys — CGPU-F3204 计分体系（三分链原始分/归一分/加权总分+计分表五闸显性拒+权重四档万分制守恒）
+pub mod vcu04_scoringsys;
 pub mod cgm02_display;
 pub mod cgm02_display_checks;
 pub mod cgm03_edid;
@@ -180,9 +184,6 @@ pub mod cgr04_safedegrade;
 // cgr05_faultiso — CGPU-F2725 渲染故障隔离（隔离格状态机健康→可疑→确诊/假警报不污染三机制封格+写前登记回滚+健康格零感知/Q05三信号确认窗3拍判定链声明式复用阈值独立写死可对拍/回滚只对确诊格凭证账不越权代写资源面/0x38xx 三码）
 pub mod cgr05_faultiso;
 pub mod vcs02_multiuser;
-pub mod vcs03_session;
-pub mod vcs04_quota;
-pub mod vcs05_isolate;
 pub mod vct03_protneg;
 pub mod vcu01_bencharch;
 pub mod vcu02_benchmodel;
@@ -292,7 +293,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 46] = [
+    let blocks: [(&'static str, CheckSet); 43] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -339,9 +340,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F1607", vck07_sync::run_vck07_checks()),
         ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
         ("CGPU-X3684", vcx84_bandwidth::run_vcx84_checks()),
-        ("CGPU-F2883", vcs03_session::run_vcs03_checks()),
-        ("CGPU-F2884", vcs04_quota::run_vcs04_checks()),
-        ("CGPU-F2885", vcs05_isolate::run_vcs05_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -466,3 +464,15 @@ pub mod vck18_frameattr2;
 pub mod vck19_tldebug;
 // vck20_dbgpanel — CGPU-F1701 引擎级调试面板（四面板NPU-F1629复用-DSP-多GPU-能效0x8801/统一框架元数据同构通道唯一0x8802/口径与注册表对齐漂移未注册拒0x8803/刷新1Hz基础可调500..10000mHz0x8804/CIPC四通道复用源单号F1704覆盖0x8805/五组自检/0x88xx 五码）
 pub mod vck20_dbgpanel;
+// vck21_tracefmt — CGPU-F1702 异构trace与开放格式（VXTR魔数schema v1版本化0x8901/导出导入往返FNV对拍截断拒0x8902/Perfetto兼容承诺窗0x8903/隐私红线字段白名单闭集审计0x8904/四组自检/0x89xx 五码）
+pub mod vck21_tracefmt;
+// vck22_profiler — CGPU-F1703 异构性能剖析（引擎级采样三轴聚合0x8A01/热点TOP三轴交接-等待-切换降序守卫0x8A02/火焰融合四层栈限父子包含校验0x8A03/建议规则库8条闭集挂锚0x8A04/四组自检/0x8Axx 五码）
+pub mod vck22_profiler;
+// vck23_dbgproto — CGPU-F1704 异构调试协议（CIPC消息族四闭集面板-时间线-trace-剖析字段数对schema0x8B01/协议冻结v1签名稳定审计0x8B02/远程调试预留接口位实占禁令0x8B03/调试态权限递增链Off<Passive<Active各族门槛0x8B04/四组自检/0x8Bxx 五码）
+pub mod vck23_dbgproto;
+// vck24_simdbg — CGPU-F1705 异构模拟器调试支持（模拟=真机同格式F1612/F1661复用编码往返恒等0x8C01/面板复用统一框架口径挂接0x8C02/CI确定性LCG同种子同指纹逐事件恒等0x8C03/三组自检/0x8Cxx 五码）
+pub mod vck24_simdbg;
+// vck25_telbudget — CGPU-F1706 异构遥测性能预算（三段50/30/20µs分账总增量100µs门禁0x8F01/零干扰三防护条热路径零分配零锁预算帽0x8F02/采样降级四档逐档不跳Off见底拒0x8F03/自举观测自身开销入账重复拒零开销拒深度帽1_0x8F04/四组自检/0x8Fxx 五码）
+pub mod vck25_telbudget;
+// vck26_telprivacy — CGPU-F1707 异构遥测隐私（三级分类Public-Internal-Sensitive表外拒级别闸0x9201/模型名指纹评估版本+量化后缀可定位即本地化未评估拒0x9202/控制三闸面板开导出默认关删除幂等0x9203/上传匿名白名单剥离敏感项0x9204/四组自检/0x92xx 五码）
+pub mod vck26_telprivacy;
