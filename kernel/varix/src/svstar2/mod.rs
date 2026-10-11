@@ -989,6 +989,7 @@ pub mod veab03_spatial_checks;
 // veae03_evtbus — VE-F6203 输入事件总线（发布订阅优先级三件/洪流背压同键替换不追加不刷爆/溢出优先级倒序丢弃Urgent永不丢/乱序入口断言拒入/(frame,seq)确定性派发序/订阅租约到期回收泄漏面/优先级地板滤除留痕/AA01总线同构契约冻结/量账守恒 0x33 段）
 pub mod veae03_evtbus;
 pub mod veae05_imecoex;
+pub mod vead09_phystel;
 pub mod veab07_audioassets;
 pub mod veab07_audioasset;
 // veab06_voice — VE-F5606 语音系统骨架（可靠通道三问句衔接+按权裁剪预算守恒+零记录隐私红线三违例阻断+说话板只示状态+延迟五段预算超段点名+静噪EWMA门限自适应+码率三档阶梯降级+设备占用提示 O(帧) 0x5D段）
