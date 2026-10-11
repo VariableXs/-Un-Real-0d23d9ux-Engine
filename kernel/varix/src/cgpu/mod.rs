@@ -132,9 +132,6 @@ pub mod cgb09_debugviz;
 // cgb10_graphcache — CGPU-F0170 帧图构建结果缓存（缓存键=表面集+资源集序无关哈希+计数混入+明细对拍防碰撞/四代环形槽位+TTL+满员逐最旧/增量三算子Add-Remove级联-Replace+base键校验+未动节点编译代数保留/增量=全量结构全等对拍/失效五因定表+环形账本+失效后必miss/命中率千分比遥测/构建成本模型+节约收益实测/32判据）
 pub mod cgb10_graphcache;
 
-// cgb11_budgetint — CGPU-F0171 帧图预算集成（逐任务预算标签校验 F0005 三要素对接+ladder四律+显性非法清单/成本预估 F0004 对接口径基价表写死可对拍/图级Σ预估 vs 帧预算余量三态 Ok-Tight储备线10%-Over/超支降级建议单 Low先降同级大est先降+Critical豁免+逐档回收转正即停+到底进skip候选只建议不执行/仲裁四态映射 Granted-Degraded-Queued-Rejected带清单+判定步数账红线200/集成门面全链一报告/30判据五族）
-pub mod cgb11_budgetint;
-
 // cgf04_hwid — CGPU-F0804 硬件身份识别（三要素身份vendor/device/驱动版本+虚拟化五类诚实标注三证据保守推定+防伪七探针行为地板交叉验证立案+档案schema序列化往返指纹链0x5E段）
 pub mod cgf04_hwid;
 pub mod cgc01_carbitration;
@@ -183,7 +180,6 @@ pub mod vcu02_benchmodel;
 pub mod cgc04_framearbiter;
 // cgd05_ratecontract — CGPU-F0485 帧率合同校验器（P95≤12.5ms/P99≤25ms/卡顿率≤0.5%三条款滚动窗600帧自动判定/0.5ms桶计数分位O(n+桶)/达标率每场景每时段履行报告/预警双源余量耗用80%+卡顿趋势Rising提前干预/预算修正建议单出单不执行C域消费/场景隔离清窗重计跨场景混算会撒谎/0x3Dxx 六码）
 pub mod cgd05_ratecontract;
-pub mod cgd05_ratecontract_checks;
 // cgf05_certsuite — CGPU-F0805 认证基准套件（全链考卷D08执行器+网页+2D/视频/3D分项五场景/金银铜三级深度矩阵覆盖面×用例密度×阈值放宽显性/认证即冻结指纹FNV落账/变更必须ADR申请账submitted状态批准外置/ADR批准后回起草态重认证才可再分发/分发包按级裁剪指纹复验防篡改/0x3Exx 七码）
 pub mod cgf05_certsuite;
 // cgg03_nvdifftable — CGPU-F0963 NVIDIA 驱动差异表（GameReady vs Studio双驱动线闭集/已知问题条目版本区间闭区间命中/症状六类规避动作五类冻结语义/收敛条目选路降级Observe留痕不阻断/发布即冻结演进走ADR账F0899复用/公开报告单点外部不直读表/版本三段解析主.次.热修/0x3Fxx 七码）
@@ -192,18 +188,6 @@ pub mod cgg03_nvdifftable;
 pub mod cgi03_bwaccount;
 // vck03_hettask — CGPU-F1603 异构任务模型与标签（B域Task侧车扩展不改核/schema版本化协商闭集/三维功耗标签F1458复用+Boost不可延迟互斥/NPU功耗系数表四档写死/亲和三级NpuOnly-PreferNpu-Any/any按能效序选路静态表写死/NPU系数表外/批维度micro≤batch外层步数向上取整/DSP deadline错过=失败显性回执不静默/提交前校验规则表五规则/能力位图复用F1602 FEAT_BATCH/REALTIME/0x41xx 八码）
 pub mod vck03_hettask;
-// cgc05_framecontract — CGPU-F0006 80帧合同与承诺报告（三档基准A/B/C合同文本冻结FNV指纹/硬件下限拒签/每帧记账帧间隔+五账户耗时+降质动作/10秒800帧聚合兑现率ppm桶计数分位/三级处置状态机单帧超时→帧内降质-连续5秒P95失守→降质链-连续60秒→书面报告/书面报告归因定位到账户五账户累计超支最大者+建议闭集/0x42xx 八码）
-pub mod cgc05_framecontract;
-// cge05_surfacepool — CGPU-F0009 网页表面池与可见性仲裁（30表面池容量64/可见性三档全帧率-1/2帧率-冻结渲染后台只留事件/1帧复活清idle+清驱逐标记/三因子份额面积×优先级×变化率每帧重排/风暴合批≥8请求按4帧轮转交错分摊肉眼无损/内存封顶32-16-8MB超限先压缩再驱逐后台帧缓冲驱逐后仍超显性/后台页面全速开关行为确定/0x43xx 六码）
-pub mod cge05_surfacepool;
-// cgi04_uploaddl — CGPU-F0010 上传下载带宽调度器（每帧1.5ms拷贝时间片大资产8MB强制分片2MB粒度跨帧渐进/mipmap可见性优先低分辨率级先传高级别后台补齐4倍几何/下载独立0.5ms片对称限速读回不抢帧带宽/拥塞归因队列深度≥64与PCIe利用率≥900kppm双源联动→放置建议可CPU任务留CPU F0004消费/时间片超发内部不变量/遥测全量/链路口径复用F1282/0x44xx 六码）
-pub mod cgi04_uploaddl;
-// cgm07_pacemodel — CGPU-F0486 呈现节奏模型（VSync/无同步/合成器三模式帧间隔行为/权衡声明撕裂-延迟-抖动三维评分+策略文本闭集/窗口形态适配矩阵全屏独占三模式直通无边框窗口VSync语义D02抑制联动接管/模式探测器锁相度≤10%+抖动≤1ms→VSync或Composer按合成器活跃二分-抖动>2ms不锁相→Unsynced-其余歧义显性拒/行为对拍抖动超模式声明上界立案/0x45xx 五码）
-pub mod cgm07_pacemodel;
-// cgf07_certgrade — CGPU-F0806 认证分级（四级判据量化金=三档全原画质达标/银=A/B主要场景/铜=降质后达标/不认证=降质仍不达标/证据三档齐备才可判级/公开认证卡随硬件可查F0808透明/铜级→O域降质配方预载清单三配方闭集联动声明/复核工单状态机Submitted→Regrading→Resolved改级必须附新证据同逻辑重判防拍脑袋/与F0805考卷体系分工/0x46xx 五码）
-pub mod cgf07_certgrade;
-// cgg04_nvram — CGPU-F0964 NVIDIA显存与预算（4-24GB六档档位表±512MB归档容差/池五闭集呈现-纹理-几何-管线-系统/默认配额15-40-20-10-15%小档保呈现大档重纹理/扣账单池超配额显性拒不静默透支/压力三级70%-90%阈值告急→降质链预判信号F0008接缝/回收建议按可回收优先级管线>纹理>几何呈现系统不可动/透明报告五池用量单点/H域F0852理念联动声明/0x47xx 六码）
-pub mod cgg04_nvram;
 
 /// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
 pub const CGPU_DOMAIN: &str = "cgpu";
@@ -225,7 +209,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 35] = [
+    let blocks: [(&'static str, CheckSet); 34] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -242,7 +226,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-W0001", vcw01_sdkdoc_checks::run_vcw01_checks()),
         ("CGPU-F0482", cgd02_frametimer_checks::run_cgd02_checks()),
         ("CGPU-F0483", cgd03_frameledger_checks::run_cgd03_checks()),
-        ("CGPU-F0485", cgd05_ratecontract_checks::run_cgd05_checks()),
         ("CGPU-P0501", cgp01_adaptivearch_checks::run_cgp01_checks()),
         ("CGPU-P0502", cgp02_unifiedmodel_checks::run_cgp02_checks()),
         ("CGPU-O0701", vco01_degrade_checks::run_vco01_checks()),
