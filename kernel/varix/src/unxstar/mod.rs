@@ -906,6 +906,10 @@ pub mod unx2106_exportledger;
 pub mod unx2107_paramfreeze;
 // unx2108_scenbook —— UNX-F2108 导出回归场景预告（8场景三要素入册+累计88→96/102+ktest注册表+skip零容忍带因，0xD4 段六码）
 pub mod unx2108_scenbook;
+// unx2109_ktestfamily —— UNX-F2109 导出 ktest 族注册（19条判据聚合+三档调度intact+skip带因100%+20维SMP取数口，0xD6 段六码）
+pub mod unx2109_ktestfamily;
+// unx2110_lockfreeread —— UNX-F2110 导出并发读基准（无锁读开销账：格式冻结F1773体例+seqlock逻辑建模+撕裂零发生+补测占位，0xD7 段六码）
+pub mod unx2110_lockfreeread;
 
 
 
