@@ -174,6 +174,7 @@ pub mod cgg01_gnvidia;
 pub mod cgg02_nvprobe;
 // cgh03_pooltier 深化版（F1123 v2：三级池让度规则进裁决面/子账户树深度受限树内守恒/守恒三式/水位滞回+采样史趋势/八类事件账FNV链/再平衡单笔bps上限/回收预估单声明F1124执行位/快照指纹往返/读屏三段 0x65 段扩码 0x6505-0x650C）
 pub mod cgh03_pooltier;
+pub mod cgh04_waterpress;
 pub mod vck01_heteroarch;
 // vck02_hetres — CGPU-F1602 异构资源抽象（ComputeDevice四核心trait必选+Batch/Realtime扩展trait特性位图分层/四类型卡NPU DSP ISP MEDIA静态规格/HetCaps schema版本化能力即数据/HetHandle全局id+home+位置标签跨引擎位可达性判定/热注册带任务注销显性拒/MockEngine确定性假引擎F1454模式/0x3Bxx 四码）
 pub mod vck02_hetres;
@@ -294,7 +295,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 43] = [
+    let blocks: [(&'static str, CheckSet); 44] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -341,6 +342,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F1607", vck07_sync::run_vck07_checks()),
         ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
         ("CGPU-X3684", vcx84_bandwidth::run_vcx84_checks()),
+        ("CGPU-F1124", cgh04_waterpress::run_cgh04_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
