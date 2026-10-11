@@ -900,6 +900,8 @@ pub mod unx2103_sysfstune;
 pub mod unx2104_exportmatrix;
 // unx2105_exportpoint —— UNX-F2105 单点导出（三面状态汇总：第26处单点在册+签名/单位/同窗三列齐备+B09汇聚对拍，0xD1 段六码）
 pub mod unx2105_exportpoint;
+// unx2106_exportledger —— UNX-F2106 导出与账本一致性断言（防两张皮：同构双视图五维逐字段对拍+注入谱10/10检出+全域三面挂接，0xD2 段七码）
+pub mod unx2106_exportledger;
 
 
 

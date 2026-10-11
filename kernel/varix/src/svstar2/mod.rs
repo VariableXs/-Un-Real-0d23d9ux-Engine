@@ -972,6 +972,8 @@ pub mod vew01_sdk_arch;
 /// 四层架构（设备/混音/空间/内容，层序即权限序，反向依赖即越权）；
 /// 音频三律（不炸耳/可静音/诚实音量）一律为红线，静音掉不算合规；
 /// AA 域（F5593）十件承接追补，缺件之层不得冻结接口。
+// ve5609_audiodebug — VE-F5609 音频调试支持（调试三件+双排序+同源核+快照导出+越权闸；0xD4C0 段）
+pub mod ve5609_audiodebug;
 pub mod veab01_audioarch;
 pub mod veab02_audioout;
 /// VE-AB · AB01 批次 · 音频域总架构域自检（VE-F5601）
@@ -1091,7 +1093,25 @@ pub mod vead08_physreplay;
 pub mod vead09_telemetry;
 // vef66_multilink — VE-F5414 网络与S域多用户联动（多人化标注+交互词典统一口径驳回O(1)+偏好随账户走本地兜底 0xB9 段）
 pub mod vef66_multilink;
+pub mod veac03_perception;
+pub mod veac04_blackboard;
+pub mod veac03_perception_checks;
+pub mod vef68_pdomain;
+pub mod vef68_pdomain_checks;
+pub mod vead11_docgen;
+pub mod vead11_docgen_checks;
+pub mod vef73_reparch;
+pub mod vef73_reparch_checks;
+pub mod vef74_authstate;
+pub mod vef74_authstate_checks;
+pub mod vef75_snapshot;
+pub mod vef75_snapshot_checks;
 pub mod vef67_netext;
+pub mod vef68_plink;
+pub mod vef69_netsec2;
+pub mod vef70_netbench;
+pub mod vef71_aainteg;
+pub mod vef72_aasign;
 pub mod vef63_apifreeze;
 pub mod vef64_netdocs;
 pub mod vef65_netsim;
@@ -1571,6 +1591,11 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F5411", vef64_netdocs::run_vef64_checks()),
         ("VE-F5412", vef65_netsim::run_vef65_checks()),
 ("VE-F5415", vef67_netext::run_vef67_checks()),
+("VE-F5416", vef68_plink::run_vef68_checks()),
+("VE-F5417", vef69_netsec2::run_vef69_checks()),
+("VE-F5418", vef70_netbench::run_vef70_checks()),
+("VE-F5419", vef71_aainteg::run_vef71_checks()),
+("VE-F5420", vef72_aasign::run_vef72_checks()),
         ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks()),
         ("VE-F1623", vef26_vfetch_checks::run_vef26_checks()),
         ("VE-F1624", vef27_morphtarget_checks::run_vef27_checks()),
@@ -1598,6 +1623,31 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0233", veb233_dualscreen::run_veb233_checks()),
         ("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks()),
         ("CGPU-F1122", vch02_ledger_checks::run_vch02_checks()),
+    // W-VB1 · VE-F5803 感知系统（三类通道闭集/感知模型非真值结构级红线/
+    // 全知恒拒/遗忘曲线双写 15 格第 7 单/降级矩阵/漂移标定/0x68 段十码）
+        ("VE-F5803", veac03_perception_checks::run_veac03_checks()),
+("VE-F5804", veac04_blackboard::run_veac04_checks()),
+    // W-VB1 · VE-F5416 网络与 P 域联动（同源单管道/一张表 F4921/门接入
+    // F4954 以总表为准/预算双写 5 格第 8 单/断流置灰/0xBD 段十码）
+        ("VE-F5416", vef68_pdomain_checks::run_vef68_checks()),
+    // W-VB1 · VE-F6011 物理文档（四层/三律/步长同源生成/裸正文注入
+    // 结构级拒 0x3C01/NaN 案例教学五案例+防线四代时间线/样本库失效
+    // 三规则+双盲检测/自动清理双击达标/CI 漂移阻断+双签解除/0x3C 段十码）
+        ("VE-F6011", vead11_docgen_checks::run_vead11_checks()),
+    // W-VB1 · VE-F5421 复制总架构（四段流水线冻结契约对拍/三类三策略
+    // 宪法矩阵与纯函数双写/客户端写权威红线 0xEB02/低频窗口+事件恰好
+    // 一次+严格递增/锚点周期 32tick/解冻双签/0xEB 段十码）
+        ("VE-F5421", vef73_reparch_checks::run_vef73_checks()),
+    // W-VB1 · VE-F5422 权威状态模型（唯一真源注册制/服务端逻辑唯一
+    // 写入口+日志无日志不入账断言/存储↔日志回放双写对拍/直查归位
+    // 拦截+客户端只见版本不见活值/快照基线+delta 前置闸/截断双签/
+    // 0xE8 段十码）
+        ("VE-F5422", vef74_authstate_checks::run_vef74_checks()),
+    // W-VB1 · VE-F5423 状态快照机制（周期快照器半周期节流+保留
+    // 窗口滚动淘汰/差量压缩链式封印衔接+压缩率底线拦截/哈希校验
+    // 失真即断链全量重发/锚点丢失全量重发/恢复三路:最新快照-旧快照
+    // 全量-无效id/底线调参双签/0xED 段十码）
+        ("VE-F5423", vef75_snapshot_checks::run_vef75_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
