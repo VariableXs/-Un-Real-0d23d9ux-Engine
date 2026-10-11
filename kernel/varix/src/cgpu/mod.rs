@@ -61,6 +61,9 @@ pub mod cga03_framegraph;
 // cga04_placer —— CGPU-F0004 CPU/GPU 任务放置决策器（成本画像五输入/双路预估公式写死/双路契约资格证+缺路拒/滞回防抖连续 5 帧差>15% 才切换/误差账持续>30% 触发重标定闭环 ±50% 钳制单帧一次/决策日志滚动全量可回放+守恒对账/双路指纹对拍分歧立案冻结/0x65 段十五码）
 pub mod cga04_placer;
 pub mod cga10_bandwidth_sched;
+pub mod vcg14_ressamp;
+pub mod vcg13_textrast;
+pub mod vca12_hwcompat;
 pub mod vcg13_textrast;
 pub mod vca12_hwcompat;
 pub mod vcl01_virtualarch;
@@ -303,6 +306,9 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
+("CGPU-F0014", vcg14_ressamp::run_vcg14_checks()),
+("CGPU-F0013", vcg13_textrast::run_vcg13_checks()),
+("CGPU-F0012", vca12_hwcompat::run_vca12_checks()),
 ("CGPU-F0013", vcg13_textrast::run_vcg13_checks()),
 ("CGPU-F0012", vca12_hwcompat::run_vca12_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
