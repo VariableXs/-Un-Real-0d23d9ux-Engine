@@ -1053,6 +1053,7 @@ pub mod vcb06_graphexec;
 pub mod vcb06_graphexec_checks;
 pub mod veae01_inputarch;
 pub mod veae01_inputarch_checks;
+pub mod veae02_inputabs;
 pub mod vef16_gridstat;
 pub mod vef16_checks;
 pub mod vew02_manifest;
@@ -1292,6 +1293,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F6006", vez18_dbg::run_vez18_checks()),
 ("VE-F6007", vez19_determ::run_vez19_checks()),
 ("VE-F5411", vez20_netdoc::run_vez20_checks()),
+("VE-F6202", veae02_inputabs::run_veae02_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
