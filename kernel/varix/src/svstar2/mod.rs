@@ -1100,6 +1100,8 @@ pub mod vead11_docgen;
 pub mod vead11_docgen_checks;
 pub mod vef73_reparch;
 pub mod vef73_reparch_checks;
+pub mod vef74_authstate;
+pub mod vef74_authstate_checks;
 pub mod vef67_netext;
 pub mod vef68_plink;
 pub mod vef69_netsec2;
@@ -1632,6 +1634,11 @@ pub fn run_svstar2_checks() -> CheckSet {
     // 宪法矩阵与纯函数双写/客户端写权威红线 0xEB02/低频窗口+事件恰好
     // 一次+严格递增/锚点周期 32tick/解冻双签/0xEB 段十码）
         ("VE-F5421", vef73_reparch_checks::run_vef73_checks()),
+    // W-VB1 · VE-F5422 权威状态模型（唯一真源注册制/服务端逻辑唯一
+    // 写入口+日志无日志不入账断言/存储↔日志回放双写对拍/直查归位
+    // 拦截+客户端只见版本不见活值/快照基线+delta 前置闸/截断双签/
+    // 0xE8 段十码）
+        ("VE-F5422", vef74_authstate_checks::run_vef74_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
