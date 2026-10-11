@@ -13,6 +13,7 @@ use super::veh02_audioarch::*;
 use crate::checks::CheckSet;
 
 use alloc::{format, vec};
+use alloc::vec::Vec;
 
 /// VE-F1402 域自检。
 pub fn run_veh02_checks() -> CheckSet {

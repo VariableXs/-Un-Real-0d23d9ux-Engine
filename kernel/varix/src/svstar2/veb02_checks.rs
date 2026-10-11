@@ -15,6 +15,7 @@ use super::veb02_queue::*;
 use crate::checks::CheckSet;
 
 use alloc::{format, vec};
+use alloc::vec::Vec;
 
 /// 代表性命令族（每条命令至少一个实例；AttachBacking 带两条内存条目）。
 fn family() -> Vec<CtrlCommand> {

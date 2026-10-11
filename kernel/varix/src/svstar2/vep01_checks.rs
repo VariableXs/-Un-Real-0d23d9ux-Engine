@@ -21,6 +21,7 @@ use crate::checks::CheckSet;
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 /// 标准消费契约登记（四端齐备）。
 ///

@@ -26,6 +26,7 @@
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::vec;
 
 use super::vel03_emitter::{
     add_v3, is_finite, scale_v3, DiagBag, DiagCode, Diagnostic, EmitAccumulator, Vec3,

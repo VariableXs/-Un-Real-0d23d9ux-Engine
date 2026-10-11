@@ -19,6 +19,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::h2star::h2base::bump_copy_name;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 站内账

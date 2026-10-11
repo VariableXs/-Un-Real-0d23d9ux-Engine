@@ -26,6 +26,7 @@ use crate::checks::CheckSet;
 // `use` 进来的上游项——靠间接带入能编过，但本模块删掉某个 import 时调用方
 // 可见性会静默变化。
 use crate::svstar2::vek06_tonemap::SceneReferred;
+use alloc::vec::Vec;
 
 /// 近似相等。
 fn close(a: f32, b: f32) -> bool {

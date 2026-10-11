@@ -50,7 +50,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
-use crate::svstar2::cgpu::vck02_hetres::EngineKind;
+use crate::cgpu::vck02_hetres::EngineKind;
 
 // ---------------------------------------------------------------------------
 // 一、常量与错误码

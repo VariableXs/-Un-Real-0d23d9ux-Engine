@@ -60,6 +60,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 一、规格常量

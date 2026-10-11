@@ -10,8 +10,10 @@
 //! - 语义显性 → `C13-显性-*`（未定义宏按假有注记、三要素齐备、注记可查）
 
 use super::vec12_macro::{parse_definition, MacroConfig, MacroTable};
+use alloc::format;
 use super::vec13_cond::*;
 use crate::checks::CheckSet;
+use alloc::string::String;
 
 /// 组装测试宏表：LEVEL（对象宏）、TWICE（函数式）、SELFREF（自引用）。
 fn test_table() -> MacroTable {

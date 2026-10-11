@@ -50,6 +50,7 @@ use crate::checks::CheckSet;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 一、原则与构造（判据一：原则六条全部可追溯到具体构造）

@@ -42,6 +42,7 @@ use crate::checks::CheckSet;
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 一、记号三元组（判据二：三元组记号）

@@ -19,6 +19,7 @@ use crate::h2star::h2dnd::{DragSession, DragState, DropKind, DropZone, hit_test,
 use crate::h2star::h2fsops::{plan_item, OpKind, Collision, Action};
 use crate::h2star::h2host::{SessionAssembler, teardown_plan, TearLayer};
 use crate::h2star::h2settings::{SettingsStore, export_pack, import_pack, SCHEMA_VERSION};
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 演练账

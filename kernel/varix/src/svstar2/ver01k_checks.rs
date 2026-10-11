@@ -29,6 +29,7 @@ use crate::checks::CheckSet;
 use crate::svstar2::ver01k_dualtheme::*;
 
 use alloc::string::String;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 判据侧常量（独立字面量，不从被测推导）

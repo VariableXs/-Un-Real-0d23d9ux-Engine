@@ -65,6 +65,7 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::format;
 
 use super::veo01_arch::{fnv1a64_hex, StyleError};
 

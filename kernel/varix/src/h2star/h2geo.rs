@@ -17,6 +17,7 @@
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 一个轴对齐矩形（整像素——布局不许出现半像素糊边）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

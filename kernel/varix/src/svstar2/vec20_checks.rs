@@ -112,7 +112,7 @@ fn complete_lesson_count(p: &LessonPack) -> usize {
 
 /// VE-F0420 域自检。
 pub fn run_vec20_checks() -> CheckSet {
-    let mut set = CheckSet::new();
+    let mut set = CheckSet::new("VE-F0420");
     let std = standard_input();
 
     // ========================================================================

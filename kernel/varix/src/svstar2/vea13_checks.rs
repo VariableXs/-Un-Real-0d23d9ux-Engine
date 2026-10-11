@@ -19,6 +19,7 @@
 
 use super::vea13_softfall::*;
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 /// VE-F0013 域自检。
 pub fn run_vea13_checks() -> CheckSet {

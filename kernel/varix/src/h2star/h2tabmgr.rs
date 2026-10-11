@@ -18,6 +18,7 @@ use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 标签模型与宽度三档

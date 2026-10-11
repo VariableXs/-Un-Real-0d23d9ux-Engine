@@ -17,6 +17,7 @@ use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 探测报告——V01 显示协商的对接口。
 ///

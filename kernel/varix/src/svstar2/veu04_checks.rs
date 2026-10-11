@@ -32,6 +32,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::boxed::Box;
 
 /// 判据族前缀表（长前缀在前）。
 const FAMILIES: [&str; 8] = [

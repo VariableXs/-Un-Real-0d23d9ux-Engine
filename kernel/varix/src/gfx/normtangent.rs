@@ -25,7 +25,7 @@
 
 use alloc::vec::Vec;
 
-use super::checks::CheckSet;
+use crate::checks::CheckSet;
 use super::meshquant::{angle_deg3, fabs, fsqrt, len3};
 
 // ===========================================================================

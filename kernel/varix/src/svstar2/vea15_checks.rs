@@ -17,6 +17,7 @@
 
 use super::vea15_errclass::*;
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 /// VE-F0015 域自检。
 pub fn run_vea15_checks() -> CheckSet {

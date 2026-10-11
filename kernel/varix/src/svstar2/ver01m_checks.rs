@@ -30,6 +30,8 @@ use crate::svstar2::ver01k_dualtheme::RGB888;
 use crate::svstar2::ver01m_nova4ksync::*;
 
 use alloc::string::String;
+use alloc::format;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 判据侧常量（独立字面量，不从被测推导）

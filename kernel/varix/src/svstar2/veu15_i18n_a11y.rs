@@ -57,9 +57,11 @@
 //! 无隐私面：全部输入是语言标签、颜色三元组与像素整数。
 
 use crate::checks::CheckSet;
+use alloc::format;
 
 use super::vei02_locale::{parse_lenient, ParseBudget};
 use super::vet02_highcontrast_engine::{contrast_ratio, WCAG_AA_NORMAL as VET02_AA_NORMAL};
+use alloc::string::String;
 
 // ---------------------------------------------------------------------------
 // 一、版本与诊断码

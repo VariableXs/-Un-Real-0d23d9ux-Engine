@@ -20,6 +20,7 @@ use crate::checks::CheckSet;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 /// 标准对端契约登记（上游两域 + 下游两域 + 跨卷一端）。
 ///

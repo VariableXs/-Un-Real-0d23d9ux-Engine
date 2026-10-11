@@ -12,6 +12,7 @@
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
+use alloc::string::String;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——触感参数表入册）

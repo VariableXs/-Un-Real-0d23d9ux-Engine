@@ -44,8 +44,10 @@
 
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 use crate::gfx::meshbatch::{forsyth_reorder, BatchMesh};
+use alloc::string::String;
 
 // ===========================================================================
 // 一、版本与诊断码（vef26 独占 0x43xx 段）

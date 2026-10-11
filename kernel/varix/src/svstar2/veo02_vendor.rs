@@ -81,6 +81,7 @@
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::format;
 
 use super::veo01_arch::{CrateDecision, ServoCrateId, ServoDecision, StyleError};
 

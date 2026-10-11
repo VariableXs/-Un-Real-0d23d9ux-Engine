@@ -13,6 +13,7 @@
 
 use super::vej04_pointlight::*;
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 /// VE-F1804 域自检。
 pub fn run_vej04_checks() -> CheckSet {

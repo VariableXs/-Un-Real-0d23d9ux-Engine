@@ -15,8 +15,10 @@
 //! 零墙钟、零 IO，回归可复现。
 
 use super::veo01_arch::ServoDecision;
+use alloc::format;
 use super::veo02_vendor::*;
 use crate::checks::CheckSet;
+use alloc::boxed::Box;
 
 /// 上游 style 的 revision（40 位十六进制的**形状样本**，非真实上游哈希）。
 ///

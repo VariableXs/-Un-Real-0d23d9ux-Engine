@@ -29,6 +29,7 @@
 
 use crate::checks::CheckSet;
 use alloc::vec;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）

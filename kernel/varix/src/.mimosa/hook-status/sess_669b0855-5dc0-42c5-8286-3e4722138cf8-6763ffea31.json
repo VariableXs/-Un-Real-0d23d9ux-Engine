@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-10-06T17:10:32.842Z",
+  "sessionId": "sess_669b0855-5dc0-42c5-8286-3e4722138cf8",
+  "event": "PostToolUse",
+  "toolName": "Write",
+  "file": "svstar2/_reconcile_mod.py",
+  "outcome": "clear",
+  "coverage": "complete",
+  "findingCount": 0,
+  "durationMs": 27,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

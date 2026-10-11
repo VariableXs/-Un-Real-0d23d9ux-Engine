@@ -7,7 +7,9 @@
 //! - 零语义 → `C08-零语义-*`（注释内容任意、字符串保护）
 
 use super::vec08_comment::*;
+use alloc::vec;
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 /// VE-F0408 域自检。
 pub fn run_vec08_checks() -> CheckSet {

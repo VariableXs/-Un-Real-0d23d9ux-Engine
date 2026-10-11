@@ -59,6 +59,7 @@
 //!   字面量消费 `EncodingMeta.encoding` 作为串内字节的源编码裁定依据。
 
 use alloc::format;
+use alloc::borrow::ToOwned;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

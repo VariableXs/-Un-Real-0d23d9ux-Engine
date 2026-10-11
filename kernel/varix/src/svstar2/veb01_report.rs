@@ -16,6 +16,7 @@ use super::vea01_probe::{AdapterProbeInput, BusKind};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 注册结论——B 域驱动向 A 域交付的最终形态。
 #[derive(Clone, Debug)]

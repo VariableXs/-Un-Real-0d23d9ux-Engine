@@ -39,6 +39,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 语料构造器：Annex-B 字节流合成器

@@ -19,6 +19,9 @@
 
 use crate::checks::CheckSet;
 use crate::h1star::h1base::{Curve, MotionPolicy};
+use alloc::string::ToString;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（一处一事实）

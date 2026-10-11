@@ -19,9 +19,11 @@
 //! 失败细节由单元测试承担——自检只负责绿/红 + 稳定短码。
 
 use alloc::vec::Vec;
+use alloc::vec;
 
 use crate::checks::CheckSet;
 use crate::svstar2::vei05_font as ft;
+use alloc::string::ToString;
 
 /// 自检集构造。
 pub fn run_vei05_checks() -> CheckSet {

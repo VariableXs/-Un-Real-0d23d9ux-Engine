@@ -60,6 +60,7 @@ use alloc::vec::Vec;
 
 use super::vea46_present::{MAX_HEIGHT, MAX_WIDTH, MIN_HEIGHT, MIN_WIDTH};
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 一、诊断码（自建段 0x8Exx —— 全 kernel 树 grep 后确认零占用；

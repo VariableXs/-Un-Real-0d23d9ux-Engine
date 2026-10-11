@@ -49,7 +49,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
-use crate::svstar2::cgpu::vck02_hetres::{EngineKind, HetCaps, ENGINE_KINDS, FEAT_BATCH};
+use crate::cgpu::vck02_hetres::{EngineKind, HetCaps, ENGINE_KINDS, FEAT_BATCH};
 
 // ---------------------------------------------------------------------------
 // 一、常量与错误码

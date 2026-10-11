@@ -18,8 +18,10 @@ use super::veo03_subset::*;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
+use alloc::format;
 
 use super::veo03_subset::PropertyFamily;
+use alloc::boxed::Box;
 
 /// 构造一条合法的样本属性（登记类判据的原料）。
 fn sample(name: &'static str, family: PropertyFamily) -> SubsetProperty {

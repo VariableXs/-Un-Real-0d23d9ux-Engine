@@ -8,6 +8,7 @@
 
 use super::vec12_macro::*;
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 /// 组装测试宏表：PI=对象宏、ADD=函数式、SELF=自引用、MUTA/MUTB=互引用。
 fn test_table() -> MacroTable {

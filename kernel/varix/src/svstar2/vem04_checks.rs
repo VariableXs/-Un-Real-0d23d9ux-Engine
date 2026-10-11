@@ -28,6 +28,8 @@ use crate::svstar2::vem04_batch::*;
 extern crate alloc;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::string::ToString;
+use alloc::string::String;
 
 // ---------------------------------------------------------------------------
 // 便捷构造

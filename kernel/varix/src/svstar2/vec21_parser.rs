@@ -127,7 +127,7 @@ impl DiagCode {
 }
 
 /// 字节区间（`[start, end)`）。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Span {
     pub start: usize,
     pub end: usize,

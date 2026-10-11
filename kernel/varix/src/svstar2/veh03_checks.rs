@@ -11,6 +11,7 @@ use super::veh03_mixgraph::*;
 use crate::checks::CheckSet;
 
 use alloc::{format, vec};
+use alloc::string::ToString;
 
 fn port(ch: u8, rate: u32, resample: bool) -> Port {
     Port {

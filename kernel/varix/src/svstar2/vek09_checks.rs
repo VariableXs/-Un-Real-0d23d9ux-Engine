@@ -35,7 +35,11 @@
 //! 零墙钟、零 IO，回归可复现。
 
 use super::vek09_msaa::*;
+use alloc::vec;
+use alloc::format;
 use crate::checks::CheckSet;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// 1080p RGBA8 + D32 的显存实算精确值（颜色+深度）：2,073,600 px × 8B × 4。
 const MEM_1080P_4X: u64 = 66_355_200;

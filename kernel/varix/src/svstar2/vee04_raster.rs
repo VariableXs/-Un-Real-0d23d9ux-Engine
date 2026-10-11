@@ -50,6 +50,7 @@ use alloc::vec::Vec;
 
 use super::vee03_outline::{Outline, Point, Winding};
 use crate::checks::CheckSet;
+use alloc::boxed::Box;
 
 // ---------------------------------------------------------------------------
 // 一、规格常量（参数唯一源——文档与自检均引此处，不复制字面量）

@@ -20,6 +20,9 @@
 
 use crate::checks::CheckSet;
 use crate::h1star::textsel::{class_of, decode_pub, ScriptClass};
+use alloc::string::ToString;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（一处一事实）

@@ -4,6 +4,7 @@
 //! 便于日后对拍时逐条复核（规格对拍红线：参考实现 vs VE 输出）。
 
 use super::vea01_probe::Hypervisor;
+use alloc::vec::Vec;
 
 /// 单条在册特征。
 pub struct HypervisorSignature {

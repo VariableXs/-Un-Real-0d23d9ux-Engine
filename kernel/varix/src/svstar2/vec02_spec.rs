@@ -43,6 +43,7 @@ use crate::checks::CheckSet;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 一、三册与条目（判据一：三册分层；判据二：编号制）

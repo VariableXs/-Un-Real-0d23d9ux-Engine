@@ -14,8 +14,10 @@
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
 use super::ved01_tree::DirtyFlags;
+use alloc::vec;
 use super::ved07_visibility::*;
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 /// 链 1(根)→2→3(叶) 的父映射。
 fn chain_parents() -> Vec<(u64, Option<u64>)> {

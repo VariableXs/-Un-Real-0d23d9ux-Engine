@@ -17,7 +17,11 @@
 //! 逻辑时钟注入、零墙钟，回归可复现。
 
 use super::vea14_snapshot::*;
+use alloc::vec;
 use crate::checks::CheckSet;
+use alloc::string::ToString;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// VE-F0014 域自检。
 pub fn run_vea14_checks() -> CheckSet {

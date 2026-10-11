@@ -1,0 +1,240 @@
+//! VE-F0016 · 域自检（判据逐条对应，见 `vea16_texmgr.rs` 头注）
+//!
+//! 判据映射（锚点原文 → 自检项）：
+//! - 四段生命周期（创建/上传/更新/回收） → `A16-生命周期-四段迁移`
+//! - 格式自动选择 → `A16-格式-自动选择`
+//! - 格式转换含质量档位声明（损失量化标注） → `A16-格式-质量基线量化`
+//! - 流式上传（大纹理分块不卡帧） → `A16-流式-分块预算`
+//! - 流式上传含优先级（玩家看得见的先传） → `A16-流式-可见优先`
+//! - 纹理管理含别名字 trackers → `A16-台账-别名统一`
+//! - 显存预算对接（A05 消费） → `A16-预算-A05对接`
+//! - 回收含显存水位联动（水位告急先放谁写明） → `A16-回收-水位联动`
+//! - 预算超支→降分辨率 → `A16-降级-超支降分辨率`
+//! - 上传失败→重试+降级 → `A16-降级-重试上限`
+//! - 泄漏→审计 → `A16-审计-泄漏`
+//! - 纹理面板读屏可达 → `A16-读屏-面板`
+//!
+//! 逻辑时钟注入、零墙钟，回归可复现。
+
+use super::vea16_texmgr::*;
+use crate::checks::CheckSet;
+
+/// VE-F0016 域自检。
+pub fn run_vea16_checks() -> CheckSet {
+    let mut set = CheckSet::new("svstar2-vea16");
+
+    // ---- 四段生命周期 ----
+
+    // 判据：创建/上传/更新(流式推进)/回收四段；非法迁移拒绝入账。
+    {
+        let mut m = TextureManager::new();
+        m.create("t1", &[], 256, false, true, false, true).unwrap();
+        let jump = !m.transit("t1", TexStage::Ready); // 跳段拒绝
+        let ok1 = m.transit("t1", TexStage::Uploading);
+        let _ = m.pump_chunk();
+        let ok2 = m.transit("t1", TexStage::Ready);
+        let ok3 = m.transit("t1", TexStage::Reclaimed);
+        set.add("A16-生命周期-四段迁移", jump && ok1 && ok2 && ok3, "");
+    }
+
+    // ---- 格式自动选择 ----
+
+    {
+        let (a, ra) = choose_format(false, true, false, 512);
+        let (b, _) = choose_format(true, true, false, 512);
+        let (c, _) = choose_format(false, true, true, 512);
+        let (d, _) = choose_format(true, false, false, 512);
+        let (e, _) = choose_format(true, true, false, 128);
+        set.add(
+            "A16-格式-自动选择",
+            a == CompressionFormat::Bc1
+                && b == CompressionFormat::Bc3
+                && c == CompressionFormat::Bc7
+                && d == CompressionFormat::None
+                && e == CompressionFormat::None
+                && ra.contains("有损"),
+            "",
+        );
+    }
+
+    // ---- 质量档位声明 ----
+
+    // 判据：转换损失的量化标注在册（None=100 > BC7 > BC3 > BC1 > HalfRes）。
+    {
+        let q = (
+            CompressionFormat::None.quality(),
+            CompressionFormat::Bc7.quality(),
+            CompressionFormat::Bc3.quality(),
+            CompressionFormat::Bc1.quality(),
+            CompressionFormat::HalfRes.quality(),
+        );
+        let ordered = q.0 == 100 && q.1 > q.2 && q.2 > q.3 && q.3 > q.4;
+        let notes = QUALITY_BASELINE.iter().all(|(_, _, d)| !d.is_empty());
+        set.add("A16-格式-质量基线量化", ordered && notes, "");
+    }
+
+    // ---- 流式上传 ----
+
+    // 判据：大纹理分块、块预算 = CHUNK_BYTES、总和守恒、传完自动 Ready。
+    {
+        let mut m = TextureManager::new();
+        let total = m.create("big", &[], 2048, false, true, false, true).unwrap();
+        assert!(m.transit("big", TexStage::Uploading));
+        let mut sum = 0;
+        let mut chunks = 0;
+        loop {
+            match m.pump_chunk() {
+                Some((_, c)) => {
+                    assert!(c <= CHUNK_BYTES, "单块不超帧预算");
+                    sum += c;
+                    chunks += 1;
+                }
+                None => break,
+            }
+        }
+        let multi = chunks > 1;
+        let t = m.find_mut("big").unwrap();
+        set.add(
+            "A16-流式-分块预算",
+            sum == total && multi && t.stage == TexStage::Ready,
+            "",
+        );
+    }
+
+    // ---- 流式优先级 ----
+
+    // 判据：玩家看得见的纹理先传（可见性主导排序）。
+    {
+        let mut m = TextureManager::new();
+        m.create("invisible_far", &[], 512, false, true, false, false).unwrap();
+        m.create("visible_near", &[], 512, false, true, false, true).unwrap();
+        assert!(m.transit("invisible_far", TexStage::Uploading));
+        assert!(m.transit("visible_near", TexStage::Uploading));
+        let (name, _) = m.pump_chunk().unwrap();
+        set.add("A16-流式-可见优先", name == "visible_near", "");
+    }
+
+    // ---- 别名字 trackers ----
+
+    // 判据：同纹理多名字统一台账（别名可查 + 重复别名拒绝 + 容量防护）。
+    {
+        let mut m = TextureManager::new();
+        m.create("main", &["alias1", "alias2"], 256, false, true, false, true).unwrap();
+        let by_alias = m.find_mut("alias1").is_some();
+        let dup = m.create("other", &["alias1"], 256, false, true, false, true);
+        let mut many: Vec<&str> = Vec::new();
+        for i in 0..(ALIAS_CAP + 1) {
+            many.push(match i {
+                0 => "a0",
+                1 => "a1",
+                2 => "a2",
+                3 => "a3",
+                4 => "a4",
+                5 => "a5",
+                6 => "a6",
+                7 => "a7",
+                _ => "a8",
+            });
+        }
+        let cap = m.create("big_alias", &many, 256, false, true, false, true);
+        set.add(
+            "A16-台账-别名统一",
+            by_alias && dup == Err("E_ALIAS_DUP") && cap == Err("E_ALIAS_CAP"),
+            "",
+        );
+    }
+
+    // ---- 显存预算对接（A05 消费） ----
+
+    {
+        set.add(
+            "A16-预算-A05对接",
+            A05_LINK >= 1 && VRAM_CRITICAL_PCT == 90 && CHUNK_BYTES == 256 * 1024,
+            "",
+        );
+    }
+
+    // ---- 回收含显存水位联动 ----
+
+    // 判据：水位告急时先放谁写明（不可见 > 低优先 > 最久未用；回落至水位线下停手）。
+    {
+        let mut m = TextureManager::new();
+        m.create("inv_old", &[], 512, false, true, false, false).unwrap();
+        m.create("vis_new", &[], 512, false, true, false, true).unwrap();
+        assert!(m.transit("inv_old", TexStage::Uploading));
+        assert!(m.transit("vis_new", TexStage::Uploading));
+        loop {
+            if m.pump_chunk().is_none() {
+                break;
+            }
+        }
+        m.advance_tick();
+        m.advance_tick();
+        m.vram_pct = 95; // 告急
+        let freed = m.reclaim_under_pressure();
+        let first = freed.first().map(|s| s.as_str()) == Some("inv_old");
+        let stopped = m.vram_pct < VRAM_CRITICAL_PCT; // 回落到位即停
+        set.add("A16-回收-水位联动", first && stopped && !m.reclaim_log.is_empty(), "");
+    }
+
+    // ---- 预算超支→降分辨率 ----
+
+    {
+        let mut m = TextureManager::new();
+        m.create("wall", &[], 4096, false, true, false, true).unwrap();
+        let before = m.find_mut("wall").unwrap().total_bytes;
+        let ok = m.downgrade_resolution("wall");
+        let after = m.find_mut("wall").unwrap().total_bytes;
+        set.add(
+            "A16-降级-超支降分辨率",
+            ok && after < before && m.find_mut("wall").unwrap().downgraded,
+            "",
+        );
+    }
+
+    // ---- 上传失败→重试+降级 ----
+
+    {
+        let mut m = TextureManager::new();
+        m.create("ui", &[], 1024, true, true, false, true).unwrap();
+        assert!(m.transit("ui", TexStage::Uploading));
+        let r1 = m.on_upload_fail("ui");
+        let r2 = m.on_upload_fail("ui");
+        let r3 = m.on_upload_fail("ui");
+        set.add(
+            "A16-降级-重试上限",
+            r1 == "RETRY" && r2 == "RETRY" && r3 == "DOWNGRADED",
+            "",
+        );
+    }
+
+    // ---- 泄漏→审计 ----
+
+    {
+        let mut m = TextureManager::new();
+        m.create("leak1", &[], 256, false, true, false, true).unwrap();
+        assert!(m.transit("leak1", TexStage::Uploading));
+        let _ = m.pump_chunk();
+        assert!(m.transit("leak1", TexStage::Ready));
+        m.find_mut("leak1").unwrap().referenced = true;
+        assert!(m.transit("leak1", TexStage::Reclaimed));
+        let n = m.audit_leaks();
+        set.add("A16-审计-泄漏", n == 1 && m.leaks.contains(&"leak1".to_string()), "");
+    }
+
+    // ---- 读屏可达 ----
+
+    {
+        let mut m = TextureManager::new();
+        m.create("panel", &["panel_alias"], 256, false, true, false, true).unwrap();
+        m.vram_pct = 50;
+        let t = m.screen_text();
+        set.add(
+            "A16-读屏-面板",
+            t.contains("纹理面板") && t.contains("显存水位") && t.contains("别名台账"),
+            "",
+        );
+    }
+
+    set
+}

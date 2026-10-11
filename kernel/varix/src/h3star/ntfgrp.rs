@@ -11,6 +11,7 @@ use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 钉选上限。
 pub const PIN_CAP: usize = 3;

@@ -23,6 +23,7 @@ use crate::h2star::h2base::bump_copy_name;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 计划模型

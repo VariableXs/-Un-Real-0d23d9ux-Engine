@@ -17,6 +17,8 @@ use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
+use alloc::string::ToString;
 
 /// 建一个标准事件注册表（三个已注册事件）。
 fn std_registry() -> EventRegistry {

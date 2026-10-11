@@ -24,6 +24,7 @@
 
 use crate::checks::CheckSet;
 use crate::perfstar2::frecency::{FrecencyEngine, UseEvent};
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实；全参数旋钮化——无隐藏魔法数）

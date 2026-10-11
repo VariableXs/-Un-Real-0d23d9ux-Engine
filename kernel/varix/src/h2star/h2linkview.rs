@@ -15,6 +15,7 @@ use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 目标串解析

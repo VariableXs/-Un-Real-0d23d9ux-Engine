@@ -24,6 +24,7 @@
 
 use crate::checks::CheckSet;
 use crate::h1star::textsel::{char_start_pub, class_of, decode_pub, ScriptClass};
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（一处一事实）

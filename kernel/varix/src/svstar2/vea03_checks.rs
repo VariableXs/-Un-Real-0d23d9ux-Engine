@@ -13,6 +13,7 @@ use crate::checks::CheckSet;
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::format;
 
 /// 构造两端互持的等待链（死锁检测用）。
 fn deadlock_chain() -> Vec<WaitEdge> {

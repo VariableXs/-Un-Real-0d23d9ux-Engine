@@ -14,6 +14,7 @@ use super::vec03_lexer::*;
 use crate::checks::CheckSet;
 
 use alloc::vec;
+use alloc::vec::Vec;
 
 /// 样例源（覆盖全部记号形状 + 指令行 + 注释 + 多字符操作符 + 指数数字）。
 const SAMPLE: &str = concat!(

@@ -18,6 +18,7 @@ use super::vea01_probe::AdapterClass;
 use crate::checks::CheckSet;
 
 use alloc::{format, vec};
+use alloc::string::ToString;
 
 /// QEMU 现代版对拍基准快照。
 fn snap() -> VirtioGpuDeviceSnapshot {

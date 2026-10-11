@@ -20,6 +20,11 @@
 //! 时间纪律：不持时钟（本项无时序判据）。
 
 use crate::checks::CheckSet;
+use alloc::vec;
+use alloc::string::ToString;
+use alloc::string::String;
+use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 规格常量（一处一事实）

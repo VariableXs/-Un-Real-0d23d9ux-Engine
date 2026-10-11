@@ -11,6 +11,7 @@ use super::veh06_audiotoken::*;
 use crate::checks::CheckSet;
 
 use alloc::{format, vec};
+use alloc::string::ToString;
 
 /// VE-F1406 域自检。
 pub fn run_veh06_checks() -> CheckSet {

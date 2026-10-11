@@ -8,6 +8,7 @@
 //! - 渐变零重算 / SDF 平方量 / FP16 往返 / GPU 对拍仅舍入
 
 use crate::checks::CheckSet;
+use alloc::vec;
 use crate::cgpu::cga01_simdprim as p;
 
 /// 判据侧独立混合参考（第三份：不复用 p::blend_channel 的 match 表，

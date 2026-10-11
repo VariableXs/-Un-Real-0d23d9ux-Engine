@@ -20,6 +20,7 @@ use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // F342 磁盘检查与修复

@@ -7,6 +7,7 @@
 
 use crate::checks::CheckSet;
 use crate::stareco::l10nopen::{context_ok, key_parts, placeholders_match};
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 词条域注册表：域.页面.用途 三级键的域级管理（防命名空间膨胀）

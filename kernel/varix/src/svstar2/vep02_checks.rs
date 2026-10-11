@@ -23,6 +23,7 @@ use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 判据一：四原则各有可失败的判定口径。
 ///

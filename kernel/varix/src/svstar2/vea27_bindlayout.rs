@@ -70,6 +70,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::boxed::Box;
 
 // ---------------------------------------------------------------------------
 // 一、规格常量

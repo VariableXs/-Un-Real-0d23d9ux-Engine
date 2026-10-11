@@ -15,6 +15,7 @@ use super::vea01_engine::{TRUST_WINNER_FLOOR, probe_all};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 单条仲裁规则的判定结果——规则表逐条留痕。
 #[derive(Clone, Debug)]

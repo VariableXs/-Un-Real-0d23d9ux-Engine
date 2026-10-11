@@ -46,6 +46,7 @@ use alloc::format;
 use alloc::string::String;
 
 use super::vez01_vfxarch::{Semantic, VfxEntry};
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 错误契约：三律三码 + 归属一码（独占 0x52 细分段）

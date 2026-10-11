@@ -11,6 +11,7 @@ use super::veb06_stream::*;
 use crate::checks::CheckSet;
 
 use alloc::{format, vec};
+use alloc::vec::Vec;
 
 /// VE-F0206 域自检。
 pub fn run_veb06_checks() -> CheckSet {

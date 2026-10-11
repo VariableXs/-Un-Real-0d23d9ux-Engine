@@ -89,6 +89,7 @@ use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 一、总纲常量（参数唯一源）

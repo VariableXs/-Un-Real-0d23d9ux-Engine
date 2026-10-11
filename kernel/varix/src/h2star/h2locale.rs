@@ -16,6 +16,8 @@
 use crate::checks::CheckSet;
 
 use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 区域档案（六格式项）

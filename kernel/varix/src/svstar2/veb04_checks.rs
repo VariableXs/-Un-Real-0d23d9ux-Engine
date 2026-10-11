@@ -14,6 +14,7 @@ use super::veb04_2dupdate::*;
 use crate::checks::CheckSet;
 
 use alloc::{format, vec};
+use alloc::vec::Vec;
 
 fn r(x: u32, y: u32, w: u32, h: u32) -> Rect {
     Rect { x, y, width: w, height: h }

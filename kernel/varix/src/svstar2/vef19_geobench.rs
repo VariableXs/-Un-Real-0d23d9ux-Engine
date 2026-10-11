@@ -38,6 +38,7 @@ use crate::gfx::meshdecimate::{
 use crate::gfx::meshquant::{packed_bytes_for_channels, quantize_position, dequantize_position, compute_bounds, QuantBits};
 use crate::gfx::meshrepair::RepairMesh;
 use crate::svstar2::vef18_geofuzz::{encode_mesh_stream, parse_mesh_stream, GeoRng, MeshStreamOutcome};
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 一、版本、桶位与预算（跨版本不可比 + 双桶显性）

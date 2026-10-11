@@ -1,0 +1,609 @@
+//! VE-F0016 · 纹理资源管理器（VE-A 域 · 内核图形抽象层 · 目标 460 行）
+//!
+//! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F0016`
+//!
+//! **判据（锚点原文）**：纹理全生命周期管理（创建/上传/更新/回收四段），
+//! 格式转换管线（压缩格式自动选择），显存预算对接（A05 仲裁器消费），流式
+//! 上传（大纹理分块不卡帧）；含纹理压缩格式的质量对比基线（有损格式与无损
+//! 的视觉差异量化）。判据：四段生命周期、格式自动选择、流式上传、降分辨率；
+//! 纹理管理含别名字 trackers（同纹理多名字的统一台账）；格式转换含质量档位
+//! 声明（转换损失的量化标注）；流式上传含优先级（玩家看得见的纹理先传）；
+//! 回收含显存水位联动（水位告急时先放谁写明）。错误路径：上传失败→重试+
+//! 降级；预算超支→降分辨率；泄漏→审计。
+//!
+//! **设计要点**：
+//! - **四段生命周期**：Created → Uploading → Ready → Reclaimed，迁移
+//!   表驱动（非法迁移拒绝并入账，零静默）；回收段与 A05 显存预算联动；
+//! - **格式自动选择**：按 (用途, 尺寸, 有损容忍) 从 [`CompressionFormat`]
+//!   选档——选档理由随纹理记录（可审计）；
+//! - **质量档位声明**：转换损失的量化标注（[`QUALITY_BASELINE`]：有损
+//!   格式相对无损失的 PSNR 等级与典型差异描述）——质量对比基线判据；
+//! - **流式上传**：大纹理分块（[`CHUNK_BYTES`]）跨帧渐进，**优先级 =
+//!   可见性 × 更新紧迫度**（玩家看得见的先传）；每帧块数预算不卡帧；
+//! - **别名字 trackers**：同纹理多名字统一台账（别名集），主名回收时
+//!   全别名一并失效（悬垂检测）；
+//! - **显存预算对接（A05 消费）**：每纹理记账 bytes，水位告急时按
+//!   回收序（不可见 > 低优先 > 最久未用）先放谁写明（判据点名）；
+//! - **预算超支→降分辨率**：超预算纹理按半分辨率档降级重估；
+//! **上传失败→重试+降级**：重试 [`UPLOAD_RETRY_LIMIT`] 次后降格式档；
+//! **泄漏→审计**：Reclaimed 后仍被引用 = 泄漏，审计入账。
+//! - **读屏可达**：纹理面板 `screen_text()` 人话摘要。
+//!
+//! **跨批对接点**：A05 预算消费（vea05_budget）；上游 F0012 探针。
+//!
+//! 逻辑 tick 注入，零墙钟；零外部依赖，只依赖 `crate::checks`（自检侧）。
+
+use crate::checks::CheckSet;
+
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+
+// ---------------------------------------------------------------------------
+// 一、规格常量（参数唯一源）
+// ---------------------------------------------------------------------------
+
+/// 与 A05 显存预算仲裁器的衔接契约版本。
+pub const A05_LINK: u32 = 1;
+
+/// 流式上传单帧块预算（字节/帧——不卡帧的量化承诺）。
+pub const CHUNK_BYTES: u64 = 256 * 1024;
+
+/// 上传重试上限（超过即降格式档）。
+pub const UPLOAD_RETRY_LIMIT: u32 = 2;
+
+/// 显存告急水位（占比，%）：超过即触发按序回收。
+pub const VRAM_CRITICAL_PCT: u32 = 90;
+
+/// 别名数上限（单纹理别名台账容量防护）。
+pub const ALIAS_CAP: usize = 8;
+
+/// 质量对比基线：格式 →（相对无损的画质档位 0-100，典型差异描述）。
+pub const QUALITY_BASELINE: [(&str, u32, &str); 5] = [
+    ("None", 100, "无损基线：逐位与源一致"),
+    ("BC1", 72, "有损：色块 4x4 压制，渐变色带轻微可见"),
+    ("BC3", 78, "有损+alpha：渐变略优于 BC1，alpha 量化"),
+    ("BC7", 92, "高质量有损：肉眼接近无损，仅高频纹理微糊"),
+    ("HalfRes", 50, "降分辨率：细节减半，远看近糊——保底档"),
+];
+
+// ---------------------------------------------------------------------------
+// 二、压缩格式与自动选择
+// ---------------------------------------------------------------------------
+
+/// 压缩格式档位。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompressionFormat {
+    /// 无损（基线）。
+    None,
+    /// BC1（无 alpha，高压缩）。
+    Bc1,
+    /// BC3（带 alpha）。
+    Bc3,
+    /// BC7（高质量）。
+    Bc7,
+    /// 降分辨率保底。
+    HalfRes,
+}
+
+impl CompressionFormat {
+    /// 格式名。
+    pub fn name(self) -> &'static str {
+        match self {
+            CompressionFormat::None => "None",
+            CompressionFormat::Bc1 => "BC1",
+            CompressionFormat::Bc3 => "BC3",
+            CompressionFormat::Bc7 => "BC7",
+            CompressionFormat::HalfRes => "HalfRes",
+        }
+    }
+
+    /// 质量档位（QUALITY_BASELINE 查询；未在册返回 0）。
+    pub fn quality(self) -> u32 {
+        QUALITY_BASELINE
+            .iter()
+            .find(|(n, _, _)| *n == self.name())
+            .map(|(_, q, _)| *q)
+            .unwrap_or(0)
+    }
+
+    /// 质量差异描述（转换损失的量化标注）。
+    pub fn loss_note(self) -> &'static str {
+        QUALITY_BASELINE
+            .iter()
+            .find(|(n, _, _)| *n == self.name())
+            .map(|(_, _, d)| *d)
+            .unwrap_or("未在册格式")
+    }
+}
+
+/// 格式自动选择（判据：格式自动选择；理由随纹理记录）。
+///
+/// 规则：有 alpha 且容忍有损 → BC3；不容忍有损 → None；
+/// 高质量档要求 → BC7；小尺寸（≤128²）压缩不划算 → None；
+/// 其余无 alpha → BC1。预算告急时 HalfRes 兜底。
+pub fn choose_format(has_alpha: bool, lossy_ok: bool, high_quality: bool, edge: u32) -> (CompressionFormat, String) {
+    if edge <= 128 {
+        return (
+            CompressionFormat::None,
+            "小纹理压缩不划算（≤128²），保持无损".to_string(),
+        );
+    }
+    if !lossy_ok {
+        return (CompressionFormat::None, "调用方不容忍有损，保持无损".to_string());
+    }
+    if high_quality {
+        return (
+            CompressionFormat::Bc7,
+            format!("高质量档：{}（{}）", CompressionFormat::Bc7.loss_note(), CompressionFormat::Bc7.quality()),
+        );
+    }
+    if has_alpha {
+        return (
+            CompressionFormat::Bc3,
+            format!("带 alpha 有损：{}（{}）", CompressionFormat::Bc3.loss_note(), CompressionFormat::Bc3.quality()),
+        );
+    }
+    (
+        CompressionFormat::Bc1,
+        format!("无 alpha 有损：{}（{}）", CompressionFormat::Bc1.loss_note(), CompressionFormat::Bc1.quality()),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// 三、纹理对象与四段生命周期
+// ---------------------------------------------------------------------------
+
+/// 生命周期四段。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TexStage {
+    /// 已创建（未上传）。
+    Created,
+    /// 上传中（流式分块）。
+    Uploading,
+    /// 就绪（可用）。
+    Ready,
+    /// 已回收（显存已释放）。
+    Reclaimed,
+}
+
+/// 一张纹理的台账。
+#[derive(Clone, Debug)]
+pub struct Texture {
+    /// 主名（台账主键）。
+    pub name: String,
+    /// 别名集（同纹理多名字统一台账）。
+    pub aliases: Vec<String>,
+    /// 尺寸（边长，正方形假设——量化入账）。
+    pub edge: u32,
+    /// 每像素字节（选档后按格式估）。
+    pub bpp: u32,
+    /// 当前格式。
+    pub format: CompressionFormat,
+    /// 选档理由（审计面）。
+    pub format_reason: String,
+    /// 生命周期段。
+    pub stage: TexStage,
+    /// 可见性（流式上传优先级因子；玩家看得见的先传）。
+    pub visible: bool,
+    /// 上传优先级（0-100，显式覆盖可见性推导）。
+    pub priority: u32,
+    /// 已上传字节（流式进度）。
+    pub uploaded_bytes: u64,
+    /// 总字节。
+    pub total_bytes: u64,
+    /// 重试计数。
+    pub retries: u32,
+    /// 最后使用 tick（回收序依据）。
+    pub last_used: u64,
+    /// 是否被引用（回收后仍被引用 = 泄漏）。
+    pub referenced: bool,
+    /// 降分辨率标记（预算超支降档过）。
+    pub downgraded: bool,
+}
+
+/// 纹理台账（四段管理器主结构）。
+pub struct TextureManager {
+    /// 纹理表。
+    pub textures: Vec<Texture>,
+    /// 生命周期非法迁移账（零静默）。
+    pub illegal_moves: Vec<(String, &'static str, &'static str)>,
+    /// 泄漏审计账。
+    pub leaks: Vec<String>,
+    /// A05 显存水位（%）。由外部（A05 仲裁器）推进。
+    pub vram_pct: u32,
+    /// 回收账（谁在什么水位被放）。
+    pub reclaim_log: Vec<(String, u32, &'static str)>,
+    tick: u64,
+}
+
+impl TextureManager {
+    /// 构造。
+    pub fn new() -> Self {
+        TextureManager {
+            textures: Vec::new(),
+            illegal_moves: Vec::new(),
+            leaks: Vec::new(),
+            vram_pct: 0,
+            reclaim_log: Vec::new(),
+            tick: 0,
+        }
+    }
+
+    /// 逻辑时钟推进。
+    pub fn advance_tick(&mut self) -> u64 {
+        self.tick = self.tick.saturating_add(1);
+        self.tick
+    }
+
+    /// 当前 tick。
+    pub fn tick(&self) -> u64 {
+        self.tick
+    }
+
+    /// 纹理字节估算（按格式：None=4bpp，BC1=1，BC3=2，BC7=2，HalfRes 减半面积）。
+    pub fn estimate_bytes(edge: u32, f: CompressionFormat) -> u64 {
+        let base = (edge as u64) * (edge as u64);
+        let bpp: u64 = match f {
+            CompressionFormat::None => 4,
+            CompressionFormat::Bc1 => 1,
+            CompressionFormat::Bc3 | CompressionFormat::Bc7 => 2,
+            CompressionFormat::HalfRes => 4,
+        };
+        let area = if f == CompressionFormat::HalfRes { base / 4 } else { base };
+        area * bpp
+    }
+
+    /// 创建（别名登记 + 格式自动选择 + A05 记账准备）。
+    pub fn create(
+        &mut self,
+        name: &str,
+        aliases: &[&str],
+        edge: u32,
+        has_alpha: bool,
+        lossy_ok: bool,
+        high_quality: bool,
+        visible: bool,
+    ) -> Result<u64, &'static str> {
+        self.tick = self.tick.saturating_add(1);
+        if name.is_empty() {
+            return Err("E_NAME_EMPTY");
+        }
+        if edge == 0 || edge > 16384 {
+            return Err("E_EDGE_OUT_OF_RANGE");
+        }
+        if self.textures.iter().any(|t| t.name == name) {
+            return Err("E_NAME_DUP");
+        }
+        if aliases.len() > ALIAS_CAP {
+            return Err("E_ALIAS_CAP");
+        }
+        let (fmt, reason) = choose_format(has_alpha, lossy_ok, high_quality, edge);
+        let total = Self::estimate_bytes(edge, fmt);
+        let alias_list: Vec<String> = aliases.iter().map(|a| (*a).to_string()).collect();
+        // 别名与既有主名/别名冲突也拒绝（台账唯一性）。
+        for a in alias_list.iter() {
+            if self.textures.iter().any(|t| t.name == *a || t.aliases.iter().any(|x| x == a)) {
+                return Err("E_ALIAS_DUP");
+            }
+        }
+        self.textures.push(Texture {
+            name: name.to_string(),
+            aliases: alias_list,
+            edge,
+            bpp: match fmt {
+                CompressionFormat::None | CompressionFormat::HalfRes => 4,
+                CompressionFormat::Bc1 => 1,
+                CompressionFormat::Bc3 | CompressionFormat::Bc7 => 2,
+            },
+            format: fmt,
+            format_reason: reason,
+            stage: TexStage::Created,
+            visible,
+            priority: if visible { 80 } else { 20 },
+            uploaded_bytes: 0,
+            total_bytes: total,
+            retries: 0,
+            last_used: self.tick,
+            referenced: false,
+            downgraded: false,
+        });
+        Ok(total)
+    }
+
+    /// 按主名或别名查纹理（别名字 trackers 统一台账）。
+    pub fn find_mut(&mut self, name: &str) -> Option<&mut Texture> {
+        self.textures
+            .iter_mut()
+            .find(|t| t.name == name || t.aliases.iter().any(|a| a == name))
+    }
+
+    /// 段迁移（表驱动：仅允许合法迁移，非法拒绝入账）。
+    pub fn transit(&mut self, name: &str, to: TexStage) -> bool {
+        // 先定位下标（不持有可变借用），再做账与迁移——borrow checker 友好。
+        let idx = self
+            .textures
+            .iter()
+            .position(|t| t.name == name || t.aliases.iter().any(|a| a == name));
+        let Some(i) = idx else {
+            self.illegal_moves
+                .push((name.to_string(), "未知纹理", "transit 拒绝"));
+            return false;
+        };
+        let from = self.textures[i].stage;
+        let legal = matches!(
+            (from, to),
+            (TexStage::Created, TexStage::Uploading)
+                | (TexStage::Uploading, TexStage::Ready)
+                | (TexStage::Ready, TexStage::Reclaimed)
+                | (TexStage::Created, TexStage::Reclaimed)
+        );
+        if !legal {
+            let n = self.textures[i].name.clone();
+            self.illegal_moves.push((n, from_name(from), to_name(to)));
+            return false;
+        }
+        if to == TexStage::Reclaimed && self.textures[i].referenced {
+            // 回收时仍被引用 → 泄漏审计（泄漏→审计判据）。
+            let n = self.textures[i].name.clone();
+            self.leaks.push(n);
+        }
+        let now = self.tick;
+        let t = &mut self.textures[i];
+        t.stage = to;
+        t.last_used = now;
+        true
+    }
+
+    /// 流式上传推进一块（判据：流式上传 + 优先级）。
+    ///
+    /// 可见纹理优先获得块预算；块大小 = min(CHUNK_BYTES, 剩余)。
+    /// 返回 (纹理名, 本帧上传字节)。
+    pub fn pump_chunk(&mut self) -> Option<(String, u64)> {
+        // 优先级 = 可见性(×100) + 显式 priority；玩家看得见的先传。
+        let best = self
+            .textures
+            .iter()
+            .filter(|t| t.stage == TexStage::Uploading && t.uploaded_bytes < t.total_bytes)
+            .max_by_key(|t| (t.visible as u32) * 1000 + t.priority)
+            .map(|t| t.name.clone())?;
+        let Some(t) = self.find_mut(&best) else { return None };
+        let remain = t.total_bytes - t.uploaded_bytes;
+        let chunk = remain.min(CHUNK_BYTES);
+        t.uploaded_bytes += chunk;
+        if t.uploaded_bytes >= t.total_bytes {
+            t.stage = TexStage::Ready;
+        }
+        Some((best, chunk))
+    }
+
+    /// 上传失败上报（错误路径：上传失败→重试+降级）。
+    ///
+    /// 重试 UPLOAD_RETRY_LIMIT 次后降 HalfRes 档重估字节。
+    pub fn on_upload_fail(&mut self, name: &str) -> &'static str {
+        let Some(t) = self.find_mut(name) else { return "E_UNKNOWN_TEX" };
+        t.retries += 1;
+        if t.retries <= UPLOAD_RETRY_LIMIT {
+            return "RETRY";
+        }
+        // 降级：HalfRes 重估。
+        t.format = CompressionFormat::HalfRes;
+        t.downgraded = true;
+        t.total_bytes = Self::estimate_bytes(t.edge, CompressionFormat::HalfRes);
+        t.uploaded_bytes = t.uploaded_bytes.min(t.total_bytes);
+        t.retries = 0;
+        "DOWNGRADED"
+    }
+
+    /// 预算超支降分辨率（错误路径：预算超支→降分辨率）。
+    pub fn downgrade_resolution(&mut self, name: &str) -> bool {
+        let Some(t) = self.find_mut(name) else { return false };
+        t.format = CompressionFormat::HalfRes;
+        t.downgraded = true;
+        t.total_bytes = Self::estimate_bytes(t.edge, CompressionFormat::HalfRes);
+        t.uploaded_bytes = t.uploaded_bytes.min(t.total_bytes);
+        true
+    }
+
+    /// 显存水位联动回收（判据：回收含显存水位联动——先放谁写明）。
+    ///
+    /// 水位 ≥ VRAM_CRITICAL_PCT 时按回收序放纹理：
+    /// 不可见 > 低优先级 > 最久未用；已回收/上传中(未 Ready) 不参与。
+    /// 返回本 tick 回收的纹理名列表。
+    pub fn reclaim_under_pressure(&mut self) -> Vec<String> {
+        let mut freed = Vec::new();
+        if self.vram_pct < VRAM_CRITICAL_PCT {
+            return freed;
+        }
+        // 回收序打分：不可见 10000 + (100-优先级)×10 + 越旧越大。
+        loop {
+            if self.vram_pct < VRAM_CRITICAL_PCT {
+                break;
+            }
+            let Some(best) = self
+                .textures
+                .iter()
+                .filter(|t| t.stage == TexStage::Ready)
+                .max_by_key(|t| {
+                    let idle = self.tick.saturating_sub(t.last_used) as i64;
+                    (1 - t.visible as i64) * 100_000
+                        + (100 - t.priority as i64) * 10
+                        + idle
+                })
+                .map(|t| t.name.clone())
+            else {
+                break;
+            };
+            if self.transit(&best, TexStage::Reclaimed) {
+                freed.push(best.clone());
+                self.reclaim_log.push((best, self.vram_pct, "不可见>低优先>最久未用"));
+                // 模拟释放带来的水位回落（每张 2%，真实由 A05 回写）。
+                self.vram_pct = self.vram_pct.saturating_sub(2);
+            } else {
+                break;
+            }
+        }
+        freed
+    }
+
+    /// 泄漏审计（泄漏→审计判据）：Reclaimed 且仍 referenced。
+    pub fn audit_leaks(&mut self) -> usize {
+        let names: Vec<String> = self
+            .textures
+            .iter()
+            .filter(|t| t.stage == TexStage::Reclaimed && t.referenced)
+            .map(|t| t.name.clone())
+            .collect();
+        for n in names.iter() {
+            if !self.leaks.iter().any(|x| x == n) {
+                self.leaks.push(n.clone());
+            }
+        }
+        self.leaks.len()
+    }
+
+    /// 纹理面板读屏摘要（无障碍判据）。
+    pub fn screen_text(&self) -> String {
+        let ready = self.textures.iter().filter(|t| t.stage == TexStage::Ready).count();
+        let uploading = self.textures.iter().filter(|t| t.stage == TexStage::Uploading).count();
+        let reclaimed = self.textures.iter().filter(|t| t.stage == TexStage::Reclaimed).count();
+        format!(
+            "纹理面板：共 {} 张，就绪 {}，上传中 {}，已回收 {}；显存水位 {}%；别名台账 {} 项；泄漏 {}；裁剪/降档 {} 张",
+            self.textures.len(),
+            ready,
+            uploading,
+            reclaimed,
+            self.vram_pct,
+            self.textures.iter().map(|t| t.aliases.len()).sum::<usize>(),
+            self.leaks.len(),
+            self.textures.iter().filter(|t| t.downgraded).count(),
+        )
+    }
+}
+
+fn from_name(s: TexStage) -> &'static str {
+    match s {
+        TexStage::Created => "Created",
+        TexStage::Uploading => "Uploading",
+        TexStage::Ready => "Ready",
+        TexStage::Reclaimed => "Reclaimed",
+    }
+}
+
+fn to_name(s: TexStage) -> &'static str {
+    from_name(s)
+}
+
+impl Default for TextureManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 四、自检注册入口
+// ---------------------------------------------------------------------------
+
+/// VE-F0016 域自检（判据逐条映射见 `vea16_checks.rs`）。
+pub fn run_vea16_checks() -> CheckSet {
+    super::vea16_checks::run_vea16_checks()
+}
+
+// ---------------------------------------------------------------------------
+// 五、单元测试（宿主 cargo test 直跑）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vea16_format_auto_choice_and_quality() {
+        // 无 alpha 有损 → BC1；带 alpha → BC3；高质量 → BC7；不容忍有损 → None；小图 → None。
+        let (f1, r1) = choose_format(false, true, false, 512);
+        let (f2, r2) = choose_format(true, true, false, 512);
+        let (f3, _) = choose_format(true, true, true, 512);
+        let (f4, _) = choose_format(true, false, false, 512);
+        let (f5, _) = choose_format(true, true, false, 64);
+        assert_eq!(f1, CompressionFormat::Bc1);
+        assert_eq!(f2, CompressionFormat::Bc3);
+        assert_eq!(f3, CompressionFormat::Bc7);
+        assert_eq!(f4, CompressionFormat::None);
+        assert_eq!(f5, CompressionFormat::None);
+        assert!(r1.contains("有损") && r2.contains("alpha"));
+        // 质量档位声明（量化标注）：BC7 > BC3 > BC1 > HalfRes，None 满分。
+        assert!(CompressionFormat::None.quality() == 100);
+        assert!(CompressionFormat::Bc7.quality() > CompressionFormat::Bc3.quality());
+        assert!(CompressionFormat::Bc3.quality() > CompressionFormat::Bc1.quality());
+        assert!(CompressionFormat::Bc1.quality() > CompressionFormat::HalfRes.quality());
+        assert!(!CompressionFormat::Bc1.loss_note().is_empty());
+    }
+
+    #[test]
+    fn vea16_lifecycle_alias_and_streaming() {
+        let mut m = TextureManager::new();
+        // 创建 + 别名台账。
+        let bytes = m.create("hero_tex", &["hero_diffuse", "hero_main"], 1024, false, true, false, true).unwrap();
+        assert_eq!(bytes, TextureManager::estimate_bytes(1024, CompressionFormat::Bc1));
+        assert!(m.find_mut("hero_main").is_some(), "别名可查");
+        // 非法迁移拒绝（Created→Ready 跳段）。
+        assert!(!m.transit("hero_tex", TexStage::Ready));
+        assert_eq!(m.illegal_moves.len(), 1);
+        // 四段：Created→Uploading→(流式)→Ready。
+        assert!(m.transit("hero_tex", TexStage::Uploading));
+        let mut total = 0;
+        loop {
+            match m.pump_chunk() {
+                Some((n, c)) => {
+                    assert_eq!(n, "hero_tex");
+                    total += c;
+                }
+                None => break,
+            }
+        }
+        assert_eq!(total, bytes, "分块总和 = 总字节");
+        let t = m.find_mut("hero_tex").unwrap();
+        assert_eq!(t.stage, TexStage::Ready, "传完自动 Ready");
+        // 优先级：可见纹理先传。
+        m.create("bg_far", &[], 512, false, true, false, false).unwrap();
+        m.create("hud_near", &[], 256, false, true, false, true).unwrap();
+        assert!(m.transit("bg_far", TexStage::Uploading));
+        assert!(m.transit("hud_near", TexStage::Uploading));
+        let (name, _) = m.pump_chunk().unwrap();
+        assert_eq!(name, "hud_near", "玩家看得见的先传");
+    }
+
+    #[test]
+    fn vea16_retry_downgrade_reclaim_leak() {
+        let mut m = TextureManager::new();
+        m.create("sky", &[], 2048, false, true, false, false).unwrap();
+        assert!(m.transit("sky", TexStage::Uploading));
+        let before = m.find_mut("sky").unwrap().total_bytes;
+        // 上传失败→重试→降级。
+        assert_eq!(m.on_upload_fail("sky"), "RETRY");
+        assert_eq!(m.on_upload_fail("sky"), "RETRY");
+        assert_eq!(m.on_upload_fail("sky"), "DOWNGRADED");
+        let after = m.find_mut("sky").unwrap().total_bytes;
+        assert!(after < before, "降 HalfRes 后字节减少");
+        assert!(m.find_mut("sky").unwrap().downgraded);
+        // 回收仍被引用 → 泄漏审计。
+        assert!(m.transit("sky", TexStage::Ready));
+        m.find_mut("sky").unwrap().referenced = true;
+        assert!(m.transit("sky", TexStage::Reclaimed));
+        assert_eq!(m.audit_leaks(), 1);
+        assert!(m.leaks.iter().any(|n| n == "sky"));
+    }
+
+    #[test]
+    fn vea16_checks_all_green() {
+        let set = run_vea16_checks();
+        let (passed, failed) = set.tally();
+        assert!(
+            set.all_passed(),
+            "VE-F0016 域自检存在红项：{}/{} 绿，红项：{:?}",
+            passed,
+            passed + failed,
+            set.red_items()
+        );
+    }
+}

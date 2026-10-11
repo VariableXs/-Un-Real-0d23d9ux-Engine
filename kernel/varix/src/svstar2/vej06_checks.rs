@@ -15,6 +15,7 @@
 
 use super::vej06_area::*;
 use crate::checks::CheckSet;
+use alloc::string::String;
 
 /// 合法的参数块草案（各判据共用前置）。
 fn draft_ok() -> AreaLight {

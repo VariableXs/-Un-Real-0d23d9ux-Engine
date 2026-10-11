@@ -32,6 +32,7 @@ use crate::checks::CheckSet;
 use crate::svstar::vbase;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源）

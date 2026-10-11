@@ -28,6 +28,7 @@ use crate::perfstar::mech_deflate::{DIST_BASE, DIST_EXTRA, LEN_BASE, LEN_EXTRA};
 // CheckSet 判例组装需要块缓冲：alloc 在内核 lib.rs 无条件 extern（宿主
 // std 构建与 kernel-image 构建均可解析）；判定数据流本身仍零堆（定长数组）。
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// LZ77 距离上限（与编码器同源口径）。
 pub const WSIZE: usize = 32768;

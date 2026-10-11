@@ -24,6 +24,7 @@
 use super::vee03_outline::{Point, Winding};
 use super::vee04_raster::*;
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 /// 造一个 16×16 像素正方形轮廓（外轮廓，逆时针）。
 fn square_16() -> ContourSet {

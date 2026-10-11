@@ -18,6 +18,7 @@
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // DPI 档位与 mip 选择

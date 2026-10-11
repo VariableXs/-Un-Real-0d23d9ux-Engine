@@ -31,6 +31,7 @@
 use crate::checks::CheckSet;
 use crate::h1star::h1base::{Curve, MotionPolicy, Rect};
 use crate::star::sbase::RingLog;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量

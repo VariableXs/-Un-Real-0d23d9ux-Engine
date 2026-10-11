@@ -13,6 +13,7 @@ use super::veb05_virgl::*;
 use crate::checks::CheckSet;
 
 use alloc::{format, vec};
+use alloc::vec::Vec;
 
 /// 构造一份 virgl capset 载荷（checks 复用）。
 fn capset_payload(gl_major: u32, gl_minor: u32, max_tex: u32, max_samples: u32, fmt_mask: u64) -> Vec<u8> {

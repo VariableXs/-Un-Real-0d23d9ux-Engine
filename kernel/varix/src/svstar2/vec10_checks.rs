@@ -7,6 +7,7 @@
 //! - 深度上限 → `C10-深度-*`（超限报错、上限可配）
 
 use super::vec10_brace::*;
+use alloc::format;
 use crate::checks::CheckSet;
 
 /// VE-F0410 域自检。

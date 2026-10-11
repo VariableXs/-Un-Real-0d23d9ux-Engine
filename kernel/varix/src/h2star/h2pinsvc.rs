@@ -13,6 +13,8 @@ use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 固定表

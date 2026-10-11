@@ -39,6 +39,7 @@ use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 一、规格常量（参数唯一源）

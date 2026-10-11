@@ -17,6 +17,7 @@
 
 use crate::checks::CheckSet;
 use crate::svstar2::vef19_geobench as gb;
+use alloc::vec::Vec;
 
 // 判据侧写死期望（不从被测反推）。
 mod expect {

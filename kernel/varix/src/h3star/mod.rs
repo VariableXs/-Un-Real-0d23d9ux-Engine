@@ -66,11 +66,13 @@
 //! `_attic/aih3-f301-f350/行数对账与缺陷账本.md` 为准。
 
 use crate::checks::CheckSet;
+use alloc::vec;
 
 pub mod hbase;
 
 /// 深化层并入基线（合并工具的域内简写）。
 use hbase::merge_sets;
+use alloc::vec::Vec;
 
 /// 域标识（CheckSet 聚合用）。
 pub const H3_DOMAIN: &str = "h3star-h3";

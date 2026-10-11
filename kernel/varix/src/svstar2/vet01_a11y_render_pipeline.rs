@@ -53,6 +53,7 @@ use crate::checks::CheckSet;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 一、诊断基础设施（零静默：五元组问题记录）

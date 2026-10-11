@@ -42,6 +42,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::string::ToString;
 
 /// 域自检集合的标签。
 pub const CHECK_DOMAIN: &str = "ve-f3403";

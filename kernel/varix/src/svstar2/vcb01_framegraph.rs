@@ -344,6 +344,11 @@ impl FrameGraph {
         self.edges.len()
     }
 
+    /// 全部边（只读快照视图——拓扑分析消费面）。
+    pub fn edges_of(&self) -> &[Edge] {
+        &self.edges
+    }
+
     /// 按句柄读节点（下标即句柄——O(1) 随机访问，越界显性 None）。
     pub fn get_node(&self, h: NodeHandle) -> Option<&NodeSpec> {
         self.nodes.get(h as usize)

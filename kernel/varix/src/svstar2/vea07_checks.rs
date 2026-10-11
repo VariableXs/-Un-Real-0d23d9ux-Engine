@@ -13,6 +13,7 @@ use super::vea07_caps::*;
 use crate::checks::CheckSet;
 
 use alloc::{format, vec};
+use alloc::string::ToString;
 
 /// 标准测试输入：自报 5 项、实测 4 项（其中 1 项虚报 + 1 项漏报）。
 fn input() -> CapQueryInput {

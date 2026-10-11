@@ -492,6 +492,8 @@ mod deep_tests {
 //    （「没有 vx——最接近的是 vxrun」类体验的全量覆盖）。
 
 use crate::genstar2::vxdict::fnv1a;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 别名名单法审计（合法标识符）

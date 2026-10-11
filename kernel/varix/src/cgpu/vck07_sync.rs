@@ -42,19 +42,19 @@
 //!
 //! [`await_with_timeout`] 带 budgets_us：超时返回失败而非挂起
 //! （挂起的依赖会让整图停摆——显性失败让上游能取消）。
-//!
-//! # 六、时间线（统一单调时钟复用 F1442）
+//
+// # 六、时间线（统一单调时钟复用 F1442）
 ///
-//! [`ClockProbe`] 单调性验证（同源时钟读数只增不减——跨引擎
-//! 时间戳只在同源时钟上可比）。
+// [`ClockProbe`] 单调性验证（同源时钟读数只增不减——跨引擎
+// 时间戳只在同源时钟上可比）。
 
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
-use crate::svstar2::cgpu::vck02_hetres::EngineKind;
-use crate::svstar2::cgpu::vck05_taskgraph::CrossEdge;
+use crate::cgpu::vck02_hetres::EngineKind;
+use crate::cgpu::vck05_taskgraph::CrossEdge;
 
 // ---------------------------------------------------------------------------
 // 一、常量与错误码
@@ -392,9 +392,9 @@ pub fn run_vck07_checks() -> CheckSet {
     // -- K07-MERGE-01 合并策略（同目标合一，字节累加）---------------------
     {
         let edges = [
-            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Gpu, bytes: 100, path: crate::svstar2::cgpu::vck05_taskgraph::HandoffPath::Copy },
-            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Gpu, bytes: 200, path: crate::svstar2::cgpu::vck05_taskgraph::HandoffPath::Copy },
-            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Dsp, bytes: 50, path: crate::svstar2::cgpu::vck05_taskgraph::HandoffPath::Copy },
+            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Gpu, bytes: 100, path: crate::cgpu::vck05_taskgraph::HandoffPath::Copy },
+            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Gpu, bytes: 200, path: crate::cgpu::vck05_taskgraph::HandoffPath::Copy },
+            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Dsp, bytes: 50, path: crate::cgpu::vck05_taskgraph::HandoffPath::Copy },
         ];
         let (merged, saved) = merge_points(&edges);
         s.add(
@@ -409,11 +409,11 @@ pub fn run_vck07_checks() -> CheckSet {
     {
         let engines = [EngineKind::Npu, EngineKind::Dsp, EngineKind::Gpu];
         let ok = [
-            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Dsp, bytes: 1, path: crate::svstar2::cgpu::vck05_taskgraph::HandoffPath::Copy },
+            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Dsp, bytes: 1, path: crate::cgpu::vck05_taskgraph::HandoffPath::Copy },
         ];
         let bad = [
-            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Dsp, bytes: 1, path: crate::svstar2::cgpu::vck05_taskgraph::HandoffPath::Copy },
-            CrossEdge { producer: EngineKind::Dsp, consumer: EngineKind::Npu, bytes: 1, path: crate::svstar2::cgpu::vck05_taskgraph::HandoffPath::Copy },
+            CrossEdge { producer: EngineKind::Npu, consumer: EngineKind::Dsp, bytes: 1, path: crate::cgpu::vck05_taskgraph::HandoffPath::Copy },
+            CrossEdge { producer: EngineKind::Dsp, consumer: EngineKind::Npu, bytes: 1, path: crate::cgpu::vck05_taskgraph::HandoffPath::Copy },
         ];
         s.add(
             "K07-DEAD-01 跨引擎环检测（NPU↔DSP 互等 sync 即拒）",

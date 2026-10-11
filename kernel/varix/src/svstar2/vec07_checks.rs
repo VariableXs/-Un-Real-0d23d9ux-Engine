@@ -7,7 +7,10 @@
 //! - 未闭合指向 → `C07-未闭合-*`（报错指向开引号）
 
 use super::vec07_string::*;
+use alloc::vec;
 use crate::checks::CheckSet;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 fn decoded_str(t: &StringToken) -> String {
     // 测试辅助：解码缓冲按 UTF-8 语义还原（Latin1 分支的用例不走此函数）

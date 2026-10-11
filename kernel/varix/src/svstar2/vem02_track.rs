@@ -123,6 +123,7 @@
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::vec;
 
 // ===========================================================================
 // §0 诊断层（零静默的物质基础：错误与告警分两条独立通道）
