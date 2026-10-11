@@ -1088,6 +1088,27 @@ pub fn run_unx161_checks() -> CheckSet {
         s.fail("U161-深-02-TLB账快照往返", "快照面失效");
     }
 
+    // 深-03：五段索引拆分恰值（9+9+9+9+12 闭式——典型 VA/规范顶/零）。
+    if probe_walk_indices() {
+        s.ok("U161-深-03-四级索引拆分");
+    } else {
+        s.fail("U161-深-03-四级索引拆分", "拆分面失效");
+    }
+
+    // 深-04：大页三档恰值（粒度/停走级/对齐闸/步数与偏移位闭式）。
+    if probe_huge_page() {
+        s.ok("U161-深-04-大页停走三档");
+    } else {
+        s.fail("U161-深-04-大页停走三档", "大页面失效");
+    }
+
+    // 深-05：权限合成恰值（页链 AND 最严语义——R/W/U/S/NX 手算）。
+    if probe_perm_and() {
+        s.ok("U161-深-05-页链权限合成");
+    } else {
+        s.fail("U161-深-05-页链权限合成", "权限面失效");
+    }
+
     s
 }
 
@@ -1639,4 +1660,270 @@ pub fn probe_tlb_snap() -> bool {
     let _ = tl.flush(TlbFlush::SinglePage);
     let snap = TlbSnap::capture(&tl);
     snap.roundtrip().is_ok() && snap.rows.len() == 1
+}
+
+// ---------------------------------------------------------------------------
+// 深化五区：页表遍历面——PAT/TLB 之外是「翻译怎么走」的机制面：
+// 四级索引拆分（x86_64 9+9+9+9+12）/ 大页停走（1G/2M 早停）/ 权限
+// 位域合成（页链 AND 语义）。全部纯函数零 IO——机制面与属性面同构
+//（PAT 是「翻译后怎么缓存」，遍历是「翻译本身怎么算」，两层互补）。
+// ---------------------------------------------------------------------------
+
+/// 页表层级闭集（x86_64 四级——PML4 根起）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WalkLevel {
+    /// L4 顶级（PML4）。
+    Pml4,
+    /// L3 目录指针（PDPT——1G 大页停走级）。
+    Pdpt,
+    /// L2 页目录（PD——2M 大页停走级）。
+    Pd,
+    /// L1 页表（PT——4K 叶）。
+    Pt,
+}
+
+impl WalkLevel {
+    /// 四级闭集。
+    pub const ALL: [WalkLevel; 4] = [
+        WalkLevel::Pml4,
+        WalkLevel::Pdpt,
+        WalkLevel::Pd,
+        WalkLevel::Pt,
+    ];
+
+    /// 中文注记。
+    pub const fn zh(self) -> &'static str {
+        match self {
+            WalkLevel::Pml4 => "四级根",
+            WalkLevel::Pdpt => "目录指针",
+            WalkLevel::Pd => "页目录",
+            WalkLevel::Pt => "页表",
+        }
+    }
+
+    /// 该级的地址域宽（位）：L4 取 47..39、L3 38..30、L2 29..21、
+    /// L1 20..12（9 位索引域——x86_64 恒 4×9+12=48 规范宽）。
+    pub const fn index_shift(self) -> u32 {
+        match self {
+            WalkLevel::Pml4 => 39,
+            WalkLevel::Pdpt => 30,
+            WalkLevel::Pd => 21,
+            WalkLevel::Pt => 12,
+        }
+    }
+}
+
+/// 五段索引拆分账（VA → (pml4, pdpt, pd, pt, offset)——9+9+9+9+12
+/// 位闭式；48 位规范宽之外位按零处理（canonical 检查在调用侧））。
+/// const fn 内闭包不可调用（E0015）——四次移位内联展开。
+pub const fn walk_indices(va: u64) -> (u64, u64, u64, u64, u64) {
+    (
+        (va >> 39) & 0x1FF,
+        (va >> 30) & 0x1FF,
+        (va >> 21) & 0x1FF,
+        (va >> 12) & 0x1FF,
+        va & 0xFFF,
+    )
+}
+
+/// 大页粒度闭集（停走档——叶级决定页粒度）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HugePage {
+    /// 4K 叶（PT 级命中）。
+    K4,
+    /// 2M 叶（PD 级 PS 位 1——21 位偏移域）。
+    M2,
+    /// 1G 叶（PDPT 级 PS 位 1——30 位偏移域）。
+    G1,
+}
+
+impl HugePage {
+    /// 三档闭集。
+    pub const ALL: [HugePage; 3] = [HugePage::K4, HugePage::M2, HugePage::G1];
+
+    /// 页粒度字节。
+    pub const fn size_bytes(self) -> u64 {
+        match self {
+            HugePage::K4 => PAGE_SIZE,
+            HugePage::M2 => 1 << 21,
+            HugePage::G1 => 1 << 30,
+        }
+    }
+
+    /// 停走级（叶所在层级——K4 停 PT / M2 停 PD / G1 停 PDPT）。
+    pub const fn stop_level(self) -> WalkLevel {
+        match self {
+            HugePage::K4 => WalkLevel::Pt,
+            HugePage::M2 => WalkLevel::Pd,
+            HugePage::G1 => WalkLevel::Pdpt,
+        }
+    }
+
+    /// 基址对齐闸（页粒度对齐——2M 页基址 2M 对齐，混粒度是硬件
+    /// #PF 面软件必须显性拒）。
+    pub const fn base_aligned(self, base: u64) -> bool {
+        base % self.size_bytes() == 0
+    }
+}
+
+/// 页表项权限位域（低 12 位语义——x86_64 惯例位面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PagePerm {
+    /// 存在位（P——bit 0）。
+    pub present: bool,
+    /// 可写位（R/W——bit 1）。
+    pub writable: bool,
+    /// 用户位（U/S——bit 2）。
+    pub user: bool,
+    /// 不可执行位（NX——bit 63，本账用 u64 位面）。
+    pub no_exec: bool,
+}
+
+impl PagePerm {
+    /// 从表项低语义位提取（bit0/1/2/63——其余位对权限面无义）。
+    pub const fn of_entry(entry: u64) -> PagePerm {
+        PagePerm {
+            present: entry & 1 != 0,
+            writable: entry & (1 << 1) != 0,
+            user: entry & (1 << 2) != 0,
+            no_exec: entry & (1 << 63) != 0,
+        }
+    }
+
+    /// 零权限（无页——P=0 缺席）。
+    pub const fn absent() -> PagePerm {
+        PagePerm {
+            present: false,
+            writable: false,
+            user: false,
+            no_exec: false,
+        }
+    }
+}
+
+/// **页链权限合成**（x86_64 语义：约束取最严——任一级不可写即不可写、
+/// 任一级核态即核态、任一级 NX 即 NX；P 链上全 1 才存在）。
+pub const fn perm_and(chain: [PagePerm; 4]) -> PagePerm {
+    let mut present = true;
+    let mut writable = true;
+    let mut user = true;
+    let mut no_exec = false;
+    let mut i = 0usize;
+    while i < 4 {
+        if !chain[i].present {
+            present = false;
+        }
+        if !chain[i].writable {
+            writable = false;
+        }
+        if !chain[i].user {
+            user = false;
+        }
+        if chain[i].no_exec {
+            no_exec = true;
+        }
+        i += 1;
+    }
+    PagePerm {
+        present,
+        writable,
+        user,
+        no_exec,
+    }
+}
+
+/// **遍历停走账**（大页命中级 → 偏移域宽——1G 页偏移 30 位、2M 页
+/// 21 位、4K 页 12 位；早停后低级索引全部并入偏移——大页的「一级
+/// 顶三级」算术闭式）。
+pub const fn stop_offset_bits(hp: HugePage) -> u32 {
+    match hp {
+        HugePage::G1 => 30,
+        HugePage::M2 => 21,
+        HugePage::K4 => 12,
+    }
+}
+
+/// 遍历步数闭式（命中大页档的走过级数：G1 走 2 级（L4+L3）/ M2 走
+/// 3 级（+L2）/ K4 走 4 级（+L1）——TLB 命中外的内存访存次数账）。
+pub const fn walk_steps(hp: HugePage) -> u32 {
+    match hp {
+        HugePage::G1 => 2,
+        HugePage::M2 => 3,
+        HugePage::K4 => 4,
+    }
+}
+
+/// 深化面参考探针——五段索引拆分恰值（手算对拍：典型 VA 分段）。
+pub fn probe_walk_indices() -> bool {
+    // 手造 VA：pml4=1 pdpt=2 pd=3 pt=4 off=0x123
+    // = (1<<39)|(2<<30)|(3<<21)|(4<<12)|0x123。
+    let va = (1u64 << 39) | (2 << 30) | (3 << 21) | (4 << 12) | 0x123;
+    let (a, b, c, d, e) = walk_indices(va);
+    let split_ok = a == 1 && b == 2 && c == 3 && d == 4 && e == 0x123;
+    // 全一 VA（规范顶）：五段全 511/511/511/511/4095。
+    let top = 0x0000_FFFF_FFFF_FFFF;
+    let (a2, b2, c2, d2, e2) = walk_indices(top);
+    let top_ok = a2 == 511 && b2 == 511 && c2 == 511 && d2 == 511 && e2 == 4095;
+    // 零 VA：全零。
+    let (a3, b3, c3, d3, e3) = walk_indices(0);
+    let zero_ok = a3 == 0 && b3 == 0 && c3 == 0 && d3 == 0 && e3 == 0;
+    split_ok && top_ok && zero_ok
+}
+
+/// 深化面参考探针——大页三档恰值（粒度/停走级/对齐闸/步数与偏移位）。
+pub fn probe_huge_page() -> bool {
+    let k4 = HugePage::K4;
+    let m2 = HugePage::M2;
+    let g1 = HugePage::G1;
+    let size_ok = k4.size_bytes() == 4096
+        && m2.size_bytes() == 2 * 1024 * 1024
+        && g1.size_bytes() == 1024 * 1024 * 1024;
+    let stop_ok = k4.stop_level() == WalkLevel::Pt
+        && m2.stop_level() == WalkLevel::Pd
+        && g1.stop_level() == WalkLevel::Pdpt;
+    // 对齐闸：2M 基址 0x200000 对齐过 / 0x123456 拒；1G 基址 0x40000000 过。
+    let align_ok = m2.base_aligned(0x0000_0000_0020_0000)
+        && !m2.base_aligned(0x0000_0000_0012_3456)
+        && g1.base_aligned(0x0000_0000_4000_0000)
+        && k4.base_aligned(0x0000_0000_0000_1000);
+    let steps_ok = walk_steps(g1) == 2 && walk_steps(m2) == 3 && walk_steps(k4) == 4
+        && stop_offset_bits(g1) == 30 && stop_offset_bits(m2) == 21
+        && stop_offset_bits(k4) == 12;
+    size_ok && stop_ok && align_ok && steps_ok
+}
+
+/// 深化面参考探针——权限合成恰值（页链 AND 语义手算：核态最严/
+/// NX 传染/缺席页存在位塌）。
+pub fn probe_perm_and() -> bool {
+    let full = PagePerm {
+        present: true,
+        writable: true,
+        user: true,
+        no_exec: false,
+    };
+    // 全宽松链：全真。
+    let all_ok = perm_and([full; 4]).present && perm_and([full; 4]).writable && perm_and([full; 4]).user;
+    // L2 不可写：合成为不可写（最严语义）。
+    let mut ro = full;
+    ro.writable = false;
+    let mut chain = [full; 4];
+    chain[2] = ro;
+    let ro_ok = !perm_and(chain).writable && perm_and(chain).present;
+    // L1 核态（user=false）：合成为核态。
+    let mut sup = full;
+    sup.user = false;
+    let mut chain2 = [full; 4];
+    chain2[3] = sup;
+    let sup_ok = !perm_and(chain2).user;
+    // 任一级 NX：合成 NX（传染语义）。
+    let mut nx = full;
+    nx.no_exec = true;
+    let mut chain3 = [full; 4];
+    chain3[1] = nx;
+    let nx_ok = perm_and(chain3).no_exec;
+    // 缺席页：P 塌（链上一位 P=0 全链不存在）。
+    let mut chain4 = [full; 4];
+    chain4[0] = PagePerm::absent();
+    let absent_ok = !perm_and(chain4).present && !perm_and(chain4).writable;
+    all_ok && ro_ok && sup_ok && nx_ok && absent_ok
 }
