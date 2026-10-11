@@ -904,12 +904,14 @@ pub mod unx2105_exportpoint;
 pub mod unx2106_exportledger;
 // unx2107_paramfreeze —— UNX-F2107 参数冻结（导出格式版本/刷新节拍/权限位：四列纪律+冻结指纹钉死+F1635版本对齐+F1897扩容通道凭证，0xD3 段六码）
 pub mod unx2107_paramfreeze;
-// unx2102_scheddebug —— UNX-F2102 sched_debug 调试面（全量dump只读：只读语义指纹断言+dump账本一致+权限位在册，0xCD 段六码）
+// unx2108_scenbook —— UNX-F2108 导出回归场景预告（8场景三要素入册+累计88→96/102+ktest注册表+skip零容忍带因，0xD4 段六码）
 pub mod unx2108_scenbook;
 // unx2109_ktestfamily —— UNX-F2109 导出 ktest 族注册（19条判据聚合+三档调度intact+skip带因100%+20维SMP取数口，0xD6 段六码）
 pub mod unx2109_ktestfamily;
 // unx2110_lockfreeread —— UNX-F2110 导出并发读基准（无锁读开销账：格式冻结F1773体例+seqlock逻辑建模+撕裂零发生+补测占位，0xD7 段六码）
 pub mod unx2110_lockfreeread;
+// unx2111_c5conaccount —— UNX-F2111 与C5用户态生态对账（读侧消费签名+解析样例互验+格式漂移注入10/10检出，0xD9 段六码）
+pub mod unx2111_c5conaccount;
 
 
 
@@ -1643,6 +1645,8 @@ pub mod unx119_health;
 pub mod unx120_notify;
 pub mod unx121storm_stress;
 pub mod unx122doc_freeze;
+pub mod unx123_deadlock;
+pub mod unx124_faultinj;
 pub mod unx702_acpi80;
 pub mod unx722_verfp;
 pub mod unx742_upgrade;
@@ -2622,3 +2626,6 @@ pub fn run_wb22_unx22() -> crate::checks::CheckSet {
     }
     set
 }
+
+pub mod unx982_throttle;
+pub mod unx983_stormgrade;
