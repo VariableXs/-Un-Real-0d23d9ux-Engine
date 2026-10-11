@@ -211,6 +211,7 @@ pub mod cgg04_nvram;
 pub mod cgc06_powersched;
 // cgd06_latencyledger — CGPU-F0487 输入到像素延迟账本（端到端五段分解输入-调度-渲染-合成-呈现同拍锚点/EWMA滚动均值α=1/8/突增判定双条件均值×2且≥20ms防误报/卡顿关联视图突增帧×jank帧交集率ppm/目标线50ms诚实标注依赖硬件达成率ppm输出/五段均值占比分解/0x49xx 五码）
 pub mod cgd06_latencyledger;
+pub mod cgd06_latencyledger_checks;
 // cgi05_pciearb — CGPU-F1284 PCIe 仲裁器（双轨v1静态优先级严格序饿死显性+v2加权公平权重和恰1e6首轮理想份额+二轮回池补足/仲裁开销64步红线步数化/确定性同输入双跑逐行比对/归因账分配拒绝全记录带轨名原因/F0345理念复用声明/0x4Axx 六码）
 pub mod cgi05_pciearb;
 // cgf08_certvalid — CGPU-F0807 认证有效期与重认证（有效期90天时效判定过期显性非静默/触发规则表驱动大版本-系统更新-引擎变更三类→受影响场景闭集增量重认证计划只重测受影响项免测显性列出/重认证中判级显性不可用防旧级掩盖漂移/完成回执重起算/有效期公开卡/与F0806判级分工/0x4Bxx 五码）
@@ -240,7 +241,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 36] = [
+    let blocks: [(&'static str, CheckSet); 37] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -259,6 +260,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F0483", cgd03_frameledger_checks::run_cgd03_checks()),
         ("CGPU-F0485", cgd05_ratecontract_checks::run_cgd05_checks()),
         ("CGPU-F0486", cgm07_pacemodel_checks::run_cgm07_checks()),
+        ("CGPU-F0487", cgd06_latencyledger_checks::run_cgd06_ledger_checks()),
         ("CGPU-P0501", cgp01_adaptivearch_checks::run_cgp01_checks()),
         ("CGPU-P0502", cgp02_unifiedmodel_checks::run_cgp02_checks()),
         ("CGPU-O0701", vco01_degrade_checks::run_vco01_checks()),
