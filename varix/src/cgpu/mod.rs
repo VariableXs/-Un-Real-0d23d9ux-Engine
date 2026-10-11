@@ -583,5 +583,5 @@ pub mod vck66_k10scene;
 pub mod vck67_k10disc;
 // vck68_guestcap — CGPU-F1764 能力探测与虚拟化感知（guest探测模式判读矛盾保守仲裁+探测矩阵const表压舱+诚实三验证态虚标拦截+host协商四步交集语义越权留痕+探测缓存K01+失败三连保守模式/0xBD段12码）
 pub mod vck68_guestcap;
-// vct06_stackbudget — CGPU-F3046 对接性能预算（每帧<0.1ms恰值+七层闭集逐层预算守恒+三态超支显性+摊销拐点+修正单证据闸/0xBE段12码）
-pub mod vct06_stackbudget;
+// vcu05_benchrunner — CGPU-F3205 基准运行器（三功能：场景调度确定序/计时定点中位数+噪声闸/采集P50P95汇总+双跑确定/0xBF段12码）
+pub mod vcu05_benchrunner;
