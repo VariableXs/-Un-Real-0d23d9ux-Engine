@@ -15,6 +15,8 @@ pub mod unx081_kaslr_entropy;
 pub mod unx101_vgafallback;
 // unx121_extbootstate — UNX-F0121 引导阶段扩展态深化版（设计矩阵 const 表 3态×5事件 15格全显性 合法恰4非法恰11/match与表逐格对拍两写法一致/双层闸 矩阵格→条件谓词 无失败不恢复·三步上限·零步无据·无档不叠/语义特闸 探测中直降级·恢复中改探测/历史环 12 条窗口/ExtSnap 快照FNV往返/0x32 段十六码）
 pub mod unx121_extbootstate;
+// unx141_isogen — UNX-F0141 ISO9660/El Torito 生成器深化版（字节级构造 PVD CD001 魔数/El Torito 引导记录 VD 32字节规范串/Validation Entry 零和校验+0x55AA+0x88 旗标/终止描述符/目录记录 34字节最小态/名规范化 Level1 大写8.3/清单四闸 数空长重/确定性排序可复现同清单异序字节指纹恒等/扇区2048对齐 LBA 累计器单点/生成即校验六闸 xorriso 拒收面前置/破坏面显性检出/IsoSnap 快照FNV往返/0x33 段十六码）
+pub mod unx141_isogen;
 
 /// UNX 册域标签（F475 闭环登记用）。
 pub const UNX_DOMAIN: &str = "unxstar";
@@ -28,12 +30,13 @@ pub const UNX_DOMAIN: &str = "unxstar";
 pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(UNX_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 5] = [
+    let blocks: [(&'static str, CheckSet); 6] = [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
         ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
         ("UNX-F0101", unx101_vgafallback::run_unx101_checks()),
         ("UNX-F0121", unx121_extbootstate::run_unx121_checks()),
+        ("UNX-F0141", unx141_isogen::run_unx141_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
