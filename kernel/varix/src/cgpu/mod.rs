@@ -255,6 +255,18 @@ pub mod cgg07_nvupdate;
 pub mod cgi07_txmerge;
 // cgd11_timefuzz — CGPU-F0491 帧计时fuzz（确定性fuzz核心LCG同种子同序列CI可固化/时钟异常注入三族跳变-倒退-卡顿容错计时器倒退钳0不产负时长异常显性入账/帧洪峰4096帧灌1024容量账本丢最旧丢弃计数不静默kept+dropped≡pushed守恒/案例固化种子+异常谱指纹CI回放对拍/0x5Axx 五码）
 pub mod cgd11_timefuzz;
+// cgd12_timeapi — CGPU-F0492 帧计时API冻结v1（四组API注册表计时启动-分段-账本查询-校验签名指纹注册即冻结/冻结不可变只增不改不删变更唯一路径ADR+版本前进/命名一致性小写下划线动词打头单位后缀三约定跨域对拍/十年承诺表指纹+承诺文本合成总指纹篡改即显性/0x5Cxx 五码）
+pub mod cgd12_timeapi;
+// cgd13_timebench — CGPU-F0494 帧计时基准（三基准计时开销比<0.1%红线步数化+账本写入吞吐摊销红线+查询延迟红线/参数全部显性入册口径指纹防挑参数作弊/入册回归同口径复跑一致漂移即立案确定性基准/0x5Dxx 五码）
+pub mod cgd13_timebench;
+// cgf12_certfuzz — CGPU-F0810 认证fuzz（畸形探测数据注入伪造能力位图高位域钳制显性立案+异常ID零-超界-重复三拒/流程中断fuzz随机步中断续跑语义断点前保持断点后不越与全新重跑终态一致/案例固化LCG种子谱指纹CI回放对拍/0x5Exx 五码）
+pub mod cgf12_certfuzz;
+// cgg08_nvtel — CGPU-F0968 NVIDIA遥测（四指标进B08设备分布按代际分列-各代认证等级ppm尾项守恒-专属缺陷检出计数-DLSS特性启用率分母口径/代际闭集5档闭集外拒/零分母显性None不造假/空桶不发零值谎报/0x5Fxx 五码）
+pub mod cgg08_nvtel;
+// cgi08_bwtel — CGPU-F1287 帧宽遥测（四源账户-仲裁-队列-事件闭集采集/带宽瀑布每帧四源分解守恒核验Σ源≡总篡改即破/VE-Y可视化对接面按帧号查询全量拉取/遥测开销<1%红线步数化自证/F0274 schema版本化/帧闭合纪律未闭合发布拒/0x60xx 五码）
+pub mod cgi08_bwtel;
+// cgd14_timecons — CGPU-F0495 帧计时一致性（口径注册表测量契约只增不改不删单位分位点窗长闭集/跨硬件口径对拍同负载相对量容差带±20%漂移即立案单零漂移/跨版本ADR语义变更唯一合法路径旧语义ADR留痕指纹必变/跨卷统一G06-H09挂钩同口径同指纹私造卷名拒/0x61xx 五码）
+pub mod cgd14_timecons;
 
 /// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
 pub const CGPU_DOMAIN: &str = "cgpu";
