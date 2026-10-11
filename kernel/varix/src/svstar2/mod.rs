@@ -1098,6 +1098,8 @@ pub mod vef68_pdomain;
 pub mod vef68_pdomain_checks;
 pub mod vead11_docgen;
 pub mod vead11_docgen_checks;
+pub mod vef73_reparch;
+pub mod vef73_reparch_checks;
 pub mod vef67_netext;
 pub mod vef68_plink;
 pub mod vef69_netsec2;
@@ -1626,6 +1628,10 @@ pub fn run_svstar2_checks() -> CheckSet {
     // 结构级拒 0x3C01/NaN 案例教学五案例+防线四代时间线/样本库失效
     // 三规则+双盲检测/自动清理双击达标/CI 漂移阻断+双签解除/0x3C 段十码）
         ("VE-F6011", vead11_docgen_checks::run_vead11_checks()),
+    // W-VB1 · VE-F5421 复制总架构（四段流水线冻结契约对拍/三类三策略
+    // 宪法矩阵与纯函数双写/客户端写权威红线 0xEB02/低频窗口+事件恰好
+    // 一次+严格递增/锚点周期 32tick/解冻双签/0xEB 段十码）
+        ("VE-F5421", vef73_reparch_checks::run_vef73_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
