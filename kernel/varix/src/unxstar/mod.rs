@@ -9,6 +9,8 @@ pub mod unx041_dsdt;
 pub mod unx041_dsdt_checks;
 // unx041_dsdt_deep — UNX-F0041 DSDT 采集与校验链深化版（四通道定位链 RSDP双验/XSDT优先RSDT回退/FACP三闸/X_DSDT优先32位回退/DSDT四闸 深度校验/OEM ID三态落账全零-空白-可读/诊断三级 Info-Warn-Fatal/BootReport append-only不阻塞容量界/健康度三因子万分制/DsdtSnap 快照FNV+往返/0x2F 段十六码与速写版 0x2E 不重叠）
 pub mod unx041_dsdt_deep;
+// unx081_kaslr_entropy — UNX-F0081 KASLR 熵源采集器深化版（三源 RDRAND/TSC低位/内存图自由度 注入判读分离/混合估计保守口径 权重万分制×独立折扣三档/低于12位阈值降级槽0固定基址+告警/熵足FNV种子哈希选槽同种子可复现/熵账本守恒 seen=produced+absent+rejected/AlertLog 告警账+KaslrSnap 快照FNV往返/0x30 段十六码与 0x2E/0x2F 不重叠）
+pub mod unx081_kaslr_entropy;
 
 /// UNX 册域标签（F475 闭环登记用）。
 pub const UNX_DOMAIN: &str = "unxstar";
@@ -22,9 +24,10 @@ pub const UNX_DOMAIN: &str = "unxstar";
 pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(UNX_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 2] = [
+    let blocks: [(&'static str, CheckSet); 3] = [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
+        ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
