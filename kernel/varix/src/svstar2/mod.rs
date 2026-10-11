@@ -1102,6 +1102,8 @@ pub mod vef73_reparch;
 pub mod vef73_reparch_checks;
 pub mod vef74_authstate;
 pub mod vef74_authstate_checks;
+pub mod vef75_snapshot;
+pub mod vef75_snapshot_checks;
 pub mod vef67_netext;
 pub mod vef68_plink;
 pub mod vef69_netsec2;
@@ -1639,6 +1641,11 @@ pub fn run_svstar2_checks() -> CheckSet {
     // 拦截+客户端只见版本不见活值/快照基线+delta 前置闸/截断双签/
     // 0xE8 段十码）
         ("VE-F5422", vef74_authstate_checks::run_vef74_checks()),
+    // W-VB1 · VE-F5423 状态快照机制（周期快照器半周期节流+保留
+    // 窗口滚动淘汰/差量压缩链式封印衔接+压缩率底线拦截/哈希校验
+    // 失真即断链全量重发/锚点丢失全量重发/恢复三路:最新快照-旧快照
+    // 全量-无效id/底线调参双签/0xED 段十码）
+        ("VE-F5423", vef75_snapshot_checks::run_vef75_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
