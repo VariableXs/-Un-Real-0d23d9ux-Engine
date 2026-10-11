@@ -240,6 +240,7 @@ pub mod cgi06_txqueue;
 // vck04_hetprobe — CGPU-F1604 异构能力探测与登记（探测五步枚举→查询→隔离→登记→缓存公示每步乱序拒绝/实现矩阵NPU三路线CIM-Intel-XDNA DSP音频 ISP驱动查询静态闭集表/缓存键FNV驱动版本+设备ID命中复用异键热失效重探F1506模式/失败隔离ProbeFailed行剥离不污染登记表其余照常/虚拟化空态空枚举显性Empty/诚实登记NotSupported与ProbeFailed严格区分不造假/0x53xx 五码）
 pub mod vck04_hetprobe;
 pub mod vck05_taskgraph;
+pub mod vck07_sync;
 pub mod vck06_memcoh;
 // cgd09_timecalib — CGPU-F0489 帧计时校准（三源互校CPU QPC×GPU时间戳×呈现时钟配对采样差分/定期重校准30s周期偏移收敛漂移率估计超100µs/s立案/精度声明残余误差量化超50µs失守/降级协议源失联4窗→Lost显性→回喂恢复三源/单调性红线域内倒退拒收输出倒退拒收拨表禁止/0x54xx 五码）
 pub mod cgd09_timecalib;
@@ -317,6 +318,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-W3523", vcw03_genpipeline_checks::run_vcw03_checks()),
         ("CGPU-W3524", vcw04_apiref_checks::run_vcw04_checks()),
         ("CGPU-F1605", vck05_taskgraph::run_vck05_checks()),
+        ("CGPU-F1607", vck07_sync::run_vck07_checks()),
         ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
     ];
     for (tag, sub) in blocks.iter() {
