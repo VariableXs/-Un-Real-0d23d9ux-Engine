@@ -1176,6 +1176,15 @@ pub mod unx462_bus0scan;
 pub mod unx482_pixfmt;
 // unx502_serialout_deep —— UNX-F0502 串口输出原语深化并存版（与 unx502_serialout 原版 857 行并存；三路同源对拍/UTF-8 五类故障/流控四态，0x9901~0x9910 段）
 pub mod unx502_serialout_deep;
+
+// unx043_amllex —— UNX-F0043 AML 词法层深化版（主码84+二级27闭集/NameSeg压缩解码/包长四档/覆盖率千分位对拍 iasl 12样本，0x0720~0x072F 段）
+pub mod unx043_amllex;
+// unx463_bridgewalk —— UNX-F0463 桥展开多总线深化版（显式栈递归/深度限8超限红/窗口一致性/环检测/悬空桥补红，0x7C01~0x7C16 段）
+pub mod unx463_bridgewalk;
+// unx942_dispatch —— UNX-F0942 分发入口统一路径深化版（五类分型10/10/步数开销2ns步/旁路收编清零/风暴熔断，0x8C01~0x8C11 段）
+pub mod unx942_dispatch;
+// unx1002_tscprobe —— UNX-F1002 TSC 特性探测深化版（三环境判定10/10/降级三档声明/频率三源对拍/启动报告九键，0x4CF0~0x4CFF 段）
+pub mod unx1002_tscprobe;
 pub mod unx602_initrdro;
 pub mod unx602grid;
 pub mod unx602mx;
