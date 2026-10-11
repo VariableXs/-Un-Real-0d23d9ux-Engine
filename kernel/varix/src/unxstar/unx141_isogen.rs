@@ -1356,6 +1356,29 @@ pub fn run_unx141_checks() -> CheckSet {
         s.fail("U141-深-07-目录反读审计", "审计面失效");
     }
 
+    // 深-08：媒体类型五档恰值（code 往返恒等+未知值 None+几何期望）。
+    if probe_boot_media() {
+        s.ok("U141-深-08-媒体类型五档");
+    } else {
+        s.fail("U141-深-08-媒体类型五档", "媒体面失效");
+    }
+
+    // 深-09：Initial Entry 反读恰值（构造→反读五段全对+加载字节数
+    // 闭环+越界 None——初始条目闭环补全）。
+    if probe_initial_entry() {
+        s.ok("U141-深-09-初始条目反读");
+    } else {
+        s.fail("U141-深-09-初始条目反读", "条目面失效");
+    }
+
+    // 深-10：UEFI 扩展段头语义账（构造→复算 word 和恒零+MoreFollows
+    // 两态+标识串嵌入恰值——预留面语义完备）。
+    if probe_section_ext() {
+        s.ok("U141-深-10-扩展段头语义");
+    } else {
+        s.fail("U141-深-10-扩展段头语义", "扩展面失效");
+    }
+
     // 元-01：零 panic 面 + 快照往返 + 空态平凡 + 字节面助手恰值。
     let src = include_str!("unx141_isogen.rs");
     let clean = strip_lexical_noise(src);
@@ -2137,4 +2160,274 @@ pub fn probe_catalog_audit() -> bool {
     // 残镜像（越界 cat_lba）显性 None。
     let bound_ok = catalog_audit(&img.bytes, 9999).is_none();
     aud_ok && neg_ok && bound_ok
+}
+
+// ---------------------------------------------------------------------------
+// 深化六区：El Torito 条目面——VE 审计之外是「初始条目与扩展段」的
+// 引导面深化：媒体类型五档闭集 / Initial Entry 镜像侧反读（构造→反
+// 读闭环补全）/ UEFI 扩展段头语义账（预留构造面不并入 generate）。
+// 全部纯函数零 IO——引导面与目录面同构（规范布局逐字节显性）。
+// ---------------------------------------------------------------------------
+
+/// 引导媒体类型五档闭集（El Torito 介质字节语义——每档仿真几何显性）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BootMediaType {
+    /// 无模拟（0——载荷直接加载，本镜像构造档）。
+    NoEmul,
+    /// 1.2M 软盘仿真（1）。
+    Floppy12,
+    /// 1.44M 软盘仿真（2）。
+    Floppy144,
+    /// 2.88M 软盘仿真（3）。
+    Floppy288,
+    /// 硬盘仿真（4）。
+    HardDisk,
+}
+
+impl BootMediaType {
+    /// 五档闭集。
+    pub const ALL: [BootMediaType; 5] = [
+        BootMediaType::NoEmul,
+        BootMediaType::Floppy12,
+        BootMediaType::Floppy144,
+        BootMediaType::Floppy288,
+        BootMediaType::HardDisk,
+    ];
+
+    /// 介质字节（Initial Entry 偏移 1 域值）。
+    pub const fn code(self) -> u8 {
+        match self {
+            BootMediaType::NoEmul => 0,
+            BootMediaType::Floppy12 => 1,
+            BootMediaType::Floppy144 => 2,
+            BootMediaType::Floppy288 => 3,
+            BootMediaType::HardDisk => 4,
+        }
+    }
+
+    /// 字节反解（未知值显性 None——媒体面不猜）。
+    pub const fn of_code(b: u8) -> Option<BootMediaType> {
+        match b {
+            0 => Some(BootMediaType::NoEmul),
+            1 => Some(BootMediaType::Floppy12),
+            2 => Some(BootMediaType::Floppy144),
+            3 => Some(BootMediaType::Floppy288),
+            4 => Some(BootMediaType::HardDisk),
+            _ => None,
+        }
+    }
+
+    /// 仿真几何期望扇区数（512 字节扇——无模拟 0 无几何）。
+    pub const fn emul_sectors(self) -> u32 {
+        match self {
+            BootMediaType::NoEmul => 0,
+            BootMediaType::Floppy12 => 2400,   // 1.2M / 512
+            BootMediaType::Floppy144 => 2880,  // 1.44M / 512
+            BootMediaType::Floppy288 => 5760,  // 2.88M / 512
+            BootMediaType::HardDisk => 0,      // 硬盘几何随载荷——账面显性零
+        }
+    }
+}
+
+/// Initial Entry 反读账（从镜像 catalog 偏移 32 反读 32 字节——
+/// 构造→反读闭环补全：VE 审计之外初始条目逐段显性）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct InitialEntryAudit {
+    /// 引导旗标（0x88 可引导 / 0x00 不可引导）。
+    pub boot_flag: u8,
+    /// 介质字节。
+    pub media: u8,
+    /// 加载段（2..4 LE u16——段 0 = 0x7C0 BIOS 隐含语义）。
+    pub load_segment: u16,
+    /// 系统类型（4——分区表系统类型字节，无模拟档常 0）。
+    pub system_type: u8,
+    /// 加载扇区数（6..8 LE u16——512 字节扇计数）。
+    pub load_sectors: u16,
+    /// 加载 LBA（8..12 LE u32——虚拟 2048 扇）。
+    pub load_lba: u32,
+}
+
+/// **从镜像反读 Initial Entry**（cat_lba 扇区偏移 32 起 32 字节——
+/// 残镜像显性 None）。
+pub fn initial_entry_audit(img: &[u8], cat_lba: u32) -> Option<InitialEntryAudit> {
+    let base = (cat_lba as usize) * (BLOCK_SIZE as usize) + 32;
+    if base + 32 > img.len() {
+        return None;
+    }
+    let le16 = |o: usize| img[base + o] as u16 | ((img[base + o + 1] as u16) << 8);
+    Some(InitialEntryAudit {
+        boot_flag: img[base],
+        media: img[base + 1],
+        load_segment: le16(2),
+        system_type: img[base + 4],
+        load_sectors: le16(6),
+        load_lba: u32::from_le_bytes([
+            img[base + 8],
+            img[base + 9],
+            img[base + 10],
+            img[base + 11],
+        ]),
+    })
+}
+
+impl InitialEntryAudit {
+    /// 本镜像构造面复核（旗标 0x88 / 介质无模拟 / 段 0x07C0 / 4 扇 / LBA 非零）。
+    pub fn matches_generated(&self, expect_lba: u32) -> bool {
+        self.boot_flag == 0x88
+            && self.media == BootMediaType::NoEmul.code()
+            && self.load_segment == 0x07C0
+            && self.load_sectors == 4
+            && self.load_lba == expect_lba
+    }
+
+    /// 加载字节数（扇区数 × 512——BIOS 加载面闭环：段 0x07C0 + 4 扇
+    /// = 0x7C0:0 起 2048 字节，0x7C0:0x800 内不越 64K 段界）。
+    pub const fn load_bytes(&self) -> u32 {
+        (self.load_sectors as u32) * 512
+    }
+}
+
+/// UEFI 扩展段头账（El Torito 扩展面——本镜像不并入 generate，
+/// 语义账独立：0x91 头指示/0xEF 平台/条目数/段校验和——F0406 扩展
+/// 位同风格预留，语义完备待上层启用）。
+pub struct SectionHeaderExt {
+    /// 头指示（0x91 = 头，MoreFollows 清——0x90 为还有后继段）。
+    pub header_indicator: u8,
+    /// 平台 ID（0xEF UEFI）。
+    pub platform_id: u8,
+    /// 段内条目数。
+    pub entry_count: u16,
+    /// 段校验和（逐字补负和——同 VE 校验和闭式）。
+    pub checksum: u16,
+}
+
+impl SectionHeaderExt {
+    /// **构造**（32 字节段头：0 0x91 / 1 0xEF / 2..4 条目数 / 4..6
+    /// 保留 / 6..8 校验和占位 / 8..32 标识串 "VARIX UEFI SECTION"——
+    /// 校验和对全 32 字节 word 累计取负——同 VE fix 闭式）。
+    pub fn build_uefi(entry_count: u16) -> ([u8; 32], u16) {
+        let mut sec = [0u8; 32];
+        sec[0] = 0x91;
+        sec[1] = 0xEF;
+        sec[2] = (entry_count & 0xFF) as u8;
+        sec[3] = (entry_count >> 8) as u8;
+        // 4..6 保留零；8..32 标识串（24 字节域内截断）。
+        let ident = b"VARIX UEFI SECTION";
+        let mut i = 0usize;
+        while i < ident.len() && i < 24 {
+            sec[8 + i] = ident[i];
+            i += 1;
+        }
+        // 校验和：word 和取负（先零占位算和再回填 6..8）。
+        let mut wsum: u32 = 0;
+        let mut k = 0usize;
+        while k < 32 {
+            let lo = sec[k] as u32;
+            let hi = sec[k + 1] as u32;
+            wsum = wsum.wrapping_add(lo | (hi << 8));
+            k += 2;
+        }
+        let fix = ((0x1_0000u32 - (wsum & 0xFFFF)) & 0xFFFF) as u16;
+        sec[6] = (fix & 0xFF) as u8;
+        sec[7] = (fix >> 8) as u8;
+        (sec, fix)
+    }
+
+    /// 段头校验复核（构造→复算闭环：全 32 字节 word 和（含已填校验
+    /// 和域）恒 0——与 VE 同闸）。
+    pub fn verify(sec: &[u8; 32]) -> bool {
+        let mut wsum: u32 = 0;
+        let mut k = 0usize;
+        while k < 32 {
+            let lo = sec[k] as u32;
+            let hi = sec[k + 1] as u32;
+            wsum = wsum.wrapping_add(lo | (hi << 8));
+            k += 2;
+        }
+        wsum & 0xFFFF == 0
+    }
+
+    /// MoreFollows 判定（0x90 = 还有后继段 / 0x91 = 本段终结）。
+    pub const fn more_follows(self) -> bool {
+        self.header_indicator == 0x90
+    }
+}
+
+/// 深-08 判据：媒体类型五档恰值（code/of_code 往返恒等+未知值 None+
+/// 几何期望恰值 2400/2880/5760）。
+pub fn probe_boot_media() -> bool {
+    let mut round_ok = true;
+    for m in BootMediaType::ALL.iter() {
+        match BootMediaType::of_code(m.code()) {
+            Some(back) => {
+                if back != *m {
+                    round_ok = false;
+                }
+            }
+            None => round_ok = false,
+        }
+    }
+    let unknown = BootMediaType::of_code(9).is_none() && BootMediaType::of_code(255).is_none();
+    let geo_ok = BootMediaType::Floppy12.emul_sectors() == 2400
+        && BootMediaType::Floppy144.emul_sectors() == 2880
+        && BootMediaType::Floppy288.emul_sectors() == 5760
+        && BootMediaType::NoEmul.emul_sectors() == 0;
+    round_ok && unknown && geo_ok
+}
+
+/// 深-09 判据：Initial Entry 反读恰值（构造面→镜像侧反读五段全对
+/// +加载字节数闭环 4×512=2048+越界显性 None——构造/反读闭环补全）。
+pub fn probe_initial_entry() -> bool {
+    let mut m = IsoManifest::new("IEAUD");
+    let _ = m.add_file("BOOT.BIN", &[1, 2, 3], true);
+    let img = match generate(&mut m) {
+        Ok(im) => im,
+        Err(_) => return false,
+    };
+    let cat_lba = (img.bytes.len() / BLOCK_SIZE as usize) as u32 - 1;
+    let ie = match initial_entry_audit(&img.bytes, cat_lba) {
+        Some(e) => e,
+        None => return false,
+    };
+    let fields_ok = ie.matches_generated(img.payload_lba)
+        && ie.boot_flag == 0x88
+        && ie.system_type == 0
+        && ie.load_bytes() == 2048;
+    // 段 0x07C0 × 16 = 0x7C00（BIOS 经典加载址恒等）+ 2048 字节：
+    // 段内 0x7C00..0x8400 不越 64K 段界（加载面闭环）。
+    let seg_ok = 0x07C0usize * 16 == 0x7C00
+        && 0x7C00 + 2048 <= 0x1_0000;
+    let bound_ok = initial_entry_audit(&img.bytes, 9999).is_none();
+    fields_ok && seg_ok && bound_ok
+}
+
+/// 深-10 判据：UEFI 扩展段头语义账（构造→复算闭环 word 和恒零+
+/// MoreFollows 两态+条目数写入恰值——预留面语义完备实证）。
+pub fn probe_section_ext() -> bool {
+    // 构造 3 条目段：复算 word 和恒零。
+    let (sec, _fix) = SectionHeaderExt::build_uefi(3);
+    let verify_ok = SectionHeaderExt::verify(&sec)
+        && sec[0] == 0x91
+        && sec[1] == 0xEF
+        && sec[2] == 3
+        && sec[3] == 0;
+    // 标识串嵌入恰值（8..32 共 24 字节域：18 字符串 + 6 零填充）。
+    let ident_ok = &sec[8..32] == b"VARIX UEFI SECTION\0\0\0\0\0\0";
+    // MoreFollows 两态（0x90 有后继 / 0x91 终结）。
+    let mut cont = sec;
+    cont[0] = 0x90;
+    let mf = SectionHeaderExt {
+        header_indicator: cont[0],
+        platform_id: cont[1],
+        entry_count: 3,
+        checksum: 0,
+    };
+    let mf_ok = mf.more_follows() && !SectionHeaderExt {
+        header_indicator: 0x91,
+        platform_id: 0xEF,
+        entry_count: 3,
+        checksum: 0,
+    }
+    .more_follows();
+    verify_ok && ident_ok && mf_ok
 }
