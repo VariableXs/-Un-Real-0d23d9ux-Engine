@@ -400,3 +400,15 @@ mod tests {
         );
     }
 }
+// cgd15_d01close — CGPU-F0496 D01组收口与D02移交（16项自检点名制缺一即0x6201虚假收口/PrecisionReport快照指纹篡改即0x6203/双签纪律单签0x6202拒收/HandoverDoc三件套口径表-账本API-精度声明合成指纹/空手移交0x6204测量基础缺失/台账未更新0x6205/0x62xx 五码）
+pub mod cgd15_d01close;
+// cgf13_certapi — CGPU-F0811 认证API冻结v1（三组cert_query-cert_run-cert_export签名指纹冻结/跨族动词表对拍D08/E06命名一致性0x6302/重复注册0x6303/承诺域分隔PROMISE_DOMAIN_CERT与TIMER防混签0x6304/冻结表只增不改非法追加未开版本窗0x6305/0x63xx 五码）
+pub mod cgf13_certapi;
+// cgf14_certdoc — CGPU-F0812 认证文档（白皮书六步节完整性/悬空引用"规则表N"扫描0x6401/文档-代码对拍四级名+90天漂移即0x6402数字两套账/ReauthRuleTable三类触发表外0x6403/节号重复0x6404/白皮书过期指纹未随实现更新0x6405/0x64xx 五码）
+pub mod cgf14_certdoc;
+// cgg09_nvfuzz — CGPU-F0969 NVIDIA fuzz（代际/特性位/显存三类伪造钳制高位域越界虚报拦0x6501/0x6503/0x6505/驱动异常三族容错消费器未处理0x6502/案例固化LCG种子谱指纹CI回放不可复现0x6504/0x65xx 五码）
+pub mod cgg09_nvfuzz;
+// cgi09_bwfuzz — CGPU-F1288 带宽fuzz与安全（ConservationLedger四账户守恒Σ账≤带宽超即0x6601/PayloadIntegrity FNV载荷指纹写前算读后验篡改0x6602/QueueAcl默认deny白名单制未登记0x6603/畸形请求三族全拒采纳0x6604/风暴案例固化replay_ci不可复现0x6605/0x66xx 五码）
+pub mod cgi09_bwfuzz;
+// vck08_faildom — CGPU-F1608 异构失败域与降级（引擎级失败域四域闭集NPU崩不拖垮GPU隔离墙拦跨域传播0x6F01/逐引擎回退表NPU→GPU推理回退DSP→CPU多级链三跳封顶断裂显性0x6F02/部分失败语义节点可用性三态标注缺失0x6F03消费方决策/重置纪律触碰集恰单域越界0x6F04复探对接vck04不过即Retired/降级透明回退结果带Origin+性能差‰标注丢失0x6F05/kill注入演练五验证闭环六组自检/0x6Fxx 五码）
+pub mod vck08_faildom;
