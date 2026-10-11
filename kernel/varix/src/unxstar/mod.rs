@@ -2633,3 +2633,85 @@ pub fn run_wb22_unx22() -> crate::checks::CheckSet {
 
 pub mod unx982_throttle;
 pub mod unx983_stormgrade;
+
+// ===================== AI-WB3 · CoRun UNX-A4 批 40 单深化版（诊断码段 0x12C0~0x2940 四十段） =====================
+// unx2321_unisign3 ↔ UNX-F2321（册目标见施工书；诊断码段 12C0–12C0 独占）
+pub mod unx2321_unisign3;
+// unx2341_udomregress ↔ UNX-F2341（册目标见施工书；诊断码段 13C0–13C0 独占）
+pub mod unx2341_udomregress;
+// unx2361_udecLARE3 ↔ UNX-F2361（册目标见施工书；诊断码段 15C0–15C0 独占）
+pub mod unx2361_udecLARE3;
+// unx2381_ufinalacct ↔ UNX-F2381（册目标见施工书；诊断码段 1640–1640 独占）
+pub mod unx2381_ufinalacct;
+// unx2402_ufreemap ↔ UNX-F2402（册目标见施工书；诊断码段 16C0–16C0 独占）
+pub mod unx2402_ufreemap;
+// unx2422_uorder14 ↔ UNX-F2422（册目标见施工书；诊断码段 1740–1740 独占）
+pub mod unx2422_uorder14;
+// unx2442_urefill ↔ UNX-F2442（册目标见施工书；诊断码段 17C0–17C0 独占）
+pub mod unx2442_urefill;
+// unx2482_uorder9raw ↔ UNX-F2482（册目标见施工书；诊断码段 18C0–18C0 独占）
+pub mod unx2482_uorder9raw;
+// unx2502_uhptime ↔ UNX-F2502（册目标见施工书；诊断码段 1A80–1A80 独占）
+pub mod unx2502_uhptime;
+// unx2562_uaspcreate ↔ UNX-F2562（册目标见施工书；诊断码段 1BC0–1BC0 独占）
+pub mod unx2562_uaspcreate;
+// unx2582_uvmainject ↔ UNX-F2582（册目标见施工书；诊断码段 1C40–1C40 独占）
+pub mod unx2582_uvmainject;
+// unx2602_upfentry ↔ UNX-F2602（册目标见施工书；诊断码段 1C80–1C80 独占）
+pub mod unx2602_upfentry;
+// unx2622_upcidbook ↔ UNX-F2622（册目标见施工书；诊断码段 1CC0–1CC0 独占）
+pub mod unx2622_upcidbook;
+// unx2642_uptebatchro ↔ UNX-F2642（册目标见施工书；诊断码段 1D40–1D40 独占）
+pub mod unx2642_uptebatchro;
+// unx2662_ulookup ↔ UNX-F2662（册目标见施工书；诊断码段 1D80–1D80 独占）
+pub mod unx2662_ulookup;
+// unx2682_ucacheif ↔ UNX-F2682（册目标见施工书；诊断码段 1DC0–1DC0 独占）
+pub mod unx2682_ucacheif;
+// unx2702_ulrufield ↔ UNX-F2702（册目标见施工书；诊断码段 1E40–1E40 独占）
+pub mod unx2702_ulrufield;
+// unx2722_uanonevict ↔ UNX-F2722（册目标见施工书；诊断码段 1E80–1E80 独占）
+pub mod unx2722_uanonevict;
+// unx2762_umaptbl ↔ UNX-F2762（册目标见施工书；诊断码段 1EC0–1EC0 独占）
+pub mod unx2762_umaptbl;
+// unx2782_ubuddymerge ↔ UNX-F2782（册目标见施工书；诊断码段 1F40–1F40 独占）
+pub mod unx2782_ubuddymerge;
+// unx2801_ubigpoolcap ↔ UNX-F2801（册目标见施工书；诊断码段 1F80–1F80 独占）
+pub mod unx2801_ubigpoolcap;
+// unx2841_ubigasp ↔ UNX-F2841（册目标见施工书；诊断码段 20C0–20C0 独占）
+pub mod unx2841_ubigasp;
+// unx2861_ubigmatrix ↔ UNX-F2861（册目标见施工书；诊断码段 2140–2140 独占）
+pub mod unx2861_ubigmatrix;
+// unx2901_ucachestress ↔ UNX-F2901（册目标见施工书；诊断码段 21C0–21C0 独占）
+pub mod unx2901_ucachestress;
+// unx2941_udomstress ↔ UNX-F2941（册目标见施工书；诊断码段 2240–2240 独占）
+pub mod unx2941_udomstress;
+// unx2981_udomclose ↔ UNX-F2981（册目标见施工书；诊断码段 22C0–22C0 独占）
+pub mod unx2981_udomclose;
+// unx3001_udualchain ↔ UNX-F3001（册目标见施工书；诊断码段 2340–2340 独占）
+pub mod unx3001_udualchain;
+// unx3021_utier3 ↔ UNX-F3021（册目标见施工书；诊断码段 23C0–23C0 独占）
+pub mod unx3021_utier3;
+// unx3061_upowerloss ↔ UNX-F3061（册目标见施工书；诊断码段 24C0–24C0 独占）
+pub mod unx3061_upowerloss;
+// unx3081_utierfinal ↔ UNX-F3081（册目标见施工书；诊断码段 2580–2580 独占）
+pub mod unx3081_utierfinal;
+// unx3101_uregfreeze ↔ UNX-F3101（册目标见施工书；诊断码段 25C0–25C0 独占）
+pub mod unx3101_uregfreeze;
+// unx3121_ureconall ↔ UNX-F3121（册目标见施工书；诊断码段 2640–2640 独占）
+pub mod unx3121_ureconall;
+// unx3141_ubaseline ↔ UNX-F3141（册目标见施工书；诊断码段 2680–2680 独占）
+pub mod unx3141_ubaseline;
+// unx3161_uregexec ↔ UNX-F3161（册目标见施工书；诊断码段 26C0–26C0 独占）
+pub mod unx3161_uregexec;
+// unx3181_udomainfinal ↔ UNX-F3181（册目标见施工书；诊断码段 2740–2740 独占）
+pub mod unx3181_udomainfinal;
+// unx3361_utimewin ↔ UNX-F3361（册目标见施工书；诊断码段 2780–2780 独占）
+pub mod unx3361_utimewin;
+// unx3381_usamplelib ↔ UNX-F3381（册目标见施工书；诊断码段 27C0–27C0 独占）
+pub mod unx3381_usamplelib;
+// unx3401_uktestdesign ↔ UNX-F3401（册目标见施工书；诊断码段 2880–2880 独占）
+pub mod unx3401_uktestdesign;
+// unx3421_udualbackend ↔ UNX-F3421（册目标见施工书；诊断码段 28C0–28C0 独占）
+pub mod unx3421_udualbackend;
+// unx3461_umountarch ↔ UNX-F3461（册目标见施工书；诊断码段 2940–2940 独占）
+pub mod unx3461_umountarch;
