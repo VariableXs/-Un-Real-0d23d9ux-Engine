@@ -6,6 +6,7 @@
 //! 逐条定制数据结构/状态机/错误路径，零模板复述，零死代码。
 
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
