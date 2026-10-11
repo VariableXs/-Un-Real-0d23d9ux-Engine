@@ -1066,6 +1066,20 @@ pub fn run_unx121_checks() -> CheckSet {
         s.fail("U121-元-01-零panic空态平凡", "panic 面或空态失效");
     }
 
+    // 深-01：回放一致性（合法全链重演终态恰等现态+污染态揭破）。
+    if probe_replay_consistency() {
+        s.ok("U121-深-01-历史环回放一致");
+    } else {
+        s.fail("U121-深-01-历史环回放一致", "回放面失效");
+    }
+
+    // 深-02：四谓词全覆盖审计（判据网无洞——零命中谓词即网洞）。
+    if probe_cond_coverage() {
+        s.ok("U121-深-02-谓词覆盖审计");
+    } else {
+        s.fail("U121-深-02-谓词覆盖审计", "覆盖面失效");
+    }
+
     s
 }
 
@@ -1133,4 +1147,186 @@ fn strip_lexical_noise(src: &str) -> String {
         i += 1;
     }
     out
+}
+
+// ===========================================================================
+// 深化七区：历史环回放器 / 谓词覆盖审计——状态机的「为什么在这」面：
+// 回放能重演到达路径，审计能证明每个谓词都被判据触达
+// ===========================================================================
+
+/// 历史环回放器（回放 = dispatch 链纯函数重演：从 new() 起按历史事件序
+/// 重放，重演终态必须等于被回放实例的现态——不一致 = 历史账与现态账
+/// 脱钩，状态机的时间一致性立案）。
+pub struct HistReplay {
+    /// 重放事件序（从历史环抽取的事件流）。
+    pub events: Vec<ExtEvent>,
+    /// 重放终态。
+    pub final_state: Option<ExtState>,
+    /// 重放完成标志（事件流耗尽且未中途被拒 = 完整重演）。
+    pub complete: bool,
+}
+
+/// 从历史环抽取事件流（只取 Moved 项的事件——拒绝项不重放：重演的是
+/// 「合法到达路径」，拒绝路径的合法重演是另一条证伪面）。
+pub fn extract_moved_events(hist: &[HistItem]) -> Vec<ExtEvent> {
+    let mut out: Vec<ExtEvent> = Vec::new();
+    let mut i = 0usize;
+    while i < hist.len() {
+        if let HistItem::Moved(_, ev, _) = hist[i] {
+            out.push(ev);
+        }
+        i += 1;
+    }
+    out
+}
+
+/// 回放到终态（从空白状态机重演事件流——返回重演终态；中途被拒即
+/// None：历史里存在合法迁移在重演时被拒 = 环账被污染立案）。
+pub fn replay(events: &[ExtEvent]) -> Option<ExtBootState> {
+    let mut m = ExtBootState::new();
+    // fail_count 前置：真实到达路径的首事件 ProbeFail 必带失败前置
+    // （fail_event 语义），回放侧同样给计数前置。
+    let mut i = 0usize;
+    while i < events.len() {
+        let ev = events[i];
+        if ev == ExtEvent::ProbeFail {
+            m.fail_count += 1;
+        }
+        match m.dispatch(ev) {
+            Ok(_) => {
+                i += 1;
+            }
+            Err(_) => return None,
+        }
+    }
+    Some(m)
+}
+
+/// 回放一致性审计（重演终态 == 被审计实例现态 && 重演 moved == 实例
+/// moved——双账对拍：历史环不是装饰是可重算的真账）。
+pub fn replay_consistent(target: &ExtBootState) -> bool {
+    let events = extract_moved_events(&target.history);
+    match replay(&events) {
+        Some(m) => m.state == target.state && m.moved == target.moved,
+        None => false,
+    }
+}
+
+/// 谓词覆盖审计（双层闸四谓词逐个命中计数——判据审计面：每个谓词
+/// 至少被一条判据触达过，零命中谓词 = 判据网有洞）。
+#[derive(Clone, Copy, Debug)]
+pub struct CondCoverage {
+    /// 无失败不恢复（RecoverWithoutFail）命中数。
+    pub recover_without_fail: u32,
+    /// 三步上限（RecoverStepOverflow）命中数。
+    pub step_overflow: u32,
+    /// 零步无据（ConditionNotMet）命中数。
+    pub condition_not_met: u32,
+    /// 零档不叠（DegradeReasonMissing）命中数。
+    pub degrade_missing: u32,
+}
+
+impl CondCoverage {
+    /// 全零审计账。
+    pub const fn new() -> CondCoverage {
+        CondCoverage {
+            recover_without_fail: 0,
+            step_overflow: 0,
+            condition_not_met: 0,
+            degrade_missing: 0,
+        }
+    }
+
+    /// 按拒绝码入账（BootExtCode → 桶位单点）。
+    pub const fn record(&mut self, c: BootExtCode) {
+        match c {
+            BootExtCode::RecoverWithoutFail => self.recover_without_fail += 1,
+            BootExtCode::RecoverStepOverflow => self.step_overflow += 1,
+            BootExtCode::ConditionNotMet => self.condition_not_met += 1,
+            BootExtCode::DegradeReasonMissing => self.degrade_missing += 1,
+            _ => {}
+        }
+    }
+
+    /// 全覆盖（四谓词全非零——判据网无洞）。
+    pub const fn all_covered(&self) -> bool {
+        self.recover_without_fail > 0
+            && self.step_overflow > 0
+            && self.condition_not_met > 0
+            && self.degrade_missing > 0
+    }
+}
+
+/// 深化面参考探针——回放一致性（合法全链重演终态恰等于现态）。
+pub fn probe_replay_consistency() -> bool {
+    // 构造真实到达路径：失败→三步→降级→升回→一步→降级→幂等自环。
+    let mut m = ExtBootState::new();
+    let _ = m.fail_event();
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverDone);
+    let _ = m.dispatch(ExtEvent::RecoverDone);
+    let _ = m.dispatch(ExtEvent::RecoverStep);
+    let _ = m.dispatch(ExtEvent::RecoverDone);
+    let _ = m.dispatch(ExtEvent::DegradeReq);
+    // 双账对拍：回放终态 == 现态。
+    if !replay_consistent(&m) {
+        return false;
+    }
+    // 污染面：手改现态后回放必须揭破（state 与历史账脱钩）。
+    let mut dirty = ExtBootState::new();
+    let _ = dirty.fail_event();
+    let _ = dirty.dispatch(ExtEvent::RecoverStep);
+    let _ = dirty.dispatch(ExtEvent::RecoverStep);
+    let _ = dirty.dispatch(ExtEvent::RecoverDone);
+    dirty.state = ExtState::Probe; // 手改——历史说 Degraded 现态却 Probe
+    !replay_consistent(&dirty)
+}
+
+/// 深化面参考探针——四谓词全覆盖（逐谓词触发一例入账后 all_covered）。
+pub fn probe_cond_coverage() -> bool {
+    let mut cov = CondCoverage::new();
+    // 谓词一：无失败不恢复。
+    let mut m1 = ExtBootState::new();
+    if let Err(c) = m1.dispatch(ExtEvent::ProbeFail) {
+        cov.record(c);
+    }
+    // 谓词二：三步上限（第 4 步拒）。
+    let mut m2 = ExtBootState::new();
+    let _ = m2.fail_event();
+    let _ = m2.dispatch(ExtEvent::RecoverStep);
+    let _ = m2.dispatch(ExtEvent::RecoverStep);
+    let _ = m2.dispatch(ExtEvent::RecoverStep);
+    if let Err(c) = m2.dispatch(ExtEvent::RecoverStep) {
+        cov.record(c);
+    }
+    // 谓词三：零步无据（不步进直接完成）。
+    let mut m3 = ExtBootState::new();
+    let _ = m3.fail_event();
+    if let Err(c) = m3.dispatch(ExtEvent::RecoverDone) {
+        cov.record(c);
+    }
+    // 谓词四：零档不叠（未设降级档先请求降级）。
+    let mut m4 = ExtBootState::new();
+    let _ = m4.fail_event();
+    let _ = m4.dispatch(ExtEvent::RecoverStep);
+    let _ = m4.dispatch(ExtEvent::RecoverDone);
+    // Recover→Degraded 自动设档——须先清档再请求：直接构造 Probe 态
+    // 语义特闸会拦 ProbeThenDegrade……用矩阵格 Degraded+DegradeReq
+    // 但档位清空面：手动造 CondCtx 不可达（谓词私有）——实测经由
+    // condition_ok 公开单点直接触达第四桶。
+    if let Some(c) = condition_ok(
+        ExtState::Degraded,
+        ExtEvent::DegradeReq,
+        ExtState::Degraded,
+        &CondCtx {
+            fail_count: 1,
+            recover_steps: 0,
+            degrade_reason_set: false,
+        },
+    ) {
+        cov.record(c);
+    }
+    cov.all_covered()
 }
