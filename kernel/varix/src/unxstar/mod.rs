@@ -2427,3 +2427,24 @@ pub mod unx1562_a3sign;
 pub mod unx1602_cputopo;
 pub mod unx1621b_percurv;
 pub mod unx943_tophalfline;
+// ===================== AI-WB3 批次 · CoRun UNX-A3 B07–B16 深化十单（0xB000 段） =====================
+// unx1722_migrate ↔ UNX-F1722 迁移执行原语（三段原子链 摘出→暂存→挂入 + 全域唯一跨队列写入点 + 三向环形账 + 绕行注入 10/10 拒绝；0xB020 段十六码）
+pub mod unx1722_migrate;
+// unx1742_idleenter ↔ UNX-F1742 idle 进入路径（队空判定→静息置位→账目起算→状态落定四步链 + 静息置位 100% 命中 F1735 挂点消费 + Σidle+Σbusy 守恒；0xB040 段十六码）
+pub mod unx1742_idleenter;
+// unx1762_cpustats ↔ UNX-F1762 每核统计账本体（十字段族汇总账 + PerCpu 冻结版字段级三方对齐 + 20 条守恒式 + 全核同窗快照；0xB060 段十六码）
+pub mod unx1762_cpustats;
+// unx1782_structaudit ↔ UNX-F1782 每核结构一致性总检（PerCpu 字段×统计账位×观测接口三层总清单 + 十层拼图 + 35 条聚合断言 + 启动期/运行期巡检；0xB080 段十六码）
+pub mod unx1782_structaudit;
+// unx1802_schedpts ↔ UNX-F1802 调度点全集登记（tick到期/抢占/让出/阻塞/迁移后/启动 六点闭集 + 清单冻结 v1 + 6×4 语境矩阵 + 域外注入 10/10 检出；0xB0A0 段十六码）
+pub mod unx1802_schedpts;
+// unx1822_stackguard ↔ UNX-F1822 线程栈分配与 guard 页（栈池三区布局 + 上下侧 guard 页登记册 + 越界 10/10 触发异常路径 + poison 防复用；0xB0C0 段十六码）
+pub mod unx1822_stackguard;
+// unx1842_ipivec_deep ↔ UNX-F1842 IPI 向量分配表深化（32 向量四类登记 + 冻结 v1 指纹 + 编译期宏与运行期断言双检 + F1847 三禁 + F1848 合并重入；0xB0E0 段十六码）
+pub mod unx1842_ipivec_deep;
+// unx1862_mmmask ↔ UNX-F1862 地址空间活跃核追踪（mm 活跃 mask + 切换挂点同步 + 跨 mm 交集为空 + 击落必达 + 迁移翻转原子性；0xB100 段十六码）
+pub mod unx1862_mmmask;
+// unx1882_swipi ↔ UNX-F1882 切换×IPI 跨链回归（切换四段建模 + 竞态处置矩阵 10/10 全对 + F1807 寄存器保持性与死点 + F1847 三禁；0xB120 段十六码）
+pub mod unx1882_swipi;
+// unx1902_lazysave_deep ↔ UNX-F1902 惰性保存策略深化（保存时机三态判定表 12 格 + 三态逐例 10 例 + CR0.TS→#NM 闭环 + 往返保真 + 账守恒；0xB140 段十六码）
+pub mod unx1902_lazysave_deep;
