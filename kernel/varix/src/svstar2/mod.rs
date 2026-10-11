@@ -990,6 +990,10 @@ pub mod veab03_spatial_checks;
 pub mod veae03_evtbus;
 pub mod veae05_imecoex;
 pub mod vead09_phystel;
+// veab08_listeners — VE-F5608 场景图听者与声源（听者挂相机唯一性写死同相机多听者拒+声源挂节点Y05绑定消费越权闸+节点错配一节点两听者拦截/节点销毁→声源摘活+听者失效解除/延迟一帧回收次帧真移除防悬挂/失效巡检sweep解除+提示/绑定状态可查读屏三段 0x54 段）
+// vead10_physec — VE-F6010 物理安全（NaN/Inf位模式洪流防线零浮点检出→隔离+告警/注入防护质量≤0恢复系数>1拒/限幅器量程越界温柔钳制留痕/资源硬上限单tick隔离16熔断64tick冷却/隔离账对外可查行为说明/影响范围评估→清单→处置状态机/规则公开读屏 0x55 段）
+pub mod vead10_physec;
+pub mod veab08_listeners;
 pub mod veab07_audioassets;
 pub mod veab07_audioasset;
 // veab06_voice — VE-F5606 语音系统骨架（可靠通道三问句衔接+按权裁剪预算守恒+零记录隐私红线三违例阻断+说话板只示状态+延迟五段预算超段点名+静噪EWMA门限自适应+码率三档阶梯降级+设备占用提示 O(帧) 0x5D段）
