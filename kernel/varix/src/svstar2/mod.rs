@@ -394,6 +394,7 @@
 //! | [`vef22_checks`] | F1619 域自检（15 项五族：审计 2=全绿+证据逐行非空 / 算子 3=不相交+多项式替代双向在册+LE 显式在册 / 双跑 4=全语料一致且摘要非零+脏化再跑+**不同档位摘要互异（防对拍空转）**+重排双跑 / 跨版本 4=承诺审计+判据侧独立重算 56 字节参考流摘要相等+条款闭集+解码重编码闭环不变 / 判据 2=实挂条数实取+名字互异） | VE 册 #VE-F1619 |
 //! | [`vead03_materials`] | F6003 物理材质与表面（材质库**千分比整数备案**（F1619 字节级确定纪律在物理域延续）+MaterialId 直引 O(1) 查库；安全默认是**降级路径不是默认值**——兜底必带 SafeDefaultNote 标注，静默兜底把配置错误变成看起来正常的物理；组合实测矩阵每格带 measured 备案位与 owner **责任段**，冲突检测上报追责到段；未测组合推导值强制标注不伪装实测；pair 上三角对称归一索引；越权改→审计簿留痕可按表面回放，满容拒收计数不静默覆盖旧痕） | VE 册 #VE-F6003 |
 //! | [`vead03_checks`] | F6003 域自检（16 项六族：库 3=字段合法域+名字 id 双向可逆+越界兜底标注 / 安全 2=默认中庸无极值+未注册标注原因码 / 预览 3=备案逐字段相等+未测标注+对称归一越界拒绝 / 冲突 3=干净零上报（无假阳）+注入点名带责任段（无漏报）+**容差边界夹逼对钉** / 审计 3=留痕+越权拒+回放满容如实 / 判据 2=实挂条数实取+名字互异） | VE 册 #VE-F6003 |
+//! | [`vead04_bindgraph`] | F6004 物理与场景图绑定（**Y05 两律类型化**：BindMode 三态把权属写进类型——Strict 物理权威/Interactive 编辑器权威/Detached 同步停；**权限矩阵双写对拍** PERM_MATRIX const 表↔perm_rule 推导 3×6=18 格逐格对拍，运行时/调试不碰结构、编辑器不驱同步、查询全员开放；**绑定是旁路观察者**——结构操作不碰物理喂入摘要（同序列裸绑 vs 穿插结构操作 digest 逐位相等判据实证）；**渲染帧取插值位姿不取硬步位姿**——prev/cur 双位姿账+alpha 千分位整数定点插值（位置线性+四元数 Q14 NLERP 最短弧+Newton isqrt 归一，残差 ≤2 钉死），alpha=0 恰 prev/1000 恰 cur 端点钉死、越域显性拒、单步退化诚实；**批量 all-or-nothing 事务**——全量预检含批量内互斥，坏项整体拒逐项点名零副作用，MAX_BATCH=64 预算保护理由同源常量；**失效三路**——节点销毁→挂起池对外可查（复活前提校验 NotSuspended 拒无条件换绑）、同步失效→代次检出 Stale 点名+重绑恢复（缺席保守置失效不猜）、越权→拒绝+审计留痕点名到操作者×操作×目标；账实一致性探针正反双账对拍、审计满容拒记计数不覆盖旧痕；0x4B 段十六码两两互异 reason 全码可读） | VE 册 #VE-F6004 |
 //! | [`vc61_goverview`] | CGPU-F0961 G 域开工与 NVIDIA 总览（GPU 兼容矩阵六主题闭集（NVIDIA/Mali/Adreno/火线/老旧下限/认证发布）——主题位缺号或串号域收口对不齐账；六代覆盖表 RTX 50/40/30/20+GTX 16/10 逐代登记；特性盘点 **6 代×4 特性=24 格三态全登记**（Yes/Partial/No——部分支持单列是 F1185 在兼容矩阵的形态，No 格必带缺席说明）；十组规划 G01-G10 区间互斥可机检（重叠=两组抢单、缝隙=单号无主，开工日红不是收口日）；F01 认证体系复用声明逐条锚定对端+实例化差异实质非空——复用不锚定=另起炉灶遮羞布） | VE 册 #CGPU-F0961 |
 //! | [`vc61_goverview_checks`] | CGPU-F0961 域自检（11 项六族：主题 1=闭集可逆+未知拒绝 / 代际 1=短码可逆+架构名非空 / 特性 3=24 格全查+No/Partial 说明非空+**锚点格三态如实**（GTX16 无 RT 核心/RTX20 首代 Partial）/ 规划 3=审计绿+严格不等式方向+域边界字面钉死 / 复用 2=对端含 F01+差异实质非空 / 判据 2=实挂条数实取+名字互异） | VE 册 #CGPU-F0961 |
 //! | [`vef26_vfetch`] | F1623 顶点拉取优化（F1609 重排的**运行时落地端口** prefetch_reorder 委托 meshbatch 不复制算法——进管线一次重排每帧吃现成收益；LRU 命中率模拟器=验收量尺（纯函数整数运算，F1619 确定性纪律的量尺延续：量尺不确定测量就是玄学）；实例布局 AoS/SoA 双模式可配语义等价（布局是拉取策略不是数据变形）；FetchLedger 实时快照（F1630 调试数据消费点）；收益入册用命中率差+未命中操作计数（无墙钟不伪造毫秒数），跨缓存大小不可直比口径在册） | VE 册 #VE-F1623 |
@@ -993,6 +994,8 @@ pub mod vef62_nettelemetry;
 pub mod veab05_music;
 // veac02_agent — VE-F5802 AI Agent 模型（三段抽象单向流+注册制契约四件齐才准入+能力边界闭集越界拒+越幅钳制审计+资源三帽守恒+契约变更通知闸全员确认才生效+O(n)运行 0x62段）
 pub mod veac02_agent;
+// vch03_budgettier — CGPU-F1123 预算池分级（三级池语义与配额分级表+账户树守恒+水位线）
+pub mod vch03_budgettier;
 pub mod veac01_aicore;
 pub mod veac01_aicore_checks;
 pub mod vc21_budgetarch;
@@ -1067,6 +1070,7 @@ pub mod vef22_checks;
 pub mod vef25_math;
 pub mod vead03_materials;
 pub mod vead03_checks;
+pub mod vead04_bindgraph;
 pub mod vc61_goverview;
 pub mod vc61_goverview_checks;
 pub mod vef26_vfetch;
@@ -1534,6 +1538,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1619", vef22_checks::run_vef22_checks()),
         ("VE-F1622", vef25_math::run_vef25_checks()),
         ("VE-F6003", vead03_checks::run_vead03_checks()),
+        ("VE-F6004", vead04_bindgraph::run_vead04_checks()),
         ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks()),
         ("VE-F1623", vef26_vfetch_checks::run_vef26_checks()),
         ("VE-F1624", vef27_morphtarget_checks::run_vef27_checks()),
