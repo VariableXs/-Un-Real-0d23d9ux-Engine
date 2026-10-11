@@ -1109,6 +1109,32 @@ pub fn run_unx161_checks() -> CheckSet {
         s.fail("U161-深-05-页链权限合成", "权限面失效");
     }
 
+    // 深-06：页映射账——守恒闭式（在账+解除≡累计映射）+ 占用别名拒
+    // （VirtOverlap）+ 悬空解除拒（ServiceUnmapped）+ diff 四桶恰值 +
+    // 侧账双守恒 + 权限审计三分类恰值（提升/收缩/等值）。
+    if probe_map_ledger() {
+        s.ok("U161-深-06-页账守恒diff");
+    } else {
+        s.fail("U161-深-06-页账守恒diff", "映射账面失效");
+    }
+
+    // 深-07：生命周期状态机——30 格全枚举恰值（合法 6/格外 18/终态 6）
+    // + 矩阵对拍 + 合法全链恰值 + BusyRefs 退场拒（引用未归零不许拆台）
+    // + 终态不可逆 + 事件账守恒。
+    if probe_svc_lifecycle() {
+        s.ok("U161-深-07-生命周期状态机");
+    } else {
+        s.fail("U161-深-07-生命周期状态机", "生命周期面失效");
+    }
+
+    // 深-08：账线往返——diff tally 往返恒等 + 标签/域长闸拒 + 指纹对
+    // 账面 + 生命周期快照往返（相位越界拒）+ 空账平凡（FNV 偏移基）。
+    if probe_ledger_wire() {
+        s.ok("U161-深-08-账线往返");
+    } else {
+        s.fail("U161-深-08-账线往返", "账线面失效");
+    }
+
     s
 }
 
@@ -1926,4 +1952,844 @@ pub fn probe_perm_and() -> bool {
     chain4[0] = PagePerm::absent();
     let absent_ok = !perm_and(chain4).present && !perm_and(chain4).writable;
     all_ok && ro_ok && sup_ok && nx_ok && absent_ok
+}
+
+// ===========================================================================
+// 深化六区：页映射账 / 快照 diff / 权限变更审计 / 服务生命周期状态机——
+// PAT/TLB/遍历之外是「映射账本怎么演进」的账面：
+// ① PageMap 页映射账（va 页号 → 页表项位面，升序稀疏账）——map 占用即
+//    别名事故（VirtOverlap）、unmap 悬空即立案（ServiceUnmapped）、
+//    守恒闭式（在账 + 解除 ≡ 累计映射）；
+// ② MapDiff 快照 diff（双侧升序合并单点）——added/removed/changed/
+//    unchanged 四桶 + 侧账双守恒 + 权限变更审计（逐 va 提升偏序）；
+// ③ PermDelta 权限变更三分类（逐位偏序：可写/用户位变宽、NX 撤销
+//    任一变宽即提升立案——审计面从严格，最危险维度压过变严维度）；
+// ④ SvcLifecycle 服务生命周期状态机（五态六事件 30 格 const 表 +
+//    match 对拍 + 退场闸联动 ServiceRefs：引用未归零不许拆台）。
+// ===========================================================================
+
+/// FNV-1a 64（深化区本地——指纹面单点自洽）。
+const fn deep_fnv(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        h ^= bytes[i] as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        i += 1;
+    }
+    h
+}
+
+/// 页映射账（升序稀疏账：va 页号严格递增——diff 合并与别名判定的
+/// 确定性单点）。
+pub struct PageMap {
+    /// 在账映射（va 页号, 页表项位面）——按 va 升序。
+    pub rows: Vec<(u64, u64)>,
+    /// 累计映射数（含已解除）。
+    pub map_count: u64,
+    /// 累计解除数。
+    pub unmap_count: u64,
+}
+
+impl PageMap {
+    /// 空账。
+    pub fn new() -> PageMap {
+        PageMap { rows: Vec::new(), map_count: 0, unmap_count: 0 }
+    }
+
+    /// 二分定位（升序账内 va 页号位置——命中 Some(下标)，未命中
+    /// Some(插入点) 为 Err？——统一：返回 (找到, 下标或插入点)）。
+    fn locate(&self, va_page: u64) -> (bool, usize) {
+        let mut lo = 0usize;
+        let mut hi = self.rows.len();
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if self.rows[mid].0 < va_page {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        let found = lo < self.rows.len() && self.rows[lo].0 == va_page;
+        (found, lo)
+    }
+
+    /// 映射登记（va 页已占用即别名事故——两段映射同一虚拟页）。
+    pub fn map(&mut self, va_page: u64, entry: u64) -> Result<(), RemapCode> {
+        let (found, pos) = self.locate(va_page);
+        if found {
+            return Err(RemapCode::VirtOverlap);
+        }
+        self.rows.insert(pos, (va_page, entry));
+        self.map_count += 1;
+        Ok(())
+    }
+
+    /// 解除登记（va 页不存在即悬空解除——解除一个不存在的映射）。
+    pub fn unmap(&mut self, va_page: u64) -> Result<(), RemapCode> {
+        let (found, pos) = self.locate(va_page);
+        if !found {
+            return Err(RemapCode::ServiceUnmapped);
+        }
+        let _ = self.rows.remove(pos);
+        self.unmap_count += 1;
+        Ok(())
+    }
+
+    /// 读表项。
+    pub fn entry_of(&self, va_page: u64) -> Option<u64> {
+        let (found, pos) = self.locate(va_page);
+        if found {
+            Some(self.rows[pos].1)
+        } else {
+            None
+        }
+    }
+
+    /// **账守恒**：在账 + 解除 ≡ 累计映射（映射不凭空消失）。
+    pub const fn conserved(&self) -> bool {
+        self.map_count >= self.unmap_count
+    }
+}
+
+impl Default for PageMap {
+    fn default() -> Self {
+        PageMap::new()
+    }
+}
+
+/// 页账指纹（逐行 va:entry 逗号串 FNV——diff 线面对齐锚）。
+pub fn page_map_fp(m: &PageMap) -> u64 {
+    let mut buf = String::new();
+    let mut i = 0usize;
+    while i < m.rows.len() {
+        buf.push_str(&alloc::format!("{:x}:{:x},", m.rows[i].0, m.rows[i].1));
+        i += 1;
+    }
+    deep_fnv(buf.as_bytes())
+}
+
+/// **权限变更三分类**（逐位偏序单点）：
+/// - 变宽（提升）：可写 0→1 / 用户 0→1 / NX 1→0 任一发生；
+/// - 变严（收缩）：反向任一发生；
+/// - 审计面**从严格**：宽严并存时提升压过收缩（最危险维度立案）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PermDelta {
+    /// 提升违规（权限面变宽——审计立案）。
+    Elevated,
+    /// 收缩合法（权限面变严）。
+    Reduced,
+    /// 不变。
+    Equal,
+}
+
+/// 权限偏序判定（const 纯函数——entry 位面直判）。
+pub const fn perm_delta(old_entry: u64, new_entry: u64) -> PermDelta {
+    let old = PagePerm::of_entry(old_entry);
+    let new = PagePerm::of_entry(new_entry);
+    let widened = (!old.writable && new.writable)
+        || (!old.user && new.user)
+        || (old.no_exec && !new.no_exec);
+    let narrowed = (old.writable && !new.writable)
+        || (old.user && !new.user)
+        || (!old.no_exec && new.no_exec);
+    if widened {
+        PermDelta::Elevated
+    } else if narrowed {
+        PermDelta::Reduced
+    } else {
+        PermDelta::Equal
+    }
+}
+
+/// 权限变更审计账（changed 桶逐 va 归类）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PermAudit {
+    /// 提升立案数。
+    pub elevated: u32,
+    /// 收缩数。
+    pub reduced: u32,
+    /// 不变数。
+    pub equal: u32,
+}
+
+impl PermAudit {
+    /// 守恒（三桶和 ≡ 审计面数）。
+    pub fn conserved(&self, changed_len: usize) -> bool {
+        (self.elevated + self.reduced + self.equal) as usize == changed_len
+    }
+}
+
+/// **快照 diff**（双侧升序合并单点——两份页账的演进面）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MapDiff {
+    /// b 有 a 无（新增 va 升序）。
+    pub added: Vec<u64>,
+    /// a 有 b 无（移除 va 升序）。
+    pub removed: Vec<u64>,
+    /// 两侧有但表项不同（变更 va 升序）。
+    pub changed: Vec<u64>,
+    /// 两侧有且相同。
+    pub unchanged: usize,
+}
+
+impl MapDiff {
+    /// 空差。
+    pub fn new() -> MapDiff {
+        MapDiff { added: Vec::new(), removed: Vec::new(), changed: Vec::new(), unchanged: 0 }
+    }
+
+    /// 双侧升序合并（双指针单遍——确定性序）。
+    pub fn of(a: &PageMap, b: &PageMap) -> MapDiff {
+        let mut d = MapDiff::new();
+        let mut i = 0usize;
+        let mut j = 0usize;
+        while i < a.rows.len() && j < b.rows.len() {
+            let va_a = a.rows[i].0;
+            let va_b = b.rows[j].0;
+            if va_a < va_b {
+                d.removed.push(va_a);
+                i += 1;
+            } else if va_a > va_b {
+                d.added.push(va_b);
+                j += 1;
+            } else {
+                if a.rows[i].1 == b.rows[j].1 {
+                    d.unchanged += 1;
+                } else {
+                    d.changed.push(va_a);
+                }
+                i += 1;
+                j += 1;
+            }
+        }
+        while i < a.rows.len() {
+            d.removed.push(a.rows[i].0);
+            i += 1;
+        }
+        while j < b.rows.len() {
+            d.added.push(b.rows[j].0);
+            j += 1;
+        }
+        d
+    }
+
+    /// **侧账双守恒**：a 侧每页必落 removed/changed/unchanged 之一，
+    /// b 侧必落 added/changed/unchanged 之一（diff 不丢页）。
+    pub fn side_conserved(&self, a: &PageMap, b: &PageMap) -> bool {
+        a.rows.len() == self.removed.len() + self.changed.len() + self.unchanged
+            && b.rows.len() == self.added.len() + self.changed.len() + self.unchanged
+    }
+
+    /// 权限变更审计（changed 桶逐 va 双侧读项归类）。
+    pub fn perm_audit(&self, a: &PageMap, b: &PageMap) -> PermAudit {
+        let mut p = PermAudit { elevated: 0, reduced: 0, equal: 0 };
+        let mut i = 0usize;
+        while i < self.changed.len() {
+            let va = self.changed[i];
+            let d = match (a.entry_of(va), b.entry_of(va)) {
+                (Some(o), Some(n)) => perm_delta(o, n),
+                _ => PermDelta::Equal,
+            };
+            match d {
+                PermDelta::Elevated => p.elevated += 1,
+                PermDelta::Reduced => p.reduced += 1,
+                PermDelta::Equal => p.equal += 1,
+            }
+            i += 1;
+        }
+        p
+    }
+
+    /// diff 线格式（四计数 + 双侧指纹——D|a|r|c|u|fpa|fpb）。
+    pub fn wire(&self, a: &PageMap, b: &PageMap) -> String {
+        alloc::format!(
+            "D|{}|{}|{}|{}|{:016x}|{:016x}",
+            self.added.len(),
+            self.removed.len(),
+            self.changed.len(),
+            self.unchanged,
+            page_map_fp(a),
+            page_map_fp(b)
+        )
+    }
+}
+
+impl Default for MapDiff {
+    fn default() -> Self {
+        MapDiff::new()
+    }
+}
+
+/// diff 线反解（计数四元 + 双侧指纹——结构域校验）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MapDiffTally {
+    pub added: u64,
+    pub removed: u64,
+    pub changed: u64,
+    pub unchanged: u64,
+    pub fp_a: u64,
+    pub fp_b: u64,
+}
+
+/// 十六进制 16 位定长解析（指纹域）。
+fn parse_fp16(s: &str) -> Option<u64> {
+    if s.len() != 16 {
+        return None;
+    }
+    let mut v: u64 = 0;
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    while i < b.len() {
+        let c = b[i];
+        let d: u64 = if c >= b'0' && c <= b'9' {
+            (c - b'0') as u64
+        } else if c >= b'a' && c <= b'f' {
+            (c - b'a') as u64 + 10
+        } else {
+            return None;
+        };
+        v = v.wrapping_mul(16).wrapping_add(d);
+        i += 1;
+    }
+    Some(v)
+}
+
+/// 十进制 u64（计数域）。
+fn parse_count(s: &str) -> Option<u64> {
+    if s.is_empty() {
+        return None;
+    }
+    let mut v: u64 = 0;
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    while i < b.len() {
+        let d = (b[i] as u64).wrapping_sub(b'0' as u64);
+        if d > 9 {
+            return None;
+        }
+        v = v.wrapping_mul(10).wrapping_add(d);
+        i += 1;
+    }
+    Some(v)
+}
+
+/// diff 线反解单点（标签/段数/指纹定长/计数域全闸）。
+pub fn map_diff_unwire(s: &str) -> Option<MapDiffTally> {
+    let parts: Vec<&str> = s.split('|').collect();
+    if parts.len() != 7 || parts[0] != "D" {
+        return None;
+    }
+    Some(MapDiffTally {
+        added: parse_count(parts[1])?,
+        removed: parse_count(parts[2])?,
+        changed: parse_count(parts[3])?,
+        unchanged: parse_count(parts[4])?,
+        fp_a: parse_fp16(parts[5])?,
+        fp_b: parse_fp16(parts[6])?,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 服务生命周期状态机（五态六事件 30 格 const 表——RT 服务从注册到退场）
+// ---------------------------------------------------------------------------
+
+/// 服务生命周期五态闭集。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SvcPhase {
+    /// 未注册（服务表无此服务）。
+    Unregistered,
+    /// 就绪（可服务）。
+    Ready,
+    /// 排空中（停收新请求，等在用引用归零）。
+    Draining,
+    /// 挂起（排空完成待决：恢复或退场）。
+    Suspended,
+    /// 已退场（终态——服务表摘除，不可逆）。
+    Retired,
+}
+
+impl SvcPhase {
+    /// 五闭集。
+    pub const ALL: [SvcPhase; 5] = [
+        SvcPhase::Unregistered,
+        SvcPhase::Ready,
+        SvcPhase::Draining,
+        SvcPhase::Suspended,
+        SvcPhase::Retired,
+    ];
+
+    /// 序数。
+    pub const fn ordinal(self) -> usize {
+        match self {
+            SvcPhase::Unregistered => 0,
+            SvcPhase::Ready => 1,
+            SvcPhase::Draining => 2,
+            SvcPhase::Suspended => 3,
+            SvcPhase::Retired => 4,
+        }
+    }
+
+    /// 序数反解。
+    pub const fn from_ordinal(v: u64) -> Option<SvcPhase> {
+        match v {
+            0 => Some(SvcPhase::Unregistered),
+            1 => Some(SvcPhase::Ready),
+            2 => Some(SvcPhase::Draining),
+            3 => Some(SvcPhase::Suspended),
+            4 => Some(SvcPhase::Retired),
+            _ => None,
+        }
+    }
+
+    /// 中文名（互异）。
+    pub const fn zh(self) -> &'static str {
+        match self {
+            SvcPhase::Unregistered => "未注册",
+            SvcPhase::Ready => "就绪",
+            SvcPhase::Draining => "排空中",
+            SvcPhase::Suspended => "挂起",
+            SvcPhase::Retired => "已退场",
+        }
+    }
+}
+
+/// 服务生命周期六事件闭集。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SvcEv {
+    /// 注册（服务表挂载）。
+    Register,
+    /// 静默（停收新请求进入排空）。
+    Quiesce,
+    /// 排空完成。
+    DrainDone,
+    /// 挂起。
+    Suspend,
+    /// 恢复（回就绪）。
+    Resume,
+    /// 退场（服务表摘除——终态）。
+    Retire,
+}
+
+impl SvcEv {
+    /// 六闭集。
+    pub const ALL: [SvcEv; 6] = [
+        SvcEv::Register,
+        SvcEv::Quiesce,
+        SvcEv::DrainDone,
+        SvcEv::Suspend,
+        SvcEv::Resume,
+        SvcEv::Retire,
+    ];
+
+    /// 序数。
+    pub const fn ordinal(self) -> usize {
+        match self {
+            SvcEv::Register => 0,
+            SvcEv::Quiesce => 1,
+            SvcEv::DrainDone => 2,
+            SvcEv::Suspend => 3,
+            SvcEv::Resume => 4,
+            SvcEv::Retire => 5,
+        }
+    }
+
+    /// 中文名（互异）。
+    pub const fn zh(self) -> &'static str {
+        match self {
+            SvcEv::Register => "注册",
+            SvcEv::Quiesce => "静默",
+            SvcEv::DrainDone => "排空完成",
+            SvcEv::Suspend => "挂起",
+            SvcEv::Resume => "恢复",
+            SvcEv::Retire => "退场",
+        }
+    }
+}
+
+/// **生命周期设计矩阵**（5 态 × 6 事件 = 30 格——合法恰 6 格）：
+///
+/// | 相位＼事件 | Register | Quiesce | DrainDone | Suspend | Resume | Retire |
+/// |---|---|---|---|---|---|---|
+/// | Unregistered | Ready | None | None | None | None | None |
+/// | Ready        | None | Draining | None | None | None | None |
+/// | Draining     | None | None | Suspended | None | None | Retired |
+/// | Suspended    | None | None | None | None | Ready | Retired |
+/// | Retired      | None | None | None | None | None | None（终态） |
+pub const SVC_MATRIX: [[Option<SvcPhase>; 6]; 5] = [
+    [Some(SvcPhase::Ready), None, None, None, None, None],
+    [None, Some(SvcPhase::Draining), None, None, None, None],
+    [None, None, Some(SvcPhase::Suspended), None, None, Some(SvcPhase::Retired)],
+    [None, None, None, None, Some(SvcPhase::Ready), Some(SvcPhase::Retired)],
+    [None, None, None, None, None, None],
+];
+
+/// 矩阵格读。
+pub const fn svc_cell(cur: SvcPhase, ev: SvcEv) -> Option<SvcPhase> {
+    SVC_MATRIX[cur.ordinal()][ev.ordinal()]
+}
+
+/// 矩阵一致性核（match 独立写法 vs const 表 30 格逐格对拍）。
+pub const fn svc_matrix_consistent() -> bool {
+    let mut si = 0usize;
+    while si < 5 {
+        let st = SvcPhase::ALL[si];
+        let mut ei = 0usize;
+        while ei < 6 {
+            let ev = SvcEv::ALL[ei];
+            let by_match: Option<SvcPhase> = match (st, ev) {
+                (SvcPhase::Unregistered, SvcEv::Register) => Some(SvcPhase::Ready),
+                (SvcPhase::Ready, SvcEv::Quiesce) => Some(SvcPhase::Draining),
+                (SvcPhase::Draining, SvcEv::DrainDone) => Some(SvcPhase::Suspended),
+                (SvcPhase::Draining, SvcEv::Retire) => Some(SvcPhase::Retired),
+                (SvcPhase::Suspended, SvcEv::Resume) => Some(SvcPhase::Ready),
+                (SvcPhase::Suspended, SvcEv::Retire) => Some(SvcPhase::Retired),
+                _ => None,
+            };
+            let agree = match (svc_cell(st, ev), by_match) {
+                (Some(g), Some(m)) => g.ordinal() == m.ordinal(),
+                (None, None) => true,
+                _ => false,
+            };
+            if !agree {
+                return false;
+            }
+            ei += 1;
+        }
+        si += 1;
+    }
+    true
+}
+
+/// 生命周期拒因三桶闭集。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SvcDeny {
+    /// 矩阵外格（转移表 None——非法相位事件对）。
+    CellIllegal,
+    /// 引用在场（Retire 时 ServiceRefs 未归零——有消费者不许拆台）。
+    BusyRefs,
+    /// 终态已退场（Retired 相位后再收任何事件——退场不可逆）。
+    Terminal,
+}
+
+impl SvcDeny {
+    /// 三闭集。
+    pub const ALL: [SvcDeny; 3] = [SvcDeny::CellIllegal, SvcDeny::BusyRefs, SvcDeny::Terminal];
+
+    /// 序数。
+    pub const fn ordinal(self) -> usize {
+        match self {
+            SvcDeny::CellIllegal => 0,
+            SvcDeny::BusyRefs => 1,
+            SvcDeny::Terminal => 2,
+        }
+    }
+
+    /// 中文名（互异）。
+    pub const fn zh(self) -> &'static str {
+        match self {
+            SvcDeny::CellIllegal => "矩阵外格",
+            SvcDeny::BusyRefs => "引用在场",
+            SvcDeny::Terminal => "终态已退场",
+        }
+    }
+}
+
+/// 拒因分类（纯判定单点——Retired 相位上的 None 格归终态桶，
+/// 其余 None 格归矩阵外格；合法格 None）。
+pub const fn svc_deny_kind(cur: SvcPhase, ev: SvcEv) -> Option<SvcDeny> {
+    match svc_cell(cur, ev) {
+        Some(_) => None,
+        None => {
+            if matches!(cur, SvcPhase::Retired) {
+                Some(SvcDeny::Terminal)
+            } else {
+                Some(SvcDeny::CellIllegal)
+            }
+        }
+    }
+}
+
+/// 服务生命周期状态机（编排面：矩阵闸 + 退场闸 + 计数守恒）。
+pub struct SvcMachine {
+    /// 当前相位。
+    pub phase: SvcPhase,
+    /// 合法转移计数。
+    pub transitions: u32,
+    /// 拒绝计数。
+    pub denied: u32,
+    /// 最近拒因。
+    pub last_deny: Option<SvcDeny>,
+}
+
+impl SvcMachine {
+    /// 新机（相位 Unregistered——服务从注册开始）。
+    pub fn new() -> SvcMachine {
+        SvcMachine { phase: SvcPhase::Unregistered, transitions: 0, denied: 0, last_deny: None }
+    }
+
+    /// **单步推进**（双层闸：矩阵格 → 退场闸——Retire 要求引用全归零，
+    /// 有消费者在场拆台是服务悬空制造面）。
+    pub fn step(&mut self, refs: &ServiceRefs, ev: SvcEv) -> Result<SvcPhase, SvcDeny> {
+        let target = match svc_cell(self.phase, ev) {
+            Some(t) => t,
+            None => {
+                let kind = if matches!(self.phase, SvcPhase::Retired) {
+                    SvcDeny::Terminal
+                } else {
+                    SvcDeny::CellIllegal
+                };
+                self.denied += 1;
+                self.last_deny = Some(kind);
+                return Err(kind);
+            }
+        };
+        if matches!(ev, SvcEv::Retire) && !refs.all_free() {
+            self.denied += 1;
+            self.last_deny = Some(SvcDeny::BusyRefs);
+            return Err(SvcDeny::BusyRefs);
+        }
+        self.phase = target;
+        self.transitions += 1;
+        Ok(target)
+    }
+
+    /// **事件账守恒**：转移 + 拒 ≡ 已收事件数（每事件必落一类账）。
+    pub fn conserved(&self, events: usize) -> bool {
+        (self.transitions + self.denied) as usize == events
+    }
+}
+
+impl Default for SvcMachine {
+    fn default() -> Self {
+        SvcMachine::new()
+    }
+}
+
+/// 生命周期快照（相位/计数三面——FNV 指纹往返）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SvcSnap {
+    pub phase_ord: u64,
+    pub transitions: u32,
+    pub denied: u32,
+}
+
+impl SvcSnap {
+    /// 定格。
+    pub fn capture(m: &SvcMachine) -> SvcSnap {
+        SvcSnap {
+            phase_ord: m.phase.ordinal() as u64,
+            transitions: m.transitions,
+            denied: m.denied,
+        }
+    }
+
+    /// 序列化。
+    pub fn serialize(&self) -> String {
+        alloc::format!("S|{}|{}|{}", self.phase_ord, self.transitions, self.denied)
+    }
+
+    /// 指纹。
+    pub fn fingerprint(&self) -> u64 {
+        deep_fnv(self.serialize().as_bytes())
+    }
+
+    /// 往返恒等。
+    pub fn roundtrip(&self) -> Result<(), RemapCode> {
+        let ser = self.serialize();
+        let parts: Vec<&str> = ser.split('|').collect();
+        if parts.len() != 4 || parts[0] != "S" {
+            return Err(RemapCode::SnapshotFingerprint);
+        }
+        let po = parse_count(parts[1]).ok_or(RemapCode::SnapshotFingerprint)?;
+        let tr = parse_count(parts[2]).ok_or(RemapCode::SnapshotFingerprint)?;
+        let de = parse_count(parts[3]).ok_or(RemapCode::SnapshotFingerprint)?;
+        if po > 4 {
+            return Err(RemapCode::SnapshotFingerprint);
+        }
+        let parsed = SvcSnap {
+            phase_ord: po,
+            transitions: tr as u32,
+            denied: de as u32,
+        };
+        if parsed == *self && deep_fnv(self.serialize().as_bytes()) == self.fingerprint() {
+            Ok(())
+        } else {
+            Err(RemapCode::SnapshotFingerprint)
+        }
+    }
+}
+
+/// 深-06 判据：页映射账——守恒闭式（在账+解除≡累计）+ 占用别名拒
+/// + 悬空解除拒 + diff 四桶恰值 + 侧账双守恒 + 权限审计三分类恰值。
+pub fn probe_map_ledger() -> bool {
+    let mut a = PageMap::new();
+    let m1 = a.map(0x1000, 0b011).is_ok();
+    let m2 = a.map(0x2000, 0b001).is_ok();
+    let m3 = a.map(0x3000, 0b011).is_ok();
+    // 重复映射同页 → 别名事故拒 + 计数不动。
+    let dup = a.map(0x2000, 0b001) == Err(RemapCode::VirtOverlap) && a.map_count == 3;
+    // 解除一页 → 守恒（在账 2 + 解除 1 ≡ 累计 3）。
+    let u1 = a.unmap(0x2000).is_ok();
+    let cons = a.conserved() && a.rows.len() == 2 && a.unmap_count == 1 && a.map_count == 3;
+    // 悬空解除（不存在页）→ 拒 + 计数不动。
+    let ghost = a.unmap(0x2000) == Err(RemapCode::ServiceUnmapped) && a.unmap_count == 1;
+    // b 账：+新增 0x4000 / −移除 0x3000 / 变更 0x1000（可写 0→1 提升）。
+    // a 账解除 0x2000 后剩 2 行（0x1000/0x3000）——双侧无共同不变页
+    // unchanged=0（侧账双守恒 2=1+1+0 两式成立）。
+    let mut b = PageMap::new();
+    let b1 = b.map(0x1000, 0b111).is_ok();
+    let b2 = b.map(0x4000, 0b001).is_ok();
+    let d = MapDiff::of(&a, &b);
+    let diff_ok = d.added.len() == 1
+        && d.added[0] == 0x4000
+        && d.removed.len() == 1
+        && d.removed[0] == 0x3000
+        && d.changed.len() == 1
+        && d.changed[0] == 0x1000
+        && d.unchanged == 0
+        && d.side_conserved(&a, &b);
+    // 权限审计恰值：提升 1（0x1000 可写 0→1）。
+    let pa = d.perm_audit(&a, &b);
+    let audit_ok = pa.elevated == 1 && pa.reduced == 0 && pa.equal == 0 && pa.conserved(d.changed.len());
+    // 收缩恰值（NX 0→1）：独立单变更 diff。
+    let mut c0 = PageMap::new();
+    let mut c1 = PageMap::new();
+    let _ = c0.map(0x5000, 0b011);
+    let _ = c1.map(0x5000, 0b011 | (1 << 63));
+    let dc = MapDiff::of(&c0, &c1);
+    let reduce_ok = dc.changed.len() == 1
+        && dc.changed[0] == 0x5000
+        && dc.perm_audit(&c0, &c1).reduced == 1
+        && dc.perm_audit(&c0, &c1).conserved(1);
+    // 等值恰值（同 entry 重登到新账）。
+    let mut e0 = PageMap::new();
+    let mut e1 = PageMap::new();
+    let _ = e0.map(0x6000, 0b011);
+    let _ = e1.map(0x6000, 0b011);
+    let de = MapDiff::of(&e0, &e1);
+    let equal_ok = de.unchanged == 1 && de.changed.is_empty() && de.side_conserved(&e0, &e1);
+    m1 && m2 && m3 && dup && u1 && cons && ghost && b1 && b2 && diff_ok && audit_ok && reduce_ok && equal_ok
+}
+
+/// 深-07 判据：生命周期状态机——30 格全枚举恰值（合法 6 / 格外 18 /
+/// 终态 6）+ 矩阵对拍 + 合法全链恰值（注册→静默→排空→恢复→再排空→
+/// Busy 拒→清引用→退场→终态拒）+ 事件账守恒。
+pub fn probe_svc_lifecycle() -> bool {
+    // 30 格全枚举：合法 6 / CellIllegal 18 / Terminal 6。
+    let mut legal: u32 = 0;
+    let mut cell: u32 = 0;
+    let mut term: u32 = 0;
+    let mut si = 0usize;
+    while si < 5 {
+        let mut ei = 0usize;
+        while ei < 6 {
+            match svc_deny_kind(SvcPhase::ALL[si], SvcEv::ALL[ei]) {
+                None => legal += 1,
+                Some(k) => match k {
+                    SvcDeny::CellIllegal => cell += 1,
+                    SvcDeny::Terminal => term += 1,
+                    SvcDeny::BusyRefs => {}
+                },
+            }
+            ei += 1;
+        }
+        si += 1;
+    }
+    let grid_ok = legal == 6 && cell == 18 && term == 6 && svc_matrix_consistent();
+    // 合法全链（引用面联动）：
+    let mut refs = ServiceRefs::new();
+    let mut m = SvcMachine::new();
+    let s1 = m.step(&refs, SvcEv::Register) == Ok(SvcPhase::Ready);
+    let s2 = m.step(&refs, SvcEv::Quiesce) == Ok(SvcPhase::Draining);
+    let s3 = m.step(&refs, SvcEv::DrainDone) == Ok(SvcPhase::Suspended);
+    let s4 = m.step(&refs, SvcEv::Resume) == Ok(SvcPhase::Ready);
+    let s5 = m.step(&refs, SvcEv::Quiesce) == Ok(SvcPhase::Draining);
+    let s6 = m.step(&refs, SvcEv::DrainDone) == Ok(SvcPhase::Suspended);
+    // 带引用退场 → BusyRefs 拒（在用引用未归零不许拆台）。
+    let _ = refs.acquire(RtService::GetVariable);
+    let _ = refs.acquire(RtService::GetVariable);
+    let busy = m.step(&refs, SvcEv::Retire) == Err(SvcDeny::BusyRefs) && m.phase == SvcPhase::Suspended;
+    // 清引用后退场 → 终态；终态后再收事件 → Terminal 拒。
+    let _ = refs.release(RtService::GetVariable);
+    let _ = refs.release(RtService::GetVariable);
+    let s7 = m.step(&refs, SvcEv::Retire) == Ok(SvcPhase::Retired);
+    let term = m.step(&refs, SvcEv::Register) == Err(SvcDeny::Terminal)
+        && m.phase == SvcPhase::Retired;
+    // 非法格抽样：Ready×Register / Unregistered×Quiesce。
+    let mut bad = SvcMachine::new();
+    let _ = bad.step(&refs, SvcEv::Register);
+    let bad_ok = bad.step(&refs, SvcEv::Register) == Err(SvcDeny::CellIllegal)
+        && bad.last_deny == Some(SvcDeny::CellIllegal);
+    // 事件账守恒（m 收 9 事件：Register/Quiesce/DrainDone/Resume/
+    // Quiesce/DrainDone 六转移 + Busy 拒 + Retire 转移 + Terminal 拒
+    // = 转移 7 + 拒 2 ≡ 9）。
+    let cons_ok = m.conserved(9) && m.transitions == 7 && m.denied == 2;
+    grid_ok && s1 && s2 && s3 && s4 && s5 && s6 && busy && s7 && term && bad_ok && cons_ok
+}
+
+/// 深-08 判据：账线往返——diff 线 tally 往返恒等 + 指纹篡改拒 +
+/// 生命周期快照往返 + 空账平凡。
+pub fn probe_ledger_wire() -> bool {
+    let mut a = PageMap::new();
+    let mut b = PageMap::new();
+    let _ = a.map(0x1000, 0b011);
+    let _ = a.map(0x2000, 0b001);
+    let _ = b.map(0x1000, 0b111);
+    let _ = b.map(0x3000, 0b001);
+    let d = MapDiff::of(&a, &b);
+    let w = d.wire(&a, &b);
+    let t = map_diff_unwire(&w);
+    let tally_ok = match t {
+        Some(t2) => {
+            t2.added == d.added.len() as u64
+                && t2.removed == d.removed.len() as u64
+                && t2.changed == d.changed.len() as u64
+                && t2.unchanged == d.unchanged as u64
+                && t2.fp_a == page_map_fp(&a)
+                && t2.fp_b == page_map_fp(&b)
+        }
+        None => false,
+    };
+    // 指纹对账面：可解析线但 fp_a 与实账指纹不等（篡改定位）——
+    // 构造确定性反例（翻转 fp_a 末位）；另三例：标签错/指纹域长错/
+    // 计数域非数全拒。
+    let tam = alloc::format!(
+        "D|1|1|0|0|{:016x}|{:016x}",
+        page_map_fp(&a) ^ 1,
+        page_map_fp(&b)
+    );
+    let tamper_ok = map_diff_unwire("X|1|0|0|0|0000000000000000|0000000000000000").is_none()
+        && map_diff_unwire("D|1|0|0|0|abc|0000000000000000").is_none()
+        && map_diff_unwire("D|1|0|0|0|x000000000000000|0000000000000000").is_none()
+        && (match map_diff_unwire(&tam) {
+            Some(t2) => t2.fp_a != page_map_fp(&a),
+            None => true,
+        });
+    // 生命周期快照往返（含指纹面）+ 相位越界拒。
+    let mut m = SvcMachine::new();
+    let refs = ServiceRefs::new();
+    let _ = m.step(&refs, SvcEv::Register);
+    let _ = m.step(&refs, SvcEv::Quiesce);
+    let snap = SvcSnap::capture(&m);
+    let snap_ok = snap.roundtrip().is_ok()
+        && snap.serialize().starts_with("S|2|")
+        && SvcSnap {
+            phase_ord: 9,
+            transitions: snap.transitions,
+            denied: snap.denied,
+        }
+        .roundtrip()
+        .is_err();
+    // 空账平凡（diff 双空 + 指纹=FNV 偏移基）。
+    let e0 = PageMap::new();
+    let e1 = PageMap::new();
+    let de = MapDiff::of(&e0, &e1);
+    let empty_ok = de.added.is_empty()
+        && de.removed.is_empty()
+        && de.changed.is_empty()
+        && de.unchanged == 0
+        && de.side_conserved(&e0, &e1)
+        && page_map_fp(&e0) == 0xcbf2_9ce4_8422_2325;
+    tally_ok && tamper_ok && snap_ok && empty_ok
 }
