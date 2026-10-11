@@ -902,6 +902,8 @@ pub mod unx2104_exportmatrix;
 pub mod unx2105_exportpoint;
 // unx2106_exportledger —— UNX-F2106 导出与账本一致性断言（防两张皮：同构双视图五维逐字段对拍+注入谱10/10检出+全域三面挂接，0xD2 段七码）
 pub mod unx2106_exportledger;
+// unx2107_paramfreeze —— UNX-F2107 参数冻结（导出格式版本/刷新节拍/权限位：四列纪律+冻结指纹钉死+F1635版本对齐+F1897扩容通道凭证，0xD3 段六码）
+pub mod unx2107_paramfreeze;
 
 
 
