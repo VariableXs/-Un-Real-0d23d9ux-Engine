@@ -904,6 +904,8 @@ pub mod unx2105_exportpoint;
 pub mod unx2106_exportledger;
 // unx2107_paramfreeze —— UNX-F2107 参数冻结（导出格式版本/刷新节拍/权限位：四列纪律+冻结指纹钉死+F1635版本对齐+F1897扩容通道凭证，0xD3 段六码）
 pub mod unx2107_paramfreeze;
+// unx2108_scenbook —— UNX-F2108 导出回归场景预告（8场景三要素入册+累计88→96/102+ktest注册表+skip零容忍带因，0xD4 段六码）
+pub mod unx2108_scenbook;
 
 
 
@@ -1637,6 +1639,7 @@ pub mod unx119_health;
 pub mod unx120_notify;
 pub mod unx121storm_stress;
 pub mod unx122doc_freeze;
+pub mod unx123_deadlock;
 pub mod unx702_acpi80;
 pub mod unx722_verfp;
 pub mod unx742_upgrade;
