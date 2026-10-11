@@ -262,7 +262,6 @@ pub fn boot_collect(facp: &[u8], dsdt: Option<(u64, &[u8])>) -> DsdtReport {
 // ---------------------------------------------------------------------------
 
 use core::sync::atomic::{AtomicBool, Ordering};
-use alloc::string::ToString;
 
 static REPORT: ReportSlot = ReportSlot::new();
 static COMMITTED: AtomicBool = AtomicBool::new(false);

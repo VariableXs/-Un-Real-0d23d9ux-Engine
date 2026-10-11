@@ -1041,8 +1041,9 @@ pub mod vef16_checks;
 pub mod vew02_manifest;
 pub mod vew03_loader;
 pub mod vew04_sandbox;
-pub mod vew05_trust;
-pub mod ves04_flow;
+ pub mod vew05_trust;
+ pub mod vew06_versions;
+ pub mod ves04_flow;
 pub mod ves04_checks;
 pub mod ves05_bridge;
 pub mod ves06_preview;
@@ -1204,6 +1205,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F4603", vew03_loader::run_vew03_checks()),
         ("VE-F4604", vew04_sandbox::run_vew04_checks()),
         ("VE-F4605", vew05_trust::run_vew05_checks()),
+        ("VE-F4606", vew06_versions::checks::run_vew06_checks()),
         ("VE-F0614", ved14_traverse::run_ved14_checks()),
         ("VE-F0615", ved15_cache::run_ved15_checks()),
         ("VE-F0616", ved16_scale::run_ved16_checks()),

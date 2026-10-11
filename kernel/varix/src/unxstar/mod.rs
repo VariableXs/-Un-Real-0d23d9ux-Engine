@@ -21,8 +21,6 @@ pub mod unx141_isogen;
 pub mod unx161_rtremap;
 // unx201_bootreport — UNX-F0201 引导报告生成器全景版（五族24字段闭集 齐备率千分制 显性Na算齐备静默缺失不算/build齐备率硬闸 不齐备不出门携带缺清单/七阶段守恒账 Σ段==全程 checked_add 破坏即TimeNotConserved立案/异常账append-only 容量32满即显性拒 三级severity 派生计数单点真源/kv行协议+文本报告双形态单一真源交叉对拍 行数闸+键覆盖闸/敏感字段默认脱敏0xREDACTED/FNV1a-64快照往返 内容变指纹变/ReportCode 0x36段十六码 segment_guard双写对拍）
 pub mod unx201_bootreport;
-// unx202_schemaver — UNX-F0202 报告schema版本化（版本三元组双形态 tag串↔结构体 解析器任意输入零崩溃 畸形语料12条闭集/兼容矩阵25格const表↔规则函数双写全格对拍 同major向后兼容·旧版需迁移·新版破坏面未知显性拒 裁决携带理由可审计/迁移链声明式 v0.9→v1.0破坏性+v1.0→v1.1兼容步 链外步显性拒 降级无链/版本账本严格递增+破坏性标记与major跳变一致+末位==CURRENT==F0201三方一致闸/FNV指纹声明串+账本全链/VerCode 0x37段十六码 segment_guard双写对拍）
-pub mod unx202_schemaver;
 // unx181_initplan — UNX-F0181 初始化顺序编排器（依赖图驱动：单一声明源五类静态校验未知依赖-自依赖-重复边-阶段单向-互斥对称/双实现拓扑序分层Kahn+朴素逐点对拍确定性/环检出100% Kahn剩余+DFS三色提取具体环路径/计划不变量四闸恰一次-依赖前置-wave一致-串行组跨wave/确定性模拟执行LCG种子+tick注入+账本守恒五终态/FNV快照往返/0x35 段十码）
 pub mod unx181_initplan;
 
@@ -38,7 +36,7 @@ pub const UNX_DOMAIN: &str = "unxstar";
 pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(UNX_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 9] = [
+    let blocks: [(&'static str, CheckSet); 8] = [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
         ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
@@ -47,7 +45,6 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         ("UNX-F0141", unx141_isogen::run_unx141_checks()),
         ("UNX-F0161", unx161_rtremap::run_unx161_checks()),
         ("UNX-F0201", unx201_bootreport::run_unx201_checks()),
-        ("UNX-F0202", unx202_schemaver::run_unx202_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();

@@ -13,7 +13,6 @@
 //! （0x39/0x43/0x44/0x50..0x5D 全排除）。
 
 use alloc::vec;
-use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
