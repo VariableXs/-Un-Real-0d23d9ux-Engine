@@ -108,7 +108,6 @@
 //! | [`veab02_audioout`] | F5602 音频设备与输出管理（设备表枚举/热切换无缝续播——**续播位连续=无缝的可断言面**；切换时长预算 150ms 钉死**超预算即缺陷**独立对账；**淡出保护 20ms 钉死**为状态机强制首相位——跳淡出错序拒绝（爆音红线）；默认设备**锁定优先于跟随**+锁定失效显性回落（不静默解除）；延迟档位三档实测建档+空间音频按档位补偿；三路降级：设备消失→紧急无缝切换/爆音→淡出/无设备→静音态提示显性） | VE 册 #VE-F5602 |
 //! | [`veab02_audioout_checks`] | F5602 域自检（32 项四组：设备表+建档分档边界 9/选举四向+锁定失效 6/切换状态机全路径+预算边界+紧急路径 11/读屏+判据元 6；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F5602 |
 //! | [`veae01_inputarch`] | F6201 输入域总架构（四层：设备抽象/事件/映射/消费——依赖方向 16 对独立重算+**耦合违规拒绝注册**+越权审计留痕（拒绝+记账双动作）；**输入三律**可达/一致/可重绑——声明闭集+判定码 1/2/3 与 **U 域词典第十章同源同判**（前向契约位不复制口径）+**违例整改闭环**（违规史不可抹）；**输入如呼吸**域本色可机检化=**通道零丢帧账**（dropped 恒 0 判据钉死+三账守恒——卡一帧=假一帧）；AD10 承接契约位） | VE 册 #VE-F6201 |
-//! | [`veae04_devfsm`] | F6204 输入状态机（设备连接状态**全路径有归宿**——五态闭集 Absent/Arriving/Active/Suspect/Gone 迁移表全枚举 10 合法边显性含 Gone→Plug 重开终态不是死态+非法边 None 显性拒 vcs03/cgr05 隔离格同款；**热切换原子事务**——步骤 apply/undo 对偶全成功才 commit 中途失败整组回滚 applied 清零（半切换状态比不切换更毒）；**悬空超时兜底**——Suspect 滞留30 帧恰值触发→Gone 不永久悬空 Absent 不误兜底；**状态变化通知**——订阅簿空显性告警 E_DS_NO_SUBSCRIBER 变化无人知晓是告警不是静默+ack 缺席重发 resent 补发面闭环；**热插拔风暴验证**——快速插拔十次稳态回归 transitions 账 20 恰值不漂移；状态图读屏可达 fsm_spoken 出边数对账；Z 域字符串码五码互异） | VE 册 #VE-F6204 |
 //! | [`veae01_inputarch_checks`] | F6201 域自检（27 项四组：架构层序+耦合拦截+审计 8/三律声明+同源码+整改闭环 9/通道零丢帧+守恒+红项可达 4/读屏+判据元 6；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F6201 |
 //! | [`vcb01_framegraph`] | CGPU-F0161 帧任务图数据结构（CGPU-B 域首单——一帧渲染工作的图模型：任务节点**六型闭集**（上传/计算/图形/拷贝/合成/呈现——加一型必须改调度器，编译器替架构把关）×五属性（读写集/预算/优先级/截止/队列）+边**四型闭集**（写后读/读后写/写后写/用户显式）三闸校验（自环/端点未知/重复边）；**ID 索引化**下标即句柄 O(1)；**arena 节点池**只分配不下单点释放——帧末整池释放零碎片+双释放拒绝；**图不可变快照**into_snapshot 消费构建器——所有权迁移保证无可变入口（多消费者安全）；帧号关联每帧一图；万节点压测判据） | CGPU 册 #CGPU-F0161 |
 //! | [`vcb01_framegraph_checks`] | CGPU-F0161 域自检（27 项六组：结构全覆盖 4/ID 索引 4/arena 整池+双释放 4/快照语义 4/边三闸 3/万节点压测 4/读屏+判据元 4；期望值判据侧独立重算，不变量两头都测） | CGPU 册 #CGPU-F0161 |
@@ -987,6 +986,9 @@ pub mod veab03_spatial_checks;
 // veab05_music — VE-F5605 音乐系统骨架（三态横纵九格矩阵全定义+乐句边界感知不硬切+节奏档可配+边界超时容错硬切留痕+同tick冲突优先级仲裁+曲缺占位静音+调试锁+读屏三段O(1) 0x5C段）
 // veab07_audioasset — VE-F5607 音频资产管线（导入压缩流送三段+格式注册制+双标注可查+按需滚动预取+提前三秒本地回退+体检三数 0xA0 段）
 // veab07_audioassets — VE-F5607 音频资产管线深化版（与并行速写位并存深化为准：三段管线编排/格式注册制重复未注册显性拒/双标注账面落定可查/失真查表闭式零浮点/按需滚动预取/窗内失败提前三秒降级/回退滞回显性恢复/量账守恒 0x53 段）
+// veae03_evtbus — VE-F6203 输入事件总线（发布订阅优先级三件/洪流背压同键替换不追加不刷爆/溢出优先级倒序丢弃Urgent永不丢/乱序入口断言拒入/(frame,seq)确定性派发序/订阅租约到期回收泄漏面/优先级地板滤除留痕/AA01总线同构契约冻结/量账守恒 0x33 段）
+pub mod veae03_evtbus;
+pub mod veae05_imecoex;
 pub mod veab07_audioassets;
 pub mod veab07_audioasset;
 // veab06_voice — VE-F5606 语音系统骨架（可靠通道三问句衔接+按权裁剪预算守恒+零记录隐私红线三违例阻断+说话板只示状态+延迟五段预算超段点名+静噪EWMA门限自适应+码率三档阶梯降级+设备占用提示 O(帧) 0x5D段）
@@ -1044,7 +1046,6 @@ pub mod vcb06_graphexec;
 pub mod vcb06_graphexec_checks;
 pub mod veae01_inputarch;
 pub mod veae01_inputarch_checks;
-pub mod veae04_devfsm;
 pub mod vef16_gridstat;
 pub mod vef16_checks;
 pub mod vew02_manifest;
@@ -1077,7 +1078,11 @@ pub mod vef25_math;
 pub mod vead03_materials;
 pub mod vead03_checks;
 pub mod vead04_bindgraph;
+// vead08_physreplay — VE-F6008 物理状态回放（录制脱敏回放三段单向+指纹链逐步对拍+自动重放+时间对齐+偏差报告+超期销毁台账 0xB2 段）
+pub mod vead08_physreplay;
 pub mod vef63_apifreeze;
+pub mod vef64_netdocs;
+pub mod vef65_netsim;
 pub mod vc61_goverview;
 pub mod vc61_goverview_checks;
 pub mod vef26_vfetch;
@@ -1271,7 +1276,6 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F5214", vez14_examples::run_vez14_checks()),
 ("VE-F5215", vez15_fuzz::run_vez15_checks()),
 ("VE-F5216", vez16_perf::run_vez16_checks()),
-("VE-F6204", veae04_devfsm::run_veae04_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
@@ -1548,7 +1552,10 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F1622", vef25_math::run_vef25_checks()),
         ("VE-F6003", vead03_checks::run_vead03_checks()),
         ("VE-F6004", vead04_bindgraph::run_vead04_checks()),
+        ("VE-F6008", vead08_physreplay::run_vead08_checks()),
         ("VE-F5410", vef63_apifreeze::run_vef63_checks()),
+        ("VE-F5411", vef64_netdocs::run_vef64_checks()),
+        ("VE-F5412", vef65_netsim::run_vef65_checks()),
         ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks()),
         ("VE-F1623", vef26_vfetch_checks::run_vef26_checks()),
         ("VE-F1624", vef27_morphtarget_checks::run_vef27_checks()),
