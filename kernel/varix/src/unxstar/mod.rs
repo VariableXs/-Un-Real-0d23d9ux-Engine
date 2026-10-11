@@ -910,6 +910,8 @@ pub mod unx2108_scenbook;
 pub mod unx2109_ktestfamily;
 // unx2110_lockfreeread —— UNX-F2110 导出并发读基准（无锁读开销账：格式冻结F1773体例+seqlock逻辑建模+撕裂零发生+补测占位，0xD7 段六码）
 pub mod unx2110_lockfreeread;
+// unx2111_c5conaccount —— UNX-F2111 与C5用户态生态对账（读侧消费签名+解析样例互验+格式漂移注入10/10检出，0xD9 段六码）
+pub mod unx2111_c5conaccount;
 
 
 
