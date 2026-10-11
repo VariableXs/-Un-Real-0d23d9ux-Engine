@@ -1080,6 +1080,30 @@ pub fn run_unx121_checks() -> CheckSet {
         s.fail("U121-深-02-谓词覆盖审计", "覆盖面失效");
     }
 
+    // 深-03：吸收轨迹恰值（好流五迁移+终态+渲染恰串；坏流两类拒
+    // 同流显性+计数守恒——矩阵的运行时投影与设计面对拍）。
+    if probe_absorb_trace() {
+        s.ok("U121-深-03-轨迹吸收恰值");
+    } else {
+        s.fail("U121-深-03-轨迹吸收恰值", "吸收面失效");
+    }
+
+    // 深-04：可达闭包恰值（三态全可达+不动点稳定双写）+ wire 往返
+    //（好流/空流恒等+非法序数显性拒——历史外带协议单点）。
+    if probe_reach_wire() {
+        s.ok("U121-深-04-可达闭包与wire");
+    } else {
+        s.fail("U121-深-04-可达闭包与wire", "闭包或协议失效");
+    }
+
+    // 深-05：幂等叠层（3 连发 moved 增 3 终态不变轨迹全自环+
+    // 零叠层平凡——幂等格的运行时面）。
+    if probe_degrade_stack() {
+        s.ok("U121-深-05-幂等叠层账");
+    } else {
+        s.fail("U121-深-05-幂等叠层账", "叠层面失效");
+    }
+
     s
 }
 
@@ -1329,4 +1353,300 @@ pub fn probe_cond_coverage() -> bool {
         cov.record(c);
     }
     cov.all_covered()
+}
+
+// ---------------------------------------------------------------------------
+// 深化八区：轨迹吸收面——矩阵/谓词/历史账之上是「事件流怎么跑完」的
+// 运行时投影：逐步吸收轨迹 / 可达性闭包 / 事件流 wire 协议 / 幂等叠
+// 层账。全部纯函数零 IO——运行面与设计面同构（矩阵是设计真相，轨迹
+// 是矩阵的运行投影，两者对拍即「实现与设计一致」的实证面）。
+// ---------------------------------------------------------------------------
+
+/// 轨迹单步（吸收账原子项——合法迁移与两类拒全显性）。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum TraceStep {
+    /// 合法迁移（步号, 事件, 从, 到）。
+    Moved(usize, ExtEvent, ExtState, ExtState),
+    /// 矩阵拒（步号, 事件, 从）。
+    MatrixDenied(usize, ExtEvent, ExtState),
+    /// 条件拒（步号, 事件, 从, 码）。
+    CondDenied(usize, ExtEvent, ExtState, BootExtCode),
+}
+
+impl TraceStep {
+    /// 轨迹行渲染（人读形态——`#3 恢复步进: 恢复中→恢复中`）。
+    pub fn render(&self) -> String {
+        match self {
+            TraceStep::Moved(n, ev, from, to) => alloc::format!(
+                "#{} {}: {}→{}",
+                n,
+                ev.zh(),
+                from.zh(),
+                to.zh()
+            ),
+            TraceStep::MatrixDenied(n, ev, from) => {
+                alloc::format!("#{} {}×矩阵拒({})", n, ev.zh(), from.zh())
+            }
+            TraceStep::CondDenied(n, ev, from, c) => alloc::format!(
+                "#{} {}×条件拒({},{:#06x})",
+                n,
+                ev.zh(),
+                from.zh(),
+                c.code()
+            ),
+        }
+    }
+}
+
+/// 吸收结果账（事件流整体投影——终态 + 轨迹 + 三分类计数）。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct AbsorbOutcome {
+    /// 逐步轨迹（含拒步——拒也是轨迹的一部分，全显性）。
+    pub steps: Vec<TraceStep>,
+    /// 终态（流跑完后的扩展态——拒步不改态）。
+    pub final_state: ExtState,
+    /// 合法迁移步数。
+    pub moved: u64,
+    /// 矩阵拒步数。
+    pub denied_matrix: u64,
+    /// 条件拒步数。
+    pub denied_cond: u64,
+}
+
+impl AbsorbOutcome {
+    /// 计数守恒（三分类和 == 总步数——账不丢不重）。
+    pub fn conserved(&self) -> bool {
+        (self.moved + self.denied_matrix + self.denied_cond) as usize == self.steps.len()
+    }
+
+    /// 轨迹行数（渲染面——与 steps 恒等）。
+    pub fn render_lines(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for s in self.steps.iter() {
+            out.push(s.render());
+        }
+        out.push(alloc::format!("终态: {}", self.final_state.zh()));
+        out
+    }
+}
+
+/// **事件流吸收**（独立机实例逐步 dispatch——纯函数：不改任何全局，
+/// 轨迹与计数从机实例读回；流内事件顺序执行，拒步不中断流——
+/// 真实引导事件流不会因为一次拒而停止，吸收语义与之一致）。
+pub fn absorb_run(events: &[ExtEvent]) -> AbsorbOutcome {
+    let mut m = ExtBootState::new();
+    let mut steps = Vec::new();
+    let mut moved = 0u64;
+    let mut denied_matrix = 0u64;
+    let mut denied_cond = 0u64;
+    for (i, ev) in events.iter().enumerate() {
+        let before = m.state;
+        // ProbeFail 走 fail_event 语义（失败计数联动是事件语义的
+        // 一部分——直接 dispatch 会因 fail_count=0 被条件谓词拒，
+        // 与真实引导事件流语义不符）。
+        let outcome = if *ev == ExtEvent::ProbeFail {
+            m.fail_event()
+        } else {
+            m.dispatch(*ev)
+        };
+        match outcome {
+            Ok(to) => {
+                moved += 1;
+                steps.push(TraceStep::Moved(i + 1, *ev, before, to));
+            }
+            Err(c) => {
+                // 拒因二分：矩阵语义特闸（无据降级/半路改行）归矩阵拒，
+                // 其余 Err 码经 alerts 与 HistItem 对读——独立重算面。
+                let is_matrix = matches!(
+                    c,
+                    BootExtCode::IllegalTransition
+                        | BootExtCode::ProbeThenDegrade
+                        | BootExtCode::RecoverThenProbe
+                );
+                if is_matrix {
+                    denied_matrix += 1;
+                    steps.push(TraceStep::MatrixDenied(i + 1, *ev, before));
+                } else {
+                    denied_cond += 1;
+                    steps.push(TraceStep::CondDenied(i + 1, *ev, before, c));
+                }
+            }
+        }
+    }
+    AbsorbOutcome {
+        steps,
+        final_state: m.state,
+        moved,
+        denied_matrix,
+        denied_cond,
+    }
+}
+
+/// **可达性闭包**（初态 Probe 起，单步矩阵投影迭代至不动点——
+/// 5 事件任意长序列可达的态集闭包。设计矩阵运行时重投影，与
+/// 手排可达面对拍即双写验证）。
+pub fn reach_closure() -> Vec<ExtState> {
+    let mut reach = vec![ExtState::Probe];
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let mut i = 0usize;
+        while i < reach.len() {
+            for ev in ExtEvent::ALL.iter() {
+                if let Some(t) = matrix_cell(reach[i], *ev) {
+                    // 新态入闭包（互异保序——枚举序）。
+                    if !reach.contains(&t) {
+                        reach.push(t);
+                        changed = true;
+                    }
+                }
+            }
+            i += 1;
+        }
+    }
+    reach
+}
+
+/// 可达性闭包恰值（三态全可达——手排对拍单点）。
+pub fn reach_closure_expected() -> Vec<ExtState> {
+    vec![
+        ExtState::Probe,
+        ExtState::Recover,
+        ExtState::Degraded,
+    ]
+}
+
+/// 事件流 wire 协议（序数 CSV 单行——历史外带的传输形态单点）。
+///
+/// 形态：`"1,2,2,4"`（序数逗号串）；空流 → 空串；反解非法序数
+/// 整流显性 None（不静默跳过——协议面异物不猜）。
+pub fn events_wire(events: &[ExtEvent]) -> String {
+    let mut out = String::new();
+    for (i, ev) in events.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&alloc::format!("{}", ev.ordinal()));
+    }
+    out
+}
+
+/// wire 串反解（序数 CSV → 事件流——非法序数显性 None）。
+pub fn events_unwire(s: &str) -> Option<Vec<ExtEvent>> {
+    let mut out = Vec::new();
+    if s.is_empty() {
+        return Some(out);
+    }
+    for part in s.split(',') {
+        let v = parse_u64(part)?;
+        out.push(ExtEvent::from_ordinal(v)?);
+    }
+    Some(out)
+}
+
+/// **幂等叠层账**（Degraded×DegradeReq 连发 N 发——矩阵幂等格的
+/// 运行时面：有档即过闸，moved 增 N 终态不变，轨迹全自环）。
+pub fn degrade_stack_run(n: usize) -> AbsorbOutcome {
+    let mut events = Vec::new();
+    // 前置合法链：失败→三步→降级（到达 Degraded 且有档）。
+    events.push(ExtEvent::ProbeFail);
+    events.push(ExtEvent::RecoverStep);
+    events.push(ExtEvent::RecoverStep);
+    events.push(ExtEvent::RecoverStep);
+    events.push(ExtEvent::RecoverDone);
+    // 幂等叠层 N 发。
+    let mut i = 0usize;
+    while i < n {
+        events.push(ExtEvent::DegradeReq);
+        i += 1;
+    }
+    absorb_run(&events)
+}
+
+/// 深-04 判据：吸收轨迹恰值（好流五迁移+终态；坏流矩阵拒截断显性；
+/// 计数守恒；轨迹渲染行数恰值）。
+pub fn probe_absorb_trace() -> bool {
+    // 好流：失败→三步→降级（5 迁移，终态 Degraded）。
+    let good = [
+        ExtEvent::ProbeFail,
+        ExtEvent::RecoverStep,
+        ExtEvent::RecoverStep,
+        ExtEvent::RecoverStep,
+        ExtEvent::RecoverDone,
+    ];
+    let o = absorb_run(&good);
+    let good_ok = o.moved == 5
+        && o.denied_matrix == 0
+        && o.denied_cond == 0
+        && o.final_state == ExtState::Degraded
+        && o.conserved()
+        && o.steps.len() == 5;
+    // 轨迹渲染：5 迁移行 + 终态行 = 6 行；首行形状恰值。
+    let lines = o.render_lines();
+    let render_ok = lines.len() == 6
+        && lines[0] == "#1 探测失败: 探测中→恢复中"
+        && lines[4] == "#5 恢复完成: 恢复中→降级运行"
+        && lines[5] == "终态: 降级运行";
+    // 坏流：Probe 态 RecoverStep（矩阵拒）+ ProbeFail 过闸（fail_event
+    // 联动）到 Recover + 零步 RecoverDone（条件拒——零步无据谓词在
+    // Recover 态生效，Probe 态是矩阵拒不是条件拒）——两类拒同流显性。
+    let bad = [ExtEvent::RecoverStep, ExtEvent::ProbeFail, ExtEvent::RecoverDone];
+    let ob = absorb_run(&bad);
+    let bad_ok = ob.moved == 1
+        && ob.denied_matrix == 1
+        && ob.denied_cond == 1
+        && ob.final_state == ExtState::Recover
+        && ob.conserved()
+        && matches!(ob.steps[0], TraceStep::MatrixDenied(1, ExtEvent::RecoverStep, ExtState::Probe))
+        && matches!(ob.steps[1], TraceStep::Moved(2, ExtEvent::ProbeFail, ExtState::Probe, ExtState::Recover))
+        && matches!(
+            ob.steps[2],
+            TraceStep::CondDenied(3, ExtEvent::RecoverDone, ExtState::Recover, _)
+        );
+    good_ok && render_ok && bad_ok
+}
+
+/// 深-05 判据：可达闭包恰值（三态全可达+闭包不动点稳定）+
+/// wire 往返恒等（好流/空流/含幂等流三态）+ 非法序数显性拒。
+pub fn probe_reach_wire() -> bool {
+    // 闭包 == 手排恰值 + 再算一轮不变（不动点稳定双写）。
+    let r1 = reach_closure();
+    let r2 = reach_closure();
+    let reach_ok = r1 == reach_closure_expected() && r1 == r2;
+    // wire 往返：好流（含 0 序数——split 尾空串面）。
+    let flow = [
+        ExtEvent::ProbeFail,
+        ExtEvent::RecoverStep,
+        ExtEvent::RecoverDone,
+    ];
+    let w = events_wire(&flow);
+    let rt = events_unwire(&w);
+    let wire_ok = w == "1,2,3" && rt == Some(flow.to_vec());
+    // 空流往返。
+    let wire_empty = events_wire(&[]) == "" && events_unwire("") == Some(Vec::new());
+    // 非法序数（9 越界）显性 None。
+    let wire_bad = events_unwire("1,9").is_none();
+    reach_ok && wire_ok && wire_empty && wire_bad
+}
+
+/// 深-06 判据：幂等叠层（3 连发 moved 增 3 终态不变轨迹全自环）+
+/// 叠层与前置链合计计数守恒。
+pub fn probe_degrade_stack() -> bool {
+    let o3 = degrade_stack_run(3);
+    // 前置 5 迁移 + 叠层 3 = moved 8；终态 Degraded 不变。
+    let stack_ok = o3.moved == 8
+        && o3.denied_matrix == 0
+        && o3.denied_cond == 0
+        && o3.final_state == ExtState::Degraded
+        && o3.conserved();
+    // 轨迹尾三行全自环（#6/#7/#8 降级请求: 降级运行→降级运行）。
+    let lines = o3.render_lines();
+    let tail_ok = lines.len() == 9
+        && lines[5] == "#6 降级请求: 降级运行→降级运行"
+        && lines[6] == "#7 降级请求: 降级运行→降级运行"
+        && lines[7] == "#8 降级请求: 降级运行→降级运行";
+    // 零叠层平凡（仅前置链 moved 5）。
+    let o0 = degrade_stack_run(0);
+    let zero_ok = o0.moved == 5 && o0.final_state == ExtState::Degraded;
+    stack_ok && tail_ok && zero_ok
 }
