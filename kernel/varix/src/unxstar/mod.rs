@@ -103,24 +103,6 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
     
-    {
-        let sub = run_unx20_t122();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0122",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t142();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0142",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
     // UNX-20 任务族登记（20 域各一笔，总量 8+20=28 ≤ MAX_CHECKS 112）
     {
         let sub = run_unx20_t162();
@@ -773,51 +755,7 @@ pub fn run_unx20_tb01() -> crate::checks::CheckSet {
     set.add("UNX-F0581", ok, if ok { "" } else { "unx20-tb01 family sub-checks red" });
     set
 }
-
-// ==========================================================================
-// UNX 批次 2（CoRun 主册 UNX-A1-B09 续单：F0122 阶段看门狗 / F0142 GPT-ESP 镜像生成器）
-// ==========================================================================
-pub mod unx122_stagewd;
-pub mod unx123_wdtime;
-pub mod unx124_wdstall;
-pub mod unx125_wddiag;
-pub mod unx142_gpthdr;
-pub mod unx142_gptpart;
-pub mod unx142_espfat;
-pub mod unx142_imgsync;
-pub mod unx122grid;
-pub mod unx122mx;
-pub mod unx142grid;
-pub mod unx142mx;
-
-// --------------------------------------------------------------------------
-// UNX 批次 2 任务族聚合
-// --------------------------------------------------------------------------
-/// UNX-F0122 域聚合（该任务全部深编模块自检全绿才算过）。
-pub fn run_unx20_t122() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t122");
-    let mut ok = true;
-    if !unx122_stagewd::run_t122_checks().all_passed() { ok = false; }
-    if !unx123_wdtime::run_t122_checks().all_passed() { ok = false; }
-    if !unx124_wdstall::run_t122_checks().all_passed() { ok = false; }
-    if !unx125_wddiag::run_t122_checks().all_passed() { ok = false; }
-    if !unx122grid::run_t122_checks().all_passed() { ok = false; }
-    if !unx122mx::run_t122_checks().all_passed() { ok = false; }
-    set.add("UNX-F0122", ok, if ok { "" } else { "unx20-t122 family sub-checks red" });
-    set
-}
-/// UNX-F0142 域聚合（该任务全部深编模块自检全绿才算过）。
-pub fn run_unx20_t142() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t142");
-    let mut ok = true;
-    if !unx142_gpthdr::run_t142_checks().all_passed() { ok = false; }
-    if !unx142_gptpart::run_t142_checks().all_passed() { ok = false; }
-    if !unx142_espfat::run_t142_checks().all_passed() { ok = false; }
-    if !unx142_imgsync::run_t142_checks().all_passed() { ok = false; }
-    if !unx142grid::run_t142_checks().all_passed() { ok = false; }
-    if !unx142mx::run_t142_checks().all_passed() { ok = false; }
-    set.add("UNX-F0142", ok, if ok { "" } else { "unx20-t142 family sub-checks red" });
-    set
-}
-// unx122_stagewatchdog — UNX-F0122 阶段看门狗（每阶段独立时限const表(Probe500/Load300/Relocate200/Handover50/Service400)+tick注入TICKS_PER_MS不假设频率+毫秒精度下取整口径超时=换算值>限额亚毫秒不早触发+捕获冻结现场四件(阶段/时限/流逝/指纹)进诊断模式+喂狗显性重置+幂等sweep+快照FNV/0x94段12码）
+// unx122_stagewatchdog — UNX-F0122 阶段看门狗（每阶段独立时限const表+毫秒精度下取整不早触发+冻结现场四件进诊断模式+喂狗重置+幂等sweep/0x94段12码）
 pub mod unx122_stagewatchdog;
+// unx142_gptesp — UNX-F0142 GPT/ESP分区镜像生成器（保护MBR 0xEE+主备GPT头镜像CRC32自校验+128槽表项ESP类型GUID+FNV确定性GUID零随机可复现+FAT32 BPB小端逐字节装配+FSInfo双签名三指针+FAT首簇标记0x0FFFFFF8/0x0FFFFFFF+回读解析双写对拍(sgdisk校验语义:签名/修订/CRC复验/表项数/主备互指)+CRC篡改检出+最小盘面67扇区闸/LBA越界/重叠拒/0x95段12码）
+pub mod unx142_gptesp;
