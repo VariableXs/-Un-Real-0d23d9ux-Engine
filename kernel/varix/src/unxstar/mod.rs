@@ -371,6 +371,7 @@ pub mod unx281_psrcbgrid;
 pub mod unx281_psrcbmxmx;
 pub mod unx281_psrcgrid;
 pub mod unx281_psrcmx;
+pub mod unx282_pctx;
 pub mod unx282_pentry;
 pub mod unx283_pdedup;
 pub mod unx284_preentry;
@@ -570,6 +571,13 @@ pub fn run_unx20_t281() -> crate::checks::CheckSet {
     if !unx281_psrcgrid::run_t281_checks().all_passed() { ok = false; }
     if !unx281_psrcmx::run_t281_checks().all_passed() { ok = false; }
     set.add("UNX-F0281", ok, if ok { "" } else { "unx20-t281 family sub-checks red" });
+    set
+}
+/// t282：UNX-F0282 panic 上下文快照 域聚合。
+pub fn run_unx20_t282() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t282");
+    let ok = unx282_pctx::run_unx282_checks().all_passed();
+    set.add("UNX-F0282", ok, if ok { "" } else { "unx20-t282 family sub-checks red" });
     set
 }
 /// t301：UNX-F0301 页表构建总编排 域聚合。
