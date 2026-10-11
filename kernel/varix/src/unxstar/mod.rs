@@ -71,6 +71,7 @@ pub mod unx223_krecon;
 pub mod unx161_rtremap;
 // unx201_bootreport — UNX-F0201 引导报告生成器全景版（五族24字段闭集 齐备率千分制 显性Na算齐备静默缺失不算/build齐备率硬闸 不齐备不出门携带缺清单/七阶段守恒账 Σ段==全程 checked_add 破坏即TimeNotConserved立案/异常账append-only 容量32满即显性拒 三级severity 派生计数单点真源/kv行协议+文本报告双形态单一真源交叉对拍 行数闸+键覆盖闸/敏感字段默认脱敏0xREDACTED/FNV1a-64快照往返 内容变指纹变/ReportCode 0x36段十六码 segment_guard双写对拍）
 pub mod unx201_bootreport;
+pub mod unx2041_freqidle;
 // unx181_initplan — UNX-F0181 初始化顺序编排器（依赖图驱动：单一声明源五类静态校验未知依赖-自依赖-重复边-阶段单向-互斥对称/双实现拓扑序分层Kahn+朴素逐点对拍确定性/环检出100% Kahn剩余+DFS三色提取具体环路径/计划不变量四闸恰一次-依赖前置-wave一致-串行组跨wave/确定性模拟执行LCG种子+tick注入+账本守恒五终态/FNV快照往返/0x35 段十码）
 pub mod unx181_initplan;
 
@@ -86,7 +87,7 @@ pub const UNX_DOMAIN: &str = "unxstar";
 pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(UNX_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 39] = [
+    let blocks: [(&'static str, CheckSet); 44] = [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
         ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
@@ -126,6 +127,12 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         ("UNX-F0245", unx245_randnode::run_unx245_checks()),
         ("UNX-F0185", unx185_cpufeat::run_t185_checks()),
         ("UNX-F1563", unx1563_a4sign::run_unx1563_checks()),
+        ("UNX-F1842", unx1842_ipivec::run_unx1842_checks()),
+        ("UNX-F1902", unx1902_lazysave::run_unx1902_checks()),
+        ("UNX-F0326", unx326_apsentinel::run_unx326_checks()),
+        ("UNX-F0327", unx327_tramppagemap::run_unx327_checks()),
+        ("UNX-F0405", unx405_monoclock::run_unx405_checks()),
+        ("UNX-F0584", unx584_unkparam::run_unx584_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -1428,6 +1435,16 @@ pub mod unx683_boottrace;
 pub mod unx206_excode;
 // unx245_randnode ↔ UNX-F0245 早传第四步随机化决策节（槽位/熵摘要/开关态三要素+脱敏抽检禁绝对基址字节型+F0088 双写对账+封账唯一+幂等重放；0x6700 段）
 pub mod unx245_randnode;
+// unx1842_ipivec ↔ UNX-F1842 IPI 向量分配表（v1 四类冻结 FNV 钉死+造 IPI 必登记双检+未登记注入 10/10 检出+保留向量拒发+v2 修订 v1 留档；0x6900 段）
+pub mod unx1842_ipivec;
+// unx405_monoclock ↔ UNX-F0405 单调时钟原语（invariant/nonstop/offset 三能力闭集+跨核降级显性拒+定点ns 换算保序+亚ns 余数可分同ns+校准表指纹漂移检出+百万次抽样零回退+零浮点/0x6C00 段）
+pub mod unx405_monoclock;
+// unx327_tramppagemap ↔ UNX-F0327 trampoline 页表最小集（低 1MB 恒等 256PTE 铺满无洞+跳板窗内不跨页+主表入口必须低区+CR3 重取必备+作废禁重载+跳板槽重叠防线/0x6B00 段）
+pub mod unx327_tramppagemap;
+// unx326_apsentinel ↔ UNX-F0326 AP 到达哨兵与超时账（哨兵三态魔数+test-and-set 恰好一次生效+伪造就位拒+200ms×已到达AP 预算+三类超时分类 append-only 账+续期上限防活锁/0x6600 段）
+pub mod unx326_apsentinel;
+// unx1902_lazysave ↔ UNX-F1902 惰性保存策略（三态切出/惰性/永存开关机；TS置位→#NM 首次使用代偿闭环；0x6A00 段）
+pub mod unx1902_lazysave;
 // unx1563_a4sign ↔ UNX-F1563 A4 内存域联签件（shootdown 三阶段协议消费面逐项核验+10 万轮零死锁复验+缺项点名+联签记录落档封指纹；0x6800 段）
 pub mod unx1563_a4sign;
 // unx382_bumpline ↔ UNX-F0382 bump 分配器（单向下水线；0x4c10 段）
@@ -1471,6 +1488,8 @@ pub mod unx404_hpetcap_deep;
 // unx464_devid —— UNX-F0464 设备身份账深化版（三元组三读一致/100%覆盖对账/vendor名录26条PCI SIG/TLV往返，0xCB01~0xCB13 段）
 pub mod unx464_devid;
 // unx583_wlparams_deep —— UNX-F0583 白名单参数表深化并存版（24键三型冻结/FNV指纹/注入6/6全拒千分位恰1000，0x9E01~0x9E0F 段）
+// unx584_unkparam —— UNX-F0584 未知参数账注（显性弃置）：16槽定容弃置簿（原文/时点/位置三件套齐）+槽满显性拒不覆盖+时点单调+去重合并+UTF-8 边界安全截断+零执行断言（弃置键不可被语义层取值）/0xC100 段
+pub mod unx584_unkparam;
 pub mod unx583_wlparams_deep;
 // unx843_eoipath —— UNX-F0843 MSI/MSI-X EOI 路径深化版（十万事件行为矩阵100%一致/终结点四态裁决/泄漏账配平，0xB501~0xB511 段）
 pub mod unx843_eoipath;
@@ -1504,6 +1523,10 @@ pub mod unx822mx;
 pub mod unx842grid;
 pub mod unx842mx;
 pub mod unx941_irqtwostage;
+// unx943_tophalfdiscipline —— UNX-F0943 top half 纪律深化版（≤5µs p99 直方图+义务/禁令双闭集+超预算清单 10/10+文档三节 FNV 冻结，0x4C50 段十四码，与 unx943_tophalf 双实现并存）
+pub mod unx943_tophalfdiscipline;
+// unx943_tophalfdisc —— UNX-F0943 top half 纪律精简版（环形采样账 p99+超预算清单自动产出+违例注入拦截+文档三节 FNV 冻结，0x4c50 段十七码，与前三实现并存）
+pub mod unx943_tophalfdisc;
 pub mod unx981_irqstorm;
 pub mod unx1001_tsync;
 pub mod unx1021_hpetprobe;
