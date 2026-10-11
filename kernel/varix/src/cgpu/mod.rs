@@ -513,3 +513,11 @@ pub mod vck42_compatmx;
 pub mod vck43_usercap;
 // vck44_mktgov — CGPU-F1725 异构市场与生态治理（市场三道闸+激励预留0xA801/FNV签名对拍0xA802/下架四步单调+时限0xA803/统计白名单匿名0xA804/五组自检/0xA8xx 五码）
 pub mod vck44_mktgov;
+// vck45_roadmap — CGPU-F1726 异构路线图（二期四向FPGA-在线学习-自动切分-分布式0xA901/开放位声明一致性0xA902/SYCL-ONNX标准跟踪0xA903/总路线衔接0xA904/四组自检/0xA9xx 五码）
+pub mod vck45_roadmap;
+// vck46_k08integ — CGPU-F1727 K08联调（4场景×4例16条0xAA01/五断言口径0xAA02/第三方模拟接入三步演练0xAA03/报告证据锚FNV0xAA04/四组自检/0xAAxx 五码）
+pub mod vck46_k08integ;
+// vck47_k08close — CGPU-F1728 K08组收口双签（15项接口总账FNV冻结v1 0xAB01/G-H-F-J07-N五契约归档0xAB02/测试118-14-16+性能四门禁+文档三件账0xAB03/遗留显性登记0xAB04/工程+质量双签/六组自检/0xABxx 五码）
+pub mod vck47_k08close;
+// vck48_k09arch — CGPU-F1729 K09开工与自查范围（O09-J09-K09范式三次复用0xAC01/七维范围+红黄绿GO门禁0xAC02/三纪律复用0xAC03/记录+F1742报告K10消费双锚0xAC04/五组自检/0xACxx 五码）
+pub mod vck48_k09arch;
