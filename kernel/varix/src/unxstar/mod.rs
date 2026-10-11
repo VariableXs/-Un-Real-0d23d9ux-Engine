@@ -134,6 +134,8 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         ("UNX-F0405", unx405_monoclock::run_unx405_checks()),
         ("UNX-F0584", unx584_unkparam::run_unx584_checks()),
         ("UNX-F2101", unx2101_schedstat::run_unx2101_checks()),
+        ("UNX-F2221", unx2221_freeledge::run_f2221_checks()),
+        ("UNX-F2222", unx2222_rollver::run_f2222_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -861,6 +863,8 @@ pub mod unx1023_hpettick;
 pub mod unx1025_hpetread;
 // unx2102_scheddebug —— UNX-F2102 sched_debug 调试面（全量dump只读：只读语义指纹断言+dump账本一致+权限位在册，0xCD 段六码）
 pub mod unx2102_scheddebug;
+// unx2103_sysfstune —— UNX-F2103 sysfs 调参面（只读区+受控热调双区：双区断言+F1698/F1714通道凭证闸+越权写10/10全拒，0xCE 段六码）
+pub mod unx2103_sysfstune;
 
 
 
@@ -1494,6 +1498,10 @@ pub mod unx464_devid;
 // unx584_unkparam —— UNX-F0584 未知参数账注（显性弃置）：16槽定容弃置簿（原文/时点/位置三件套齐）+槽满显性拒不覆盖+时点单调+去重合并+UTF-8 边界安全截断+零执行断言（弃置键不可被语义层取值）/0xC100 段
 // unx2101_schedstat —— UNX-F2101 /proc/schedstat 导出面（三字段格式冻结）：版本册在册制+逐字冻结模板+导出/解析共用唯一行形状真源+往返逐字节对拍+逐CPU单调锚/0xD100 段
 pub mod unx2101_schedstat;
+// unx2221_freeledge —— UNX-F2221 全域冻结总账落账（800 行总账 v1）：620 真指纹 + 180 段位占位、四列格式 v1 逐字节冻结、哈希链延展闭合、链与段位冲突双轨独立检测、落账快照闸/0xD200 段
+pub mod unx2221_freeledge;
+// unx2222_rollver —— UNX-F2222 冻结账批级滚动升版（B32 段滚动条款）：版本闸只许 +1（跳步/降级/越界注入 10/10 全拒）+ 占位段原地补真指纹（kind:S->T）+ 族链 33 族延展与未涉及族逐位不变 + 全域链重算 + 跨版本零变化快照闸/0xD300 段
+pub mod unx2222_rollver;
 pub mod unx584_unkparam;
 pub mod unx583_wlparams_deep;
 // unx843_eoipath —— UNX-F0843 MSI/MSI-X EOI 路径深化版（十万事件行为矩阵100%一致/终结点四态裁决/泄漏账配平，0xB501~0xB511 段）
