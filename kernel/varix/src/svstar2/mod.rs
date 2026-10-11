@@ -623,6 +623,10 @@ pub mod vez13_testbench;
 pub mod vez14_examples;
 pub mod vez15_fuzz;
 pub mod vez16_perf;
+pub mod vez17_bridge;
+pub mod vez18_dbg;
+pub mod vez19_determ;
+pub mod vez20_netdoc;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
@@ -1284,6 +1288,10 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F5214", vez14_examples::run_vez14_checks()),
 ("VE-F5215", vez15_fuzz::run_vez15_checks()),
 ("VE-F5216", vez16_perf::run_vez16_checks()),
+("VE-F6005", vez17_bridge::run_vez17_checks()),
+("VE-F6006", vez18_dbg::run_vez18_checks()),
+("VE-F6007", vez19_determ::run_vez19_checks()),
+("VE-F5411", vez20_netdoc::run_vez20_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
