@@ -158,6 +158,8 @@ pub mod cge04_surfacerender;
 pub mod cgf03_capability;
 // vct04_handshake — CGPU-F3044 握手与鉴权深化版（五阶段单向状态机+迁移表全枚举/令牌五重校验格式→版本→窗→绑定→撤销/会话三绑定不串户/nonce 单次消费重放防线/失败三态+重试限速 30tick/审计账+失败归因/0x6C 段七码）
 pub mod vct04_handshake;
+// vct05_secboundary — CGPU-F3045 对接安全边界深化版（五闸流水 版本/长度/类型/载荷/频度/TrustTier 三级信任适配/ReuseDeclaration 复用声明 F3044 来源/SecSnap 快照指纹+往返恒等/reference_budget_check 多口径探针/0x6D 段六码）
+pub mod vct05_secboundary;
 pub mod cge03_surfacereg;
 pub mod cge04_surfsched;
 pub mod cgf02_authflow;
@@ -178,9 +180,13 @@ pub mod cgr04_safedegrade;
 // cgr05_faultiso — CGPU-F2725 渲染故障隔离（隔离格状态机健康→可疑→确诊/假警报不污染三机制封格+写前登记回滚+健康格零感知/Q05三信号确认窗3拍判定链声明式复用阈值独立写死可对拍/回滚只对确诊格凭证账不越权代写资源面/0x38xx 三码）
 pub mod cgr05_faultiso;
 pub mod vcs02_multiuser;
+// vcs04_quota — CGPU-F2884 资源配额按用户（显存/带宽/队列三配额按用户切分维度隔离互不串/超限三态 Allow-Degrade{granted}-Deny 恰值处置对齐 R05 契约/按用户隔离同维异户各桶独立/登记闸重复拒+未登记拒显性化/预算计入实时账 Deny 零计入 Degrade 计获得量账记事实不记愿望/无绕过 reconcile 对账闭合/R05 复用声明头注锚定/E_QT_* 四码互异/7 项域自检）
+pub mod vcs04_quota;
 pub mod vct03_protneg;
 pub mod vcu01_bencharch;
 pub mod vcu02_benchmodel;
+// vcu03_scenecls — CGPU-F3203 基准场景分类（渲染/计算/混合/极限四类闭集分类即语义/场景分类册 id→class 登记查询账四闸显性拒 id范围-空名-重复-容量逐码计数/四类分布统计覆盖面歪斜判定单类严格过3/4显性化/与vcu02 MAX_SCENES 同口径消费集成复用顶格id合法超格拒/ScCode 四码互异/7 项域自检）
+pub mod vcu03_scenecls;
 // cgc04_framearbiter — CGPU-F0005 帧预算仲裁器（12.5ms五账户切分合成器保底4ms不可侵占/申请制预算标签三要素预估-优先级-降级档/裁定四态批准排队降级拒绝静默吞帧禁绝/超时先走降级档帧级超时发降质链信号F0008消费/信用池低峰存入高峰先补交互/判定步数账50μs红线步数化/帧日志全量seq单调/不变量核验保底零侵占/0x3Cxx 九码）
 pub mod cgc04_framearbiter;
 // cgd05_ratecontract — CGPU-F0485 帧率合同校验器（P95≤12.5ms/P99≤25ms/卡顿率≤0.5%三条款滚动窗600帧自动判定/0.5ms桶计数分位O(n+桶)/达标率每场景每时段履行报告/预警双源余量耗用80%+卡顿趋势Rising提前干预/预算修正建议单出单不执行C域消费/场景隔离清窗重计跨场景混算会撒谎/0x3Dxx 六码）
@@ -239,8 +245,20 @@ pub mod cgg06_nvpwr;
 pub mod cgi06_txqueue;
 // vck04_hetprobe — CGPU-F1604 异构能力探测与登记（探测五步枚举→查询→隔离→登记→缓存公示每步乱序拒绝/实现矩阵NPU三路线CIM-Intel-XDNA DSP音频 ISP驱动查询静态闭集表/缓存键FNV驱动版本+设备ID命中复用异键热失效重探F1506模式/失败隔离ProbeFailed行剥离不污染登记表其余照常/虚拟化空态空枚举显性Empty/诚实登记NotSupported与ProbeFailed严格区分不造假/0x53xx 五码）
 pub mod vck04_hetprobe;
-pub mod vck05_taskgraph;
-pub mod vck06_memcoh;
+// vck05_hetgraph — CGPU-F1605 异构任务图扩展（跨引擎fence三态单向状态机未就绪→就绪→已消费回退显性拒/交接路径表拷贝-零拷贝两路按平台能力裁决成本字节入I域带宽账口径/切分算法偏好分组同偏好同子图切面天然最小+均衡带极差校验失衡显性标注/子图校验三项断言引擎登记可用-非空-端点齐消费vck04登记面/worker池分引擎记账隔离面/失败传播闭集下游取消幂等+无关引擎零感知/F1608衔接声明/0x55xx 四码）
+pub mod vck05_hetgraph;
+// cgd09_timecalib — CGPU-F0489 帧计时校准（三源互校CPU QPC×GPU时间戳×呈现时钟配对采样差分/定期重校准30s周期偏移收敛漂移率估计超100µs/s立案/精度声明残余误差量化超50µs失守/降级协议源失联4窗→Lost显性→回喂恢复三源/单调性红线域内倒退拒收输出倒退拒收拨表禁止/0x54xx 五码）
+pub mod cgd09_timecalib;
+// cgf11_certtel — CGPU-F0809 认证遥测（四指标进B08总线执行次数/通过率金银铜分布ppm尾项守恒恰1e6/重认证触发分布三类归一零触发全零诚实/边缘复核率复核数>执行数违约改判率质量观察窗/厂商族分列8上限全量均值是谎报分列才可归因/0x56xx 五码）
+pub mod cgf11_certtel;
+// cgg07_nvupdate — CGPU-F0967 NVIDIA驱动更新应对（更新事件全流程接收→判定→预检→联动→告知/F0807触发规则NVIDIA落地GameReady与Studio双线独立MajorBump全量MinorBump增量/差异表预检症状命中无规避→暂缓带理由空话违约/未知大版本段显性Unknown不猜/同版本与降版拒收/基线推进告知面/0x57xx 五码）
+pub mod cgg07_nvupdate;
+// cgi07_txmerge — CGPU-F1286 传输批合并（合并窗口状态机5µs默认窗批满4096B或窗到期冲刷/权衡声明三档Off-Gentle-Aggressive延迟与吞吐显性取舍/确定性同输入双跑批序列逐批对拍/Emergency绕过合并直达延迟红线绕过触发缓冲批让路冲刷/收益量化TLP头24B开销事务数对比守恒对账批内+缓冲+绕过≡提交/0x58xx 五码）
+pub mod cgi07_txmerge;
+// cgd11_timefuzz — CGPU-F0491 帧计时fuzz（确定性fuzz核心LCG同种子同序列CI可固化/时钟异常注入三族跳变-倒退-卡顿容错计时器倒退钳0不产负时长异常显性入账/帧洪峰4096帧灌1024容量账本丢最旧丢弃计数不静默kept+dropped≡pushed守恒/案例固化种子+异常谱指纹CI回放对拍/0x5Axx 五码）
+pub mod cgd11_timefuzz;
+// vck06_memcoher — CGPU-F1606 异构内存一致性（两级内存模型三态位置标签每缓冲区出生即挂牌/一致性级别两级宽松引擎内-显式同步跨引擎禁隐式无sync跨引擎访问即违规/边界纪律交接边界必flush跳过显性计数/USM平台支持矩阵Intel支持-AMD一期诚实降级拷贝双路裁决与vck05同口径/写读序三路对拍宽松-显式-USM同写值读回必须全等/违规检测器位置违规+一致性违规双查显性计数/位置可视化读屏/0x56xx 四码）
+pub mod vck06_memcoher;
 
 /// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
 pub const CGPU_DOMAIN: &str = "cgpu";
@@ -283,6 +301,10 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F0486", cgm07_pacemodel_checks::run_cgm07_checks()),
         ("CGPU-F0487", cgd06_latencyledger_checks::run_cgd06_ledger_checks()),
         ("CGPU-F0488", cgd07_earlysubmit_checks::run_cgd07_checks()),
+        ("CGPU-F2884", vcs04_quota::run_vcs04_checks()),
+        ("CGPU-F3203", vcu03_scenecls::run_vcu03_checks()),
+        ("CGPU-F1605", vck05_hetgraph::run_vck05_checks()),
+        ("CGPU-F1606", vck06_memcoher::run_vck06_checks()),
         ("CGPU-P0501", cgp01_adaptivearch_checks::run_cgp01_checks()),
         ("CGPU-P0502", cgp02_unifiedmodel_checks::run_cgp02_checks()),
         ("CGPU-O0701", vco01_degrade_checks::run_vco01_checks()),
@@ -304,8 +326,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-W3522", vcw02_infoarch_checks::run_vcw02_checks()),
         ("CGPU-W3523", vcw03_genpipeline_checks::run_vcw03_checks()),
         ("CGPU-W3524", vcw04_apiref_checks::run_vcw04_checks()),
-        ("CGPU-F1605", vck05_taskgraph::run_vck05_checks()),
-        ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
