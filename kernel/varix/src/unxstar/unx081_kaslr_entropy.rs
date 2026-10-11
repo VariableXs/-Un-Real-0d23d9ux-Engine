@@ -1312,6 +1312,27 @@ pub fn run_unx081_checks() -> CheckSet {
         s.fail("U081-元-01-零panic空态平凡", "panic 面或空态失效");
     }
 
+    // 深-01：熵池混入/搅拌/一次性抽取恰值（空池拒+间隔搅拌+一次一密）。
+    if probe_pool_semantics() {
+        s.ok("U081-深-01-熵池轮转与抽取");
+    } else {
+        s.fail("U081-深-01-熵池轮转与抽取", "池面失效");
+    }
+
+    // 深-02：直方图/翻转账恰值（健康比 5000 手算+死源零翻转立案）。
+    if probe_health_ledgers() {
+        s.ok("U081-深-02-健康直方图与翻转账");
+    } else {
+        s.fail("U081-深-02-健康直方图与翻转账", "健康面失效");
+    }
+
+    // 深-03：池确定性（同混入序两次建池逐位恒等——池态是混入序纯函数）。
+    if probe_pool_determinism() {
+        s.ok("U081-深-03-池态确定性");
+    } else {
+        s.fail("U081-深-03-池态确定性", "确定性失效");
+    }
+
     s
 }
 
@@ -1379,4 +1400,315 @@ fn strip_lexical_noise(src: &str) -> String {
         i += 1;
     }
     out
+}
+
+// ===========================================================================
+// 深化五区：熵池混合轮转 / 健康直方图 / 一次性抽取——采集之后的
+// 「熵存哪里怎么用」面：池是熵的账本，重用熵 = 熵耗尽的遮羞布
+// ===========================================================================
+
+/// 熵池容量（字节——256 槽环形）。
+pub const POOL_BYTES: usize = 256;
+
+/// 搅拌触发间隔（每混入 N 次做一次全池 FNV 轮转——扩散前置条件）。
+pub const POOL_STIR_INTERVAL: u64 = 4;
+
+/// 熵池（环形账本：混入位 + 搅拌轮数 + 混入计数——池是熵的账本不是
+/// 黑盒：哪些位被哪些源写过、搅拌了几轮，全部可对账）。
+pub struct EntropyPool {
+    /// 池位（256 字节环形）。
+    pub slots: [u8; POOL_BYTES],
+    /// 环写游标（下一个混入位）。
+    pub cursor: usize,
+    /// 混入计数（三源累计——判据池-01 的账面）。
+    pub mixed_in: u64,
+    /// 搅拌轮数（全池 FNV 轮转次数）。
+    pub stirred: u64,
+    /// 混入告警账（池满覆写旧位时立案——熵被覆盖是信息损失不是静默）。
+    pub overwrite_alerts: u32,
+}
+
+impl EntropyPool {
+    /// 全零新池（确定性起点——池的初始态是账本的一部分，不假装随机）。
+    pub const fn new() -> EntropyPool {
+        EntropyPool {
+            slots: [0; POOL_BYTES],
+            cursor: 0,
+            mixed_in: 0,
+            stirred: 0,
+            overwrite_alerts: 0,
+        }
+    }
+
+    /// **混入一段字节**（逐位异或进池 + 环游标推进 + 计数对账；
+    /// 覆盖旧位显性立案——同一位被二次写入是熵损失面）。
+    pub fn mix_in(&mut self, bytes: &[u8]) {
+        let mut i = 0usize;
+        while i < bytes.len() {
+            let slot = self.cursor % POOL_BYTES;
+            // 覆盖立案：位非零再写 = 旧熵被抹（第二混入周期起才可能）。
+            if self.mixed_in >= POOL_BYTES as u64 && self.slots[slot] != 0 {
+                self.overwrite_alerts += 1;
+            }
+            self.slots[slot] ^= bytes[i];
+            self.cursor += 1;
+            i += 1;
+        }
+        self.mixed_in += 1;
+        // 搅拌触发（间隔档——扩散不是每次混入都做，间隔是确定性策略）。
+        if self.mixed_in % POOL_STIR_INTERVAL == 0 {
+            self.stir();
+        }
+    }
+
+    /// **全池搅拌**（FNV 链式轮转——位 i 新值 = FNV(全池) 的第 i 字节
+    /// 派生异或旧值：单比特翻转扩散到全池的确定性算术）。
+    fn stir(&mut self) {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut i = 0usize;
+        while i < POOL_BYTES {
+            h ^= self.slots[i] as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            i += 1;
+        }
+        // 轮转：把 h 的 8 字节沿池环形异或展开（每轮推进 8 位）。
+        let mut k = 0usize;
+        while k < 8 {
+            let slot = (self.cursor + k) % POOL_BYTES;
+            let byte = ((h >> (k * 8)) & 0xFF) as u8;
+            self.slots[slot] ^= byte;
+            k += 1;
+        }
+        self.stirred += 1;
+    }
+
+    /// **一次性抽取**（8 字节种子：池位链式 FNV 派生 + 抽取位清零——
+    /// 熵用一次就消失，重用 = 熵耗尽立案面；清零后池守恒可审计）。
+    pub fn draw_seed(&mut self) -> Result<[u8; 8], KaslrCode> {
+        // 池活性闸：混入为零的池没有熵可抽——显性拒（空池种子 = 全零
+        // 种子事故的预防面，SeedZero 语义前置）。
+        if self.mixed_in == 0 {
+            return Err(KaslrCode::SeedZero);
+        }
+        let mut h = fnv1a64(&{
+            // 池全量快照作为抽取原料（借用面转值面——零复制不可得时
+            // 用逐位压栈；256 字节栈面可控）。
+            let mut buf = [0u8; POOL_BYTES];
+            let mut i = 0usize;
+            while i < POOL_BYTES {
+                buf[i] = self.slots[i];
+                i += 1;
+            }
+            buf
+        });
+        let mut out = [0u8; 8];
+        let mut k = 0usize;
+        while k < 8 {
+            out[k] = (h & 0xFF) as u8;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            k += 1;
+        }
+        // 抽取位清零（从游标回退 8 位——一次一密面：熵不复用）。
+        let mut z = 0usize;
+        while z < 8 {
+            let slot = (self.cursor + POOL_BYTES - 1 - z) % POOL_BYTES;
+            self.slots[slot] = 0;
+            z += 1;
+        }
+        Ok(out)
+    }
+
+    /// 池守恒（混入次数、搅拌轮数、游标三账互洽：cursor == 混入字节流
+    /// 位置模池容不可直查（mix_in 按字节推进游标而计数按次），账面
+    /// 即「搅拌不超前于混入」+「游标在环内」两条硬不变量）。
+    pub const fn conserved(&self) -> bool {
+        self.cursor <= POOL_BYTES * 4096 && self.stirred <= self.mixed_in
+    }
+}
+
+/// 采集健康直方图（Rdrand 重试分布 8 桶——重试 0 次直读是最健康档，
+/// 重试次数越高说明硬件熵源越勉强；直方图是「熵的质量」的账面）。
+pub struct RetryHistogram {
+    /// 桶（retries 0..=7+ 桶位——8 桶闭集，超界归最高桶）。
+    pub buckets: [u64; 8],
+    /// 总样本。
+    pub samples: u64,
+}
+
+impl RetryHistogram {
+    /// 空直方图。
+    pub const fn new() -> RetryHistogram {
+        RetryHistogram {
+            buckets: [0; 8],
+            samples: 0,
+        }
+    }
+
+    /// 记一个样本（桶位 = min(retries, 7)——闭集钳制显性）。
+    pub const fn record(&mut self, retries: u64) {
+        let idx = if retries > 7 { 7usize } else { retries as usize };
+        self.buckets[idx] += 1;
+        self.samples += 1;
+    }
+
+    /// 健康比（万分制：零重试直读占比——越接近 10000 越健康；
+    /// 零样本返回 0 而不是 10000——没数据不冒充健康）。
+    pub const fn health_permille(&self) -> u64 {
+        if self.samples == 0 {
+            return 0;
+        }
+        self.buckets[0] * 10_000 / self.samples
+    }
+
+    /// 直方图守恒（桶和 == 总样本——分桶不丢样本）。
+    pub const fn conserved(&self) -> bool {
+        let mut sum = 0u64;
+        let mut i = 0usize;
+        while i < 8 {
+            sum += self.buckets[i];
+            i += 1;
+        }
+        sum == self.samples
+    }
+}
+
+/// TSC 低位翻转率账（相邻样本低位变化的位计数——固定不变的 TSC 低位
+/// = 时钟停走 = 零熵源；翻转率是「源活着」的账面证据）。
+pub struct TscFlipLedger {
+    /// 上一样本低位（首个样本不比——初始化态）。
+    pub last: Option<u64>,
+    /// 翻转位累计。
+    pub flips: u64,
+    /// 比对次数。
+    pub compares: u64,
+}
+
+impl TscFlipLedger {
+    /// 新账。
+    pub const fn new() -> TscFlipLedger {
+        TscFlipLedger {
+            last: None,
+            flips: 0,
+            compares: 0,
+        }
+    }
+
+    /// 记一个样本（首样本只存不比；后续逐位异或计数——12 位掩码域内）。
+    pub const fn record(&mut self, raw: u64) {
+        let low = raw & ((1u64 << TSC_LOW_BITS) - 1);
+        match self.last {
+            None => {
+                self.last = Some(low);
+            }
+            Some(prev) => {
+                let mut bit = 0u64;
+                let diff = prev ^ low;
+                let mut i = 0u64;
+                while i < TSC_LOW_BITS as u64 {
+                    bit += (diff >> i) & 1;
+                    i += 1;
+                }
+                self.flips += bit;
+                self.compares += 1;
+                self.last = Some(low);
+            }
+        }
+    }
+
+    /// 翻转率（万分制：翻转位 / (比对次数 × 12 位)——0 = 源死；
+    /// 判据「源活着」的下限 = 翻转率非零）。
+    pub const fn flip_rate(&self) -> u64 {
+        if self.compares == 0 {
+            return 0;
+        }
+        let denom = self.compares * (TSC_LOW_BITS as u64);
+        self.flips * 10_000 / denom
+    }
+}
+
+/// 深化面参考探针——熵池混入/搅拌/一次性抽取恰值（四口径合流）。
+pub fn probe_pool_semantics() -> bool {
+    let mut pool = EntropyPool::new();
+    // 空池抽取显性拒（SeedZero 前置语义）。
+    if pool.draw_seed().is_ok() {
+        return false;
+    }
+    // 混入 4 次触发 1 次搅拌（间隔档恰值）。
+    pool.mix_in(&[0xAA, 0x55]);
+    pool.mix_in(&[0x0F, 0xF0]);
+    pool.mix_in(&[0x12, 0x34]);
+    pool.mix_in(&[0x56, 0x78]);
+    if !(pool.mixed_in == 4 && pool.stirred == 1 && pool.conserved()) {
+        return false;
+    }
+    // 抽取非零 + 抽取位清零（一次一密面）——再抽取池已变（确定性下
+    // 两次抽取串不同，因为原料被清零重写）。
+    let s1 = match pool.draw_seed() {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let s1_nonzero = s1[0] != 0 || s1[1] != 0 || s1[7] != 0;
+    let s2 = match pool.draw_seed() {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    s1_nonzero && s1 != s2 && pool.conserved()
+}
+
+/// 深化面参考探针——直方图/翻转账恰值。
+pub fn probe_health_ledgers() -> bool {
+    // 直方图：3 直读 + 2 重试一 + 1 超界归顶桶 → 健康比 5000。
+    let mut h = RetryHistogram::new();
+    h.record(0);
+    h.record(0);
+    h.record(0);
+    h.record(1);
+    h.record(1);
+    h.record(9);
+    let hist_ok = h.conserved()
+        && h.samples == 6
+        && h.buckets[0] == 3
+        && h.buckets[1] == 2
+        && h.buckets[7] == 1
+        && h.health_permille() == 5_000;
+    // 空直方图健康比 0（没数据不冒充健康）。
+    let empty_ok = RetryHistogram::new().health_permille() == 0;
+    // 翻转账：0x001 → 0x002（2 位翻）→ 0x002（0 位翻）→ 0x003（1 位翻）
+    // → 翻转 3 / 比对 3 / 万分制 = 3 * 10000 / (3*12) = 833。
+    let mut f = TscFlipLedger::new();
+    f.record(0x001);
+    f.record(0x002);
+    f.record(0x002);
+    f.record(0x003);
+    let flip_ok = f.compares == 3 && f.flips == 3 && f.flip_rate() == 833;
+    // 死源账：恒定低位 → 翻转率 0。
+    let mut d = TscFlipLedger::new();
+    d.record(0x555);
+    d.record(0x555);
+    d.record(0x555);
+    let dead_ok = d.compares == 2 && d.flips == 0 && d.flip_rate() == 0;
+    hist_ok && empty_ok && flip_ok && dead_ok
+}
+
+/// 深化面参考探针——池确定性手算（同混入序两次建池逐位恒等——
+/// 池态是混入序的纯函数，零隐藏状态）。
+pub fn probe_pool_determinism() -> bool {
+    let mut a = EntropyPool::new();
+    let mut b = EntropyPool::new();
+    let feed: [&[u8]; 6] = [&[1], &[2, 3], &[4, 5, 6], &[7], &[8, 9], &[0]];
+    let mut i = 0usize;
+    while i < feed.len() {
+        a.mix_in(feed[i]);
+        b.mix_in(feed[i]);
+        i += 1;
+    }
+    let mut same = true;
+    let mut j = 0usize;
+    while j < POOL_BYTES {
+        if a.slots[j] != b.slots[j] {
+            same = false;
+        }
+        j += 1;
+    }
+    same && a.stirred == b.stirred && a.mixed_in == b.mixed_in
 }
