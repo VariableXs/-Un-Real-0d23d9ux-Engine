@@ -29,11 +29,6 @@ pub mod unx461_pci_route;
 pub mod unx481_fb_ledger;
 // unx483_fbmap —— UNX-F0483 帧缓冲映射登记（B19 账 1/1 段 + 区外写拦截 100% + 单向状态机 + 快照指纹，0x98 段十二码）
 pub mod unx483_fbmap;
-pub mod unx284_paniclayer;
-pub mod unx484_prim;
-pub mod unx504_lineedit;
-pub mod unx564_pm1en;
-pub mod unx685_biosreg;
 // unx521_ktest_frame ↔ UNX-F0521 ktest 主框架总装（注册器名唯一定容 32 + 运行器泵动单步/全量同状态机 + 接入核审计注册⇄运行 6/6 + 截断显性拦截假绿；0x85 段）
 pub mod unx521_ktest_frame;
 // unx541_log_emit ↔ UNX-F0541 日志面总装（四级别冻结 Trace/Info/Warn/Fatal + emit 三参数（级别/组件/格式化文）+ 级别闸丢弃逐格记账 + 环满显性溢出不覆盖 + 10/10 全链接入核；0x86 段）
@@ -92,7 +87,7 @@ pub const UNX_DOMAIN: &str = "unxstar";
 pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(UNX_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 49] = [
+    let blocks: [(&'static str, CheckSet); 44] = [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
         ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
@@ -138,6 +133,7 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         ("UNX-F0327", unx327_tramppagemap::run_unx327_checks()),
         ("UNX-F0405", unx405_monoclock::run_unx405_checks()),
         ("UNX-F0584", unx584_unkparam::run_unx584_checks()),
+        ("UNX-F2101", unx2101_schedstat::run_unx2101_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -863,6 +859,8 @@ pub mod unx1043_tscdeadline;
 pub mod unx1023_hpettick;
 // unx1025_hpetread —— UNX-F1025 HPET 读面（主计数器读与序纪律：读序状态机+双窗连贯+单调10^6+开销预算+TSC交叉，0xCC 段六码）
 pub mod unx1025_hpetread;
+// unx2102_scheddebug —— UNX-F2102 sched_debug 调试面（全量dump只读：只读语义指纹断言+dump账本一致+权限位在册，0xCD 段六码）
+pub mod unx2102_scheddebug;
 
 
 
@@ -1494,6 +1492,8 @@ pub mod unx404_hpetcap_deep;
 pub mod unx464_devid;
 // unx583_wlparams_deep —— UNX-F0583 白名单参数表深化并存版（24键三型冻结/FNV指纹/注入6/6全拒千分位恰1000，0x9E01~0x9E0F 段）
 // unx584_unkparam —— UNX-F0584 未知参数账注（显性弃置）：16槽定容弃置簿（原文/时点/位置三件套齐）+槽满显性拒不覆盖+时点单调+去重合并+UTF-8 边界安全截断+零执行断言（弃置键不可被语义层取值）/0xC100 段
+// unx2101_schedstat —— UNX-F2101 /proc/schedstat 导出面（三字段格式冻结）：版本册在册制+逐字冻结模板+导出/解析共用唯一行形状真源+往返逐字节对拍+逐CPU单调锚/0xD100 段
+pub mod unx2101_schedstat;
 pub mod unx584_unkparam;
 pub mod unx583_wlparams_deep;
 // unx843_eoipath —— UNX-F0843 MSI/MSI-X EOI 路径深化版（十万事件行为矩阵100%一致/终结点四态裁决/泄漏账配平，0xB501~0xB511 段）
