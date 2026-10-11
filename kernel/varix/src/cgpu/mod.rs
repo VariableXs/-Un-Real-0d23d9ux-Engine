@@ -489,3 +489,15 @@ pub mod vck30_k07integ;
 pub mod vck31_k07close;
 // vck32_k08arch — CGPU-F1713 K08开工与场景生态总纲（落地声明两受众开发者-用户能力锚0x9A01/四场景族游戏-创作-生产力-AIPC挂J07映射0x9A02/生态五件套SDK-示例-基准-认证-兼容矩阵源单锚0x9A03/三组自检/0x9Axx 五码）
 pub mod vck32_k08arch;
+// vck33_gamescene — CGPU-F1714 游戏×异构场景（五点表DL超分-帧生成预留-材质AI-音频空间化-解播0x9B01/插件接口位三引擎预留指纹0x9B02/量化三维度帧率-画质-功耗A-B证据0x9B03/NPU点GPU回退路径0x9B04/F1722认证衔接/五组自检/0x9Bxx 五码）
+pub mod vck33_gamescene;
+// vck34_createscene — CGPU-F1715 创作×异构场景（五点表特效预览-硬编-ISP调色-生图预留-音频实时0x9E01/流水F1657导入→编辑→导出单调0x9E02/预览门禁33333µs编辑流畅线0x9E03/量化导出-预览双维证据0x9E04/四组自检/0x9Exx 五码）
+pub mod vck34_createscene;
+// vck35_prodscene — CGPU-F1716 生产力×异构场景（四点表语义搜索-文档AI-iGPU优先-网页预留0x9F01/J07联动实例单0x9F02/响应红线2ms0x9F03/续航效率量化0x9F04/四组自检/0x9Fxx 五码）
+pub mod vck35_prodscene;
+// vck36_aipc — CGPU-F1717 AI PC场景体系（NPU常驻本地AI声明0xA001/能力目录四闭集超分-转写-摘要-生图+发现API0xA002/数据不出机出机通道零容0xA003/配额AI35%前台保底45%0xA004/空闲优先三档调度0/10000/3000bp/五组自检/0xA0xx 五码）
+pub mod vck36_aipc;
+// vck37_3pframework — CGPU-F1718 第三方引擎框架接入（K01上薄封装不加语义0xA101/适配矩阵ONNX-Basic-DirectML-引擎预留三级0xA102/版本跟随N-1窗边界声明夜版不承诺0xA103/每适配最小示例对齐0xA104/F3109治理复用/五组自检/0xA1xx 五码）
+pub mod vck37_3pframework;
+// vck38_sdk — CGPU-F1719 异构SDK与开发者体验（三件套API封装-模拟器-trace分析器源单挂既有0xA201/DX错误三要素码-人话-动作0xA202/版本对齐API冻结锚0xA203/双渠道分发+反馈闭环回执0xA204/五组自检/0xA2xx 五码）
+pub mod vck38_sdk;
