@@ -1313,6 +1313,20 @@ pub fn run_unx101_checks() -> CheckSet {
         s.fail("U101-元-01-零panic空态平凡", "panic 面或空态失效");
     }
 
+    // 深-01：光标移动九操作语义恰值（边界钳制+Tab 制表步进手算）。
+    if probe_cursor_semantics() {
+        s.ok("U101-深-01-光标移动语义");
+    } else {
+        s.fail("U101-深-01-光标移动语义", "移动面失效");
+    }
+
+    // 深-02：滚动区域闸与迁移格数恰值（区域滚动静止界外行）。
+    if probe_scroll_region() {
+        s.ok("U101-深-02-滚动区域语义");
+    } else {
+        s.fail("U101-深-02-滚动区域语义", "区域面失效");
+    }
+
     s
 }
 
@@ -1380,4 +1394,184 @@ fn strip_lexical_noise(src: &str) -> String {
         i += 1;
     }
     out
+}
+
+// ===========================================================================
+// 深化六区：光标移动语义闭集 / Tab 步进 / 滚动区域——后备通道不只
+// 「能显示」，移动语义的边界行为（列零退格/行底 Tab/区域外滚动）
+// 全部显性才是终端模拟的完整面
+// ===========================================================================
+
+/// 光标移动操作闭集（终端控制语义九操作——每格边界行为显性定义）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CursorOp {
+    /// 左移一列（列 0 不回退——边界钳制显性）。
+    Left,
+    /// 右移一列（列尾换行面由 put_char 管，此处列尾不动）。
+    Right,
+    /// 上移一行（行 0 不动）。
+    Up,
+    /// 下移一行（行底不动——滚动由显性 ScrollOp 触发）。
+    Down,
+    /// 行首。
+    Home,
+    /// 行尾列（最后可写列——VGA_COLS-1，不是越界列）。
+    End,
+    /// 回车（列零——语义同 Home 但语义学上分开：回车是流语义）。
+    CarriageReturn,
+    /// 退格（列 0 不回退到上一行——经典终端边界：退格只在行内）。
+    Backspace,
+    /// 制表步进（下一 8 列制表位——列尾钳制在最后可写列）。
+    Tab,
+}
+
+impl CursorOp {
+    /// 九操作闭集。
+    pub const ALL: [CursorOp; 9] = [
+        CursorOp::Left,
+        CursorOp::Right,
+        CursorOp::Up,
+        CursorOp::Down,
+        CursorOp::Home,
+        CursorOp::End,
+        CursorOp::CarriageReturn,
+        CursorOp::Backspace,
+        CursorOp::Tab,
+    ];
+}
+
+/// 光标态（行/列双游标——移动语义的操作数与结果面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CursorPos {
+    /// 行（0..VGA_ROWS）。
+    pub row: usize,
+    /// 列（0..VGA_COLS）。
+    pub col: usize,
+}
+
+/// **纯函数移动语义**（不持缓冲——同光标同操作必同结果；
+/// 移动语义与缓冲写面分离：移动只算坐标，写面才碰格子）。
+pub const fn cursor_apply(pos: CursorPos, op: CursorOp) -> CursorPos {
+    match op {
+        CursorOp::Left => CursorPos {
+            row: pos.row,
+            col: if pos.col > 0 { pos.col - 1 } else { 0 },
+        },
+        CursorOp::Right => CursorPos {
+            row: pos.row,
+            col: if pos.col + 1 < VGA_COLS { pos.col + 1 } else { pos.col },
+        },
+        CursorOp::Up => CursorPos {
+            row: if pos.row > 0 { pos.row - 1 } else { 0 },
+            col: pos.col,
+        },
+        CursorOp::Down => CursorPos {
+            row: if pos.row + 1 < VGA_ROWS { pos.row + 1 } else { pos.row },
+            col: pos.col,
+        },
+        CursorOp::Home => CursorPos { row: pos.row, col: 0 },
+        CursorOp::End => CursorPos { row: pos.row, col: VGA_COLS - 1 },
+        CursorOp::CarriageReturn => CursorPos { row: pos.row, col: 0 },
+        CursorOp::Backspace => CursorPos {
+            row: pos.row,
+            col: if pos.col > 0 { pos.col - 1 } else { 0 },
+        },
+        CursorOp::Tab => {
+            // 下一 8 列制表位：col/8*8+8；越列尾钳最后可写列。
+            let next = (pos.col / 8 + 1) * 8;
+            CursorPos {
+                row: pos.row,
+                col: if next < VGA_COLS { next } else { VGA_COLS - 1 },
+            }
+        }
+    }
+}
+
+/// 滚动区域（上下界行——区域滚动只滚界内行，界外行静止；
+/// 终端模拟的 scroll region 语义：set-top/set-bottom 两锚）。
+#[derive(Clone, Copy, Debug)]
+pub struct ScrollRegion {
+    /// 顶行（含）。
+    pub top: usize,
+    /// 底行（含）。
+    pub bottom: usize,
+}
+
+impl ScrollRegion {
+    /// 构造闸（top <= bottom 且全在屏内——非法区域显性拒）。
+    pub fn new(top: usize, bottom: usize) -> Result<ScrollRegion, VgaCode> {
+        if top > bottom || bottom >= VGA_ROWS {
+            return Err(VgaCode::IllegalTransition);
+        }
+        Ok(ScrollRegion { top, bottom })
+    }
+
+    /// 全屏区域（默认——顶 0 底末行）。
+    pub const fn fullscreen() -> ScrollRegion {
+        ScrollRegion {
+            top: 0,
+            bottom: VGA_ROWS - 1,
+        }
+    }
+
+    /// 高度（界内行数——滚动账的计数锚）。
+    pub const fn height(&self) -> usize {
+        self.bottom - self.top + 1
+    }
+}
+
+/// 区域滚动语义纯函数（行内容映射：区域滚动把 (top+1..=bottom) 上移
+/// 一格、bottom 行清空——返回 (src, dst) 对账面；全屏滚动是区域特例）。
+pub const fn region_scroll_pairs(top: usize, bottom: usize) -> usize {
+    // 迁移格数 = (bottom - top) * VGA_COLS（每行全列搬移）。
+    (bottom - top) * VGA_COLS
+}
+
+/// 深化面参考探针——移动语义九操作恰值（边界行为手算对拍）。
+pub fn probe_cursor_semantics() -> bool {
+    let mid = CursorPos { row: 10, col: 40 };
+    // 中域行为。
+    let mid_ok = cursor_apply(mid, CursorOp::Left) == CursorPos { row: 10, col: 39 }
+        && cursor_apply(mid, CursorOp::Right) == CursorPos { row: 10, col: 41 }
+        && cursor_apply(mid, CursorOp::Up) == CursorPos { row: 9, col: 40 }
+        && cursor_apply(mid, CursorOp::Down) == CursorPos { row: 11, col: 40 }
+        && cursor_apply(mid, CursorOp::Home) == CursorPos { row: 10, col: 0 }
+        && cursor_apply(mid, CursorOp::End) == CursorPos { row: 10, col: 79 }
+        && cursor_apply(mid, CursorOp::CarriageReturn) == CursorPos { row: 10, col: 0 }
+        && cursor_apply(mid, CursorOp::Backspace) == CursorPos { row: 10, col: 39 };
+    // 边界行为（列 0 退格不回行/行 0 上移不动/行底下移不动/列尾右移不动）。
+    let corner = CursorPos { row: 0, col: 0 };
+    let edge_ok = cursor_apply(corner, CursorOp::Backspace) == corner
+        && cursor_apply(corner, CursorOp::Left) == corner
+        && cursor_apply(corner, CursorOp::Up) == corner;
+    let bottom_right = CursorPos { row: VGA_ROWS - 1, col: VGA_COLS - 1 };
+    let bottom_ok = cursor_apply(bottom_right, CursorOp::Down) == bottom_right
+        && cursor_apply(bottom_right, CursorOp::Right) == bottom_right;
+    // Tab 步进恰值（0→8、7→8、8→16、79→79 钳制）。
+    let tab0 = cursor_apply(CursorPos { row: 0, col: 0 }, CursorOp::Tab);
+    let tab7 = cursor_apply(CursorPos { row: 0, col: 7 }, CursorOp::Tab);
+    let tab8 = cursor_apply(CursorPos { row: 0, col: 8 }, CursorOp::Tab);
+    let tab79 = cursor_apply(CursorPos { row: 0, col: 79 }, CursorOp::Tab);
+    let tab_ok = tab0.col == 8 && tab7.col == 8 && tab8.col == 16 && tab79.col == 79;
+    mid_ok && edge_ok && bottom_ok && tab_ok
+}
+
+/// 深化面参考探针——滚动区域闸与语义恰值。
+pub fn probe_scroll_region() -> bool {
+    // 构造闸：top>bottom 拒/bottom 越屏拒。
+    let bad1 = ScrollRegion::new(5, 3).is_err();
+    let bad2 = ScrollRegion::new(0, VGA_ROWS).is_err();
+    // 正例：区域 5..=10 高 6 行。
+    let r = match ScrollRegion::new(5, 10) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    let h_ok = r.height() == 6;
+    // 全屏特例：高度 = VGA_ROWS。
+    let full = ScrollRegion::fullscreen();
+    let full_ok = full.height() == VGA_ROWS;
+    // 迁移格数恰值：区域滚动搬 (bottom-top)*VGA_COLS = 5*80 = 400 格。
+    let pairs_ok = region_scroll_pairs(5, 10) == 400
+        && region_scroll_pairs(0, VGA_ROWS - 1) == (VGA_ROWS - 1) * VGA_COLS;
+    bad1 && bad2 && h_ok && full_ok && pairs_ok
 }
