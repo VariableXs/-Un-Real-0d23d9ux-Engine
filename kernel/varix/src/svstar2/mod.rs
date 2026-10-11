@@ -1096,6 +1096,8 @@ pub mod veac04_blackboard;
 pub mod veac03_perception_checks;
 pub mod vef68_pdomain;
 pub mod vef68_pdomain_checks;
+pub mod vead11_docgen;
+pub mod vead11_docgen_checks;
 pub mod vef67_netext;
 pub mod vef68_plink;
 pub mod vef69_netsec2;
@@ -1620,6 +1622,10 @@ pub fn run_svstar2_checks() -> CheckSet {
     // W-VB1 · VE-F5416 网络与 P 域联动（同源单管道/一张表 F4921/门接入
     // F4954 以总表为准/预算双写 5 格第 8 单/断流置灰/0xBD 段十码）
         ("VE-F5416", vef68_pdomain_checks::run_vef68_checks()),
+    // W-VB1 · VE-F6011 物理文档（四层/三律/步长同源生成/裸正文注入
+    // 结构级拒 0x3C01/NaN 案例教学五案例+防线四代时间线/样本库失效
+    // 三规则+双盲检测/自动清理双击达标/CI 漂移阻断+双签解除/0x3C 段十码）
+        ("VE-F6011", vead11_docgen_checks::run_vead11_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
