@@ -136,6 +136,8 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
         ("UNX-F2101", unx2101_schedstat::run_unx2101_checks()),
         ("UNX-F2221", unx2221_freeledge::run_f2221_checks()),
         ("UNX-F2222", unx2222_rollver::run_f2222_checks()),
+        ("UNX-F0505", unx505_loopback::run_f505_checks()),
+        ("UNX-F1723", unx1723_migledger::run_f1723_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -865,6 +867,8 @@ pub mod unx1025_hpetread;
 pub mod unx2102_scheddebug;
 // unx2103_sysfstune —— UNX-F2103 sysfs 调参面（只读区+受控热调双区：双区断言+F1698/F1714通道凭证闸+越权写10/10全拒，0xCE 段六码）
 pub mod unx2103_sysfstune;
+// unx2104_exportmatrix —— UNX-F2104 导出格式注入矩阵（第二十二矩阵：四族八形态全检出+预期声明完备率100%+零误报，0xCF 段六码）
+pub mod unx2104_exportmatrix;
 
 
 
@@ -1502,6 +1506,10 @@ pub mod unx2101_schedstat;
 pub mod unx2221_freeledge;
 // unx2222_rollver —— UNX-F2222 冻结账批级滚动升版（B32 段滚动条款）：版本闸只许 +1（跳步/降级/越界注入 10/10 全拒）+ 占位段原地补真指纹（kind:S->T）+ 族链 33 族延展与未涉及族逐位不变 + 全域链重算 + 跨版本零变化快照闸/0xD300 段
 pub mod unx2222_rollver;
+// unx505_loopback —— UNX-F0505 串口环回演练（MCR loopback）：环回位摘除外部线态+注入 64 字节逐序号对拍 64/64 闭环+进退环回线态逐字段还原+溢出留痕+断/校验帧格式+IER×OUT2 双重中断门控/0xD400 段
+pub mod unx505_loopback;
+// unx1723_migledger —— UNX-F1723 迁移执行三向记账（源/目标/线程）：源核出账+目标核入账+线程随行账三向闭合（存在性+核投影+载荷指纹投影+线程号投影+tick 序五维）+ 悬空态检出+mid 同类查重+环形溢出显性上报+四账（F1627/F1646/F1704/本模块）顺序敏感合成指纹/0xB080 段
+pub mod unx1723_migledger;
 pub mod unx584_unkparam;
 pub mod unx583_wlparams_deep;
 // unx843_eoipath —— UNX-F0843 MSI/MSI-X EOI 路径深化版（十万事件行为矩阵100%一致/终结点四态裁决/泄漏账配平，0xB501~0xB511 段）
