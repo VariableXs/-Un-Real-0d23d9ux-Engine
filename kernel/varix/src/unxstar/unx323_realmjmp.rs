@@ -292,18 +292,35 @@ pub fn expand_golden(stage: u8) -> Result<Vec<u8>, RealmJmpError> {
 }
 
 /// 跳板字节流逐指令黄金比对（差一字节即 GoldenMismatch 带偏移）。
+///
+/// 入口偏移占位指令（助记符以 ( 开头）随链接位置变化，比对时**跳过
+/// 该 4 字节段**——占位段内容不参与黄金一致性（其余指令逐字节全等）。
 pub fn verify_against_golden(stage: u8, trampoline: &[u8]) -> Result<(), RealmJmpError> {
-    let golden = expand_golden(stage)?;
-    let n = golden.len().min(trampoline.len());
-    let mut i = 0;
-    while i < n {
-        if golden[i] != trampoline[i] {
-            return Err(RealmJmpError::GoldenMismatch { stage, offset: i });
+    let table: &[GoldenInsn] = match stage {
+        1 => &GOLDEN_REAL_TO_PROT,
+        2 => &GOLDEN_PROT_TO_LONG,
+        _ => return Err(RealmJmpError::GoldenMismatch { stage, offset: 0 }),
+    };
+    let mut pos: usize = 0;
+    for insn in table.iter() {
+        if insn.mnemonic.starts_with('(') {
+            // 占位段：跳过 4 字节
+            if pos + 4 > trampoline.len() {
+                return Err(RealmJmpError::GoldenMismatch { stage, offset: pos });
+            }
+            pos += 4;
+        } else {
+            for b in insn.bytes.iter() {
+                match trampoline.get(pos) {
+                    Some(tb) if tb == b => {}
+                    _ => return Err(RealmJmpError::GoldenMismatch { stage, offset: pos }),
+                }
+                pos += 1;
+            }
         }
-        i += 1;
     }
-    if trampoline.len() != golden.len() {
-        return Err(RealmJmpError::GoldenMismatch { stage, offset: n });
+    if trampoline.len() != pos {
+        return Err(RealmJmpError::GoldenMismatch { stage, offset: pos });
     }
     Ok(())
 }

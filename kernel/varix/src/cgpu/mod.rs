@@ -254,6 +254,14 @@ pub mod cgg06_nvpwr;
 pub mod cgg06_nvpwr_checks;
 // cgi06_txqueue — CGPU-F1285 传输队列管理（上传/下载双队列分列各自深度水位一条河堵塞不淹另一条/信用回压协议ACK回款水位滞回75%触发55%解除防振荡/优先级插队Emergency直插队首High快道连续插队4次强制队尾饿死保护/全量遥测入队-出队-拒收-插队-水位峰值/超额ACK协议违约钳上限报码/0x52xx 五码）
 pub mod cgi06_txqueue;
+// cgq01_txqueue — CGPU-F1285 双实现并存B面（水位门限令牌限速设计 独立于A面信用回压/分列+背压+插队+遥测四判据/0x750段）
+pub mod cgq01_txqueue;
+// cgj05_pwrfilt — CGPU-F1447 功耗数据管道与滤波（五级管道逐级独立可测/中值去尖刺+EMA定点平滑双滤波参数表分派/1s10s60s三窗三指标/背压覆盖写丢旧保新永不阻塞/SPSC环形/越限骤变事件旁路/1MB内存上限降采样）
+pub mod cgj05_pwrfilt;
+// vcw07_docsec — CGPU-F3528 文档安全（内部标注过滤三级闭集只放行Public/敏感子串双保险密钥样token样/三发布面安全复用同引擎判定一致/干净零误滤带密零漏滤）
+pub mod vcw07_docsec;
+// cgq02_txmerge — CGPU-F1286 传输批合并（小传输窗口合并大传输直通/5µs窗口三档权衡声明/同输入双跑指纹对拍确定性/事务数对比TLP头24B节省收益量化/批内+直通≡提交守恒对账）
+pub mod cgq02_txmerge;
 // vck04_hetprobe — CGPU-F1604 异构能力探测与登记（探测五步枚举→查询→隔离→登记→缓存公示每步乱序拒绝/实现矩阵NPU三路线CIM-Intel-XDNA DSP音频 ISP驱动查询静态闭集表/缓存键FNV驱动版本+设备ID命中复用异键热失效重探F1506模式/失败隔离ProbeFailed行剥离不污染登记表其余照常/虚拟化空态空枚举显性Empty/诚实登记NotSupported与ProbeFailed严格区分不造假/0x53xx 五码）
 pub mod vck04_hetprobe;
 pub mod vck05_taskgraph;
