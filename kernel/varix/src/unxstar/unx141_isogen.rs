@@ -1332,6 +1332,30 @@ pub fn run_unx141_checks() -> CheckSet {
         s.fail("U141-深-04-描述符序列闸", "序列面失效");
     }
 
+    // 深-05：体积预估闭式对拍（生成前预言 == 生成后实况——三清单
+    // 形态恒等 + 清单统计恰值同流）。
+    if probe_volume_estimate() {
+        s.ok("U141-深-05-体积预估闭式");
+    } else {
+        s.fail("U141-深-05-体积预估闭式", "预估面失效");
+    }
+
+    // 深-06：布局映射恰值（头 19 扇区固定档序 + 数据档数对账 + 残镜像
+    // 显性 None——扇区级成像）。
+    if probe_layout_map() {
+        s.ok("U141-深-06-布局逐扇区映射");
+    } else {
+        s.fail("U141-深-06-布局逐扇区映射", "布局面失效");
+    }
+
+    // 深-07：引导目录反读审计（构造→反读闭环——四闸过+标识恰串+
+    // 无引导镜像审计拒绝面+越界显性 None）。
+    if probe_catalog_audit() {
+        s.ok("U141-深-07-目录反读审计");
+    } else {
+        s.fail("U141-深-07-目录反读审计", "审计面失效");
+    }
+
     // 元-01：零 panic 面 + 快照往返 + 空态平凡 + 字节面助手恰值。
     let src = include_str!("unx141_isogen.rs");
     let clean = strip_lexical_noise(src);
@@ -1828,4 +1852,289 @@ pub fn probe_path_table_total() -> bool {
     let (l, m) = build_path_table(&entries);
     // 闭式：A(1)→8+1=9 奇→10；BC(2)→10；DEF(3)→11 奇→12。32。
     expect == 32 && l.len() == 32 && m.len() == 32
+}
+
+// ---------------------------------------------------------------------------
+// 深化五区：卷面消费审计——镜像生成之后是「镜像怎么被核」的消费面：
+// 布局逐扇区映射 / 体积预估闭式（生成前预言 vs 生成后实况对拍）/
+// 清单单遍统计 / 引导目录从镜像侧反读审计（构造→反读闭环）。
+// 全部纯函数零 IO——消费面与构造面同构（闭式贯穿）。
+// ---------------------------------------------------------------------------
+
+/// 扇区类型分类闭集（布局映射的原子档——逐扇区恰好一档）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SectorKind {
+    /// 系统区（0..16——规范保留全零）。
+    SystemArea,
+    /// 主卷描述符（16——Type 1）。
+    Pvd,
+    /// 引导记录 VD（17——Type 0）。
+    BootVd,
+    /// 终止描述符（18——Type 255）。
+    Terminator,
+    /// 数据区（19..——目录/文件/引导目录，Type 面不适用）。
+    Data,
+}
+
+impl SectorKind {
+    /// 单点分类（扇区号 → 档——布局闭式：头 19 扇区固定语义）。
+    pub const fn of_lba(lba: u32) -> SectorKind {
+        if lba < VD_START_LBA {
+            SectorKind::SystemArea
+        } else if lba == VD_START_LBA {
+            SectorKind::Pvd
+        } else if lba == VD_START_LBA + 1 {
+            SectorKind::BootVd
+        } else if lba == VD_START_LBA + 2 {
+            SectorKind::Terminator
+        } else {
+            SectorKind::Data
+        }
+    }
+
+    /// 档名（快照/渲染单点）。
+    pub const fn name(self) -> &'static str {
+        match self {
+            SectorKind::SystemArea => "sys",
+            SectorKind::Pvd => "pvd",
+            SectorKind::BootVd => "bvd",
+            SectorKind::Terminator => "term",
+            SectorKind::Data => "data",
+        }
+    }
+}
+
+/// **逐扇区布局映射**（镜像总扇区 → 档序列——布局账的扇区级成像；
+/// 镜像长非块整倍视为结构损坏——显性 None 不猜）。
+pub fn layout_map(img: &[u8]) -> Option<Vec<SectorKind>> {
+    if img.len() % BLOCK_SIZE as usize != 0 {
+        return None;
+    }
+    let total = (img.len() / BLOCK_SIZE as usize) as u32;
+    let mut out = Vec::new();
+    let mut lba = 0u32;
+    while lba < total {
+        out.push(SectorKind::of_lba(lba));
+        lba += 1;
+    }
+    Some(out)
+}
+
+/// 清单统计账（单遍成像——体积预估与容量审计的输入面）。
+pub struct ManifestStats {
+    /// 文件数。
+    pub files: usize,
+    /// 文件体总字节（原始——不含记录/对齐）。
+    pub body_bytes: u64,
+    /// 文件数据总扇区（逐文件 ceil 块累计——数据区实占）。
+    pub data_blocks: u64,
+    /// 最长规范化名（字节）。
+    pub max_name_len: usize,
+    /// 引导载荷数。
+    pub boot_count: usize,
+}
+
+impl ManifestStats {
+    /// **单遍成像**（清单逐项累计——排序无关：统计面不依赖序）。
+    pub fn of(m: &IsoManifest) -> ManifestStats {
+        let mut files = 0usize;
+        let mut body = 0u64;
+        let mut blocks = 0u64;
+        let mut max_name = 0usize;
+        let mut boot = 0usize;
+        let mut i = 0usize;
+        while i < m.files.len() {
+            let f = &m.files[i];
+            files += 1;
+            body += f.body.len() as u64;
+            // ceil 块（0 字节文件占 0 块——空文件不占数据区）。
+            blocks += ((f.body.len() as u64) + (BLOCK_SIZE as u64) - 1) / (BLOCK_SIZE as u64);
+            if f.name.len() > max_name {
+                max_name = f.name.len();
+            }
+            if f.is_boot_payload {
+                boot += 1;
+            }
+            i += 1;
+        }
+        ManifestStats {
+            files,
+            body_bytes: body,
+            data_blocks: blocks,
+            max_name_len: max_name,
+            boot_count: boot,
+        }
+    }
+}
+
+/// **体积预估闭式**（生成前预言——与 generate 实况对拍）：
+///
+/// 总扇区 = 16 系统区 + 3 描述符（PVD/BVD/TERM）+ 1 目录区 +
+/// 数据扇区（逐文件 ceil）+ 1 引导目录（generate 恒造——El Torito
+/// 目录是结构面不是条件面，无引导载荷时目录照造保持描述符序列
+/// 规范位置：构造面事实即闭式，不假装有条件分支）。
+pub const fn estimate_total_blocks(stats: &ManifestStats) -> u64 {
+    VD_START_LBA as u64 + 3 + 1 + stats.data_blocks + 1
+}
+
+/// 引导目录反读审计账（从镜像侧反读 VE 32 字节——构造→反读闭环）。
+pub struct CatalogAudit {
+    /// 头字节（恒 0x01）。
+    pub header: u8,
+    /// 平台字节（0x00 BIOS）。
+    pub platform: u8,
+    /// 标识 22 字节（2..24）。
+    pub ident: [u8; 22],
+    /// 校验和 word 和（恒 0——VE 布局闸）。
+    pub word_sum: u16,
+    /// 魔数对（0x55 0xAA）。
+    pub magic_ok: bool,
+}
+
+/// **从镜像反读引导目录 VE**（cat_lba 扇区 0..32 字节——残镜像
+/// 显性 None；校验和 word 和按 16 位 LE 字对全 32 字节累计）。
+pub fn catalog_audit(img: &[u8], cat_lba: u32) -> Option<CatalogAudit> {
+    let base = (cat_lba as usize) * (BLOCK_SIZE as usize);
+    if base + 32 > img.len() {
+        return None;
+    }
+    let mut ident = [0u8; 22];
+    ident.copy_from_slice(&img[base + 2..base + 24]);
+    let mut wsum: u16 = 0;
+    let mut k = 0usize;
+    while k < 32 {
+        let lo = img[base + k] as u16;
+        let hi = img[base + k + 1] as u16;
+        wsum = wsum.wrapping_add(lo | (hi << 8));
+        k += 2;
+    }
+    Some(CatalogAudit {
+        header: img[base],
+        platform: img[base + 1],
+        ident,
+        word_sum: wsum,
+        magic_ok: img[base + 28] == 0x55 && img[base + 29] == 0xAA,
+    })
+}
+
+impl CatalogAudit {
+    /// 审计过闸（头/平台/魔数/word 和零——四闸合流）。
+    pub fn passes(&self) -> bool {
+        self.header == 0x01 && self.platform == 0x00 && self.magic_ok && self.word_sum == 0
+    }
+
+    /// 标识恰值（规范串——构造面写死串的反读对拍）。
+    pub fn ident_is_varix(&self) -> bool {
+        &self.ident == b"VARIX BOOT CATALOG    "
+    }
+}
+
+/// 深-05 判据：体积预估闭式对拍（三清单形态：单文件/多文件/无引导
+/// ——预估 == 生成实况 total_blocks 恒等；清单统计恰值同流验证）。
+pub fn probe_volume_estimate() -> bool {
+    // 单文件（3 字节 → 1 块）+ 引导载荷 → 16+3+1+1+1 = 22。
+    let mut m1 = IsoManifest::new("EST1");
+    let _ = m1.add_file("BOOT.BIN", &[1, 2, 3], true);
+    let s1 = ManifestStats::of(&m1);
+    let est1 = estimate_total_blocks(&s1);
+    let img1 = match generate(&mut m1) {
+        Ok(im) => im,
+        Err(_) => return false,
+    };
+    let act1 = (img1.bytes.len() / BLOCK_SIZE as usize) as u64;
+    let stats_ok = s1.files == 1 && s1.body_bytes == 3 && s1.data_blocks == 1
+        && s1.boot_count == 1 && s1.max_name_len == 8;
+    // 多文件（2+2049 字节 → 1+2 块）+ 1 引导 → 16+3+1+3+1 = 24。
+    let mut m2 = IsoManifest::new("EST2");
+    let _ = m2.add_file("A.TXT", &[7u8; 2], false);
+    let _ = m2.add_file("BOOT.BIN", &[9u8; 2049], true);
+    let s2 = ManifestStats::of(&m2);
+    let est2 = estimate_total_blocks(&s2);
+    let img2 = match generate(&mut m2) {
+        Ok(im) => im,
+        Err(_) => return false,
+    };
+    let act2 = (img2.bytes.len() / BLOCK_SIZE as usize) as u64;
+    // 无引导载荷：目录恒造 → 16+3+1+1+1 = 22（闭式对构造事实）。
+    let mut m3 = IsoManifest::new("EST3");
+    let _ = m3.add_file("A.TXT", &[7u8; 2], false);
+    let s3 = ManifestStats::of(&m3);
+    let est3 = estimate_total_blocks(&s3);
+    let img3 = match generate(&mut m3) {
+        Ok(im) => im,
+        Err(_) => return false,
+    };
+    let act3 = (img3.bytes.len() / BLOCK_SIZE as usize) as u64;
+    est1 == act1 && est1 == 22 && stats_ok
+        && est2 == act2 && est2 == 24 && s2.data_blocks == 3
+        && est3 == act3 && est3 == 22 && s3.boot_count == 0
+}
+
+/// 深-06 判据：布局映射恰值（三镜像逐扇区档序列——头 19 扇区固定
+/// 语义 + 数据区档数 == 总扇区 - 19；非块整倍残镜像显性 None）。
+pub fn probe_layout_map() -> bool {
+    let mut m = IsoManifest::new("LMAP");
+    let _ = m.add_file("A.TXT", &[1u8; 2], false);
+    let _ = m.add_file("BOOT.BIN", &[2u8; 2], true);
+    let img = match generate(&mut m) {
+        Ok(im) => im,
+        Err(_) => return false,
+    };
+    let map = match layout_map(&img.bytes) {
+        Some(v) => v,
+        None => return false,
+    };
+    let total = map.len() as u32;
+    // 头 19 扇区固定档序（sys×16 + pvd + bvd + term）。
+    let head_ok = map.len() >= 19
+        && (0..16).all(|i| map[i as usize] == SectorKind::SystemArea)
+        && map[16] == SectorKind::Pvd
+        && map[17] == SectorKind::BootVd
+        && map[18] == SectorKind::Terminator;
+    // 数据区档数 == 总 - 19（目录/文件/引导目录全在数据档；
+    // 两文件 2+2 字节 → 2 数据块 → total = 19+2+1 = 23）。
+    let mut data_n = 0u32;
+    for k in map.iter() {
+        if *k == SectorKind::Data {
+            data_n += 1;
+        }
+    }
+    let data_ok = data_n == total - 19 && total == 23;
+    // 残镜像（截 100 字节——非块整倍）显性 None。
+    let ragged = layout_map(&img.bytes[..100]).is_none();
+    head_ok && data_ok && ragged
+}
+
+/// 深-07 判据：引导目录反读审计（构造面 → 镜像侧反读四闸过 +
+/// 标识恰串 + 无引导镜像反读残面显性 None——构造/反读闭环）。
+pub fn probe_catalog_audit() -> bool {
+    let mut m = IsoManifest::new("CATAUD");
+    let _ = m.add_file("BOOT.BIN", &[1, 2, 3], true);
+    let img = match generate(&mut m) {
+        Ok(im) => im,
+        Err(_) => return false,
+    };
+    // 引导目录在最后一个扇区（est1 形态 22 块 → cat_lba 21）。
+    let cat_lba = (img.bytes.len() / BLOCK_SIZE as usize) as u32 - 1;
+    let aud = match catalog_audit(&img.bytes, cat_lba) {
+        Some(a) => a,
+        None => return false,
+    };
+    let aud_ok = aud.passes() && aud.ident_is_varix();
+    // 负例：数据扇区反读（目录恒造面——最后扇区是 catalog，倒数第二
+    // 是文件数据 [1,2,3]+pad：反读 VE header=数据字节/平台≠0 → 闸拒）。
+    let mut m2 = IsoManifest::new("NOCAT");
+    let _ = m2.add_file("A.TXT", &[1, 2, 3], false);
+    let img2 = match generate(&mut m2) {
+        Ok(im) => im,
+        Err(_) => return false,
+    };
+    let data_lba = (img2.bytes.len() / BLOCK_SIZE as usize) as u32 - 2;
+    let neg_ok = match catalog_audit(&img2.bytes, data_lba) {
+        Some(a) => !a.passes(),
+        None => false,
+    };
+    // 残镜像（越界 cat_lba）显性 None。
+    let bound_ok = catalog_audit(&img.bytes, 9999).is_none();
+    aud_ok && neg_ok && bound_ok
 }
