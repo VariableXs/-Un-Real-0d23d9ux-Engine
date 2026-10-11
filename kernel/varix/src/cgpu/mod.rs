@@ -241,6 +241,18 @@ pub mod cgi06_txqueue;
 pub mod vck04_hetprobe;
 pub mod vck05_taskgraph;
 pub mod vck06_memcoh;
+// cgd09_timecalib — CGPU-F0489 帧计时校准（三源互校CPU QPC×GPU时间戳×呈现时钟配对采样差分/定期重校准30s周期偏移收敛漂移率估计超100µs/s立案/精度声明残余误差量化超50µs失守/降级协议源失联4窗→Lost显性→回喂恢复三源/单调性红线域内倒退拒收输出倒退拒收拨表禁止/0x54xx 五码）
+pub mod cgd09_timecalib;
+// cgd10_frametel — CGPU-F0490 帧遥测（五指标进B08总线帧时间/间隔/全延迟/达标率/卡顿计数各独立聚合P95整数分位/按场景分列12上限未登记场景拒帧匿名混账拒绝/空窗显性None不返回零均值谎报/schema版本化发布包下游失配显性拒/卡顿阈值复用cgd06口径20ms/0x5Bxx 五码）
+pub mod cgd10_frametel;
+// cgf11_certtel — CGPU-F0809 认证遥测（四指标进B08总线执行次数/通过率金银铜分布ppm尾项守恒恰1e6/重认证触发分布三类归一零触发全零诚实/边缘复核率复核数>执行数违约改判率质量观察窗/厂商族分列8上限全量均值是谎报分列才可归因/0x56xx 五码）
+pub mod cgf11_certtel;
+// cgg07_nvupdate — CGPU-F0967 NVIDIA驱动更新应对（更新事件全流程接收→判定→预检→联动→告知/F0807触发规则NVIDIA落地GameReady与Studio双线独立MajorBump全量MinorBump增量/差异表预检症状命中无规避→暂缓带理由空话违约/未知大版本段显性Unknown不猜/同版本与降版拒收/基线推进告知面/0x57xx 五码）
+pub mod cgg07_nvupdate;
+// cgi07_txmerge — CGPU-F1286 传输批合并（合并窗口状态机5µs默认窗批满4096B或窗到期冲刷/权衡声明三档Off-Gentle-Aggressive延迟与吞吐显性取舍/确定性同输入双跑批序列逐批对拍/Emergency绕过合并直达延迟红线绕过触发缓冲批让路冲刷/收益量化TLP头24B开销事务数对比守恒对账批内+缓冲+绕过≡提交/0x58xx 五码）
+pub mod cgi07_txmerge;
+// cgd11_timefuzz — CGPU-F0491 帧计时fuzz（确定性fuzz核心LCG同种子同序列CI可固化/时钟异常注入三族跳变-倒退-卡顿容错计时器倒退钳0不产负时长异常显性入账/帧洪峰4096帧灌1024容量账本丢最旧丢弃计数不静默kept+dropped≡pushed守恒/案例固化种子+异常谱指纹CI回放对拍/0x5Axx 五码）
+pub mod cgd11_timefuzz;
 
 /// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
 pub const CGPU_DOMAIN: &str = "cgpu";
