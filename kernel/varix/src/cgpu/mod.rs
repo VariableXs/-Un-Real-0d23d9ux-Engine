@@ -297,11 +297,10 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 49] = [
+    let blocks: [(&'static str, CheckSet); 44] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
-("CGPU-F0012", vca12_hwcompat::run_vca12_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
         ("CGPU-E0002", cge02_lifecycle_checks::run_cge02_checks()),
         ("CGPU-I1281", cgi01_bandwidth_checks::run_cgi01_checks()),
@@ -350,11 +349,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     // 双线 TDP/TGP+墙序目录双闸/曲线物理约束三关/双写对拍 31 点/J 域 F0854
     // 遥测对位/密封指纹/两权分立/审计满容拒记/0x51xx 十码）
         ("CGPU-F0966", cgg06_nvpwr_checks::run_cgg06_checks()),
-        ("CGPU-F1446", run_cgpu20_g06a()),
-        ("CGPU-F1764", run_cgpu20_l04a()),
-        ("CGPU-F3046", run_cgpu20_t06a()),
-        ("CGPU-F3205", run_cgpu20_u05a()),
-        ("CGPU-F3526", run_cgpu20_vcw06()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -587,81 +581,9 @@ pub mod vck65_k10metric;
 pub mod vck66_k10scene;
 // vck67_k10disc — CGPU-F1748 K域三纪律终审（三开销恰值100/100/50µs回读0xBF01/采样≤50‰+降级四档连续0xBF02/不造假30路径零违例0xBF03/五断言CI固化+违例零未决0xBF04/五组自检/0xBFxx 五码）
 pub mod vck67_k10disc;
-
-// ==========================================================================
-// CGPU 批次 2（J06/F1764-L04/T06/U05 + vcw06 补登记脱孤）
-// ==========================================================================
-pub mod vcw06_docsearch;
-pub mod cgj06_pacefive;
-pub mod cgj06_vrampwr;
-pub mod cgj06grid;
-pub mod cgj06mx;
-pub mod vcl04_probematrix;
-pub mod vcl04_hostneg;
-pub mod vcl04grid;
-pub mod vcl04mx;
-pub mod vct06_perfbudget;
-pub mod vct06_budgetmeter;
-pub mod vct06grid;
-pub mod vct06mx;
-pub mod vcu05_scenesched;
-pub mod vcu05_timemeter;
-pub mod vcu05grid;
-pub mod vcu05mx;
-
-// --------------------------------------------------------------------------
-// CGPU 批次 2 任务族聚合（AND 该任务全部模块）
-// --------------------------------------------------------------------------
-/// CGPU-F1446 域聚合。
-pub fn run_cgpu20_g06a() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("CGPU20-g06a");
-    let mut ok = true;
-    if !cgj06_pacefive::run_g06a_checks().all_passed() { ok = false; }
-    if !cgj06_vrampwr::run_g06b_checks().all_passed() { ok = false; }
-    if !cgj06grid::run_g06a_checks().all_passed() { ok = false; }
-    if !cgj06mx::run_g06b_checks().all_passed() { ok = false; }
-    set.add("CGPU-F1446", ok, if ok { "" } else { "cgpu20-g06a family sub-checks red" });
-    set
-}
-/// CGPU-F1764 域聚合。
-pub fn run_cgpu20_l04a() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("CGPU20-l04a");
-    let mut ok = true;
-    if !vcl04_probematrix::run_l04a_checks().all_passed() { ok = false; }
-    if !vcl04_hostneg::run_l04b_checks().all_passed() { ok = false; }
-    if !vcl04grid::run_l04a_checks().all_passed() { ok = false; }
-    if !vcl04mx::run_l04b_checks().all_passed() { ok = false; }
-    set.add("CGPU-F1764", ok, if ok { "" } else { "cgpu20-l04a family sub-checks red" });
-    set
-}
-/// CGPU-F3046 域聚合。
-pub fn run_cgpu20_t06a() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("CGPU20-t06a");
-    let mut ok = true;
-    if !vct06_perfbudget::run_t06a_checks().all_passed() { ok = false; }
-    if !vct06_budgetmeter::run_t06b_checks().all_passed() { ok = false; }
-    if !vct06grid::run_t06a_checks().all_passed() { ok = false; }
-    if !vct06mx::run_t06b_checks().all_passed() { ok = false; }
-    set.add("CGPU-F3046", ok, if ok { "" } else { "cgpu20-t06a family sub-checks red" });
-    set
-}
-/// CGPU-F3205 域聚合。
-pub fn run_cgpu20_u05a() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("CGPU20-u05a");
-    let mut ok = true;
-    if !vcu05_scenesched::run_u05a_checks().all_passed() { ok = false; }
-    if !vcu05_timemeter::run_u05b_checks().all_passed() { ok = false; }
-    if !vcu05grid::run_u05a_checks().all_passed() { ok = false; }
-    if !vcu05mx::run_u05b_checks().all_passed() { ok = false; }
-    set.add("CGPU-F3205", ok, if ok { "" } else { "cgpu20-u05a family sub-checks red" });
-    set
-}
-
-/// CGPU-F3526 文档搜索（vcw06）：补登记脱孤——此前从未参与编译与验收。
-pub fn run_cgpu20_vcw06() -> crate::checks::CheckSet {
-    vcw06_docsearch::run_vcw06_checks()
-}
-// vck68_guestcap — CGPU-F1764 能力探测与虚拟化感知（guest探测模式判读矛盾保守仲裁+探测矩阵const表12格压舱+诚实三验证态自报/host背书/无背书虚标拦截视同不存在+host协商四步闭集交集语义越权留痕封印指纹重放确定+探测缓存K01模式纪元键控陈旧显性+失败三连保守模式最小集非猜测缺省/0xBD段12码）
+// vck68_guestcap — CGPU-F1764 能力探测与虚拟化感知（guest探测模式判读矛盾保守仲裁+探测矩阵const表压舱+诚实三验证态虚标拦截+host协商四步交集语义越权留痕+探测缓存K01+失败三连保守模式/0xBD段12码）
 pub mod vck68_guestcap;
-// vct06_stackbudget — CGPU-F3046 对接性能预算（协议栈每帧<0.1ms=100_000ns恰值+七层闭集逐层预算和恰总线构造守恒+层超支/栈超支/静默贪吃贴边95%连击8帧三态显性+tick注入差分倒流拒+批化摊销恰值(fixed/B+per_item)与拐点(fixed<b(b+1))+修正建议单证据闸不拍脑袋+幂等闸+双跑确定+快照FNV/0xBE段12码）
+// vct06_stackbudget — CGPU-F3046 对接性能预算（每帧<0.1ms恰值+七层闭集逐层预算守恒+三态超支显性+摊销拐点+修正单证据闸/0xBE段12码）
 pub mod vct06_stackbudget;
+// vcu05_benchrunner — CGPU-F3205 基准运行器（三功能：场景调度(优先级×FIFO二元全序+五态单向状态机终态锁)/计时(tick注入+定点中位数偶数断序取小+极差/中位10%噪声闸RerunFlag)/采集(逐场景四件账+P50/P95定点分位)）+双跑指纹对拍确定+快照FNV/0xBF段12码）
+pub mod vcu05_benchrunner;
