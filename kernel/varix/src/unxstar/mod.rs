@@ -906,6 +906,10 @@ pub mod unx2106_exportledger;
 pub mod unx2107_paramfreeze;
 // unx2102_scheddebug —— UNX-F2102 sched_debug 调试面（全量dump只读：只读语义指纹断言+dump账本一致+权限位在册，0xCD 段六码）
 pub mod unx2108_scenbook;
+// unx2109_ktestfamily —— UNX-F2109 导出 ktest 族注册（19条判据聚合+三档调度intact+skip带因100%+20维SMP取数口，0xD6 段六码）
+pub mod unx2109_ktestfamily;
+// unx2110_lockfreeread —— UNX-F2110 导出并发读基准（无锁读开销账：格式冻结F1773体例+seqlock逻辑建模+撕裂零发生+补测占位，0xD7 段六码）
+pub mod unx2110_lockfreeread;
 
 
 
