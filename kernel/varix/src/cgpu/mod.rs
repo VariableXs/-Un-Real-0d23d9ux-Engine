@@ -127,6 +127,13 @@ pub mod vco07_recovery_checks;
 pub mod cgb07_execfail;
 // cgb08_framequeue — CGPU-F0168 帧图与 GPU 队列映射（三队列路由表写死可对拍/节点跟资源走写集定home/写后读同卡同队列一致性即检即拒/映射O(1)查表+开销账/三队列用例建造器/0x30xx 五码）
 pub mod cgb08_framequeue;
+// cgb09_debugviz — CGPU-F0169 帧图调试可视化（DAG人读视图队列着色+关键路径加粗+环/悬空边/重id三断言+时间轴排布探针叠加+交互详情四区+渲染计价预算闸0x2D段）
+pub mod cgb09_debugviz;
+// cgb10_graphcache — CGPU-F0170 帧图构建结果缓存（缓存键=表面集+资源集序无关哈希+计数混入+明细对拍防碰撞/四代环形槽位+TTL+满员逐最旧/增量三算子Add-Remove级联-Replace+base键校验+未动节点编译代数保留/增量=全量结构全等对拍/失效五因定表+环形账本+失效后必miss/命中率千分比遥测/构建成本模型+节约收益实测/32判据）
+pub mod cgb10_graphcache;
+
+// cgf04_hwid — CGPU-F0804 硬件身份识别（三要素身份vendor/device/驱动版本+虚拟化五类诚实标注三证据保守推定+防伪七探针行为地板交叉验证立案+档案schema序列化往返指纹链0x5E段）
+pub mod cgf04_hwid;
 pub mod cgc01_carbitration;
 // cgc02_budgetmodel — CGPU-F0322 帧预算模型（四池比例ppm配置和恰1e6显性拒不静默归一/三级单向分解帧→池→账户/双表述μs权威ppm呈现换算单向取整不超发/Σ池=帧余量归网络池+Σ账户≤池超载显性拒不借贷/超载扫描是查询不是修复/0x35xx 三码）
 pub mod cgc02_budgetmodel;
@@ -167,6 +174,18 @@ pub mod vcs02_multiuser;
 pub mod vct03_protneg;
 pub mod vcu01_bencharch;
 pub mod vcu02_benchmodel;
+// cgc04_framearbiter — CGPU-F0005 帧预算仲裁器（12.5ms五账户切分合成器保底4ms不可侵占/申请制预算标签三要素预估-优先级-降级档/裁定四态批准排队降级拒绝静默吞帧禁绝/超时先走降级档帧级超时发降质链信号F0008消费/信用池低峰存入高峰先补交互/判定步数账50μs红线步数化/帧日志全量seq单调/不变量核验保底零侵占/0x3Cxx 九码）
+pub mod cgc04_framearbiter;
+// cgd05_ratecontract — CGPU-F0485 帧率合同校验器（P95≤12.5ms/P99≤25ms/卡顿率≤0.5%三条款滚动窗600帧自动判定/0.5ms桶计数分位O(n+桶)/达标率每场景每时段履行报告/预警双源余量耗用80%+卡顿趋势Rising提前干预/预算修正建议单出单不执行C域消费/场景隔离清窗重计跨场景混算会撒谎/0x3Dxx 六码）
+pub mod cgd05_ratecontract;
+// cgf05_certsuite — CGPU-F0805 认证基准套件（全链考卷D08执行器+网页+2D/视频/3D分项五场景/金银铜三级深度矩阵覆盖面×用例密度×阈值放宽显性/认证即冻结指纹FNV落账/变更必须ADR申请账submitted状态批准外置/ADR批准后回起草态重认证才可再分发/分发包按级裁剪指纹复验防篡改/0x3Exx 七码）
+pub mod cgf05_certsuite;
+// cgg03_nvdifftable — CGPU-F0963 NVIDIA 驱动差异表（GameReady vs Studio双驱动线闭集/已知问题条目版本区间闭区间命中/症状六类规避动作五类冻结语义/收敛条目选路降级Observe留痕不阻断/发布即冻结演进走ADR账F0899复用/公开报告单点外部不直读表/版本三段解析主.次.热修/0x3Fxx 七码）
+pub mod cgg03_nvdifftable;
+// cgi03_bwaccount — CGPU-F1283 带宽预算账户（四传输类账户交换上传下载流送/优先级呈现>交互>后台同级上传优先/有效带宽口径声明式复用F1282理论×有效系数不重定义/Σcap≤链路cap构造期守恒+Σused≤Σcap运行期核验/水位不足按优先级倒序抢占只抢更低者后台先失全量留痕/零带宽记账非法/预警90%+修正建议单/0x40xx 八码）
+pub mod cgi03_bwaccount;
+// vck03_hettask — CGPU-F1603 异构任务模型与标签（B域Task侧车扩展不改核/schema版本化协商闭集/三维功耗标签F1458复用+Boost不可延迟互斥/NPU功耗系数表四档写死/亲和三级NpuOnly-PreferNpu-Any/any按能效序选路静态表写死/NPU系数表外/批维度micro≤batch外层步数向上取整/DSP deadline错过=失败显性回执不静默/提交前校验规则表五规则/能力位图复用F1602 FEAT_BATCH/REALTIME/0x41xx 八码）
+pub mod vck03_hettask;
 
 /// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
 pub const CGPU_DOMAIN: &str = "cgpu";
