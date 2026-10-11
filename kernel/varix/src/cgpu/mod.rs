@@ -42,6 +42,8 @@
 // vco06_executor — CGPU-F2246 降级执行器（统一接口冻结v1——ExecAction五元组domain/action_id/semantics/payload_digest/sequence只增不改/执行域四闭集调度效果呈现资源与F2244四维对齐/执行语义建议vs强制二闭集复用J02建议语义+合同强制模式/失败处置三态留痕跳过-重试恰一次-升级立案/建议失败不阻塞链强制失败重试恰一次/回执账对账序号严格递增+升级标记自洽/码段0x5Cxx五码/14项域自检）
 // vco07_recovery — CGPU-F2247 降级恢复引擎（恢复序四级闭集资源/效果/呈现/调度逐级回升与降级施加序相反/限速RECOVERY_INTERVAL_TICKS=500/滞回带HYSTERESIS_BAND=3不对称防振荡/恢复复用J03家族=1481两维序-过冲记忆-振荡判据模式复用/过冲回退一级恢复目标自动下调/振荡达限冻结转决策引擎/恢复观测账留痕tick递增+间隔可复核/引擎账一致性核验/码段0x5Dxx五码/12项域自检）
 pub mod cgi01_bandwidth;
+pub mod cgf06_certtier;
+pub mod cgj08_pwrevent;
 pub mod cgi01_bandwidth_checks;
 // cgi02_pciebw — CGPU-F1282 PCIe 带宽模型（Gen3/4/5×x1/4/8/16理论带宽表985/1969/3938MB/s写死/理论vs有效85%系数双值输出单边输出是撒谎/共享通道权重ppm和恰1e6拥塞按需求权重比检出查询不仲裁/对拍600k~1e6ppm合理带低于=链路异常高于=探测错误物理不可能/模型卡公开口径/0x3Axx 四码）
 pub mod cgi02_pciebw;
@@ -312,7 +314,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 50] = [
+    let blocks: [(&'static str, CheckSet); 52] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
