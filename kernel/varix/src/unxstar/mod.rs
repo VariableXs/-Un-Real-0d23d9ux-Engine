@@ -1365,6 +1365,15 @@ pub mod unx463_bridgewalk;
 pub mod unx942_dispatch;
 // unx1002_tscprobe —— UNX-F1002 TSC 特性探测深化版（三环境判定10/10/降级三档声明/频率三源对拍/启动报告九键，0x4CF0~0x4CFF 段）
 pub mod unx1002_tscprobe;
+
+// unx044_nstree —— UNX-F0044 AML 命名空间树深化版（_SB/_GPE/_PR 三机型各100节点iasl对拍/ScopeOp配对/路径三形态/重名立案，0x0A40~0x0A5F 段）
+pub mod unx044_nstree;
+// unx404_hpetcap_deep —— UNX-F0404 HPET 能力账深化并存版（ACPI表逐字段/能力三要素双读一致/使能位禁写红线，0x8201~0x8216 段）
+pub mod unx404_hpetcap_deep;
+// unx464_devid —— UNX-F0464 设备身份账深化版（三元组三读一致/100%覆盖对账/vendor名录26条PCI SIG/TLV往返，0xCB01~0xCB13 段）
+pub mod unx464_devid;
+// unx583_wlparams_deep —— UNX-F0583 白名单参数表深化并存版（24键三型冻结/FNV指纹/注入6/6全拒千分位恰1000，0x9E01~0x9E0F 段）
+pub mod unx583_wlparams_deep;
 pub mod unx602_initrdro;
 pub mod unx602grid;
 pub mod unx602mx;
