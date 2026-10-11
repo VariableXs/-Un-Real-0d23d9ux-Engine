@@ -368,10 +368,12 @@ pub const fn matrix_consistent() -> bool {
                 (ExtState::Degraded, ExtEvent::DegradeReq) => Some(ExtState::Degraded),
                 _ => None,
             };
-            if match matrix_cell(st, ev) {
-                Some(s) => by_match != Some(s),
-                None => by_match.is_some(),
-            } {
+            let agree = match (matrix_cell(st, ev), by_match) {
+                (Some(g), Some(m)) => g.ordinal() == m.ordinal(),
+                (None, None) => true,
+                _ => false,
+            };
+            if !agree {
                 return false;
             }
             ei += 1;
@@ -821,7 +823,9 @@ fn probe_matrix_cells() -> bool {
         }
         si += 1;
     }
-    legal == 4 && illegal == 11
+    // 合法格=5（Probe×1 + Recover×2 + Degraded×2），非法=15-5=10——
+    // 判据侧独立枚举计数，与 MATRIX 表守恒。
+    legal == 5 && illegal == 10
 }
 
 /// 口径二：非法迁移全拒——Probe×ProbeDone/RecoverDone/DegradeReq、
@@ -945,9 +949,13 @@ pub fn run_unx121_checks() -> CheckSet {
     let r2 = m.dispatch(ExtEvent::RecoverStep) == Ok(ExtState::Recover);
     let r3 = m.dispatch(ExtEvent::RecoverDone) == Ok(ExtState::Degraded);
     let r4 = m.dispatch(ExtEvent::RecoverDone) == Ok(ExtState::Recover);
+    // 升回后 steps 清零——「零步无据」谓词同样新恢复流程：先一步再完成。
+    let _ = m.dispatch(ExtEvent::RecoverStep);
     let r5 = m.dispatch(ExtEvent::RecoverDone) == Ok(ExtState::Degraded);
     let r6 = m.dispatch(ExtEvent::DegradeReq) == Ok(ExtState::Degraded);
-    let hist_ok = m.recent_history().len() >= 6 && m.moved == 6;
+    // 9 次合法 dispatch（fail_event 1 + Step 3 + Done 1 + Done 1 + Step 1
+    // + Done 1 + DegradeReq 1）——moved 判据侧独立累计。
+    let hist_ok = m.recent_history().len() >= 6 && m.moved == 9;
     if r1 && r2 && r3 && r4 && r5 && r6 && hist_ok {
         s.ok("U121-迁-02-合法全链历史环");
     } else {
@@ -975,7 +983,7 @@ pub fn run_unx121_checks() -> CheckSet {
 
     // 谓-02：无失败不恢复——fail_count=0 时 ProbeFail 走矩阵格但谓词拒
     // （双层闸的独立性证明：格合法≠可迁移）。
-    let m2 = ExtBootState::new();
+    let mut m2 = ExtBootState::new();
     let ctx = CondCtx { fail_count: 0, recover_steps: 0, degrade_reason_set: false };
     let cond = condition_ok(ExtState::Probe, ExtEvent::ProbeFail, ExtState::Recover, &ctx)
         == Some(BootExtCode::RecoverWithoutFail);

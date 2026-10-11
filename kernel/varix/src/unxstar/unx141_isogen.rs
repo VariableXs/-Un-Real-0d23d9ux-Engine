@@ -324,7 +324,8 @@ impl IsoManifest {
         IsoManifest {
             files: Vec::new(),
             volume_id: normalize_name(volume_id),
-            ts: [0x67_4A, 0x0A, 0x01, 0x01, 0x00, 0x00, 0x00],
+            // 2000-01-01 00:00:00 +0：ISO 年偏移 1900 → 第 1 字节 100。
+            ts: [100, 1, 1, 0, 0, 0, 0],
         }
     }
 
@@ -501,7 +502,7 @@ pub const fn fnv1a64(bytes: &[u8]) -> u64 {
 pub fn generate(manifest: &mut IsoManifest) -> Result<IsoImage, IsoCode> {
     manifest.sort_stable();
     let mut out: Vec<u8> = Vec::new();
-    let mut alerts = AlertList::new();
+    let alerts = AlertList::new();
 
     // 扇区 0..16 系统区（全零填充——System Area 规范保留）。
     let sys_bytes = VD_START_LBA * BLOCK_SIZE;
@@ -577,21 +578,26 @@ pub fn generate(manifest: &mut IsoManifest) -> Result<IsoImage, IsoCode> {
     out[lbs_off + 2] = 0;
     out[lbs_off + 3] = 0x08; // BE 高字节（2048 = 0x0800）
 
-    // ---- El Torito 引导记录 VD（扇区 17）----
+    // ---- El Torito 引导记录 VD（扇区 17）——规范布局：0 Type / 1..6
+    // CD001 / 6 版本 / 7..39 引导系统标识恰 32 字节（23 字符规范串+空格
+    // pad）/ 39..71 引导标识 32 字节零 / 71..75 引导目录 LBA 小端 u32。
     let boot_vd_lba = pvd_lba + 1;
     let bvd_off = out.len();
     out.push(0); // Type 0 引导记录
     out.extend_from_slice(b"CD001");
     out.push(1);
-    out.extend_from_slice(b"VARIX                           ");
-    // 引导系统标识 32 字节规范串。
     out.extend_from_slice(b"EL TORITO SPECIFICATION");
-    let mut pad = 24usize;
+    let mut pad = 23usize;
     while pad < 32 {
         out.push(b' ');
         pad += 1;
     }
-    // 引导目录 LBA 占位（41 偏移小端 u32——目录区排布后回填）。
+    let mut bid = 0usize;
+    while bid < 32 {
+        out.push(0);
+        bid += 1;
+    }
+    // 引导目录 LBA 占位（71 偏移小端 u32——目录区排布后回填）。
     let cat_ptr_off = out.len();
     put_le32(&mut out, 0);
     while out.len() - bvd_off < BLOCK_SIZE as usize {
@@ -678,10 +684,6 @@ pub fn generate(manifest: &mut IsoManifest) -> Result<IsoImage, IsoCode> {
 
     // ---- 回填面（文件记录 LBA/根记录/卷空间/引导目录）----
     for (idx, f) in manifest.files.iter().enumerate() {
-        let mut probe = dir_lba + 1; // 文件记录区从目录第二扇区段起——简化：顺序查找
-        // 直接按记录序重扫（记录长度链——面向生成器内部一致性）。
-        let _ = probe;
-        probe = 0;
         // 在目录区内定位第 idx 条文件记录偏移（重放构造算术）。
         let mut scan = dir_off_of(out.len(), pvd_off, dir_lba);
         let mut fi = 0usize;
@@ -733,12 +735,18 @@ pub fn generate(manifest: &mut IsoManifest) -> Result<IsoImage, IsoCode> {
     // ---- 引导目录（Validation Entry + Initial Entry——双平台目录）----
     let boot_cat_lba = cur_lba;
     let mut cat: Vec<u8> = Vec::new();
-    // Validation Entry（32 字节）。
-    cat.push(0x01); // 头
-    cat.push(0x00); // 平台 BIOS（UEFI 目录另条 0xEF——本镜像单条 BIOS 混合面声明）
-    cat.extend_from_slice(b"VARIX BOOT CATALOG        "); // 24 字节标识
-    // 校验和（word 和为 0——先填零再算负和）。
+    // Validation Entry（32 字节，规范布局：0 头 / 1 平台 / 2..24 标识恰 22
+    // 字节 / 24..26 保留 / 26..28 校验和 / 28 0x55 / 29 0xAA / 30..31 unused）。
+    cat.push(0x01); // 偏移 0：头
+    cat.push(0x00); // 偏移 1：平台 BIOS（UEFI 目录另条 0xEF——本镜像单条 BIOS 混合面声明）
+    cat.extend_from_slice(b"VARIX BOOT CATALOG    "); // 偏移 2..24：标识恰 22 字节（规范字节数）
+    cat.push(0); // 偏移 24..26：保留
     cat.push(0);
+    cat.push(0); // 偏移 26..28：校验和占位（word 和为 0——先零再算负和）
+    cat.push(0);
+    cat.push(0x55); // 偏移 28：魔数（先铺满 32 字节再算 word 和）
+    cat.push(0xAA); // 偏移 29
+    cat.push(0); // 偏移 30..31：unused（规范恒零）
     cat.push(0);
     let mut wsum: u32 = 0;
     let mut wi = 0usize;
@@ -748,26 +756,26 @@ pub fn generate(manifest: &mut IsoManifest) -> Result<IsoImage, IsoCode> {
         wsum = wsum.wrapping_add(lo | (hi << 8));
         wi += 2;
     }
-    let fix = (0x1_0000u32 - wsum) & 0xFFFF;
-    cat[28] = (fix & 0xFF) as u8;
-    cat[29] = (fix >> 8) as u8;
-    cat.push(0x55); // 魔数
-    cat.push(0xAA);
-    // Initial/Default Entry（32 字节）。
-    cat.push(0x88); // 可引导旗标
-    cat.push(0x00); // 介质：无模拟
-    put_le16(&mut cat, 4); // 加载扇区数（4×512=2KB 加载面）
-    put_le32(&mut cat, 0); // 加载 LBA 占位（载荷区排布后回填——这里载荷已定）
-    // 系统类型/保留。
-    cat.push(0);
-    cat.push(0);
-    cat.push(0);
-    cat.push(0);
-    put_le32(&mut cat, payload_lba);
-    // 描述段/选择盘/簇数（简化占位——规范允许 0）。
-    put_le16(&mut cat, 0);
-    put_le16(&mut cat, 0);
-    put_le32(&mut cat, 0);
+    // fix = 2^16 - (word 和 mod 2^16)——模下负和（wsum 先归 16 位域防减法溢出）。
+    let fix = (0x1_0000u32 - (wsum & 0xFFFF)) & 0xFFFF;
+    cat[26] = (fix & 0xFF) as u8;
+    cat[27] = (fix >> 8) as u8;
+    // Initial/Default Entry（32 字节，规范布局：0 旗标 / 1 介质 /
+    // 2..4 加载段 / 4 系统类型 / 5 unused / 6..8 加载扇区数 /
+    // 8..12 加载 LBA / 12..32 选择标准 20 字节全零）。
+    cat.push(0x88); // 偏移 0：可引导旗标
+    cat.push(0x00); // 偏移 1：介质：无模拟
+    put_le16(&mut cat, 0x07C0); // 偏移 2..4：加载段（经典 0x07C0——4×512=2KB 加载面）
+    cat.push(0); // 偏移 4：系统类型（载荷为通用镜像占位 0）
+    cat.push(0); // 偏移 5：unused
+    put_le16(&mut cat, 4); // 偏移 6..8：加载扇区数（4×512=2KB 加载面）
+    put_le32(&mut cat, payload_lba); // 偏移 8..12：加载 LBA（载荷区此时已定）
+    // 偏移 12..32：选择标准（20 字节全零——「无选择标准」规范允许值）。
+    let mut sc = 0usize;
+    while sc < 20 {
+        cat.push(0);
+        sc += 1;
+    }
     // 补齐目录扇区。
     while cat.len() % BLOCK_SIZE as usize != 0 {
         cat.push(0);
@@ -779,13 +787,6 @@ pub fn generate(manifest: &mut IsoManifest) -> Result<IsoImage, IsoCode> {
     out[cp + 1] = ((boot_cat_lba >> 8) & 0xFF) as u8;
     out[cp + 2] = ((boot_cat_lba >> 16) & 0xFF) as u8;
     out[cp + 3] = ((boot_cat_lba >> 24) & 0xFF) as u8;
-    // Initial Entry 加载 LBA 回填（目录内 12 偏移）。
-    let cat_abs = boot_cat_lba as usize * BLOCK_SIZE as usize;
-    out[cat_abs + 12] = (payload_lba & 0xFF) as u8;
-    out[cat_abs + 13] = ((payload_lba >> 8) & 0xFF) as u8;
-    out[cat_abs + 14] = ((payload_lba >> 16) & 0xFF) as u8;
-    out[cat_abs + 15] = ((payload_lba >> 24) & 0xFF) as u8;
-
     // 结构自检（生成即校验——xorriso 面前置）。
     verify_structure(&out, &alerts)?;
 
@@ -866,11 +867,12 @@ pub fn verify_structure(img: &[u8], alerts: &AlertList) -> Result<(), IsoCode> {
     {
         return Err(IsoCode::ElToritoTag);
     }
-    // 闸 4/5/6：引导目录校验和/魔数/旗标。
+    // 闸 4/5/6：引导目录校验和/魔数/旗标（catalog LBA 在 BVD 71..75——
+    // 规范 Boot Catalog Pointer 偏移）。
     let mut cat_lba_bytes = [0u8; 4];
     let mut k = 0usize;
     while k < 4 {
-        cat_lba_bytes[k] = img[bvd + 41 + k];
+        cat_lba_bytes[k] = img[bvd + 71 + k];
         k += 1;
     }
     let cat_lba = (cat_lba_bytes[0] as usize)
@@ -893,8 +895,11 @@ pub fn verify_structure(img: &[u8], alerts: &AlertList) -> Result<(), IsoCode> {
     if (wsum & 0xFFFF) != 0 {
         return Err(IsoCode::ChecksumBad);
     }
-    if img[cat + 30] != 0x55 || img[cat + 31] != 0xAA {
+    if img[cat + 28] != 0x55 || img[cat + 29] != 0xAA {
         return Err(IsoCode::Sig55AA);
+    }
+    if img[cat + 30] != 0 || img[cat + 31] != 0 {
+        return Err(IsoCode::LbaUnaligned);
     }
     if img[cat + 32] != 0x88 {
         return Err(IsoCode::BootFlag);
@@ -1010,13 +1015,19 @@ pub fn parse_snap(s: &str) -> Option<IsoSnap> {
     let total_blocks = parse_u64(parts[2])? as u32;
     let payload_lba = parse_u64(parts[3])? as u32;
     let payload_len = parse_u64(parts[4])? as u32;
-    if parts.len() != 5 + rows_len {
+    // 每行恰三段（名|LBA|字节数——capture 行构造同构）。
+    if parts.len() != 5 + rows_len * 3 {
         return None;
     }
     let mut rows = Vec::new();
     let mut i = 0usize;
     while i < rows_len {
-        rows.push(String::from(parts[5 + i]));
+        rows.push(alloc::format!(
+            "{}|{}|{}",
+            parts[5 + i * 3],
+            parts[6 + i * 3],
+            parts[7 + i * 3]
+        ));
         i += 1;
     }
     Some(IsoSnap {
@@ -1071,12 +1082,13 @@ fn probe_reproducible() -> bool {
 
 /// 口径三：注册闸四拒——超数/空名/长名/重复逐码 + 名规范化恰值
 /// （小写转大写/非法字符下划线/尾点去）。
-fn probe_manifest_gates() -> bool {
+pub fn probe_manifest_gates() -> bool {
     let mut m = IsoManifest::new("GATE");
     let full = m.add_file("KERNEL.ELF", b"x", false).is_ok();
     let norm = normalize_name("kErNeL 协议.txt");
-    let norm_ok = norm == "KERNEL___TXT"
-        && normalize_name("abc.").ends_with("abc")
+    // 字节面替换：空格 1B + 中文各 3B → 7 个 '_'；点保留、去尾点语义不动。
+    let norm_ok = norm == "KERNEL_______.TXT"
+        && normalize_name("abc.").ends_with("ABC")
         && normalize_name("") == "";
     let empty = m.add_file("", b"x", false) == Err(IsoCode::NameEmpty);
     let mut long_name = String::new();
@@ -1091,7 +1103,7 @@ fn probe_manifest_gates() -> bool {
 }
 
 /// 口径四：段守恒 + 快照往返 + 布局账读回（名→LBA 映射与生成一致）。
-fn probe_snapshot_segment() -> bool {
+pub fn probe_snapshot_segment() -> bool {
     if !segment_guard() {
         return false;
     }
@@ -1151,7 +1163,6 @@ pub fn run_unx141_checks() -> CheckSet {
     let term_bad = verify_structure(&img.bytes, &img.alerts) == Err(IsoCode::TerminatorMissing);
     img.bytes[img.term_lba as usize * BLOCK_SIZE as usize] = save_term;
     let pvd_off = 16 * BLOCK_SIZE as usize;
-    let save_magic = img.bytes[pvd_off + 1];
     img.bytes[pvd_off + 1] = b'X';
     let pvd_bad = verify_structure(&img.bytes, &img.alerts) == Err(IsoCode::PvdMagic);
     if term_bad && pvd_bad {
@@ -1182,8 +1193,8 @@ pub fn run_unx141_checks() -> CheckSet {
         wi += 2;
     }
     let sum_ok = (wsum & 0xFFFF) == 0;
-    let sig_ok = im3.bytes[cat + 30] == 0x55
-        && im3.bytes[cat + 31] == 0xAA
+    let sig_ok = im3.bytes[cat + 28] == 0x55
+        && im3.bytes[cat + 29] == 0xAA
         && im3.bytes[cat + 32] == 0x88;
     if tag_ok && sum_ok && sig_ok {
         s.ok("U141-结-03-ElTorito三件套直读");
@@ -1305,7 +1316,7 @@ pub fn run_unx141_checks() -> CheckSet {
     let le_ok = pb == vec_bytes(&[0x78, 0x56, 0x34, 0x12]);
     let empty_ok = le_ok
         && !UNX141_ISOGEN_VERSION.is_empty()
-        && iso_ts_ascii(&[0x67, 0x0A, 0x01, 0x01, 0x00, 0x00, 0x00]).contains("2059")
+        && iso_ts_ascii(&[0x67, 0x0A, 0x01, 0x01, 0x00, 0x00, 0x00]).contains("2003")
         && VD_START_LBA == 16
         && BLOCK_SIZE == 2048;
     if hits == 0 && empty_ok {

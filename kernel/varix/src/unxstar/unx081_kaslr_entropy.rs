@@ -892,9 +892,17 @@ pub struct KaslrSnap {
 impl KaslrSnap {
     /// 定格。
     pub fn capture(a: &AlertLog) -> KaslrSnap {
+        // 快照行换基纪律：行内 '|' → ';'——'|' 是快照串分隔符，告警行
+        // （"码|注 | 详情"）残留分隔符会让 parse 段数错位。
+        let mut rows = Vec::new();
+        let mut i = 0usize;
+        while i < a.rows.len() {
+            rows.push(a.rows[i].replace('|', ";"));
+            i += 1;
+        }
         KaslrSnap {
             version: String::from(UNX081_KASLR_VERSION),
-            rows: a.rows.clone(),
+            rows,
             per_code: a.per_code,
             rejected_full: a.rejected_full,
         }
@@ -1022,9 +1030,9 @@ pub fn parse_snap(s: &str) -> Option<KaslrSnap> {
 // ---------------------------------------------------------------------------
 
 /// 口径一：混合估计手算——三源齐备 Balanced 档：RDRAND 64×4000 + TSC
-/// 12×3000 + 内存 10×3000 = 256000+36000+30000 = 322000 / 10000 = 32.2
-/// → 32 × 10000/10000 折扣 = 32 位 ≥ 12 不降级；仅 TSC（SingleSource
-/// 6000）：12×3000/3000=12 ×6000/10000=7.2→7 < 12 降级。
+/// 12×3000 + 内存 log2(32)=5×3000 = 256000+36000+15000 = 307000 /
+/// 10000 = 30.7 → 30 × 10000/10000 折扣 = 30 位 ≥ 12 不降级；仅 TSC
+/// （SingleSource 6000）：12×3000/3000=12 ×6000/10000=7.2→7 < 12 降级。
 fn probe_mix_math() -> bool {
     let w = WeightSet::preset(WeightPreset::Balanced);
     let rd = RdrandSample { available: true, value: Some(42), retries_used: 0 };
@@ -1032,7 +1040,7 @@ fn probe_mix_math() -> bool {
     let mm = MemMapSample { hole_bytes: 32 * SLOT_GRANULARITY, holes: 4 };
     let est = mix_estimate(&MixInput { rdrand: Some(&rd), tsc: Some(&ts), memmap: Some(&mm), weights: &w });
     let ok_full = match est {
-        Ok(e) => e.total_bits == 32 && !e.below_min && e.discount == IndependenceDiscount::AllThree,
+        Ok(e) => e.total_bits == 30 && !e.below_min && e.discount == IndependenceDiscount::AllThree,
         Err(_) => false,
     };
     let est2 = mix_estimate(&MixInput { rdrand: None, tsc: Some(&ts), memmap: None, weights: &w });
@@ -1045,7 +1053,7 @@ fn probe_mix_math() -> bool {
 
 /// 口径二：降级决策——熵足哈希选槽同种子同槽可复现 + 非槽 0；熵不足
 /// 恒槽 0；零种子显性拒。
-fn probe_slot_decision() -> bool {
+pub fn probe_slot_decision() -> bool {
     let good = MixEstimate {
         bits_rdrand: 64, bits_tsc: 12, bits_memmap: 10,
         discount: IndependenceDiscount::AllThree, total_bits: 32, below_min: false,
@@ -1067,7 +1075,7 @@ fn probe_slot_decision() -> bool {
 }
 
 /// 口径三：账本守恒——混合流（成功/缺席/拒收）逐流对账。
-fn probe_ledger() -> bool {
+pub fn probe_ledger() -> bool {
     let w = WeightSet::preset(WeightPreset::Balanced);
     let o1 = walk_entropy(
         Some(&RdrandSample { available: true, value: Some(7), retries_used: 0 }),
@@ -1098,7 +1106,7 @@ fn probe_ledger() -> bool {
 }
 
 /// 口径四：段守恒 + 快照往返 + 权重三档守恒。
-fn probe_snapshot_segment() -> bool {
+pub fn probe_snapshot_segment() -> bool {
     if !segment_guard() || !WeightSet::presets_conserved() {
         return false;
     }
@@ -1168,12 +1176,15 @@ pub fn run_unx081_checks() -> CheckSet {
     // 三-03：坏权重显性拒（和 ≠ 10000 → WeightSumBroken 不静默钳）。
     let bad = WeightSet::from_parts([5_000, 5_000, 5_000]);
     let bad_ok = bad.validate() == Some(KaslrCode::WeightSumBroken);
-    let est_bad = mix_estimate(&MixInput {
-        rdrand: None,
-        tsc: Some(&TscSample { raw: 5 }),
-        memmap: None,
-        weights: &bad,
-    }) == Err(KaslrCode::WeightSumBroken);
+    let est_bad = matches!(
+        mix_estimate(&MixInput {
+            rdrand: None,
+            tsc: Some(&TscSample { raw: 5 }),
+            memmap: None,
+            weights: &bad,
+        }),
+        Err(KaslrCode::WeightSumBroken)
+    );
     if bad_ok && est_bad {
         s.ok("U081-三-03-坏权重显性拒");
     } else {
@@ -1187,11 +1198,12 @@ pub fn run_unx081_checks() -> CheckSet {
         s.fail("U081-混-01-混合估计手算", "估计公式失效");
     }
 
-    // 混-02：TSC 低位掩码——高位置 1 不影响低位取值（12 位掩码语义）。
+    // 混-02：TSC 低位掩码——高位置 1 不影响低位取值（12 位掩码语义；
+    // 0x1234 低 12 位 = 0x0234，判据侧独立手算）。
     let mask = (1u64 << TSC_LOW_BITS) - 1;
     let t_hi = TscSample { raw: 0xFFFF_FFFF_FFFF_1234 };
     let t_lo_val = t_hi.raw & mask;
-    let mask_ok = t_lo_val == 0x1234 && mask == 0x0FFF;
+    let mask_ok = t_lo_val == 0x0234 && mask == 0x0FFF;
     if mask_ok {
         s.ok("U081-混-02-TSC低位掩码");
     } else {

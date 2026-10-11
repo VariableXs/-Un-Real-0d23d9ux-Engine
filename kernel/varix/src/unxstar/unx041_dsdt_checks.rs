@@ -12,7 +12,6 @@
 //! 手算；坏表翻转字节位置判据侧自定；码段判据 `!=` 防自判死
 //! （0x39/0x43/0x44/0x50..0x5D 全排除）。
 
-use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -55,6 +54,7 @@ fn j_facp(rev: u8, x_dsdt: u64, dsdt32: u32) -> Vec<u8> {
 }
 
 /// 判据侧独立构造 DSDT 表：合法校验和（判据侧独立求和取负）+ 自定 OEM。
+/// corrupt 翻转在合法化**之后**——翻转被校验和补偿则坏表永远合法（夹具反噬）。
 fn j_dsdt(oem: &[u8; 6], corrupt: bool) -> Vec<u8> {
     let mut v = vec![0u8; 96];
     v[0..4].copy_from_slice(b"DSDT");
@@ -63,11 +63,11 @@ fn j_dsdt(oem: &[u8; 6], corrupt: bool) -> Vec<u8> {
     v[8] = 2;
     v[10..16].copy_from_slice(oem);
     v[36] = 0x10; // AML Op 垫一个字节（真实感）
+    let sum = v.iter().fold(0u8, |a, &b| a.wrapping_add(b));
+    v[9] = sum.wrapping_neg();
     if corrupt {
         v[50] ^= 0x5A;
     }
-    let sum = v.iter().fold(0u8, |a, &b| a.wrapping_add(b));
-    v[9] = sum.wrapping_neg();
     v
 }
 

@@ -28,7 +28,7 @@
 //! 重叠；本模块零 panic 面——所有输入不可信（固件表可被改坏）。
 
 use crate::acpi::{checksum_ok, SdtHeader, SDT_HEADER_LEN};
-use alloc::string::{String, ToString};
+use alloc::string::String;
 
 // ---------------------------------------------------------------------------
 // 一、诊断项闭集（独占 0x2Exx 段）
@@ -302,7 +302,7 @@ pub fn committed_report() -> Option<DsdtReport> {
 // 六、测试支撑（判据 J1 全链：定位/提取/坏表不阻塞）
 // ---------------------------------------------------------------------------
 
-#[cfg(all(test, not(no_std)))]
+#[cfg(all(test, not(feature = "kernel-image")))]
 mod tests {
     use super::*;
 

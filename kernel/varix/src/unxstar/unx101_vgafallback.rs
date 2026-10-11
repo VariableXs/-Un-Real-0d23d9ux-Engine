@@ -411,7 +411,7 @@ pub const fn transition(cur: ChannelState, ev: SwitchEvent) -> Option<ChannelSta
 // ---------------------------------------------------------------------------
 
 /// 行账本（判据"零丢行"的本体）。
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct LineLedger {
     /// 产出行数（上游写入）。
     pub produced: u64,
@@ -437,15 +437,17 @@ impl LineLedger {
         no
     }
 
-    /// 投递一行（积压消耗——行号须恰为 next 应投号，跳号 None）。
+    /// 投递一行（积压消耗——行号须恰为下一应投号，跳号 None）。
+    /// 应投号单点推导 = delivered + 1（行号 1 起连续投递）——与产出行号
+    /// 游标 next_line_no 分离：共用一个游标会让 produce 的递增吞掉
+    /// deliver 的审计锚（首行号永远 Gap——游标双语义冲突）。
     pub fn deliver(&mut self, line_no: u64) -> Result<(), VgaCode> {
-        if line_no != self.next_line_no {
+        if line_no != self.delivered + 1 {
             return Err(VgaCode::LineGap);
         }
         if self.backlog == 0 {
             return Err(VgaCode::DroppedLine);
         }
-        self.next_line_no += 1;
         self.delivered += 1;
         self.backlog -= 1;
         Ok(())
@@ -459,6 +461,20 @@ impl LineLedger {
     /// 守恒（产出 == 投递 + 积压 且丢弃恒 0）。
     pub const fn conserved(&self) -> bool {
         self.dropped == 0 && self.produced == self.delivered + self.backlog
+    }
+}
+
+impl Default for LineLedger {
+    /// 行号 1 起（连续审计锚——derive 零值会与注释语义漂移）。
+    fn default() -> Self {
+        LineLedger {
+            produced: 0,
+            delivered: 0,
+            dropped: 0,
+            backlog: 0,
+            scrolled: 0,
+            next_line_no: 1,
+        }
     }
 }
 
@@ -1156,8 +1172,10 @@ pub fn run_unx101_checks() -> CheckSet {
         s.fail("U101-通-02-Restored不自动切回", "防抖动失效");
     }
 
-    // 通-03：双通道皆坏显性告警 + 16 色闭集恰值（from_bits 双向）。
-    let fbd = VgaFallback::new(false, false);
+    // 通-03：双通道皆坏显性告警（FramebookFail 事件触发 BothChannelsDown
+    // 立案——告警面走事件通道）+ 16 色闭集恰值（from_bits 双向）。
+    let mut fbd = VgaFallback::new(false, false);
+    let _ = fbd.on_event(SwitchEvent::FramebookFail);
     let both_down = fbd.alerts.len() >= 1;
     let mut col_ok = true;
     let mut b = 0u8;

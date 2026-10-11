@@ -327,12 +327,12 @@ pub enum TableDirChannel {
 /// RSDT 32 位指针——XSDT 非零优先，皆零 TableDirEmpty）。
 pub fn select_table_dir(rsdp_payload: &[u8]) -> Result<TableDirChannel, DsdtDeepCode> {
     let xsdt = if rsdp_payload.len() >= 36 + 8 {
-        le_u64(rsdp_payload, 36)?
+        le_u64(rsdp_payload, 36).ok_or(DsdtDeepCode::TableDirEmpty)?
     } else {
         0
     };
     let rsdt = if rsdp_payload.len() >= 16 + 4 {
-        le_u32(rsdp_payload, 16)?
+        le_u32(rsdp_payload, 16).ok_or(DsdtDeepCode::TableDirEmpty)?
     } else {
         0
     };
@@ -377,14 +377,14 @@ pub fn extract_dsdt_ptr(facp: &[u8]) -> Result<(u64, bool), DsdtDeepCode> {
         // 深化面：降级不拒——继续走回退链。
     }
     let xsdt_ptr = if facp.len() >= FACP_XDSDT_OFF64 + 8 {
-        le_u64(facp, FACP_XDSDT_OFF64)?
+        le_u64(facp, FACP_XDSDT_OFF64).ok_or(DsdtDeepCode::FacpHeaderBad)?
     } else {
         0
     };
     if revision >= 2 && xsdt_ptr != 0 {
         return Ok((xsdt_ptr, true));
     }
-    let dsdt32 = le_u32(facp, FACP_DSDT_OFF32)?;
+    let dsdt32 = le_u32(facp, FACP_DSDT_OFF32).ok_or(DsdtDeepCode::FacpHeaderBad)?;
     if dsdt32 != 0 {
         return Ok((dsdt32 as u64, false));
     }
@@ -914,9 +914,13 @@ impl DsdtSnap {
         let mut rows = Vec::new();
         let mut i = 0usize;
         while i < r.items.len() {
+            // 快照行换基纪律：行内 '|' → ';'——'|' 是快照串分隔符，
+            // 行内残留会让 parse 段数断言错位（序列化面单语义）。
             rows.push(alloc::format!(
                 "{}:{}:{}",
-                r.items[i].code, r.items[i].sev, r.items[i].line
+                r.items[i].code,
+                r.items[i].sev,
+                r.items[i].line.replace('|', ";")
             ));
             i += 1;
         }
@@ -1072,9 +1076,10 @@ fn probe_ptr_fallback() -> bool {
     f2[140..148].copy_from_slice(&0u64.to_le_bytes());
     f2[40..44].copy_from_slice(&0x0000_BEEFu32.to_le_bytes());
     let r2 = extract_dsdt_ptr(&f2);
-    // 构造 FACP3：revision 1（忽略 X_DSDT）→ 32 位。
+    // 构造 FACP3：revision 1（忽略 X_DSDT）→ 32 位回退带真值。
     let mut f3 = f1;
     f3[8] = 1;
+    f3[40..44].copy_from_slice(&0x0000_CAFEu32.to_le_bytes());
     let r3 = extract_dsdt_ptr(&f3);
     // 双零面。
     let mut f4 = f1;
@@ -1083,13 +1088,13 @@ fn probe_ptr_fallback() -> bool {
     let r4 = extract_dsdt_ptr(&f4);
     r1 == Ok((0x1122_3344_5566_7788, true))
         && r2 == Ok((0x0000_BEEF, false))
-        && r3 == Ok((0, false)) // f3 的 32 位域未填——0 也算回退产物
+        && r3 == Ok((0x0000_CAFE, false)) // revision 1 → 32 位路真值回退
         && r4 == Err(DsdtDeepCode::DsdtPtrBothZero)
 }
 
 /// 口径二：校验和敏感——同一 DSDT 翻转一字节校验即破（checksum_ok 复用
 /// 单点语义 + dsdt_verify 闸生效）。
-fn probe_checksum_sensitivity() -> bool {
+pub fn probe_checksum_sensitivity() -> bool {
     // 最小合法 DSDT：36 头（signature DSDT, len=36, rev=2, checksum 待补,
     // oem_id "VARIX1"）。
     let mut t = [0u8; 36];
@@ -1113,12 +1118,14 @@ fn probe_checksum_sensitivity() -> bool {
 fn probe_no_block_semantics() -> bool {
     let empty: [u8; 0] = [];
     let out = walk_chain(&empty, &empty, &empty);
+    // 空输入立案恰 4 条（签名/表目录/FACP头/DSDT 指针四跳全断）——
+    // headroom 万分制手算：(64-4)/64×10000 = 9375（判据侧独立重算）。
     !out.report.is_empty() && out.dsdt_ptr.is_none() && out.health.chain_completeness == 0
-        && out.health.report_headroom == 10_000
+        && out.health.report_headroom == 9_375
 }
 
 /// 口径四：段守恒 + 快照往返 + OEM 三态恰值（全零/全空格/可读）。
-fn probe_snapshot_segment() -> bool {
+pub fn probe_snapshot_segment() -> bool {
     if !segment_guard() {
         return false;
     }
@@ -1177,7 +1184,7 @@ pub fn run_unx041b_checks() -> CheckSet {
     for b in good_rsdp.iter() {
         bad_v1.push(*b);
     }
-    bad_v1[5] ^= 0xFF;
+    bad_v1[12] ^= 0xFF; // 偏移 12 在 v1 校验和覆盖域（8..20）且不在签名域（0..8）
     let v1_bad = rsdp_verify(&bad_v1) == Err(DsdtDeepCode::RsdpChecksumV1);
     let mut bad_v2: Vec<u8> = Vec::new();
     for b in good_rsdp.iter() {
