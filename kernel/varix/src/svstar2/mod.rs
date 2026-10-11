@@ -1207,6 +1207,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F5602", veab02_devices_checks::run_veab02_checks()),
 ("VE-F5603", veab03_spatial_checks::run_veab03_checks()),
 ("VE-F5801", veac01_aicore_checks::run_veac01_checks()),
+("VE-F5804", veac04_blackboard::run_veac04_checks()),
 ("CGPU-F0321", vc21_budgetarch_checks::run_vc21_checks()),
 ("CGPU-F0481", vd81_contract_checks::run_vd81_checks()),
 ("CGPU-F2081", vcn01_nativerfx_checks::run_vcn01_checks()),
@@ -1642,4 +1643,5 @@ mod tests {
 }
 // veac03_perception — VE-F5803 感知系统（三类感知通道与感知过滤——感知模型非世界真值，越权全知拒绝；感知含记忆时长与可配遗忘曲线；通道失效降级/漂移标定。并行覆盖清除后恢复注记）
 pub mod veac03_perception;
+pub mod veac04_blackboard;
 pub mod veac03_perception_checks;
