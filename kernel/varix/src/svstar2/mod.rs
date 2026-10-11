@@ -1099,6 +1099,7 @@ pub mod vef68_pdomain_checks;
 pub mod vef67_netext;
 pub mod vef68_plink;
 pub mod vef69_netsec2;
+pub mod vef70_netbench;
 pub mod vef63_apifreeze;
 pub mod vef64_netdocs;
 pub mod vef65_netsim;
@@ -1580,6 +1581,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F5415", vef67_netext::run_vef67_checks()),
 ("VE-F5416", vef68_plink::run_vef68_checks()),
 ("VE-F5417", vef69_netsec2::run_vef69_checks()),
+("VE-F5418", vef70_netbench::run_vef70_checks()),
         ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks()),
         ("VE-F1623", vef26_vfetch_checks::run_vef26_checks()),
         ("VE-F1624", vef27_morphtarget_checks::run_vef27_checks()),
