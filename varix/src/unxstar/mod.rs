@@ -757,3 +757,10 @@ pub fn run_unx20_tb01() -> crate::checks::CheckSet {
 }
 // unx142_gptesp — UNX-F0142 GPT/ESP分区镜像生成器（保护MBR+主备GPT头CRC自校验+确定性GUID+FAT32 BPB/FSInfo装配+回读双写对拍sgdisk校验语义+镜像幂等/0x95段12码）
 pub mod unx142_gptesp;
+pub mod unx1481_assertledger;
+pub mod unx1521_ledgerindex;
+pub mod unx1541_domainfinal;
+pub mod unx1542_domainaxioms;
+pub mod unx1741_idlefsm;
+pub mod unx1761_obsface;
+pub mod unx1801_schedpath;
