@@ -1356,6 +1356,31 @@ pub fn run_unx081_checks() -> CheckSet {
         s.fail("U081-深-06-槽位覆盖与降级分派", "覆盖面失效");
     }
 
+    // 深-07：熵预算混合估计——权重守恒 + 钳面恰值 + 混合恰值 39 位
+    // 手算 + 折扣四档恰值 + 折扣后恰值 + 预算闸两态与缺口闭式。
+    if probe_blend_budget() {
+        s.ok("U081-深-07-熵预算混合估计");
+    } else {
+        s.fail("U081-深-07-熵预算混合估计", "预算面失效");
+    }
+
+    // 深-08：抽取预算闸——预算恰值（位÷64 向下取整）+ 预算内三抽
+    // 互异 + 超支 BelowThreshold 显性拒计数 + 池活性拒不耗预算（两闸
+    // 互不污染）+ 账守恒。
+    if probe_draw_budget() {
+        s.ok("U081-深-08-抽取预算闸");
+    } else {
+        s.fail("U081-深-08-抽取预算闸", "预算闸面失效");
+    }
+
+    // 深-09：槽位计划偏置审计——候选恰值 + 计划恰值 + 幂窗口无偏置
+    // + 非 2 幂窗口偏置量恰值 1024（CRT 手算）+ 零候选退化。
+    if probe_slot_plan() {
+        s.ok("U081-深-09-槽位计划偏置审计");
+    } else {
+        s.fail("U081-深-09-槽位计划偏置审计", "偏置面失效");
+    }
+
     s
 }
 
@@ -2071,4 +2096,290 @@ pub fn probe_slot_coverage() -> bool {
     let bound_ok = pick_slot(&est, &[1, 2, 3, 4], 0).is_err()
         && pick_slot(&est, &[1, 2, 3, 4], MAX_SLOTS + 1).is_err();
     det_ok && cover_ok && fallback_ok && bound_ok
+}
+
+// ===========================================================================
+// 深化七区：熵预算混合估计 / 抽取预算闸 / 槽位计划偏置审计——池建
+// 好、抽得动之外是「熵够不够花、花得值不值、选得偏不偏」的经济学：
+// ① 混合估计（blend_estimate——源位 × 万分制权重 → 位，u128 域先乘
+//    后除；独立折扣按源数四档闭集）；
+// ② 抽取预算（DrawBudget——每抽一次花 64 位，预算尽显性拒 BelowThreshold
+//    不静默复用低熵；池活性拒不耗预算）；
+// ③ 槽位计划偏置审计（BiasAudit——2^64 mod 候选数非零即模偏置立案：
+//    2 幂窗口无偏置、非 2 幂窗口偏置量闭式）。
+// ===========================================================================
+
+/// 三源万分制权重（Σ = 10000 守恒——估计前提）。
+pub const SRC_W_RDRAND: u64 = 5000;
+pub const SRC_W_TSC: u64 = 3000;
+pub const SRC_W_MEMMAP: u64 = 2000;
+pub const SRC_W_SUM: u64 = 10000;
+
+/// 源位上限（min(bits, cap)——单源吹牛钳面：RDRAND 一次 64 位 /
+/// TSC 低位 12 位 / 内存图自由度策略值 20 位可调）。
+pub const CAP_RDRAND: u64 = 64;
+pub const CAP_TSC: u64 = TSC_LOW_BITS as u64;
+pub const CAP_MEMMAP: u64 = 20;
+
+/// 权重守恒核（const——估计面崩塌即 WeightSumBroken 判定源）。
+pub const fn weights_conserved() -> bool {
+    SRC_W_RDRAND + SRC_W_TSC + SRC_W_MEMMAP == SRC_W_SUM
+}
+
+/// 源位钳制（超上限钳回——上限是保守口径不是脏数据清洗）。
+pub const fn clamp_bits(bits: u64, cap: u64) -> u64 {
+    if bits > cap {
+        cap
+    } else {
+        bits
+    }
+}
+
+/// **混合估计**（blend——与既有 mix_estimate 运行面同名避让：本面是
+/// 纯 const 算术闭式：Σ(min(源位,上限) × 权重) / 10000，u128 域先乘
+/// 后除——三源不独立时线性相加会高估，权重稀释是保守口径的第一层）。
+pub const fn blend_estimate(rdrand_bits: u64, tsc_bits: u64, memmap_bits: u64) -> u64 {
+    let r = clamp_bits(rdrand_bits, CAP_RDRAND) as u128 * SRC_W_RDRAND as u128;
+    let t = clamp_bits(tsc_bits, CAP_TSC) as u128 * SRC_W_TSC as u128;
+    let m = clamp_bits(memmap_bits, CAP_MEMMAP) as u128 * SRC_W_MEMMAP as u128;
+    ((r + t + m) / SRC_W_SUM as u128) as u64
+}
+
+/// 独立折扣四档（万分制——源越多独立性越足：三源齐备 100% / 两源
+/// 80% / 单源 60% / 全缺 0%；折扣表闭集显性不拍脑袋）。
+pub const DISCOUNT_FULL: u32 = 10000;
+pub const DISCOUNT_TWO_SRC: u32 = 8000;
+pub const DISCOUNT_ONE_SRC: u32 = 6000;
+pub const DISCOUNT_NONE: u32 = 0;
+
+/// 独立折扣查表（按在源数）。
+pub const fn independence_discount(has_rdrand: bool, has_tsc: bool, has_memmap: bool) -> u32 {
+    let n = (has_rdrand as u32) + (has_tsc as u32) + (has_memmap as u32);
+    match n {
+        3 => DISCOUNT_FULL,
+        2 => DISCOUNT_TWO_SRC,
+        1 => DISCOUNT_ONE_SRC,
+        _ => DISCOUNT_NONE,
+    }
+}
+
+/// 折扣合法性（DiscountInvalid 判定源——折扣面污染即估计面污染）。
+pub const fn discount_valid(d: u32) -> bool {
+    matches!(d, DISCOUNT_FULL | DISCOUNT_TWO_SRC | DISCOUNT_ONE_SRC | DISCOUNT_NONE)
+}
+
+/// 折扣后估计（u128 域先乘后除——第二层保守口径）。
+pub const fn discounted_estimate(estimate: u64, discount: u32) -> u64 {
+    (estimate as u128 * discount as u128 / 10000u128) as u64
+}
+
+/// 预算裁决（Enough / Short(缺口)——缺口 = 要求 - 估计，闭式）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BudgetVerdict {
+    /// 熵量达标。
+    Enough,
+    /// 缺口（差多少位——降级决策输入）。
+    Short(u64),
+}
+
+/// 预算闸（对 KASLR_BITS_MIN 等 required 值）。
+pub const fn budget_gate(estimate: u64, required: u64) -> BudgetVerdict {
+    if estimate >= required {
+        BudgetVerdict::Enough
+    } else {
+        BudgetVerdict::Short(required - estimate)
+    }
+}
+
+/// **抽取预算账**（每抽一次花 64 位熵——估计位 ÷ 64 向下取整即预算
+/// 抽数；预算尽显性拒 BelowThreshold 不静默复用低熵——熵不能凭空
+/// 复用是 KASLR 抗预测的底线）。
+pub struct DrawBudget {
+    /// 预算抽数。
+    pub budget: u32,
+    /// 已抽数。
+    pub used: u32,
+    /// 超支拒计数。
+    pub exhausted_denials: u32,
+}
+
+impl DrawBudget {
+    /// 按估计位建账（estimate_bits / 64——192 位 → 3 抽）。
+    pub const fn new(estimate_bits: u64) -> DrawBudget {
+        DrawBudget {
+            budget: (estimate_bits / 64) as u32,
+            used: 0,
+            exhausted_denials: 0,
+        }
+    }
+
+    /// 余量。
+    pub const fn remaining(&self) -> u32 {
+        self.budget - self.used
+    }
+
+    /// **预算化抽取**（预算尽先拒不碰池；池活性尽走池面 SeedZero
+    /// 拒——池拒不耗预算，预算拒不碰池，两闸互不污染）。
+    pub fn draw(&mut self, pool: &mut EntropyPool) -> Result<[u8; 8], KaslrCode> {
+        if self.used >= self.budget {
+            self.exhausted_denials += 1;
+            return Err(KaslrCode::BelowThreshold);
+        }
+        let s = pool.draw_seed()?;
+        self.used += 1;
+        Ok(s)
+    }
+
+    /// 账守恒（used ≤ budget 恒——预算面不透支）。
+    pub const fn conserved(&self) -> bool {
+        self.used <= self.budget
+    }
+}
+
+/// 槽位步距（2 MiB 大页对齐——跨档步距一致性：1G/2M 页都能落）。
+pub const SLOT_STRIDE_BYTES: u64 = 2 * 1024 * 1024;
+
+/// 候选槽数闭式（窗口 ÷ 步距向下取整）。
+pub const fn slot_candidates(window_bytes: u64) -> u64 {
+    window_bytes / SLOT_STRIDE_BYTES
+}
+
+/// 槽位计划（seed mod 候选数——零候选退化 0 不 panic：调用侧
+/// SlotOutOfRange 闸先行的纯算术面）。
+pub const fn plan_slot(seed: u64, candidates: u64) -> u64 {
+    if candidates == 0 {
+        0
+    } else {
+        seed % candidates
+    }
+}
+
+/// **模偏置审计**（seed % n 在 2^64 不整除 n 时前 bias 个槽位概率
+/// 偏高——偏置量 = 2^64 mod n，u128 域闭式；biased = 偏置非零立案：
+/// KASLR 槽位分布要均匀，偏置窗口是可预测面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct BiasAudit {
+    /// 候选槽数。
+    pub candidates: u64,
+    /// 偏置余量（2^64 mod n）。
+    pub bias_remainder: u64,
+    /// 偏置立案（余量非零）。
+    pub biased: bool,
+}
+
+/// 偏置审计单点（零候选退化不立案——无槽可选不是偏置是缺席）。
+pub const fn bias_audit(candidates: u64) -> BiasAudit {
+    if candidates == 0 {
+        return BiasAudit { candidates, bias_remainder: 0, biased: false };
+    }
+    let n = candidates as u128;
+    let bias = ((1u128 << 64) % n) as u64;
+    BiasAudit { candidates, bias_remainder: bias, biased: bias != 0 }
+}
+
+/// 深-07 判据：熵预算混合估计——权重守恒 + 钳面恰值 + 混合恰值
+/// （手算：三满源 (64,12,20) → (320000+36000+40000)/10000 = 39 位）
+/// + 折扣四档恰值 + 折扣后恰值 + 折扣面校验 + 预算闸两态与缺口闭式。
+pub fn probe_blend_budget() -> bool {
+    // 权重守恒 + 钳面（超上限钳回 / 界内不动）。
+    let w_ok = weights_conserved()
+        && clamp_bits(70, CAP_RDRAND) == 64
+        && clamp_bits(8, CAP_TSC) == 8
+        && clamp_bits(64, CAP_MEMMAP) == CAP_MEMMAP;
+    // 混合恰值：三满源 = (64×5000 + 12×3000 + 20×2000)/10000
+    // = (320000+36000+40000)/10000 = 39 位。
+    let blend_ok = blend_estimate(64, 12, 20) == 39
+        // 全零源 = 0。
+        && blend_estimate(0, 0, 0) == 0
+        // 单源 RDRAND 满位 = 320000/10000 = 32 位。
+        && blend_estimate(64, 0, 0) == 32
+        // 单源 TSC 满位 = 36000/10000 = 3 位。
+        && blend_estimate(0, 12, 0) == 3
+        // 超界值与界内值同果（钳面生效）。
+        && blend_estimate(64, 12, 999) == blend_estimate(64, 12, CAP_MEMMAP);
+    // 折扣四档恰值 + 折扣面校验。
+    let disc_ok = independence_discount(true, true, true) == DISCOUNT_FULL
+        && independence_discount(false, true, true) == DISCOUNT_TWO_SRC
+        && independence_discount(false, false, true) == DISCOUNT_ONE_SRC
+        && independence_discount(false, false, false) == DISCOUNT_NONE
+        && discount_valid(DISCOUNT_FULL)
+        && discount_valid(DISCOUNT_NONE)
+        && !discount_valid(7000);
+    // 折扣后恰值：39 位 × 80% = 31.2 → 31 位（u128 先乘后除闭式）。
+    let disc_est_ok = discounted_estimate(39, DISCOUNT_TWO_SRC) == 31
+        && discounted_estimate(39, DISCOUNT_FULL) == 39
+        && discounted_estimate(39, DISCOUNT_NONE) == 0;
+    // 预算闸：39 ≥ 12 达标 / 5 < 12 缺 7（KASLR_BITS_MIN）。
+    let gate_ok = budget_gate(39, KASLR_BITS_MIN) == BudgetVerdict::Enough
+        && budget_gate(5, KASLR_BITS_MIN) == BudgetVerdict::Short(7);
+    w_ok && blend_ok && disc_ok && disc_est_ok && gate_ok
+}
+
+/// 深-08 判据：抽取预算闸——预算恰值（估计 39 位 → 0 抽？39/64=0——
+/// 192 位 → 3 抽恰值）+ 预算内抽取序列互异 + 超支 BelowThreshold 显性
+/// 拒计数 + 池活性拒不耗预算（两闸互不污染）+ 账守恒。
+pub fn probe_draw_budget() -> bool {
+    // 预算恰值：估 39 位 → 0 抽（39/64 向下取整）；估 192 位 → 3 抽。
+    let b0 = DrawBudget::new(39);
+    let b3 = DrawBudget::new(192);
+    let budget_ok = b0.budget == 0 && b3.budget == 3 && b3.remaining() == 3;
+    // 实抽序列：混合三次注入的池 → 预算 3 内三抽全通 + 序列互异。
+    let mut pool = EntropyPool::new();
+    let mut k = 0u8;
+    while (k as usize) < 8 {
+        pool.mix_in(&[0x40 + k, 0x80 + k, 0xC0 + k]);
+        k += 1;
+    }
+    let mut budget = DrawBudget::new(192);
+    let d1 = budget.draw(&mut pool);
+    let d2 = budget.draw(&mut pool);
+    let d3 = budget.draw(&mut pool);
+    let three_ok = d1.is_ok() && d2.is_ok() && d3.is_ok()
+        && budget.used == 3
+        && budget.remaining() == 0
+        && budget.conserved();
+    let distinct_ok = match (&d1, &d2, &d3) {
+        (Ok(a), Ok(b), Ok(c)) => a != b && b != c && a != c,
+        _ => false,
+    };
+    // 超支拒：第四抽 BelowThreshold 显性 + 拒计数 + 池不被动。
+    let cur = pool.cursor;
+    let over = budget.draw(&mut pool) == Err(KaslrCode::BelowThreshold)
+        && budget.exhausted_denials == 1
+        && budget.used == 3
+        && pool.cursor == cur;
+    // 池活性拒不耗预算：空池新账首抽 SeedZero——used 不动。
+    let mut empty = EntropyPool::new();
+    let mut empty_budget = DrawBudget::new(192);
+    let pool_deny = empty_budget.draw(&mut empty) == Err(KaslrCode::SeedZero)
+        && empty_budget.used == 0
+        && empty_budget.remaining() == 3;
+    budget_ok && three_ok && distinct_ok && over && pool_deny
+}
+
+/// 深-09 判据：槽位计划偏置审计——候选恰值（1GB/2MB=512）+ 计划恰值
+/// （seed mod 闭式手算）+ 幂窗口无偏置恰值 + 非 2 幂窗口偏置量恰值
+/// （2^64 mod 1536 = 1024——CRT 手算 512×3 窗口）+ 零候选退化不 panic
+/// 不立案。
+pub fn probe_slot_plan() -> bool {
+    // 候选恰值：1 GiB 窗口 / 2 MiB 步距 = 512 槽。
+    let cand_ok = slot_candidates(1024 * 1024 * 1024) == 512
+        && slot_candidates(3 * 1024 * 1024 * 1024) == 1536
+        && slot_candidates(0) == 0;
+    // 计划恰值：手算 0x1234 % 512 与 2^64-1 % 512。
+    let plan_ok = plan_slot(0x1234, 512) == 0x1234 % 512
+        && plan_slot(u64::MAX, 512) == (u64::MAX % 512)
+        && plan_slot(0x1234, 0) == 0
+        && plan_slot(u64::MAX, 1) == 0;
+    // 幂窗口（512 = 2^9）无偏置：2^64 mod 2^9 = 0。
+    let pow2 = bias_audit(512);
+    let pow2_ok = pow2.bias_remainder == 0 && !pow2.biased;
+    // 非 2 幂窗口（1536 = 512×3）：2^64 mod 1536 = 1024（CRT：x≡0
+    // mod 512 且 x≡1 mod 3 → x=1024）——偏置立案。
+    let odd = bias_audit(1536);
+    let odd_ok = odd.bias_remainder == 1024 && odd.biased;
+    // 零候选退化：不立案（缺席不是偏置）+ 不 panic。
+    let zero = bias_audit(0);
+    let zero_ok = zero.bias_remainder == 0 && !zero.biased;
+    cand_ok && plan_ok && pow2_ok && odd_ok && zero_ok
 }
