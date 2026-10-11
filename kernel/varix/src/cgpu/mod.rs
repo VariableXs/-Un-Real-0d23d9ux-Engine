@@ -180,6 +180,7 @@ pub mod cgr04_safedegrade;
 pub mod cgr05_faultiso;
 pub mod vcs02_multiuser;
 pub mod vcs03_session;
+pub mod vcs04_quota;
 pub mod vct03_protneg;
 pub mod vcu01_bencharch;
 pub mod vcu02_benchmodel;
@@ -251,7 +252,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 41] = [
+    let blocks: [(&'static str, CheckSet); 42] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -275,6 +276,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F1603", vck03_hettask_checks::run_vck03_checks()),
         ("CGPU-F2409", cgp09_privacy_checks::run_cgp09_checks()),
         ("CGPU-F2883", vcs03_session::run_vcs03_checks()),
+        ("CGPU-F2884", vcs04_quota::run_vcs04_checks()),
         ("CGPU-F1604", vck04_probe::run_vck04_checks()),
         ("CGPU-F1605", vck05_taskgraph::run_vck05_checks()),
         ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
