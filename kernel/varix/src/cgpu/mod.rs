@@ -172,6 +172,7 @@ pub mod cgf03_probedomain;
 pub mod cgg01_gnvidia;
 // cgg02_nvprobe — CGPU-F0962 NVIDIA 能力探测专项（RT/Tensor/显存/NVENC 四元特性表结果即数据/SKU级device+rev二级键未登记走代际默认诚实降级/DLSS+GSync扩展缺席不破坏功能/降级矩阵derive单点报告消费/0x32xx 三码）
 pub mod cgg02_nvprobe;
+// cgh03_pooltier 深化版（F1123 v2：三级池让度规则进裁决面/子账户树深度受限树内守恒/守恒三式/水位滞回+采样史趋势/八类事件账FNV链/再平衡单笔bps上限/回收预估单声明F1124执行位/快照指纹往返/读屏三段 0x65 段扩码 0x6505-0x650C）
 pub mod cgh03_pooltier;
 pub mod vck01_heteroarch;
 // vck02_hetres — CGPU-F1602 异构资源抽象（ComputeDevice四核心trait必选+Batch/Realtime扩展trait特性位图分层/四类型卡NPU DSP ISP MEDIA静态规格/HetCaps schema版本化能力即数据/HetHandle全局id+home+位置标签跨引擎位可达性判定/热注册带任务注销显性拒/MockEngine确定性假引擎F1454模式/0x3Bxx 四码）
@@ -476,3 +477,15 @@ pub mod vck24_simdbg;
 pub mod vck25_telbudget;
 // vck26_telprivacy — CGPU-F1707 异构遥测隐私（三级分类Public-Internal-Sensitive表外拒级别闸0x9201/模型名指纹评估版本+量化后缀可定位即本地化未评估拒0x9202/控制三闸面板开导出默认关删除幂等0x9203/上传匿名白名单剥离敏感项0x9204/四组自检/0x92xx 五码）
 pub mod vck26_telprivacy;
+// vck27_selfheal — CGPU-F1708 异构遥测异常自愈（三类闭集断流-指标异常-仓库失败0x9301/动作表配对断流→估算态标注异常→熔断失败→重试上限3禁用拒0x9302/心跳账倒退拒停摆检出0x9303/缺口诚实未标注出流拒0x9304/四组自检/0x93xx 五码）
+pub mod vck27_selfheal;
+// vck28_reportgen — CGPU-F1709 异构报告生成（周报模板F1559复用三节七行协同-能效-异常0x9401/数字回源断言源锚重算失配拦0x9402/导出F1561复用格式闭集授权默认关正文指纹0x9403/三组自检/0x94xx 五码）
+pub mod vck28_reportgen;
+// vck29_obsdoc — CGPU-F1710 异构文档（观测指南三章指标-面板-trace行数红线0x9501/API参考10函数冻结清单指纹对拍0x9502/教程五步十分钟600s预算0x9503/文档新鲜度版本对拍0x9504/三组自检/0x95xx 五码）
+pub mod vck29_obsdoc;
+// vck30_k07integ — CGPU-F1711 K07联调（端到端20用例×四站采集→仓库→面板→报告0x9601/五断言口径-归因-开销-隐私-trace全绿0x9602/故障演练断流异常注入自愈接管配对0x9603/8h长跑三查漂移-泄漏-守恒0x9604/联调报告结论证据锚/五组自检/0x96xx 五码）
+pub mod vck30_k07integ;
+// vck31_k07close — CGPU-F1712 K07组收口双签（15项接口总账含API10冻结指纹0x9801/三主题兑现0x9802/J08-C-P-E四契约0x9803/四账单元126集成14用例20+增量100µs恰值+指南教程+遗留显性0x9804/双签指纹失配三反例0x9805/六组自检/0x98xx 五码）
+pub mod vck31_k07close;
+// vck32_k08arch — CGPU-F1713 K08开工与场景生态总纲（落地声明两受众开发者-用户能力锚0x9A01/四场景族游戏-创作-生产力-AIPC挂J07映射0x9A02/生态五件套SDK-示例-基准-认证-兼容矩阵源单锚0x9A03/三组自检/0x9Axx 五码）
+pub mod vck32_k08arch;
