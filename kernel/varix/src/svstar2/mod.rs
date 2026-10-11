@@ -1091,6 +1091,11 @@ pub mod vead08_physreplay;
 pub mod vead09_telemetry;
 // vef66_multilink — VE-F5414 网络与S域多用户联动（多人化标注+交互词典统一口径驳回O(1)+偏好随账户走本地兜底 0xB9 段）
 pub mod vef66_multilink;
+pub mod veac03_perception;
+pub mod veac04_blackboard;
+pub mod veac03_perception_checks;
+pub mod vef68_pdomain;
+pub mod vef68_pdomain_checks;
 pub mod vef67_netext;
 pub mod vef63_apifreeze;
 pub mod vef64_netdocs;
@@ -1207,7 +1212,6 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F5602", veab02_devices_checks::run_veab02_checks()),
 ("VE-F5603", veab03_spatial_checks::run_veab03_checks()),
 ("VE-F5801", veac01_aicore_checks::run_veac01_checks()),
-("VE-F5804", veac04_blackboard::run_veac04_checks()),
 ("CGPU-F0321", vc21_budgetarch_checks::run_vc21_checks()),
 ("CGPU-F0481", vd81_contract_checks::run_vd81_checks()),
 ("CGPU-F2081", vcn01_nativerfx_checks::run_vcn01_checks()),
@@ -1599,6 +1603,13 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0233", veb233_dualscreen::run_veb233_checks()),
         ("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks()),
         ("CGPU-F1122", vch02_ledger_checks::run_vch02_checks()),
+    // W-VB1 · VE-F5803 感知系统（三类通道闭集/感知模型非真值结构级红线/
+    // 全知恒拒/遗忘曲线双写 15 格第 7 单/降级矩阵/漂移标定/0x68 段十码）
+        ("VE-F5803", veac03_perception_checks::run_veac03_checks()),
+("VE-F5804", veac04_blackboard::run_veac04_checks()),
+    // W-VB1 · VE-F5416 网络与 P 域联动（同源单管道/一张表 F4921/门接入
+    // F4954 以总表为准/预算双写 5 格第 8 单/断流置灰/0xBD 段十码）
+        ("VE-F5416", vef68_pdomain_checks::run_vef68_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -1641,7 +1652,3 @@ mod tests {
         assert_eq!(r.len(), 1, "VE-F0001 由内核 Rust 侧实现并可执行");
     }
 }
-// veac03_perception — VE-F5803 感知系统（三类感知通道与感知过滤——感知模型非世界真值，越权全知拒绝；感知含记忆时长与可配遗忘曲线；通道失效降级/漂移标定。并行覆盖清除后恢复注记）
-pub mod veac03_perception;
-pub mod veac04_blackboard;
-pub mod veac03_perception_checks;
