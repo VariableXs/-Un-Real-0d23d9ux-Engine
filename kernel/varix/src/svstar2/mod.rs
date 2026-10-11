@@ -176,6 +176,7 @@
 //! | [`vez16_perf`] | F5216 特效性能（特效没有免费午餐——**价签可见是诚实承诺**：逐特效性能画像 [`PerfProfiler`] 逐特效累计采样→均价价签 µs/帧，价签可见=查询返回明细（总账会藏胖子），**画像失真→采样校准**——样本 <3 低置信 [`Confidence`] 显性标注不冒充确定值+零开销样本拒收 E_PF_BADSAMPLE（测量事故不是快特效）；**特效降级阶梯**——帧紧张按语义权重降级 [`SemWeight`] 三档环境权重最低先减/转场居中/战斗最高最后减（环境少一朵花玩家不在意战斗少一记刀光玩家当场举报），降载 O(1) 预排序游标单步推进 [`DegradeLadder`]（权重升序+同权重价签降序先减收益最大），**降级无序→语义权重断言**（降级单权重序单调不减序乱即 E_PF_UNORDERED 立案不静默乱减），降级单读屏可达 [`DegradePlan::spoken`] 可读名单「环境粒子已降级」不是黑箱掉帧；**特效性能预算双层**——子系统预算+组合预算两本账（子系统内省余量≠组合安全）任一层超支即超支，三档 [`BudgetVerdict`] Ok/Tight/Over 同 U07 口径（余量 >10% Ok/0<≤10% Tight/≤0 Over——used≥budget 短路 Over margin 不做负数减法）；**预算失准→实测回灌**——基线与实测均值偏差 >20% 即校准 [`Feedback`] 新基线=实测均值双向漂移都校（事实压过假设）O(样本) 一遍求和；Z 域字符串码五码互异） | VE 册 #VE-F5216 |
 //! | [`vez17_bridge`] | F6005 物理与渲染对接（物理插值是消除画面抖动的关键，**抖动即缺陷**：插值缺失导致的画面抖动自动检出 [`PoseBridge::sample_pose`] Err 即立案不静默硬切；**对接三件**——位姿输出 [`PoseSnap`] 双快照线性插值 alpha 越界钳制不外推+插值缓冲 [`InterpBuf`] 有界 FIFO 容量 4 双快照齐才插（单快照硬切即抖动源）+剔除协同 [`PoseBridge::cull_reconcile`] 物理坐标与渲染剔除共享同一位姿源偏差超阈值即位姿漂移标定立案（两边看到的不是同一个世界）；**插值缓冲水位可见** water_permile 千分比全量可查；水位告急含**自动降载**——丢最旧一张每帧至多一张防雪崩被丢计入 OVERLOAD 账不静默；自动降载含**策略公开** [`DEGRADE_POLICY_DOC`]；公开含**策略文档** [`policy_spoken`] 可读名单降载不是黑箱丢帧；越权登记闸 E_BR_UNREGISTERED 幂等登记；对接 O(可见实体) [`PoseBridge::sample_all`] 逐实体 O(1) 合计线性；Z 域字符串码五码互异） | VE 册 #VE-F6005 |
 //! | [`vez18_dbg`] | F6006 物理调试支持（物理为什么这样动必须可查——三律可预期的执行层 X03 口径延伸；**调试三件**——物理体线框视图 [`circle_wire`]/[`aabb_wire`] 圆 12 段/AABB 4 段闭式 降采样档位减段不减体（看的体一个不少看的花纹变简）+约束可视化 [`PhysDebugger::constraint_view`] 约束对双锚可视线挂空体拒+步进单帧 [`PhysDebugger::step_once`] 推一帧记一迹 Editor 专属；**时间旅行**——[`TravelRing`] 快照环容量 8 逐帧回看 travel_back 越界钳制不 panic 回看只读历史不篡改；**性能预算声明** VIEW_BUDGET_US=100µs 超标动作含**降级预告**——预告是「下次降」不是「这步已降」pending 与 apply 分离卡顿前给预期降级有底 Quarter 到底不降没了；**越权开启→拒绝** 权限递增链 Off<Viewer<Editor Viewer 可看不可步进；**调试数据不出机**——导出闸默认关显式开三步 Closed→Armed→Open 脱敏导出 ExportDigest 只出统计不出坐标（类型面无坐标字段）；视图卡顿→降采样 Full→Half→Quarter；视图 O(物理体数)；Z 域字符串码五码互异） | VE 册 #VE-F6006 |
+//! | [`vez20_netdoc`] | F5411 网络文档（三族——网络架构册四层与双通道导览/开发者网络指南多人玩法/故障手册连接失败同步异常延迟过高三景；**四节定式 CI 断言同口径**——与 F5212 特效域同款 定位/用法/边界/故障按序非空 缺节 CI 拦截（「故障怎么办」那节缺失的册页读者出事时文档也在出事）；**同源映射面** REAL_API_SURFACE F5401-F5410 网络域十单提炼 12 API 闭集 册页引用⊆面才上架任一不在即分叉下架；**三景单**——景闭集覆盖账 缺景进补录排程点名不静默缺角 排程消化闭环；**复现步骤单**——O(步骤) 逐步可执行 复现失败→**阻断发版**（发一个没有说明书的高危品才是不发版的理由 阻断是保护不是拖延）发版闸三景齐+复现全绿才放行；读屏结构域本色 toc_spoken 族册树直出；Z 域字符串码五码互异） | VE 册 #VE-F5411 |
 //! | [`vem02_track`] | F2402 关键帧轨道系统（六类轨道/容器多轨/绑定协议/单源扩展） | VE 册 #VE-F2402 |
 //! | [`vem03_interp`] | F2403 关键帧插值（四插值器/可插拔注册/确定性/贝塞尔纪律） | VE 册 #VE-F2403 |
 //! | [`vem04_batch`] | F2404 关键帧批量操作（四操作/语义单源/单步撤销/原子事务） | VE 册 #VE-F2404 |
@@ -626,6 +627,7 @@ pub mod vez15_fuzz;
 pub mod vez16_perf;
 pub mod vez17_bridge;
 pub mod vez18_dbg;
+pub mod vez20_netdoc;
 pub mod veb11_checks;
 pub mod veb11_irq;
 pub mod veb12_checks;
@@ -1268,6 +1270,7 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F5216", vez16_perf::run_vez16_checks()),
 ("VE-F6005", vez17_bridge::run_vez17_checks()),
 ("VE-F6006", vez18_dbg::run_vez18_checks()),
+("VE-F5411", vez20_netdoc::run_vez20_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
