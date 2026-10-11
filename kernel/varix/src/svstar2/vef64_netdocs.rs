@@ -70,7 +70,6 @@
 //! CGPU 占、0x6D 全仓扫描仅 u32 全值常量非段位码——空闲）。no_std
 //! 零 std 依赖、零全局可变状态。
 
-use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

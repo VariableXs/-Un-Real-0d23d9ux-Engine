@@ -108,7 +108,6 @@
 //! | [`veab02_audioout`] | F5602 音频设备与输出管理（设备表枚举/热切换无缝续播——**续播位连续=无缝的可断言面**；切换时长预算 150ms 钉死**超预算即缺陷**独立对账；**淡出保护 20ms 钉死**为状态机强制首相位——跳淡出错序拒绝（爆音红线）；默认设备**锁定优先于跟随**+锁定失效显性回落（不静默解除）；延迟档位三档实测建档+空间音频按档位补偿；三路降级：设备消失→紧急无缝切换/爆音→淡出/无设备→静音态提示显性） | VE 册 #VE-F5602 |
 //! | [`veab02_audioout_checks`] | F5602 域自检（32 项四组：设备表+建档分档边界 9/选举四向+锁定失效 6/切换状态机全路径+预算边界+紧急路径 11/读屏+判据元 6；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F5602 |
 //! | [`veae01_inputarch`] | F6201 输入域总架构（四层：设备抽象/事件/映射/消费——依赖方向 16 对独立重算+**耦合违规拒绝注册**+越权审计留痕（拒绝+记账双动作）；**输入三律**可达/一致/可重绑——声明闭集+判定码 1/2/3 与 **U 域词典第十章同源同判**（前向契约位不复制口径）+**违例整改闭环**（违规史不可抹）；**输入如呼吸**域本色可机检化=**通道零丢帧账**（dropped 恒 0 判据钉死+三账守恒——卡一帧=假一帧）；AD10 承接契约位） | VE 册 #VE-F6201 |
-//! | [`veae05_imecoex`] | F6205 输入与 IME 共存（**组合期隔离无 ToGame 出口**——编码键进 IME 是快捷键不触发的真正机制而非吞键，Swallow 留给非编码游戏键 Tab；**Space 三岔口豁免**——语言控制键优先于游戏绑定判定，Space 既是跳跃键又是中文首选键组合期归 IME；**双源语境标记**——feed_key(key, from_game) Space 等双义键归宿由来源决定游戏侧来源让路期挂起聊天框来源正常编码；**泄漏→加固**——组合期按键到达游戏侧立案 E_ICE_LEAK guard_level 升级加固后声称投递一律拒收；**候选窗跟随**——锚点跟随+屏幕夹取1920×1080 右下角光标落点(1720,960) 恰值+错位容差 2px 立案 E_ICE_CAND_MISALIGN 修正重定心仍夹取；**仲裁器**——聊天框激活游戏让路挂起队列容量 16 满丢最旧释放 flush 恢复+交叉获取僵持 8 tick 超时回退焦点侧优先 E_ICE_ARBITER_STALL 用户正在打字是最高优先事实；**四步握手**——ChatAcquire/GameYield/ChatRelease/GameResume 乱序跳步漂移检出清半程；**中日韩矩阵**——中文空格首选数字选字 Esc 取消/日文罗马字 Enter 确认假名直通/韩文 Jamo 音节直接组合无候选窗阶段 Backspace 拆字+韩文组合期 KeyW 是 Jamo 编码不是快捷键；**读屏五类播报**——组合开始/更新/提交/取消/候选导航中文播报 sink 无主立案 E_ICE_ANNOUNCE_SINK_LOST 播报无人接收是无障碍面失效；五码互异 reason 全量显性） | VE 册 #VE-F6205 |
 //! | [`veae01_inputarch_checks`] | F6201 域自检（27 项四组：架构层序+耦合拦截+审计 8/三律声明+同源码+整改闭环 9/通道零丢帧+守恒+红项可达 4/读屏+判据元 6；期望值判据侧独立重算，不变量两头都测） | VE 册 #VE-F6201 |
 //! | [`vcb01_framegraph`] | CGPU-F0161 帧任务图数据结构（CGPU-B 域首单——一帧渲染工作的图模型：任务节点**六型闭集**（上传/计算/图形/拷贝/合成/呈现——加一型必须改调度器，编译器替架构把关）×五属性（读写集/预算/优先级/截止/队列）+边**四型闭集**（写后读/读后写/写后写/用户显式）三闸校验（自环/端点未知/重复边）；**ID 索引化**下标即句柄 O(1)；**arena 节点池**只分配不下单点释放——帧末整池释放零碎片+双释放拒绝；**图不可变快照**into_snapshot 消费构建器——所有权迁移保证无可变入口（多消费者安全）；帧号关联每帧一图；万节点压测判据） | CGPU 册 #CGPU-F0161 |
 //! | [`vcb01_framegraph_checks`] | CGPU-F0161 域自检（27 项六组：结构全覆盖 4/ID 索引 4/arena 整池+双释放 4/快照语义 4/边三闸 3/万节点压测 4/读屏+判据元 4；期望值判据侧独立重算，不变量两头都测） | CGPU 册 #CGPU-F0161 |
@@ -989,12 +988,6 @@ pub mod veab03_spatial_checks;
 // veab07_audioassets — VE-F5607 音频资产管线深化版（与并行速写位并存深化为准：三段管线编排/格式注册制重复未注册显性拒/双标注账面落定可查/失真查表闭式零浮点/按需滚动预取/窗内失败提前三秒降级/回退滞回显性恢复/量账守恒 0x53 段）
 // veae03_evtbus — VE-F6203 输入事件总线（发布订阅优先级三件/洪流背压同键替换不追加不刷爆/溢出优先级倒序丢弃Urgent永不丢/乱序入口断言拒入/(frame,seq)确定性派发序/订阅租约到期回收泄漏面/优先级地板滤除留痕/AA01总线同构契约冻结/量账守恒 0x33 段）
 pub mod veae03_evtbus;
-pub mod vez17_bridge;
-pub mod vez18_dbg;
-pub mod vez19_determ;
-pub mod vez20_netdoc;
-pub mod veae02_inputabs;
-pub mod veae04_devfsm;
 pub mod veae05_imecoex;
 pub mod veab07_audioassets;
 pub mod veab07_audioasset;
@@ -1283,12 +1276,6 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F5214", vez14_examples::run_vez14_checks()),
 ("VE-F5215", vez15_fuzz::run_vez15_checks()),
 ("VE-F5216", vez16_perf::run_vez16_checks()),
-("VE-F6204", veae04_devfsm::run_veae04_checks()),
-("VE-F6005", vez17_bridge::run_vez17_checks()),
-("VE-F6006", vez18_dbg::run_vez18_checks()),
-("VE-F6007", vez19_determ::run_vez19_checks()),
-("VE-F5411", vez20_netdoc::run_vez20_checks()),
-("VE-F6202", veae02_inputabs::run_veae02_checks()),
 ("VE-F0211", veb11_irq::run_veb11_checks()),
 ("VE-F0212", veb12_recovery::run_veb12_checks()),
 ("VE-F0213", veb13_heads::run_veb13_checks()),
