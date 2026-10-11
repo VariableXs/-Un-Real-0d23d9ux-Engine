@@ -179,6 +179,7 @@ pub mod cgr04_safedegrade;
 pub mod cgr05_faultiso;
 pub mod vcs02_multiuser;
 pub mod vcs03_session;
+pub mod vcs04_quota;
 pub mod vct03_protneg;
 pub mod vcu01_bencharch;
 pub mod vcu02_benchmodel;
@@ -245,7 +246,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 38] = [
+    let blocks: [(&'static str, CheckSet); 39] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -287,6 +288,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-W3524", vcw04_apiref_checks::run_vcw04_checks()),
         ("CGPU-F2409", cgp09_privacy_checks::run_cgp09_checks()),
         ("CGPU-F2883", vcs03_session::run_vcs03_checks()),
+        ("CGPU-F2884", vcs04_quota::run_vcs04_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
