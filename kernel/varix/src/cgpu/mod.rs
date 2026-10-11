@@ -159,6 +159,8 @@ pub mod cge04_surfacerender;
 pub mod cgf03_capability;
 // vct04_handshake — CGPU-F3044 握手与鉴权深化版（五阶段单向状态机+迁移表全枚举/令牌五重校验格式→版本→窗→绑定→撤销/会话三绑定不串户/nonce 单次消费重放防线/失败三态+重试限速 30tick/审计账+失败归因/0x6C 段七码）
 pub mod vct04_handshake;
+// vct05_secboundary — CGPU-F3045 对接安全边界深化版（五闸流水 版本/长度/类型/载荷/频度/TrustTier 三级信任适配/ReuseDeclaration 复用声明 F3044 来源/SecSnap 快照指纹+往返恒等/reference_budget_check 多口径探针/0x6D 段六码）
+pub mod vct05_secboundary;
 pub mod cge03_surfacereg;
 pub mod cge04_surfsched;
 pub mod cgf02_authflow;
@@ -182,6 +184,10 @@ pub mod vcs02_multiuser;
 pub mod vct03_protneg;
 pub mod vcu01_bencharch;
 pub mod vcu02_benchmodel;
+// vcu03_scenecls — CGPU-F3203 基准场景分类（渲染/计算/混合/极限四类闭集分类即语义/场景分类册 id→class 登记查询账四闸显性拒 id范围-空名-重复-容量逐码计数/四类分布统计覆盖面歪斜判定单类严格过3/4显性化/与vcu02 MAX_SCENES 同口径消费集成复用顶格id合法超格拒/ScCode 四码互异/7 项域自检）
+pub mod vcu03_scenecls;
+// vcu04_scoringsys — CGPU-F3204 计分体系深化版（三分链 原始分量纲五闭集×方向二闭集→归一分四模式闭集 基线比值/对数刻度半步log2/门槛二值/排名百分位→加权总分已覆盖类权重公平聚合/权重四档万分制和恒10000守恒/计分表五闸显性拒逐码计数/迟滞防抖带内吞毛刺带外真覆盖/滚动账守恒/ScoreSnap 快照FNV指纹+往返恒等/reference_budget_check 四口径探针/ScoreCode 0x6E 段十六码互异+segment_guard 对账）
+pub mod vcu04_scoringsys;
 // cgc04_framearbiter — CGPU-F0005 帧预算仲裁器（12.5ms五账户切分合成器保底4ms不可侵占/申请制预算标签三要素预估-优先级-降级档/裁定四态批准排队降级拒绝静默吞帧禁绝/超时先走降级档帧级超时发降质链信号F0008消费/信用池低峰存入高峰先补交互/判定步数账50μs红线步数化/帧日志全量seq单调/不变量核验保底零侵占/0x3Cxx 九码）
 pub mod cgc04_framearbiter;
 // cgd05_ratecontract — CGPU-F0485 帧率合同校验器（P95≤12.5ms/P99≤25ms/卡顿率≤0.5%三条款滚动窗600帧自动判定/0.5ms桶计数分位O(n+桶)/达标率每场景每时段履行报告/预警双源余量耗用80%+卡顿趋势Rising提前干预/预算修正建议单出单不执行C域消费/场景隔离清窗重计跨场景混算会撒谎/0x3Dxx 六码）
@@ -316,6 +322,8 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     // 查出）：此前连 `pub mod` 声明都没有，全文件从未被编译检查，等于死代码。
     // T02 对接协议分层 / W02 文档信息架构 / W03 文档生成管线 / W04 API 参考生成。
         ("CGPU-T3042", vct02_layers_checks::run_vct02_checks()),
+        ("CGPU-F3203", vcu03_scenecls::run_vcu03_checks()),
+        ("CGPU-F3204", vcu04_scoringsys::run_vcu04_checks()),
         ("CGPU-W3522", vcw02_infoarch_checks::run_vcw02_checks()),
         ("CGPU-W3523", vcw03_genpipeline_checks::run_vcw03_checks()),
         ("CGPU-W3524", vcw04_apiref_checks::run_vcw04_checks()),
