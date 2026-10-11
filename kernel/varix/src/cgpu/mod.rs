@@ -59,6 +59,7 @@ pub mod cga02_threadpool_checks;
 pub mod cga03_framegraph;
 // cga04_placer —— CGPU-F0004 CPU/GPU 任务放置决策器（成本画像五输入/双路预估公式写死/双路契约资格证+缺路拒/滞回防抖连续 5 帧差>15% 才切换/误差账持续>30% 触发重标定闭环 ±50% 钳制单帧一次/决策日志滚动全量可回放+守恒对账/双路指纹对拍分歧立案冻结/0x65 段十五码）
 pub mod cga04_placer;
+pub mod cga10_bandwidth_sched;
 pub mod vcl01_virtualarch;
 pub mod vcl01_virtualarch_checks;
 // vcl02_virtmode — CGPU-F1762 虚拟化模式分类（四模式定义表机制名冻结词表/五维0-3整数矩阵版本化matrix-v3/决策树显性if序四约束/同卡直通×分区×半虚拟互斥共存判定/损耗声明四行选型报告带原文/0x33xx 两码）
@@ -529,3 +530,11 @@ pub mod vck50_k0406audit;
 pub mod vck51_k0708audit;
 // vck52_pairaudit — CGPU-F1733 组间两两对账（重点10对在册+C(8,2)=28总账0xB001/逐对三查口径-依赖-漂移0xB002/发现显性登记带去向0xB003/指纹查重0xB004/三组自检/0xB0xx 五码）
 pub mod vck52_pairaudit;
+// vck53_apicensus — CGPU-F1734 K域API面终版清点（八组74函数总表实测0xB101/命名蛇形+无环+三要素复审0xB102/十年承诺封版v1 0xB103/扩展位开放+跨域B-J-C单向无环0xB104/六组自检/0xB1xx 五码）
+pub mod vck53_apicensus;
+// vck54_testassets — CGPU-F1735 测试资产汇总（单元1078八组分账+集成136+联测117恰值0xB201/全绿证据FNV复算对拍0xB202/组合八组全非零0xB203/跳过显性核因+去向0xB204/四组自检/0xB2xx 五码）
+pub mod vck54_testassets;
+// vck55_perfassets — CGPU-F1736 性能与精度资产汇总（开销恰值0.1ms双账0xB301/加速比≥1.5x+能效≥20%0xB302/预测≥800‰+画像门禁0xB303/未达标显性对照+长稳8h三查0xB304/五组自检/0xB3xx 五码）
+pub mod vck55_perfassets;
+// vck56_secassets — CGPU-F1737 安全红线资产汇总（六红线同源断言0xB401/模型+序fuzz零崩溃0xB402/kill-拔出-过热三类演练0xB403/供应链三依赖审计0xB404/五组自检/0xB4xx 五码）
+pub mod vck56_secassets;
