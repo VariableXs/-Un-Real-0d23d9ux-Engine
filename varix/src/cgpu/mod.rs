@@ -585,3 +585,7 @@ pub mod vck67_k10disc;
 pub mod vck68_guestcap;
 // vcu05_benchrunner — CGPU-F3205 基准运行器（三功能：场景调度确定序/计时定点中位数+噪声闸/采集P50P95汇总+双跑确定/0xBF段12码）
 pub mod vcu05_benchrunner;
+pub mod cgq01_txqueue;
+pub mod cgj05_pwrfilt;
+pub mod vcw07_docsec;
+pub mod cgq02_txmerge;
