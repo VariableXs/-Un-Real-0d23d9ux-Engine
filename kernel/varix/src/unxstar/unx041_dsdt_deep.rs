@@ -1367,6 +1367,13 @@ pub fn run_unx041b_checks() -> CheckSet {
         s.fail("U041D-组-03-四口径参考探针全真", "参考探针失效");
     }
 
+    // 深-01：表集分类/批量验和恰值（清单不丢不重+坏表立案不阻塞）。
+    if probe_table_set() {
+        s.ok("U041D-深-01-表集扫描与批量验和");
+    } else {
+        s.fail("U041D-深-01-表集扫描与批量验和", "清单面失效");
+    }
+
     // --- 判据元 ---
     // 元-01：零 panic 面（自扫）+ 空态平凡 + 快照往返 + 版本非空。
     let src = include_str!("unx041_dsdt_deep.rs");
@@ -1464,4 +1471,186 @@ fn strip_lexical_noise(src: &str) -> String {
         i += 1;
     }
     out
+}
+
+// ===========================================================================
+// 深化八区：XSDT 表集扫描分类账 / 批量校验和闸——定位链之后是
+// 「桌上有什么表」的清单面：逐指针分类、逐表验和，坏表立案不阻塞
+// ===========================================================================
+
+/// 表分类闭集（本册关心的四类——其余 Other 兜底显性）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TableClass {
+    /// DSDT（差异化系统描述表——AML 本体）。
+    Dsdt,
+    /// SSDT（次级系统描述表——AML 补丁层）。
+    Ssdt,
+    /// FACP（Fixed ACPI Description Table——硬件签名面）。
+    Facp,
+    /// 其他签名（MADT/HPET/MCFG 等——本册不解析只记账）。
+    Other,
+}
+
+impl TableClass {
+    /// 签名分类单点（4 字节签名 → 类——清单分类的判定锚）。
+    /// const fn 内数组 `==` 走非 const PartialEq（E0658），改逐字节比较。
+    pub const fn of_sig(sig: &[u8; 4]) -> TableClass {
+        if sig[0] == b'D' && sig[1] == b'S' && sig[2] == b'D' && sig[3] == b'T' {
+            TableClass::Dsdt
+        } else if sig[0] == b'S' && sig[1] == b'S' && sig[2] == b'D' && sig[3] == b'T' {
+            TableClass::Ssdt
+        } else if sig[0] == b'F' && sig[1] == b'A' && sig[2] == b'C' && sig[3] == b'P' {
+            TableClass::Facp
+        } else {
+            TableClass::Other
+        }
+    }
+}
+
+/// 表集扫描账（XSDT 载荷 → 逐 8 字节指针 → 分类计数 + 非零闸 +
+/// 越界闸——清单面：桌上有什么表一目了然）。
+pub struct TableSetScan {
+    /// DSDT 计数。
+    pub dsdt: u32,
+    /// SSDT 计数。
+    pub ssdt: u32,
+    /// FACP 计数。
+    pub facp: u32,
+    /// 其他表计数。
+    pub other: u32,
+    /// 零指针立案数（固件放了空槽——清单面异物显性）。
+    pub zero_ptrs: u32,
+    /// 扫描表项总数（含零槽——清单完整性锚）。
+    pub entries: u32,
+}
+
+impl TableSetScan {
+    /// 空账。
+    pub const fn new() -> TableSetScan {
+        TableSetScan {
+            dsdt: 0,
+            ssdt: 0,
+            facp: 0,
+            other: 0,
+            zero_ptrs: 0,
+            entries: 0,
+        }
+    }
+
+    /// **扫描 XSDT 载荷**（36 偏移起每 8 字节一个 64 位表指针——
+    /// 指针域只取载荷边界内完整槽，残缺尾槽不猜不越界）。
+    pub fn scan(xsdt: &[u8]) -> TableSetScan {
+        let mut out = TableSetScan::new();
+        // 表项区从 36 偏移起，8 字节对齐完整槽。
+        let mut off = 36usize;
+        while off + 8 <= xsdt.len() {
+            let p = le_u64(xsdt, off).unwrap_or(0);
+            out.entries += 1;
+            if p == 0 {
+                out.zero_ptrs += 1;
+                off += 8;
+                continue;
+            }
+            // 分类需读签名——指针只是地址（零 IO 面：签名分类按
+            // 载荷内的**内联表镜像**不可得，此处按「槽占位分类」——
+            // 指针非零即 Other 档记账，签名分类由测试夹具侧喂镜像）。
+            out.other += 1;
+            off += 8;
+        }
+        out
+    }
+
+    /// **扫描内联表镜像集**（测试/宿主面：表镜像按序排列，逐表
+    /// 抽签名分类——真分类路径，与 scan 的占位记账互补）。
+    pub fn classify_mirrors(tables: &[&[u8]]) -> TableSetScan {
+        let mut out = TableSetScan::new();
+        let mut i = 0usize;
+        while i < tables.len() {
+            out.entries += 1;
+            let t = tables[i];
+            if t.len() >= 4 {
+                let sig = [t[0], t[1], t[2], t[3]];
+                match TableClass::of_sig(&sig) {
+                    TableClass::Dsdt => out.dsdt += 1,
+                    TableClass::Ssdt => out.ssdt += 1,
+                    TableClass::Facp => out.facp += 1,
+                    TableClass::Other => out.other += 1,
+                }
+            } else {
+                out.zero_ptrs += 1; // 残表（<4 字节无签名）按异物记账
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// 账守恒（分类四桶和 + 零槽 == 总条目——清单不丢不重）。
+    pub const fn conserved(&self) -> bool {
+        self.dsdt + self.ssdt + self.facp + self.other + self.zero_ptrs == self.entries
+    }
+}
+
+/// 批量校验和闸（表集逐表 SdtHeader 域 checksum——坏表进清单
+/// 立案不阻塞：清单是报告不是中止，与 BootReport 语义同构）。
+pub fn batch_checksum_gate(tables: &[&[u8]]) -> (u32, Vec<usize>) {
+    let mut ok_count = 0u32;
+    let mut bad_list: Vec<usize> = Vec::new();
+    let mut i = 0usize;
+    while i < tables.len() {
+        let t = tables[i];
+        // 表长域（4..8）界内取用——残表按整表验。
+        let use_len = if t.len() >= 8 {
+            let declared = le_u32(t, 4).unwrap_or(0) as usize;
+            if declared > 0 && declared <= t.len() {
+                declared
+            } else {
+                t.len()
+            }
+        } else {
+            t.len()
+        };
+        if use_len >= SDT_HEADER_LEN && checksum_ok(t, use_len) {
+            ok_count += 1;
+        } else {
+            bad_list.push(i);
+        }
+        i += 1;
+    }
+    (ok_count, bad_list)
+}
+
+/// 深化面参考探针——表集分类/批量验和恰值。
+pub fn probe_table_set() -> bool {
+    // 镜像集：DSDT + SSDT + FACP + MADT(Other) + 残表。
+    let dsdt = b"DSDT__body__";
+    let ssdt = b"SSDT__body__";
+    let facp = b"FACP__body__";
+    let madt = b"APIC__body__";
+    let stub: &[u8] = b"XY";
+    let scan = TableSetScan::classify_mirrors(&[dsdt, ssdt, facp, madt, stub]);
+    let cls_ok = scan.dsdt == 1
+        && scan.ssdt == 1
+        && scan.facp == 1
+        && scan.other == 1
+        && scan.zero_ptrs == 1
+        && scan.entries == 5
+        && scan.conserved();
+    // 占位扫描：3 槽（1 零槽 + 2 非零 Other）——载荷 36+16=52 字节。
+    let mut xsdt = alloc::vec![0u8; 52];
+    xsdt[36] = 0x10; // 指针一非零
+    // 指针二（44 偏移）保持零——零槽立案。
+    let scan2 = TableSetScan::scan(&xsdt);
+    let scan2_ok = scan2.entries == 2 && scan2.zero_ptrs == 1 && scan2.other == 1
+        && scan2.conserved();
+    // 批量验和：好表（合法头长 36 校验和补齐）+ 坏表（校验和翻）。
+    let mut good = alloc::vec![0u8; 36];
+    good[0..4].copy_from_slice(b"DSDT");
+    good[4..8].copy_from_slice(&36u32.to_le_bytes());
+    let s = sum_mod256(&good) as u8;
+    good[9] = (256 - s as u16) as u8;
+    let mut bad = good.clone();
+    bad[11] ^= 0xFF; // 校验和合法化后翻转——真坏表
+    let (ok_n, bads) = batch_checksum_gate(&[&good, &bad]);
+    let gate_ok = ok_n == 1 && bads.len() == 1 && bads[0] == 1;
+    cls_ok && scan2_ok && gate_ok
 }

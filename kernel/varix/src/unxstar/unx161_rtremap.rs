@@ -1543,7 +1543,7 @@ impl TlbSnap {
 
     /// 序列化（'|' 分隔保空段——账面行单行）。
     pub fn serialize(&self) -> String {
-        let mut s = alloc::format!("{}|{}", self.version, self.rows[0]);
+        let s = alloc::format!("{}|{}", self.version, self.rows[0]);
         let _ = &self.fp;
         s
     }
