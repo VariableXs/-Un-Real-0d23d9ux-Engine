@@ -997,6 +997,8 @@ pub mod veab06_voice;
 // veab06_voice_deep — VE-F5606 语音系统骨架深化版（与速写版并存深化为准：0x5E 段十六码/六档码率阶梯降一升三迟滞到底静音占位/AA01 可靠通道接缝按权裁剪裁数据保语音+权重饿死立案+裁剪账本+序列空洞哨/五段延迟预算 150ms 守恒+最坏段归因+滚动窗降档建议/定点静噪门双门限迟滞+吊尾防切字+底噪自适应/说话板结构性隐私无载荷字段+抖动抑制滞留/单变体 Permission 隐私类型层阻断+违例审计+载荷擦除对账恒零/设备独占抢占提示+同者幂等+超时回收/快照保空段指纹+8人×128帧参考探针 零unwrap零墙钟）
 pub mod veab06_voice_deep;
 // vef61_netbudget — VE-F5408 网络性能预算（带宽五档单源表声明实测分开记账+CPU占比bps上限超限立案+容量实测不虚标无单拒声明安全系数1/2虚标回灌修正+分档降级O(1)迟滞回升防振荡+档位读屏可达 0x66段）
+// vef63_tlink — VE-F5413 网络与T域对接联动（联动三件：文本走T域多语言管线O(1)回执+乱码UTF-8扫描诊断阈值2+地区路由6区8节点编译期代价矩阵对称同区100邻区400跨洋900/失配对拍修正窗16失配率bps/合规审查5类闭集拦截+提示语脱敏账只记指纹类别跨境标记/超限显性拒 0x86 段）
+pub mod vef63_tlink;
 pub mod vef61_netbudget;
 pub mod vef62_nettelemetry;
 pub mod veab05_music;
@@ -1083,6 +1085,8 @@ pub mod vead04_bindgraph;
 pub mod vead08_physreplay;
 // vead09_telemetry — VE-F6009 物理遥测（四类聚合器+体数时间线洪峰标注+开放导出U域schema+异常标注来源分类统计汇总 0xB4 段）
 pub mod vead09_telemetry;
+// vef66_multilink — VE-F5414 网络与S域多用户联动（多人化标注+交互词典统一口径驳回O(1)+偏好随账户走本地兜底 0xB9 段）
+pub mod vef66_multilink;
 pub mod vef63_apifreeze;
 pub mod vef64_netdocs;
 pub mod vef65_netsim;
@@ -1557,6 +1561,7 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F6004", vead04_bindgraph::run_vead04_checks()),
         ("VE-F6008", vead08_physreplay::run_vead08_checks()),
         ("VE-F6009", vead09_telemetry::run_vead09_checks()),
+        ("VE-F5414", vef66_multilink::run_vef66_checks()),
         ("VE-F5410", vef63_apifreeze::run_vef63_checks()),
         ("VE-F5411", vef64_netdocs::run_vef64_checks()),
         ("VE-F5412", vef65_netsim::run_vef65_checks()),
