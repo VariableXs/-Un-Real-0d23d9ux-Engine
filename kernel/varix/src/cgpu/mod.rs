@@ -61,6 +61,11 @@ pub mod cga03_framegraph;
 // cga04_placer —— CGPU-F0004 CPU/GPU 任务放置决策器（成本画像五输入/双路预估公式写死/双路契约资格证+缺路拒/滞回防抖连续 5 帧差>15% 才切换/误差账持续>30% 触发重标定闭环 ±50% 钳制单帧一次/决策日志滚动全量可回放+守恒对账/双路指纹对拍分歧立案冻结/0x65 段十五码）
 pub mod cga04_placer;
 pub mod cga10_bandwidth_sched;
+pub mod vcg14_ressamp;
+pub mod vcg13_textrast;
+pub mod vca12_hwcompat;
+pub mod vcg13_textrast;
+pub mod vca12_hwcompat;
 pub mod vcl01_virtualarch;
 pub mod vcl01_virtualarch_checks;
 // vcl02_virtmode — CGPU-F1762 虚拟化模式分类（四模式定义表机制名冻结词表/五维0-3整数矩阵版本化matrix-v3/决策树显性if序四约束/同卡直通×分区×半虚拟互斥共存判定/损耗声明四行选型报告带原文/0x33xx 两码）
@@ -301,6 +306,11 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
+("CGPU-F0014", vcg14_ressamp::run_vcg14_checks()),
+("CGPU-F0013", vcg13_textrast::run_vcg13_checks()),
+("CGPU-F0012", vca12_hwcompat::run_vca12_checks()),
+("CGPU-F0013", vcg13_textrast::run_vcg13_checks()),
+("CGPU-F0012", vca12_hwcompat::run_vca12_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
         ("CGPU-E0002", cge02_lifecycle_checks::run_cge02_checks()),
         ("CGPU-I1281", cgi01_bandwidth_checks::run_cgi01_checks()),
@@ -583,5 +593,22 @@ pub mod vck66_k10scene;
 pub mod vck67_k10disc;
 // vck68_guestcap — CGPU-F1764 能力探测与虚拟化感知（guest探测模式判读矛盾保守仲裁+探测矩阵const表压舱+诚实三验证态虚标拦截+host协商四步交集语义越权留痕+探测缓存K01+失败三连保守模式/0xBD段12码）
 pub mod vck68_guestcap;
-// vcu05_benchrunner — CGPU-F3205 基准运行器（三功能：场景调度确定序/计时定点中位数+噪声闸/采集P50P95汇总+双跑确定/0xBF段12码）
-pub mod vcu05_benchrunner;
+
+// ==========================================================================
+// CGPU 批次 3（CGPU-F3206 结果归一化 U05 组续单）
+// ==========================================================================
+pub mod vcu06_resultnorm;
+pub mod vcu06grid;
+pub mod vcu06mx;
+
+// --------------------------------------------------------------------------
+/// CGPU-F3206 结果归一化域聚合（跨硬件归一/基线对照）。
+pub fn run_cgpu20_g06c() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("CGPU20-g06c");
+    let mut ok = true;
+    if !vcu06_resultnorm::run_g06c_checks().all_passed() { ok = false; }
+    if !vcu06grid::run_g06c_checks().all_passed() { ok = false; }
+    if !vcu06mx::run_g06c_checks().all_passed() { ok = false; }
+    set.add("CGPU-F3206", ok, if ok { "" } else { "cgpu20-g06c family sub-checks red" });
+    set
+}
