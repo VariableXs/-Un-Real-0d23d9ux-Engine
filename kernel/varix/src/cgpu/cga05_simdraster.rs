@@ -138,6 +138,9 @@ impl XcCode {
             XcCode::SrGammaRange => "gamma 表越界：查表索引必须 0..=255",
             XcCode::SrCacheCollide => "缓存键碰撞：不同请求同键，哈希退化立案",
             XcCode::SrThroughputLow => "吞吐未达标：单核 4K 字形 <200 字/毫秒",
+            XcCode::SrBlendFormat => "混合格式非法：SIMD 灰度路径只收 8bit 灰度，子像素三列走专用路径",
+            XcCode::SrBlendClipped => "混合越界：位图溢出目标缓冲，截断即缺笔，拒绝不静默",
+            XcCode::SrMetricsBad => "度量失准：advance/行高与 size 相关性破坏，排版面违约",
         }
     }
 }
@@ -439,7 +442,7 @@ pub fn blend_into(
     dst_h: u32,
     mode: BlendMode,
     gamma: &[u8; 256],
-    cases: &mut u64,
+    cases: &mut u32,
 ) -> Result<(), XcCode> {
     if bmp.channels != 1 {
         *cases = cases.saturating_add(1);
@@ -454,7 +457,7 @@ pub fn blend_into(
     while y < bmp.height {
         let mut x = 0u32;
         while x < bmp.width {
-            let s = bmp.data[((y * bmp.width + x) as usize)] as u32;
+            let s = bmp.data[(y * bmp.width + x) as usize] as u32;
             if s == 0 {
                 x += 1;
                 continue; // 全透明零成本跳过（大面积空白字形的吞吐关键）
@@ -585,7 +588,7 @@ impl SimdRasterizer {
         let dh = bmp.height + 8;
         let mut dst = Vec::new();
         dst.resize((dw * dh) as usize, 0u8);
-        blend_into(&mut dst, &bmp, 4, 4, dw, dh, BlendMode::Over, gamma, &mut self.cases)?;
+        blend_into(&mut dst, &bmp, 4, 4, dw, dh, BlendMode::Over, &gamma, &mut self.cases)?;
         // 至少一个像素被点亮（字形非空）。
         let mut lit = 0usize;
         let mut i = 0usize;
@@ -600,7 +603,7 @@ impl SimdRasterizer {
             return Err(XcCode::SrBlendFormat);
         }
         // 越界拒绝：origin 贴边导致溢出。
-        let r2 = blend_into(&mut dst, &bmp, dw - 1, 0, dw, dh, BlendMode::Over, gamma, &mut self.cases);
+        let r2 = blend_into(&mut dst, &bmp, dw - 1, 0, dw, dh, BlendMode::Over, &gamma, &mut self.cases);
         if r2 != Err(XcCode::SrBlendClipped) {
             self.cases = self.cases.saturating_add(1);
             return Err(XcCode::SrBlendClipped);
@@ -616,7 +619,7 @@ impl SimdRasterizer {
         let dh = 64;
         let mut dst = Vec::new();
         dst.resize((dw * dh) as usize, 0u8);
-        let end = self.render_text_run(&run, &mut dst, dw, dh, gamma)?;
+        let end = self.render_text_run(&run, &mut dst, dw, dh, &gamma)?;
         let m = GlyphMetrics::from_request(&GlyphRequest {
             size_px: 16, font_id: 0, codepoint: 0, aa: AaMode::Gray,
         });
