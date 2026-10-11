@@ -5,6 +5,7 @@
 //! 直接复用 `crate::acpi` 的 SdtHeader/checksum_ok/SDT_HEADER_LEN。
 //! 后续各单在此追加注册——先推模块本体再补注册行，防孤儿登记 E0433。
 
+use alloc::string::String;
 pub mod unx041_dsdt;
 pub mod unx041_dsdt_checks;
 // unx041_dsdt_deep ↔ UNX-F0041 DSDT 遍历校验（既有深化模块，里程碑三：《统一协作总台账》通篇重述 RSDP 双窗/XSDT 直查 RSDT 回退/FACP 定位/X_DSDT 兼顾 32 位地址/DSDT 槽位遍历（SUOP-与-OVSP-辨识）/OEM ID 动态补全（枚举-倒查-逆推）/运行期 Info-Warn-Fatal/BootReport append-only 面/AML 全码段表/DsdtSnap 确定性 FNV+快照/0x2F 段十六进制码与 0x2E 既有码区分）
@@ -209,96 +210,6 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
             if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
         );
     }
-    {
-        let sub = run_unx20_t602();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0602",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t642();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0642",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t682();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0682",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t702();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0702",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t722();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0722",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t742();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0742",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t782();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0782",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t802();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0802",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t822();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0822",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t842();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0842",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
     // UNX-20 任务族登记（20 域各一笔，总量 8+20=28 ≤ MAX_CHECKS 112）
     {
         let sub = run_unx20_t162();
@@ -494,6 +405,96 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     }
     set
 }
+/// UNX-F0642 域聚合。
+pub fn run_unx20_t642() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t642");
+    let mut ok = true;
+    if !unx642_envcheck::run_t642_checks().all_passed() { ok = false; }
+    if !unx642grid::run_t642_checks().all_passed() { ok = false; }
+    if !unx642mx::run_t642_checks().all_passed() { ok = false; }
+    set.add("UNX-F0642", ok, if ok { "" } else { "unx20-t642 family sub-checks red" });
+    set
+}
+/// UNX-F0682 域聚合。
+pub fn run_unx20_t682() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t682");
+    let mut ok = true;
+    if !unx682_matrixrot::run_t682_checks().all_passed() { ok = false; }
+    if !unx682grid::run_t682_checks().all_passed() { ok = false; }
+    if !unx682mx::run_t682_checks().all_passed() { ok = false; }
+    set.add("UNX-F0682", ok, if ok { "" } else { "unx20-t682 family sub-checks red" });
+    set
+}
+/// UNX-F0702 域聚合。
+pub fn run_unx20_t702() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t702");
+    let mut ok = true;
+    if !unx702_acpi80::run_t702_checks().all_passed() { ok = false; }
+    if !unx702grid::run_t702_checks().all_passed() { ok = false; }
+    if !unx702mx::run_t702_checks().all_passed() { ok = false; }
+    set.add("UNX-F0702", ok, if ok { "" } else { "unx20-t702 family sub-checks red" });
+    set
+}
+/// UNX-F0722 域聚合。
+pub fn run_unx20_t722() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t722");
+    let mut ok = true;
+    if !unx722_verfp::run_t722_checks().all_passed() { ok = false; }
+    if !unx722grid::run_t722_checks().all_passed() { ok = false; }
+    if !unx722mx::run_t722_checks().all_passed() { ok = false; }
+    set.add("UNX-F0722", ok, if ok { "" } else { "unx20-t722 family sub-checks red" });
+    set
+}
+/// UNX-F0742 域聚合。
+pub fn run_unx20_t742() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t742");
+    let mut ok = true;
+    if !unx742_upgrade::run_t742_checks().all_passed() { ok = false; }
+    if !unx742grid::run_t742_checks().all_passed() { ok = false; }
+    if !unx742mx::run_t742_checks().all_passed() { ok = false; }
+    set.add("UNX-F0742", ok, if ok { "" } else { "unx20-t742 family sub-checks red" });
+    set
+}
+/// UNX-F0782 域聚合。
+pub fn run_unx20_t782() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t782");
+    let mut ok = true;
+    if !unx782_final240k::run_t782_checks().all_passed() { ok = false; }
+    if !unx782grid::run_t782_checks().all_passed() { ok = false; }
+    if !unx782mx::run_t782_checks().all_passed() { ok = false; }
+    set.add("UNX-F0782", ok, if ok { "" } else { "unx20-t782 family sub-checks red" });
+    set
+}
+/// UNX-F0802 域聚合。
+pub fn run_unx20_t802() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t802");
+    let mut ok = true;
+    if !unx802_exctriage::run_t802_checks().all_passed() { ok = false; }
+    if !unx802grid::run_t802_checks().all_passed() { ok = false; }
+    if !unx802mx::run_t802_checks().all_passed() { ok = false; }
+    set.add("UNX-F0802", ok, if ok { "" } else { "unx20-t802 family sub-checks red" });
+    set
+}
+/// UNX-F0822 域聚合。
+pub fn run_unx20_t822() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t822");
+    let mut ok = true;
+    if !unx822_svr::run_t822_checks().all_passed() { ok = false; }
+    if !unx822grid::run_t822_checks().all_passed() { ok = false; }
+    if !unx822mx::run_t822_checks().all_passed() { ok = false; }
+    set.add("UNX-F0822", ok, if ok { "" } else { "unx20-t822 family sub-checks red" });
+    set
+}
+/// UNX-F0842 域聚合。
+pub fn run_unx20_t842() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX20-t842");
+    let mut ok = true;
+    if !unx842_edgeeoi::run_t842_checks().all_passed() { ok = false; }
+    if !unx842grid::run_t842_checks().all_passed() { ok = false; }
+    if !unx842mx::run_t842_checks().all_passed() { ok = false; }
+    set.add("UNX-F0842", ok, if ok { "" } else { "unx20-t842 family sub-checks red" });
+    set
+}
 
 #[cfg(test)]
 mod tests {
@@ -580,14 +581,12 @@ pub mod unx582_kvparse;
 pub mod unx403_tsccalib;
 // unx384_alignalloc —— UNX-F0384 对齐分配语义（2^n 对齐面，100% 对齐重放核 + 零跨档浪费超 1 块守卫，0x9A 段七码）
 pub mod unx384_alignalloc;
-// unx1023_hpettick —— UNX-F1023 HPET 周期模式与 tick 生成（1ms tick 10^6 拍漂移<100µs，抖动 p99<10µs，丢拍检测 10/10，0x9D 段七码）
-pub mod unx1023_hpettick;
-
-// unx1043_tscdeadline —— UNX-F1043 TSC-deadline 模式（LAPIC deadline 投递，10 万次零丢失，探测 10/10，p99≤10µs，0x9C 段七码）
-pub mod unx1043_tscdeadline;
-
 // unx385_pairledger —— UNX-F0385 分配记账（申请/释放配对账，配对键=调用点+尺寸档双向可查，配对率 100%，0x9B 段七码）
 pub mod unx385_pairledger;
+// unx1043_tscdeadline —— UNX-F1043 TSC-deadline 模式（LAPIC deadline 投递，10 万次零丢失，探测 10/10，p99≤10µs，0x9C 段七码）
+pub mod unx1043_tscdeadline;
+// unx1023_hpettick —— UNX-F1023 HPET 周期模式与 tick 生成（1ms tick 10^6 拍漂移<100µs，抖动 p99<10µs，丢拍检测 10/10，0x9D 段七码）
+pub mod unx1023_hpettick;
 
 
 
@@ -1177,14 +1176,13 @@ pub mod unx462_bus0scan;
 pub mod unx482_pixfmt;
 // unx502_serialout_deep —— UNX-F0502 串口输出原语深化并存版（与 unx502_serialout 原版 857 行并存；三路同源对拍/UTF-8 五类故障/流控四态，0x9901~0x9910 段）
 pub mod unx502_serialout_deep;
-
-// ==========================================================================
-// UNX 批次 4（CoRun 主册续单：F0602/F0642/F0682/F0702/F0722/F0742/F0782/F0802/F0822/F0842）
-// ==========================================================================
+pub mod unx602_initrdro;
 pub mod unx602grid;
 pub mod unx602mx;
+pub mod unx642_envcheck;
 pub mod unx642grid;
 pub mod unx642mx;
+pub mod unx682_matrixrot;
 pub mod unx682grid;
 pub mod unx682mx;
 pub mod unx702grid;
@@ -1201,9 +1199,44 @@ pub mod unx822grid;
 pub mod unx822mx;
 pub mod unx842grid;
 pub mod unx842mx;
+pub mod unx941_irqtwostage;
+pub mod unx981_irqstorm;
+pub mod unx1001_tsync;
+pub mod unx1021_hpetprobe;
+pub mod unx1041_clockarb;
+pub mod unx110_ipicall;
+pub mod unx111_dualmode;
+pub mod unx112_targetselect;
+pub mod unx114_selfreentry;
+pub mod unx115_reschedule;
+pub mod unx116_payloadct;
+pub mod unx117_ipiqueue;
+pub mod unx118_pauseresume;
+pub mod unx119_health;
+pub mod unx120_notify;
+pub mod unx121storm_stress;
+pub mod unx702_acpi80;
+pub mod unx722_verfp;
+pub mod unx742_upgrade;
+pub mod unx782_final240k;
+pub mod unx802_exctriage;
+pub mod unx822_svr;
+pub mod unx842_edgeeoi;
+pub mod unx1002_tsccaps;
+pub mod unx1022_timeout1;
+pub mod unx1042_arbtrigger;
+pub mod unx1101_disptab;
+pub mod unx1121_irqsign;
+pub mod unx1481_assertledger;
+pub mod unx1521_ledgerindex;
+pub mod unx1541_domainfinal;
+pub mod unx1542_domainaxioms;
+pub mod unx1741_idlefsm;
+pub mod unx1761_obsface;
+pub mod unx1801_schedpath;
 
 // --------------------------------------------------------------------------
-// UNX 批次 4 任务族聚合
+// UNX 批次 4 任务族聚合（修复重建）
 // --------------------------------------------------------------------------
 /// UNX-F0602 域聚合。
 pub fn run_unx20_t602() -> crate::checks::CheckSet {
@@ -1215,114 +1248,3 @@ pub fn run_unx20_t602() -> crate::checks::CheckSet {
     set.add("UNX-F0602", ok, if ok { "" } else { "unx20-t602 family sub-checks red" });
     set
 }
-/// UNX-F0642 域聚合。
-pub fn run_unx20_t642() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t642");
-    let mut ok = true;
-    if !unx642_envcheck::run_t642_checks().all_passed() { ok = false; }
-    if !unx642grid::run_t642_checks().all_passed() { ok = false; }
-    if !unx642mx::run_t642_checks().all_passed() { ok = false; }
-    set.add("UNX-F0642", ok, if ok { "" } else { "unx20-t642 family sub-checks red" });
-    set
-}
-/// UNX-F0682 域聚合。
-pub fn run_unx20_t682() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t682");
-    let mut ok = true;
-    if !unx682_matrixrot::run_t682_checks().all_passed() { ok = false; }
-    if !unx682grid::run_t682_checks().all_passed() { ok = false; }
-    if !unx682mx::run_t682_checks().all_passed() { ok = false; }
-    set.add("UNX-F0682", ok, if ok { "" } else { "unx20-t682 family sub-checks red" });
-    set
-}
-/// UNX-F0702 域聚合。
-pub fn run_unx20_t702() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t702");
-    let mut ok = true;
-    if !unx702_acpi80::run_t702_checks().all_passed() { ok = false; }
-    if !unx702grid::run_t702_checks().all_passed() { ok = false; }
-    if !unx702mx::run_t702_checks().all_passed() { ok = false; }
-    set.add("UNX-F0702", ok, if ok { "" } else { "unx20-t702 family sub-checks red" });
-    set
-}
-/// UNX-F0722 域聚合。
-pub fn run_unx20_t722() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t722");
-    let mut ok = true;
-    if !unx722_verfp::run_t722_checks().all_passed() { ok = false; }
-    if !unx722grid::run_t722_checks().all_passed() { ok = false; }
-    if !unx722mx::run_t722_checks().all_passed() { ok = false; }
-    set.add("UNX-F0722", ok, if ok { "" } else { "unx20-t722 family sub-checks red" });
-    set
-}
-/// UNX-F0742 域聚合。
-pub fn run_unx20_t742() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t742");
-    let mut ok = true;
-    if !unx742_upgrade::run_t742_checks().all_passed() { ok = false; }
-    if !unx742grid::run_t742_checks().all_passed() { ok = false; }
-    if !unx742mx::run_t742_checks().all_passed() { ok = false; }
-    set.add("UNX-F0742", ok, if ok { "" } else { "unx20-t742 family sub-checks red" });
-    set
-}
-/// UNX-F0782 域聚合。
-pub fn run_unx20_t782() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t782");
-    let mut ok = true;
-    if !unx782_final240k::run_t782_checks().all_passed() { ok = false; }
-    if !unx782grid::run_t782_checks().all_passed() { ok = false; }
-    if !unx782mx::run_t782_checks().all_passed() { ok = false; }
-    set.add("UNX-F0782", ok, if ok { "" } else { "unx20-t782 family sub-checks red" });
-    set
-}
-/// UNX-F0802 域聚合。
-pub fn run_unx20_t802() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t802");
-    let mut ok = true;
-    if !unx802_exctriage::run_t802_checks().all_passed() { ok = false; }
-    if !unx802grid::run_t802_checks().all_passed() { ok = false; }
-    if !unx802mx::run_t802_checks().all_passed() { ok = false; }
-    set.add("UNX-F0802", ok, if ok { "" } else { "unx20-t802 family sub-checks red" });
-    set
-}
-/// UNX-F0822 域聚合。
-pub fn run_unx20_t822() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t822");
-    let mut ok = true;
-    if !unx822_svr::run_t822_checks().all_passed() { ok = false; }
-    if !unx822grid::run_t822_checks().all_passed() { ok = false; }
-    if !unx822mx::run_t822_checks().all_passed() { ok = false; }
-    set.add("UNX-F0822", ok, if ok { "" } else { "unx20-t822 family sub-checks red" });
-    set
-}
-/// UNX-F0842 域聚合。
-pub fn run_unx20_t842() -> crate::checks::CheckSet {
-    let mut set = crate::checks::CheckSet::new("UNX20-t842");
-    let mut ok = true;
-    if !unx842_edgeeoi::run_t842_checks().all_passed() { ok = false; }
-    if !unx842grid::run_t842_checks().all_passed() { ok = false; }
-    if !unx842mx::run_t842_checks().all_passed() { ok = false; }
-    set.add("UNX-F0842", ok, if ok { "" } else { "unx20-t842 family sub-checks red" });
-    set
-}
-// unx941_irqtwostage ↔ UNX-F0941 两级分发骨架（0x4ca0 段）
-pub mod unx941_irqtwostage;
-// unx981_irqstorm ↔ UNX-F0981 中断风暴检测器（0x4cb0 段）
-pub mod unx981_irqstorm;
-// unx1001_tsync ↔ UNX-F1001 TSC 跨核同步校验（0x4cc0 段）
-pub mod unx1001_tsync;
-// unx1021_hpetprobe ↔ UNX-F1021 HPET 探测与能力账（0x4cd0 段）
-pub mod unx1021_hpetprobe;
-// unx1041_clockarb ↔ UNX-F1041 主时钟源仲裁器（0x4ce0 段）
-pub mod unx1041_clockarb;
-
-// unx1002_tsccaps ↔ UNX-F1002 TSC 特性探测（0x4cf0 段）
-pub mod unx1002_tsccaps;
-// unx1022_timeout1 ↔ UNX-F1022 单次超时器底座（0x4d40 段）
-pub mod unx1022_timeout1;
-// unx1042_arbtrigger ↔ UNX-F1042 仲裁触发条件清单（0x4d50 段）
-pub mod unx1042_arbtrigger;
-// unx1101_disptab ↔ UNX-F1101 C 分发表 256 槽（0x4d60 段）
-pub mod unx1101_disptab;
-// unx1121_irqsign ↔ UNX-F1121 register_irq 签名冻结（0x4d70 段）
-pub mod unx1121_irqsign;
