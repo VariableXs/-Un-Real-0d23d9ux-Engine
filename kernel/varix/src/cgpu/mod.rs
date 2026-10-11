@@ -521,3 +521,11 @@ pub mod vck46_k08integ;
 pub mod vck47_k08close;
 // vck48_k09arch — CGPU-F1729 K09开工与自查范围（O09-J09-K09范式三次复用0xAC01/七维范围+红黄绿GO门禁0xAC02/三纪律复用0xAC03/记录+F1742报告K10消费双锚0xAC04/五组自检/0xACxx 五码）
 pub mod vck48_k09arch;
+// vck49_k0103audit — CGPU-F1730 K01-K03组自查核验（接口14/12/10回读0xAD01/F0406枚举兑现闭环0xAD02/BJI安全四契约0xAD03/五场景延迟表+miss<0.1%门禁回读0xAD04/结论三态/0xADxx 五码）
+pub mod vck49_k0103audit;
+// vck50_k0406audit — CGPU-F1731 K04-K06组自查核验（接口8/8/6回读0xAE01/深化六向+离线声明0xAE02/无黑屏红线+三模式伪影声明0xAE03/能效增益20%+两态画像+决策可解释0xAE04/结论三态/0xAExx 五码）
+pub mod vck50_k0406audit;
+// vck51_k0708audit — CGPU-F1732 K07-K08组自查核验（接口10/6回读0xAF01/归因双维守恒+准确率≥950‰0xAF02/隐私三档回读0xAF03/16条端到端+矩阵诚实+判据公开0xAF04/结论三态/0xAFxx 五码）
+pub mod vck51_k0708audit;
+// vck52_pairaudit — CGPU-F1733 组间两两对账（重点10对在册+C(8,2)=28总账0xB001/逐对三查口径-依赖-漂移0xB002/发现显性登记带去向0xB003/指纹查重0xB004/三组自检/0xB0xx 五码）
+pub mod vck52_pairaudit;
