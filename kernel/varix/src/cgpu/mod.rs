@@ -301,6 +301,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
+("CGPU-F0012", vca12_hwcompat::run_vca12_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
         ("CGPU-E0002", cge02_lifecycle_checks::run_cge02_checks()),
         ("CGPU-I1281", cgi01_bandwidth_checks::run_cgi01_checks()),
@@ -571,3 +572,13 @@ pub mod vck61_goreport;
 pub mod vck62_rehearsal;
 // vck63_k09close — CGPU-F1744 K09组收口双签（15项接口+自查工具5函数FNV冻结v1 0xBB01/8组-10对-74清点总数字恰值0xBB02/五资产确认0xBB03/补齐三数字+K10移交GO确认0xBB04/双签/六组自检/0xBBxx 五码）
 pub mod vck63_k09close;
+// cgj06_pwrledger — CGPU-F1446 核显与内存功耗分账（五账户可分则分不可分整账显性/Package活动比例拆分估算非实测/显存三参数模型可校准/面板LUT查表/审计5%容差+负残差立案/不确定度保守传播+决策加权/H域提示单/幂等闸+快照对拍/0xBC段12码）
+pub mod cgj06_pwrledger;
+// vck64_k10ledger — CGPU-F1745 K域接口总账与主题映射终审（九组79函数恰值0xBC01/四资产v1冻结+十年承诺0xBC02/八主题8/8终审0xBC03/八域契约同源+预留闭环双锚0xBC04/五组自检/0xBCxx 五码）
+pub mod vck64_k10ledger;
+// vck65_k10metric — CGPU-F1746 K域指标与归因准确率终审（注册表v2四族+口径唯一0xBD01/归因四维≥950‰契约0xBD02/精度全表恰值0xBD03/五门禁回读+守恒±2%抽查+估算显性标注0xBD04/六组自检/0xBDxx 五码）
+pub mod vck65_k10metric;
+// vck66_k10scene — CGPU-F1747 K域场景覆盖终审（五段场景账63无空白+资产三件0xBE01/路由≥990‰0xBE02/量化全表效益≥承诺延迟≤承诺0xBE03/真机三对照回读0xBE04/五组自检/0xBExx 五码）
+pub mod vck66_k10scene;
+// vck67_k10disc — CGPU-F1748 K域三纪律终审（三开销恰值100/100/50µs回读0xBF01/采样≤50‰+降级四档连续0xBF02/不造假30路径零违例0xBF03/五断言CI固化+违例零未决0xBF04/五组自检/0xBFxx 五码）
+pub mod vck67_k10disc;
