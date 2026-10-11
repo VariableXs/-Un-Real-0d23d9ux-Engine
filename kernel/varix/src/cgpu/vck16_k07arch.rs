@@ -16,7 +16,6 @@
 //!
 //! 纯功能：no_std+alloc；零 unwrap/expect；全部自检在 selfcheck_* 组内。
 
-use alloc::vec::Vec;
 
 /// 模块版本。
 pub const K07_ARCH_VERSION: &str = "K16-k07arch-v1";
