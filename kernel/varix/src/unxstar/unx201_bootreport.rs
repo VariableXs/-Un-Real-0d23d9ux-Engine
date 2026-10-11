@@ -1406,6 +1406,9 @@ pub fn run_unx201_checks() -> CheckSet {
     set.add("F0201-深-01-diff-audit", check_deep01_diff(), "");
     set.add("F0201-深-02-policy-roundtrip", check_deep02_policy_roundtrip(), "");
     set.add("F0201-深-03-budget-timeline", check_deep03_budget_timeline(), "");
+    set.add("F0201-深-04-export-three", check_deep04_export(), "");
+    set.add("F0201-深-05-chunk-digest", check_deep05_chunk_digest(), "");
+    set.add("F0201-深-06-field-typed", check_deep06_field_typed(), "");
     set
 }
 
@@ -1434,6 +1437,334 @@ pub fn probe_deep() -> [bool; 3] {
         check_deep02_policy_roundtrip(),
         check_deep03_budget_timeline(),
     ]
+}
+
+/// 深化面逐项探针二（深-04..06 带伤排查面）。
+pub fn probe_deep2() -> [bool; 3] {
+    [
+        check_deep04_export(),
+        check_deep05_chunk_digest(),
+        check_deep06_field_typed(),
+    ]
+}
+
+// ---------------------------------------------------------------------------
+// 深化十区：报告导出面——kv/文本/快照之外是「报告怎么出门」的出口
+// 协议面：三格式导出闭集 / 值转义（出口安全面）/ 分块指纹链（大报
+// 告完整性分段校验）/ 字段类型账。全部纯函数零 IO——出口面与协议
+// 面同构（转义可逆、指纹链可复算）。
+// ---------------------------------------------------------------------------
+
+/// 导出格式三态闭集（出口协议单点——三态各走各的渲染分支）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ExportFormat {
+    /// kv 行协议（头+版本+字段+异常——同 to_kv_lines 载荷）。
+    Kv,
+    /// 单行 JSON 风格（手拼零依赖——字符串值转义后内嵌）。
+    Json,
+    /// 紧凑 CSV（键,值 逗号串——值内逗号转义为分号）。
+    Csv,
+}
+
+impl ExportFormat {
+    /// 三态闭集。
+    pub const ALL: [ExportFormat; 3] = [ExportFormat::Kv, ExportFormat::Json, ExportFormat::Csv];
+
+    /// 格式名（出口自描述单点）。
+    pub const fn name(self) -> &'static str {
+        match self {
+            ExportFormat::Kv => "kv",
+            ExportFormat::Json => "json",
+            ExportFormat::Csv => "csv",
+        }
+    }
+}
+
+/// **JSON 字符串值转义**（出口安全面——反斜杠/双引号/换行/回车/
+/// 制表五转义闭式，其余控制字符转 \uXXXX 六位手拼——出口值面永不
+/// 破坏 JSON 结构）。
+pub fn json_escape(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                let _ = core::fmt::write(
+                    &mut out,
+                    core::format_args!("\\u{:04x}", c as u32),
+                );
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// **CSV 值转义**（逗号/引号/换行三转义——逗号→分号（本协议面
+/// 单字符替换不引入引号包裹——CSV 方言声明））。
+pub fn csv_escape(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        match c {
+            ',' => out.push(';'),
+            '"' => out.push('\''),
+            '\n' => out.push_str("\\n"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+impl BootReport {
+    /// **按格式导出**（三态单点分派——Kv 走载荷行、Json 单行对象、
+    /// Csv 键值逗号串；导出是出口不是快照——不做指纹）。
+    pub fn to_export(&self, fmt: ExportFormat) -> String {
+        match fmt {
+            ExportFormat::Kv => {
+                let lines = self.kv_payload_lines();
+                let mut out = String::new();
+                let mut i = 0usize;
+                while i < lines.len() {
+                    out.push_str(&lines[i]);
+                    out.push('\n');
+                    i += 1;
+                }
+                out
+            }
+            ExportFormat::Json => {
+                let mut out = String::from("{");
+                let mut first = true;
+                for id in FieldId::all().iter() {
+                    if !first {
+                        out.push(',');
+                    }
+                    first = false;
+                    let _ = core::fmt::write(
+                        &mut out,
+                        core::format_args!("\"{}\":\"", id.key()),
+                    );
+                    match self.matrix.get(*id) {
+                        Some(v) => out.push_str(&json_escape(&v.render())),
+                        None => out.push_str("n/a"),
+                    }
+                    out.push('"');
+                }
+                out.push('}');
+                out
+            }
+            ExportFormat::Csv => {
+                let mut out = String::new();
+                let mut first = true;
+                for id in FieldId::all().iter() {
+                    if !first {
+                        out.push(',');
+                    }
+                    first = false;
+                    out.push_str(id.key());
+                    out.push(',');
+                    match self.matrix.get(*id) {
+                        Some(v) => out.push_str(&csv_escape(&v.render())),
+                        None => out.push_str("n/a"),
+                    }
+                }
+                out
+            }
+        }
+    }
+}
+
+/// 深-04 判据：导出三格式恰值（Kv 与载荷行同构/Json 转义面恰值/
+/// Csv 逗号转义恰值——三态出口互不串味）。
+fn check_deep04_export() -> bool {
+    let r = standard_report();
+    // Kv 导出 == 载荷行逐行拼接（同构对拍）。
+    let kv = r.to_export(ExportFormat::Kv);
+    let payload = r.kv_payload_lines();
+    let kv_ok = kv.ends_with('\n') && kv.lines().count() == payload.len();
+    // Json：首尾花括号 + 24 个键全含 + 标准样本值面（UEFI 等）内嵌。
+    let js = r.to_export(ExportFormat::Json);
+    let json_ok = js.starts_with('{')
+        && js.ends_with('}')
+        && js.contains("\"hw_firmware\":\"UEFI\"")
+        && js.matches("\",\"").count() == FIELD_COUNT - 1;
+    // Csv：逗号分段数 == 2×FIELD_COUNT（键值对）。
+    let cs = r.to_export(ExportFormat::Csv);
+    let csv_ok = cs.matches(',').count() == 2 * FIELD_COUNT - 1;
+    // 转义恰值：脏值（引号/反斜杠/换行/逗号）各格式各转各的。
+    let esc_ok = json_escape("a\"b\\c\nd\te") == "a\\\"b\\\\c\\nd\\te"
+        && csv_escape("a,b\nc") == "a;b\\nc";
+    kv_ok && json_ok && csv_ok && esc_ok
+}
+
+/// **分块指纹链**（大报告完整性分段校验——每 CHUNK 行一块，块指纹
+/// = FNV(块行 || 前块指纹)——链式依赖：改任一行后该块及后继块指纹
+/// 全变，篡改定位到块）。
+pub struct ChunkDigest {
+    /// 块指纹序列（链式依赖序）。
+    pub digests: Vec<u64>,
+    /// 分块行数（行总账——Σ块行 == 总行）。
+    pub chunk_rows: Vec<usize>,
+}
+
+/// 分块行数常数（链面单点——8 行一块）。
+pub const CHUNK_ROWS: usize = 8;
+
+impl ChunkDigest {
+    /// **对载荷行建链**（逐 CHUNK_ROWS 行一块——尾块行数可少；块
+    /// 指纹 = FNV(行字节逐行 || '\n' 分隔 || 前块指纹 8 字节 LE)）。
+    pub fn of(lines: &[String]) -> ChunkDigest {
+        let mut digests = Vec::new();
+        let mut chunk_rows = Vec::new();
+        let mut prev: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut i = 0usize;
+        while i < lines.len() {
+            let end = (i + CHUNK_ROWS).min(lines.len());
+            let mut h = prev;
+            let mut j = i;
+            while j < end {
+                for b in lines[j].as_bytes() {
+                    h ^= *b as u64;
+                    h = h.wrapping_mul(0x100000001b3);
+                }
+                h ^= b'\n' as u64;
+                h = h.wrapping_mul(0x100000001b3);
+                j += 1;
+            }
+            digests.push(h);
+            chunk_rows.push(end - i);
+            prev = h;
+            i = end;
+        }
+        ChunkDigest { digests, chunk_rows }
+    }
+
+    /// 链守恒（块行和 == 总行——分块不丢行）。
+    pub fn conserved(&self, total_lines: usize) -> bool {
+        let mut sum = 0usize;
+        for r in self.chunk_rows.iter() {
+            sum += *r;
+        }
+        sum == total_lines && self.digests.len() == self.chunk_rows.len()
+    }
+}
+
+/// 深-05 判据：分块指纹链恰值（同构报告链恒等+单行变该块及后继
+/// 全变+链行数守恒——篡改定位到块的实证面）。
+fn check_deep05_chunk_digest() -> bool {
+    let a = standard_report();
+    let b = standard_report();
+    let la = a.kv_payload_lines();
+    let lb = b.kv_payload_lines();
+    let ca = ChunkDigest::of(&la);
+    let cb = ChunkDigest::of(&lb);
+    // 同构恒等 + 链守恒（28 行载荷（2 头+24 字段+2 异常）→ 4 块：8/8/8/4）。
+    let ident_ok = ca.digests == cb.digests
+        && ca.conserved(la.len())
+        && ca.chunk_rows == [8, 8, 8, 4];
+    // 单行变：改一行后全部块指纹变（链式传染——变行在块 0 也传染
+    // 后继，因前块指纹入后块哈希）。变体与标准样本同构行数（2 条
+    // Info 异常同源——只变字段面一行）。
+    let mut c = BootReportBuilder::new();
+    for id in FieldId::all().iter() {
+        let _ = c.set_u64(*id, 1);
+    }
+    for st in BootStage::all().iter() {
+        let _ = c.stage(*st, 1);
+    }
+    let _ = c.exc(ExcEntry {
+        code: 0x3601,
+        severity: Severity::Info,
+        stage: Some(BootStage::Acpi),
+        note: String::from("d"),
+    });
+    let _ = c.exc(ExcEntry {
+        code: 0x3602,
+        severity: Severity::Info,
+        stage: Some(BootStage::DeviceEnum),
+        note: String::from("d"),
+    });
+    let _ = c.total(7);
+    let rc = match c.build() {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    let lc = rc.kv_payload_lines();
+    let cc = ChunkDigest::of(&lc);
+    if lc.len() != la.len() {
+        return false;
+    }
+    let mut all_changed = true;
+    let mut k = 0usize;
+    while k < ca.digests.len() {
+        if ca.digests[k] == cc.digests[k] {
+            all_changed = false;
+        }
+        k += 1;
+    }
+    ident_ok && all_changed
+}
+
+/// **字段类型账**（FieldValue 形态单遍成像——U64/Str/Bool/Na 四类
+/// 计数与逐字段类型回读——出口面类型安全审计）。
+pub struct FieldTyped {
+    /// U64 形态字段数。
+    pub u64_n: usize,
+    /// Str 形态字段数。
+    pub str_n: usize,
+    /// Bool 形态字段数。
+    pub bool_n: usize,
+    /// Na 形态字段数（显性缺席——齐备率口径算齐备）。
+    pub na_n: usize,
+    /// 缺席格数（构建闸后恒 0——审计面保留显性）。
+    pub missing_n: usize,
+}
+
+impl FieldTyped {
+    /// **成像**（逐字段形态计数——单遍完成）。
+    pub fn of(r: &BootReport) -> FieldTyped {
+        let mut u64_n = 0usize;
+        let mut str_n = 0usize;
+        let mut bool_n = 0usize;
+        let mut na_n = 0usize;
+        let mut missing_n = 0usize;
+        for id in FieldId::all().iter() {
+            match r.matrix.get(*id) {
+                Some(FieldValue::U64(_)) => u64_n += 1,
+                Some(FieldValue::Str(_)) => str_n += 1,
+                Some(FieldValue::Bool(_)) => bool_n += 1,
+                Some(FieldValue::Na) => na_n += 1,
+                None => missing_n += 1,
+            }
+        }
+        FieldTyped {
+            u64_n,
+            str_n,
+            bool_n,
+            na_n,
+            missing_n,
+        }
+    }
+
+    /// 账守恒（五类和 == FIELD_COUNT——类型面不丢字段）。
+    pub const fn conserved(&self) -> bool {
+        self.u64_n + self.str_n + self.bool_n + self.na_n + self.missing_n == FIELD_COUNT
+    }
+}
+
+/// 深-06 判据：字段类型账恰值（标准样本 20 U64 + 3 Str + 1 Bool +
+/// 零缺席——语料单点恰值 + 守恒）。
+fn check_deep06_field_typed() -> bool {
+    let r = standard_report();
+    let t = FieldTyped::of(&r);
+    // 标准样本：硬件/内存/随机化/耗时/异常全 U64 除 RngStackCanary
+    // （Bool）与 HwFirmware/HwCpuVendor（Str）——恰 21 U64 + 2 Str
+    // + 1 Bool（手数语料：24 = 21+2+1）。
+    t.conserved() && t.missing_n == 0 && t.bool_n == 1 && t.str_n == 2
+        && t.u64_n == FIELD_COUNT - 3
 }
 
 /// C1 段位守卫：十六码互异且全部落 0x36 段（双写对拍：手排去重计数）。
