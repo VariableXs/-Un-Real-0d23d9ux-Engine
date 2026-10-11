@@ -2093,3 +2093,12 @@ pub fn run_wb20_u1901() -> crate::checks::CheckSet {
     set.add("UNX-F1901", ok, if ok { "" } else { "wb20-u1901 family sub-checks red" });
     set
 }
+
+// unx843_eoipath —— UNX-F0843 MSI/MSI-X EOI 路径深化版（十万事件行为矩阵100%一致/终结点四态裁决/泄漏账配平，0xB501~0xB511 段）
+pub mod unx843_eoipath;
+// unx1502_modeswitch —— UNX-F1502 万次切换回归深化版（10^4次逐次三列留痕/成功率恰1000‰/失败注入10/10必抓，0x9700~0x970F 段）
+pub mod unx1502_modeswitch;
+// unx1024_hpetalloc —— UNX-F1024 HPET 比较器分配器深化版（并发32零双占/十万次零泄漏/三型优先级预留纪律，0x4DA0~0x4DAF 段）
+pub mod unx1024_hpetalloc;
+// unx1543_crichain —— UNX-F1543 域级判据冻结深化版（F0801-F1600 800条FNV哈希链/篡改10/10检出/复验4800步红线内，0xF101~0xF110 段）
+pub mod unx1543_crichain;
