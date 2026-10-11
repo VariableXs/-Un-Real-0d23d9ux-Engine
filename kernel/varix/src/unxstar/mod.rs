@@ -473,6 +473,11 @@ pub mod unx281_psrcmx;
 pub mod unx282_pctx;
 pub mod unx282_pentry;
 pub mod unx283_pdedup;
+// unx283_stackwalk_dv —— UNX-F0283 栈回溯帧步行器深化版（rBP 链六守卫 + 保守扫描四证裁决，链断即扫扫而必证误帧率 0，0x96 段十二码）
+pub mod unx283_stackwalk_dv;
+// unx502_serialout —— UNX-F0502 串口输出原语（16550 语义模型 + 三件原语同源 + CR/LF 翻译账注，10/10 回环核，0x97 段八码）
+pub mod unx502_serialout;
+
 pub mod unx284_preentry;
 pub mod unx285_pvec;
 pub mod unx286_ptag;
