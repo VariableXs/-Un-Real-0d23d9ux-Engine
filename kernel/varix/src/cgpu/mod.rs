@@ -2,7 +2,6 @@
 //! | [`cgi01_bandwidth`] | CGPU-F1281 | I 域开工与带宽总架构（**五主题闭集**PCIe带宽仲裁/共享内存带宽/上传下载调度/带宽遥测/瓶颈归因冻结、本域160项全挂靠表外不立题；**账户化**四类传输（纹理上传/下载/交换/流送）各开预算账户——每笔传输先申请余额不足即拒绝并计数留痕、退款只做消费迁移、账本守恒净消费口径自检；**边界**H域管显存驻留/I域管传输带宽/VE-AD存储流F5801+管到达三段各管一段、接口复用F0405集成面声明逐句可grep；**十组**规划表组名+起止单号逐字取自总纲批次锚点、F1281-F1440首尾连续无缺口、宣告行读屏可查；零panic面零IO零墙钟） |
 //! | [`cgi01_bandwidth_checks`] | CGPU-F1281 域自检（判据五条映射：五主题闭集+标签独立重排全等、账户化申请/拒绝/退款/守恒全链+未开账户必拒反向语料、边界三域分工逐句grep、十组表与判据侧独立重排逐条全等+组间起止连续校验；守恒式与使用率判据侧独立重算） |
 //! | [`cga10_bandwidth_sched`] | CGPU-F0010 | 上传下载带宽调度器（**上传限速帧超时零贡献**——每帧 1.5ms 拷贝时间片（锚点原文恰值）耗尽立即让路渲染绝不超时挤占 yield 计数留痕+16KB/µs 速率标定单帧容量 24,576,000B 手算锚；**大资产强制分片**——4K 纹理 32MB 级超单帧容量构造面即 enforce chunked 留痕 E_BW_BIG_UNCHUNKED 跨帧渐进；**mipmap 可见性优先**——先传 1/64 面积 preview 级可见发生在帧 1 完成在帧 2 可见时刻远早于完成时刻；**读回不抢帧带宽**——下载低优先独立切片 750µs（上传之后消费）与上传对称限速互不挤占；**拥塞归因**——队列深度≥8 与 PCIe 利用率≥900‰ 双条件联动迟滞防抖（连续 2 帧紧才标定E_BW_CONGESTION/连续 3 帧松才解除——单帧尖峰不误报）+双条件叠加 PCIe 停顿独立告警 E_BW_PCIE_STALL；**联动放置决策**——PlacementHint keep_on_cpu 带宽紧时可 CPU 计算任务留 CPU 对接 CGPU-F0004 信号面纯数据不依赖；**遥测全量**——上/下字节账+切片四元画像+利用率千分比累计口径手算锚 1137‰+分片/让路/拒绝计数 0x3E 段五码互异 reason 全量显性） |
-//! | [`cgj05_nvml`] | CGPU-F1445 | NVIDIA NVML 功耗查询（**双值联动**——nvmlDeviceGetPowerUsage 毫瓦读取+nvmlDeviceGetEnforcedPowerLimit 限值读取余量千分比立算 (limit-power)×1000/limit 手算锚 250000/300000→166‰ 超限钳 0 不显负；**三同步联合**——utilization/频率/功耗同 stamp 采样能效=util‰×1000/power_mw 手算锚 750‰/250000mW→3 F1465 能效画像输入 stamp 失配显性作废 E_NV_DESYNC 不静默混账；**驱动限速检测**——thermal slowdown/sw power cap 事件标志四态读取 F1479 节流检测输入位；**采样开销熔断**——单次调用耗时测量≤0.5ms 锚点恰值预算连续 3 次超时→E_NV_TIMEOUT_TRIP 熔断 Open 拒采不静默拖帧 reset 冷却恢复；**多卡枚举**——每卡独立采样器 B 域多 GPU 任务图对接一卡失败不影响他卡独立失败语义汇总账只计成功卡；**三级失败语义**——NVML 初始化失败→WMI 备路→再失败显性无传感器态不是静默零值 E_NV_NO_SENSOR 立案；**双平台单实现双验证**——Windows/Linux 同输入功耗逐字相等平台差异只在传感器路径不在数值语义；mock 全真调可编程延迟/失败模式对拍非假绿；0x4C 段五码互异 reason 全量显性） |
 //! | [`cgd02_frametimer`] | CGPU-F0482 | 全帧精确计时器（**四段**输入采样→提交→GPU执行→呈现上屏全链分段闭段才出时长、重叠/倒序记账异常可判定检出；**双源**QPC/GPU时间戳闭集、同段双源跨度对账漂移超容差标注；**校准**CPU/GPU时钟域线性对齐两对样本完全确定映射、换算残差逐点给账超阈标注（换算误差可测）非单调样本拒绝标定；**开销**<0.1%帧预算实测值注入核算640ppm手算对账超标标注；零墙钟——时间戳全上游注入计时器只做账务对齐异常检测、零panic面零IO） |
 //! | [`cgd02_frametimer_checks`] | CGPU-F0482 域自检（判据五条映射：四段开合时长+未闭段None反向+重叠倒序异常、双源闭集+漂移控制、线性标定+残差逐点+反向拒绝、开销实测核算+红线标注；时长/比率/ppm全部判据侧手算写死对账；stamp独立重排全等） |
 //! vcj01_powerarch — CGPU-F1441 J 域开工与功耗架构总览（域使命/五主题十组/三处核验/五段流水线/边界/采样不耗样本/风险回退/0x52xx）
@@ -54,7 +53,6 @@ pub mod cgd03_frameledger_checks;
 pub mod cgd04_frameinterval;
 pub mod vcj01_powerarch;
 pub mod cgj02_sensorabs;
-pub mod cgj05_nvml;
 pub mod vcj01_powerarch_checks;
 pub mod cga02_threadpool;
 pub mod cga02_threadpool_checks;
@@ -246,6 +244,7 @@ pub mod cgc07_earlyphrase;
 pub mod cgf10_openmat;
 // cgg06_nvpwr — CGPU-F0966 NVIDIA功耗画像（台式TDP/笔记本TGP双线档案同芯片两套墙错线拒收/功耗-性能曲线分段线性锚点升序校验端点钳制/约束画像墙下性能余量与触墙损失量化/画像公开JSON导出字段白名单/诚实空态无数据芯片显性Unknown不插值不臆造数据来源三态标注/0x51xx 五码）
 pub mod cgg06_nvpwr;
+pub mod cgg06_nvpwr_checks;
 // cgi06_txqueue — CGPU-F1285 传输队列管理（上传/下载双队列分列各自深度水位一条河堵塞不淹另一条/信用回压协议ACK回款水位滞回75%触发55%解除防振荡/优先级插队Emergency直插队首High快道连续插队4次强制队尾饿死保护/全量遥测入队-出队-拒收-插队-水位峰值/超额ACK协议违约钳上限报码/0x52xx 五码）
 pub mod cgi06_txqueue;
 // vck04_hetprobe — CGPU-F1604 异构能力探测与登记（探测五步枚举→查询→隔离→登记→缓存公示每步乱序拒绝/实现矩阵NPU三路线CIM-Intel-XDNA DSP音频 ISP驱动查询静态闭集表/缓存键FNV驱动版本+设备ID命中复用异键热失效重探F1506模式/失败隔离ProbeFailed行剥离不污染登记表其余照常/虚拟化空态空枚举显性Empty/诚实登记NotSupported与ProbeFailed严格区分不造假/0x53xx 五码）
@@ -298,10 +297,9 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 43] = [
+    let blocks: [(&'static str, CheckSet); 44] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
-("CGPU-F1445", cgj05_nvml::run_cgj05_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
         ("CGPU-E0002", cge02_lifecycle_checks::run_cge02_checks()),
@@ -347,6 +345,10 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F1607", vck07_sync::run_vck07_checks()),
         ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
         ("CGPU-X3684", vcx84_bandwidth::run_vcx84_checks()),
+    // W-VB1 · CGPU-F0966 NVIDIA 功耗画像（骨架深化 1500+ 行+判据 20 条：
+    // 双线 TDP/TGP+墙序目录双闸/曲线物理约束三关/双写对拍 31 点/J 域 F0854
+    // 遥测对位/密封指纹/两权分立/审计满容拒记/0x51xx 十码）
+        ("CGPU-F0966", cgg06_nvpwr_checks::run_cgg06_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -543,3 +545,23 @@ pub mod vck54_testassets;
 pub mod vck55_perfassets;
 // vck56_secassets — CGPU-F1737 安全红线资产汇总（六红线同源断言0xB401/模型+序fuzz零崩溃0xB402/kill-拔出-过热三类演练0xB403/供应链三依赖审计0xB404/五组自检/0xB4xx 五码）
 pub mod vck56_secassets;
+// vck57_soakreg — CGPU-F1738 长稳与漂移诚实登记（六份8h覆盖矩阵K01-K03-K05-K06-K07 0xB501/画像+开销漂移千分比账0xB502/未定位显性诚实0xB503/模拟器+trace容量水位≤800‰0xB504/四组自检/0xB5xx 五码）
+pub mod vck57_soakreg;
+// vck58_gapfill — CGPU-F1739 缺失与薄弱项补齐（三来源核验带条件-对账发现-资产缺口0xB601/红黄绿分级0xB602/补齐必复验证据锚0xB603/台账三条+K10移交声明0xB604/五组自检/0xB6xx 五码）
+pub mod vck58_gapfill;
+// vck59_riskreg — CGPU-F1740 九维汇总表与风险登记（8组×9维72格绿黄红0xB701/风险TOP10降序恰值0xB702/黄格=计划数对账0xB703/红格必触发纪律0xB704/F1742衔接锚/五组自检/0xB7xx 五码）
+pub mod vck59_riskreg;
+// vck60_prescore — CGPU-F1741 20维度预评分（预演声明+20维互异0xB801/评分≤1000定点+证据锚0xB802/<800必处置0xB803/J域940基线对标均分只算不裁0xB804/三组自检/0xB8xx 五码）
+pub mod vck60_prescore;
+// vck39_examples — CGPU-F1720 异构示例库与教程（15例五要素闭集0xA301/三阶教程挂接表0xA302/CI全跑门禁0xA303/缺额对账0xA304/五组自检/0xA3xx 五码）
+pub mod vck39_examples;
+// vck40_benchrel — CGPU-F1721 异构基准发布（三基准定义0xA401/环境标注四要素+双跑ppm带0xA402/发布账修订链单调0xA403/对比诚实三红线0xA404/四组自检/0xA4xx 五码）
+pub mod vck40_benchrel;
+// vck41_certplan — CGPU-F1722 异构认证计划（设备+场景两级0xA501/判据公开九条可复现0xA502/四站单调流程0xA503/驱动更新复测维持0xA504/撤销公示0xA505/五组自检/0xA5xx 五码）
+pub mod vck41_certplan;
+// vck42_compatmx — CGPU-F1723 异构兼容性矩阵（硬件×驱动×场景三维格0xA601/驱动同步0xA602/安装前探测查询0xA603/夸大红线0xA604/四组自检/0xA6xx 五码）
+pub mod vck42_compatmx;
+// vck43_usercap — CGPU-F1724 异构用户可见能力（UE三接面0xA701/面板四项可关可查0xA702/文案三要素+句式表0xA703/克制四词审计+无障碍三查0xA704/五组自检/0xA7xx 五码）
+pub mod vck43_usercap;
+// vck44_mktgov — CGPU-F1725 异构市场与生态治理（市场三道闸+激励预留0xA801/FNV签名对拍0xA802/下架四步单调+时限0xA803/统计白名单匿名0xA804/五组自检/0xA8xx 五码）
+pub mod vck44_mktgov;
