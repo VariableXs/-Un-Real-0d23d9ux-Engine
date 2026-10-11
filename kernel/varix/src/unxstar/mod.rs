@@ -912,6 +912,8 @@ pub mod unx2109_ktestfamily;
 pub mod unx2110_lockfreeread;
 // unx2111_c5conaccount —— UNX-F2111 与C5用户态生态对账（读侧消费签名+解析样例互验+格式漂移注入10/10检出，0xD9 段六码）
 pub mod unx2111_c5conaccount;
+// unx2112_o1conaccount —— UNX-F2112 与O1对标采样对账（导出面×对标采样接口版本三一致+F2019/F2074接口族双锚对齐+采样谱27格封闭，0xDA 段六码）
+pub mod unx2112_o1conaccount;
 
 
 
