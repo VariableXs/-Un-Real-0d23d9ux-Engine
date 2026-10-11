@@ -1640,3 +1640,6 @@ mod tests {
         assert_eq!(r.len(), 1, "VE-F0001 由内核 Rust 侧实现并可执行");
     }
 }
+// veac03_perception — VE-F5803 感知系统（三类感知通道与感知过滤——感知模型非世界真值，越权全知拒绝；感知含记忆时长与可配遗忘曲线；通道失效降级/漂移标定。并行覆盖清除后恢复注记）
+pub mod veac03_perception;
+pub mod veac03_perception_checks;
