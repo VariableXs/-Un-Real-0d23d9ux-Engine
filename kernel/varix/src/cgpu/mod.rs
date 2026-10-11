@@ -86,6 +86,7 @@ pub mod vcw04_apiref;
 pub mod vcw04_apiref_checks;
 // vcw05_docsync — CGPU-F3525 文档版本与代码同步（三态对齐规则写死落后/超前两害超前更危险/指纹+契约词双漂移立案幂等销账留痕不删/同步结论压发布门呼应文档即契约/0x34xx 三码）
 pub mod vcw05_docsync;
+pub mod vcx84_bandwidth;
 pub mod cgm02_display;
 pub mod cgm02_display_checks;
 pub mod cgm03_edid;
@@ -159,8 +160,6 @@ pub mod cge04_surfacerender;
 pub mod cgf03_capability;
 // vct04_handshake — CGPU-F3044 握手与鉴权深化版（五阶段单向状态机+迁移表全枚举/令牌五重校验格式→版本→窗→绑定→撤销/会话三绑定不串户/nonce 单次消费重放防线/失败三态+重试限速 30tick/审计账+失败归因/0x6C 段七码）
 pub mod vct04_handshake;
-// vct05_secboundary — CGPU-F3045 对接安全边界深化版（五闸流水 版本/长度/类型/载荷/频度/TrustTier 三级信任适配/ReuseDeclaration 复用声明 F3044 来源/SecSnap 快照指纹+往返恒等/reference_budget_check 多口径探针/0x6D 段六码）
-pub mod vct05_secboundary;
 pub mod cge03_surfacereg;
 pub mod cge04_surfsched;
 pub mod cgf02_authflow;
@@ -184,10 +183,6 @@ pub mod vcs02_multiuser;
 pub mod vct03_protneg;
 pub mod vcu01_bencharch;
 pub mod vcu02_benchmodel;
-// vcu03_scenecls — CGPU-F3203 基准场景分类（渲染/计算/混合/极限四类闭集分类即语义/场景分类册 id→class 登记查询账四闸显性拒 id范围-空名-重复-容量逐码计数/四类分布统计覆盖面歪斜判定单类严格过3/4显性化/与vcu02 MAX_SCENES 同口径消费集成复用顶格id合法超格拒/ScCode 四码互异/7 项域自检）
-pub mod vcu03_scenecls;
-// vcu04_scoringsys — CGPU-F3204 计分体系深化版（三分链 原始分量纲五闭集×方向二闭集→归一分四模式闭集 基线比值/对数刻度半步log2/门槛二值/排名百分位→加权总分已覆盖类权重公平聚合/权重四档万分制和恒10000守恒/计分表五闸显性拒逐码计数/迟滞防抖带内吞毛刺带外真覆盖/滚动账守恒/ScoreSnap 快照FNV指纹+往返恒等/reference_budget_check 四口径探针/ScoreCode 0x6E 段十六码互异+segment_guard 对账）
-pub mod vcu04_scoringsys;
 // cgc04_framearbiter — CGPU-F0005 帧预算仲裁器（12.5ms五账户切分合成器保底4ms不可侵占/申请制预算标签三要素预估-优先级-降级档/裁定四态批准排队降级拒绝静默吞帧禁绝/超时先走降级档帧级超时发降质链信号F0008消费/信用池低峰存入高峰先补交互/判定步数账50μs红线步数化/帧日志全量seq单调/不变量核验保底零侵占/0x3Cxx 九码）
 pub mod cgc04_framearbiter;
 // cgd05_ratecontract — CGPU-F0485 帧率合同校验器（P95≤12.5ms/P99≤25ms/卡顿率≤0.5%三条款滚动窗600帧自动判定/0.5ms桶计数分位O(n+桶)/达标率每场景每时段履行报告/预警双源余量耗用80%+卡顿趋势Rising提前干预/预算修正建议单出单不执行C域消费/场景隔离清窗重计跨场景混算会撒谎/0x3Dxx 六码）
@@ -247,8 +242,8 @@ pub mod cgi06_txqueue;
 // vck04_hetprobe — CGPU-F1604 异构能力探测与登记（探测五步枚举→查询→隔离→登记→缓存公示每步乱序拒绝/实现矩阵NPU三路线CIM-Intel-XDNA DSP音频 ISP驱动查询静态闭集表/缓存键FNV驱动版本+设备ID命中复用异键热失效重探F1506模式/失败隔离ProbeFailed行剥离不污染登记表其余照常/虚拟化空态空枚举显性Empty/诚实登记NotSupported与ProbeFailed严格区分不造假/0x53xx 五码）
 pub mod vck04_hetprobe;
 pub mod vck05_taskgraph;
-pub mod vck06_memcoh;
 pub mod vck07_sync;
+pub mod vck06_memcoh;
 // cgd09_timecalib — CGPU-F0489 帧计时校准（三源互校CPU QPC×GPU时间戳×呈现时钟配对采样差分/定期重校准30s周期偏移收敛漂移率估计超100µs/s立案/精度声明残余误差量化超50µs失守/降级协议源失联4窗→Lost显性→回喂恢复三源/单调性红线域内倒退拒收输出倒退拒收拨表禁止/0x54xx 五码）
 pub mod cgd09_timecalib;
 // cgd10_frametel — CGPU-F0490 帧遥测（五指标进B08总线帧时间/间隔/全延迟/达标率/卡顿计数各独立聚合P95整数分位/按场景分列12上限未登记场景拒帧匿名混账拒绝/空窗显性None不返回零均值谎报/schema版本化发布包下游失配显性拒/卡顿阈值复用cgd06口径20ms/0x5Bxx 五码）
@@ -261,6 +256,18 @@ pub mod cgg07_nvupdate;
 pub mod cgi07_txmerge;
 // cgd11_timefuzz — CGPU-F0491 帧计时fuzz（确定性fuzz核心LCG同种子同序列CI可固化/时钟异常注入三族跳变-倒退-卡顿容错计时器倒退钳0不产负时长异常显性入账/帧洪峰4096帧灌1024容量账本丢最旧丢弃计数不静默kept+dropped≡pushed守恒/案例固化种子+异常谱指纹CI回放对拍/0x5Axx 五码）
 pub mod cgd11_timefuzz;
+// cgd12_timeapi — CGPU-F0492 帧计时API冻结v1（四组API注册表计时启动-分段-账本查询-校验签名指纹注册即冻结/冻结不可变只增不改不删变更唯一路径ADR+版本前进/命名一致性小写下划线动词打头单位后缀三约定跨域对拍/十年承诺表指纹+承诺文本合成总指纹篡改即显性/0x5Cxx 五码）
+pub mod cgd12_timeapi;
+// cgd13_timebench — CGPU-F0494 帧计时基准（三基准计时开销比<0.1%红线步数化+账本写入吞吐摊销红线+查询延迟红线/参数全部显性入册口径指纹防挑参数作弊/入册回归同口径复跑一致漂移即立案确定性基准/0x5Dxx 五码）
+pub mod cgd13_timebench;
+// cgf12_certfuzz — CGPU-F0810 认证fuzz（畸形探测数据注入伪造能力位图高位域钳制显性立案+异常ID零-超界-重复三拒/流程中断fuzz随机步中断续跑语义断点前保持断点后不越与全新重跑终态一致/案例固化LCG种子谱指纹CI回放对拍/0x5Exx 五码）
+pub mod cgf12_certfuzz;
+// cgg08_nvtel — CGPU-F0968 NVIDIA遥测（四指标进B08设备分布按代际分列-各代认证等级ppm尾项守恒-专属缺陷检出计数-DLSS特性启用率分母口径/代际闭集5档闭集外拒/零分母显性None不造假/空桶不发零值谎报/0x5Fxx 五码）
+pub mod cgg08_nvtel;
+// cgi08_bwtel — CGPU-F1287 帧宽遥测（四源账户-仲裁-队列-事件闭集采集/带宽瀑布每帧四源分解守恒核验Σ源≡总篡改即破/VE-Y可视化对接面按帧号查询全量拉取/遥测开销<1%红线步数化自证/F0274 schema版本化/帧闭合纪律未闭合发布拒/0x60xx 五码）
+pub mod cgi08_bwtel;
+// cgd14_timecons — CGPU-F0495 帧计时一致性（口径注册表测量契约只增不改不删单位分位点窗长闭集/跨硬件口径对拍同负载相对量容差带±20%漂移即立案单零漂移/跨版本ADR语义变更唯一合法路径旧语义ADR留痕指纹必变/跨卷统一G06-H09挂钩同口径同指纹私造卷名拒/0x61xx 五码）
+pub mod cgd14_timecons;
 
 /// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
 pub const CGPU_DOMAIN: &str = "cgpu";
@@ -322,14 +329,13 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     // 查出）：此前连 `pub mod` 声明都没有，全文件从未被编译检查，等于死代码。
     // T02 对接协议分层 / W02 文档信息架构 / W03 文档生成管线 / W04 API 参考生成。
         ("CGPU-T3042", vct02_layers_checks::run_vct02_checks()),
-        ("CGPU-F3203", vcu03_scenecls::run_vcu03_checks()),
-        ("CGPU-F3204", vcu04_scoringsys::run_vcu04_checks()),
         ("CGPU-W3522", vcw02_infoarch_checks::run_vcw02_checks()),
         ("CGPU-W3523", vcw03_genpipeline_checks::run_vcw03_checks()),
         ("CGPU-W3524", vcw04_apiref_checks::run_vcw04_checks()),
         ("CGPU-F1605", vck05_taskgraph::run_vck05_checks()),
-        ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
         ("CGPU-F1607", vck07_sync::run_vck07_checks()),
+        ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
+        ("CGPU-X3684", vcx84_bandwidth::run_vcx84_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -394,3 +400,15 @@ mod tests {
         );
     }
 }
+// cgd15_d01close — CGPU-F0496 D01组收口与D02移交（16项自检点名制缺一即0x6201虚假收口/PrecisionReport快照指纹篡改即0x6203/双签纪律单签0x6202拒收/HandoverDoc三件套口径表-账本API-精度声明合成指纹/空手移交0x6204测量基础缺失/台账未更新0x6205/0x62xx 五码）
+pub mod cgd15_d01close;
+// cgf13_certapi — CGPU-F0811 认证API冻结v1（三组cert_query-cert_run-cert_export签名指纹冻结/跨族动词表对拍D08/E06命名一致性0x6302/重复注册0x6303/承诺域分隔PROMISE_DOMAIN_CERT与TIMER防混签0x6304/冻结表只增不改非法追加未开版本窗0x6305/0x63xx 五码）
+pub mod cgf13_certapi;
+// cgf14_certdoc — CGPU-F0812 认证文档（白皮书六步节完整性/悬空引用"规则表N"扫描0x6401/文档-代码对拍四级名+90天漂移即0x6402数字两套账/ReauthRuleTable三类触发表外0x6403/节号重复0x6404/白皮书过期指纹未随实现更新0x6405/0x64xx 五码）
+pub mod cgf14_certdoc;
+// cgg09_nvfuzz — CGPU-F0969 NVIDIA fuzz（代际/特性位/显存三类伪造钳制高位域越界虚报拦0x6501/0x6503/0x6505/驱动异常三族容错消费器未处理0x6502/案例固化LCG种子谱指纹CI回放不可复现0x6504/0x65xx 五码）
+pub mod cgg09_nvfuzz;
+// cgi09_bwfuzz — CGPU-F1288 带宽fuzz与安全（ConservationLedger四账户守恒Σ账≤带宽超即0x6601/PayloadIntegrity FNV载荷指纹写前算读后验篡改0x6602/QueueAcl默认deny白名单制未登记0x6603/畸形请求三族全拒采纳0x6604/风暴案例固化replay_ci不可复现0x6605/0x66xx 五码）
+pub mod cgi09_bwfuzz;
+// vck08_faildom — CGPU-F1608 异构失败域与降级（引擎级失败域四域闭集NPU崩不拖垮GPU隔离墙拦跨域传播0x6F01/逐引擎回退表NPU→GPU推理回退DSP→CPU多级链三跳封顶断裂显性0x6F02/部分失败语义节点可用性三态标注缺失0x6F03消费方决策/重置纪律触碰集恰单域越界0x6F04复探对接vck04不过即Retired/降级透明回退结果带Origin+性能差‰标注丢失0x6F05/kill注入演练五验证闭环六组自检/0x6Fxx 五码）
+pub mod vck08_faildom;
