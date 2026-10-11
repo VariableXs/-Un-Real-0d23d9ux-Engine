@@ -763,6 +763,8 @@ pub mod unx403_tsccalib;
 pub mod unx384_alignalloc;
 // unx385_pairledger —— UNX-F0385 分配记账（申请/释放配对账，配对键=调用点+尺寸档双向可查，配对率 100%，0x9B 段七码）
 pub mod unx385_pairledger;
+// unx386_dualzone —— UNX-F0386 双区策略（DMA堆/通用堆，边界零重叠+路由100%+互借禁令，0xCA 段七码）
+pub mod unx386_dualzone;
 // unx1043_tscdeadline —— UNX-F1043 TSC-deadline 模式（LAPIC deadline 投递，10 万次零丢失，探测 10/10，p99≤10µs，0x9C 段七码）
 pub mod unx1043_tscdeadline;
 // unx1023_hpettick —— UNX-F1023 HPET 周期模式与 tick 生成（1ms tick 10^6 拍漂移<100µs，抖动 p99<10µs，丢拍检测 10/10，0x9D 段七码）
