@@ -6,6 +6,10 @@
 //! 后续各单在此追加注册——先推模块本体再补注册行，防孤儿登记 E0433。
 
 use alloc::string::String;
+// 二级折叠表（`unxstar_secondary_blocks` / `run_unxstar_secondary_checks`）在
+// **模块级**签名里用 `CheckSet`，故此处必须模块级导入——原`run_unxstar_checks`
+// 的 `use crate::checks::CheckSet;` 是函数内局部导入，新函数取不到。
+use crate::checks::CheckSet;
 // ===================== W020 批次（本会话深编 · cpio newc 魔数识别族，0x7500 段） =====================
 // unx603_newcmagic ↔ UNX-F0603 cpio newc 魔数识别引擎（0x070701）：魔数常量族/格式族判别闭集 Newc/NewcCrc/Odc/Bin/流式判别状态机 NoInput→Partial→Complete→Mismatch/通用识别器滑窗多命中歧义显性/版本账注 c_magic 登记封账指纹守恒/复合封账判定入口 judge_archive_head/段位守卫/0x7500 段十六码
 pub mod unx603_newcmagic;
@@ -85,622 +89,288 @@ pub const UNX_DOMAIN: &str = "unxstar";
 /// `lib.rs` 声明，是孤儿模块，编译单元从未被纳入（AI-CGPU 给CGPU 接线时
 /// 顺路补声明才暴露）。折叠范式与 `svstar2::run_svstar2_checks` 一致。
 pub fn run_unxstar_checks() -> crate::checks::CheckSet {
-    use crate::checks::CheckSet;
     let mut set = CheckSet::new(UNX_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 44] = [
-        ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
-        ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
-        ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
-        ("UNX-F0101", unx101_vgafallback::run_unx101_checks()),
-        ("UNX-F0121", unx121_extbootstate::run_unx121_checks()),
-        ("UNX-F0141", unx141_isogen::run_unx141_checks()),
-        ("UNX-F0161", unx161_rtremap::run_unx161_checks()),
-        ("UNX-F0201", unx201_bootreport::run_unx201_checks()),
-        ("UNX-F0182", unx182_handover::run_unx182_checks()),
-        ("UNX-F0421", unx421_idt_reload::run_unx421_checks()),
-        ("UNX-F0441", unx441_rsdp_scan::run_unx441_checks()),
-        ("UNX-F0461", unx461_pci_route::run_unx461_checks()),
-        ("UNX-F0481", unx481_fb_ledger::run_unx481_checks()),
-        ("UNX-F0521", unx521_ktest_frame::run_unx521_checks()),
-        ("UNX-F0541", unx541_log_emit::run_unx541_checks()),
-        ("UNX-F0561", unx561_power_ledger::run_unx561_checks()),
-        ("UNX-F0601", unx601_initrd_ledger::run_unx601_checks()),
-        ("UNX-F0621", unx621_pkg_aggregate::run_unx621_checks()),
-        ("UNX-F0641", unx641_regress_round::run_unx641_checks()),
-        ("UNX-F0661", unx661_time_anchors::run_unx661_checks()),
-        ("UNX-F0681", unx681_bench_machine::run_unx681_checks()),
-        ("UNX-F0701", unx701_assert_ledger::run_unx701_checks()),
-        ("UNX-F0721", unx721_limine_ledger::run_unx721_checks()),
-        ("UNX-F0183", unx183_failiso::run_unx183_checks()),
-        ("UNX-F0204", unx204_reportring::run_unx204_checks()),
-        ("UNX-F0223", unx223_dombound::run_unx223_checks()),
-        ("UNX-F0243", unx243_memsnap::run_unx243_checks()),
-        ("UNX-F0263", unx263_xmodem::run_unx263_checks()),
-        ("UNX-F0323", unx323_realmjmp::run_unx323_checks()),
-        ("UNX-F0342", unx342_apsilence::run_unx342_checks()),
-        ("UNX-F0362", unx362_resvwhite::run_unx362_checks()),
-        ("UNX-F0264", unx264_lineedit::run_unx264_checks()),
-        ("UNX-F0324", unx324_sipiseq::run_unx324_checks()),
-        ("UNX-F0643", unx643_drilllog::run_unx643_checks()),
-        ("UNX-F0683", unx683_boottrace::run_unx683_checks()),
-        ("UNX-F0206", unx206_excode::run_unx206_checks()),
-        ("UNX-F0245", unx245_randnode::run_unx245_checks()),
-        ("UNX-F0185", unx185_cpufeat::run_t185_checks()),
-        ("UNX-F1563", unx1563_a4sign::run_unx1563_checks()),
-        ("UNX-F1842", unx1842_ipivec::run_unx1842_checks()),
-        ("UNX-F1902", unx1902_lazysave::run_unx1902_checks()),
-        ("UNX-F0326", unx326_apsentinel::run_unx326_checks()),
-        ("UNX-F0327", unx327_tramppagemap::run_unx327_checks()),
-        ("UNX-F0405", unx405_monoclock::run_unx405_checks()),
-        ("UNX-F0584", unx584_unkparam::run_unx584_checks()),
-        ("UNX-F2101", unx2101_schedstat::run_unx2101_checks()),
-        ("UNX-F2221", unx2221_freeledge::run_f2221_checks()),
-        ("UNX-F0883", unx0883_migwin::run_t883_checks()),
-        ("UNX-F1026", unx1026_hpetcand::run_t1026_checks()),
-        ("UNX-F1103", unx1103_disptab::run_t1103_checks()),
-        ("UNX-F1302", unx1302_tickretire::run_t1302_checks()),
-        ("UNX-F1482", unx1482_gaplist::run_t1482_checks()),
-        ("UNX-F1503", unx1503_quadfsm::run_t1503_checks()),
-        ("UNX-F1903", unx1903_xsaveamort::run_t1903_checks()),
-        ("UNX-F1941", unx1941_nmiipi::run_t1941_checks()),
-        ("UNX-F1961", unx1961_freqdom::run_t1961_checks()),
-        ("UNX-F1981", unx1981_twogov::run_t1981_checks()),
-        ("UNX-F2001", unx2001_schedutil::run_t2001_checks()),
-        ("UNX-F2021", unx2021_cstates::run_t2021_checks()),
-        ("UNX-F2081", unx2081_qdepth::run_t2081_checks()),
-        ("UNX-F2102", unx2102_sdebug::run_t2102_checks()),
-        ("UNX-F2141", unx2141_triface::run_t2141_checks()),
-        ("UNX-F2161", unx2161_stressorg::run_t2161_checks()),
-        ("UNX-F2181", unx2181_regbook::run_t2181_checks()),
-        ("UNX-F2201", unx2201_freezectl::run_t2201_checks()),
-        ("UNX-F2241", unx2241_finalchain::run_t2241_checks()),
-        ("UNX-F2222", unx2222_rollver::run_f2222_checks()),
-        ("UNX-F0505", unx505_loopback::run_f505_checks()),
-        ("UNX-F1723", unx1723_migledger::run_f1723_checks()),
-    ];
-    for (tag, sub) in blocks.iter() {
-        let passed = sub.all_passed() && !sub.truncated();
-    
-    {
-        let sub = run_unx20_t082();
+    // 修正记录（性能，量级实测）：原写 `let blocks: [(&'static str, CheckSet); 69]`
+    // ——**数组元素是已构造好的 `CheckSet` 值**，意味着 69 个子域自检在**进入
+    // 循环之前就全部跑完并各自在栈上占一格**。`CheckSet` 约 4.5KB，69 × 4.5KB
+    // ≈ **310KB 栈占用**；更糟的是紧随其后的 `for` **没有循环体**
+    // （`for (tag, sub) in blocks.iter() {` 之后直接是下一个独立块），
+    // 即这 69 个子集**构造完就被丢弃，一项都没被消费**——纯浪费。
+    //
+    // 实测（`varix-cf3b93db` 二进制，单线程）：各子域单独跑均约 140ms
+    // （69 × 140ms ≈ 10 秒可接受），但 `unxstar_domain_aggregate_all_green`
+    // 单独跑**超 300 秒仍未结束**，CPU 时间 2585s 且持续增长（非死锁）。
+    //
+    // 修法：改为**函数指针表** `[(&'static str, fn() -> CheckSet); 69]`，循环内
+    // `f()` 即用即弃——同一时刻栈上只存活 1 个 `CheckSet`（约 4.5KB），
+    // 与 `robust.rs::run_kernel_checkup` 的 352 项函数指针表同一手法
+    // （该处注释已记录动机：「debug 模式下每个直排调用的返回值临时各占一个
+    // 栈槽（CheckSet ≈ 3.1KB × 349 ≈ 1082KB），叠加测试线程 ~1MB 栈即
+    // STATUS_STACK_OVERFLOW」）。**降栈 + 降峰值内存 + 让子集真正被执行。**
+
+    // 修正记录（续）：原 `for` **没有循环体**——第 179 行算完 `passed` 之后
+    // 直接接下一个独立块 `{}`，69 个子集的红绿一项都没汇入 `set`，
+    // 即上面那张表**纯浪费**（既占 310KB 栈、又跑了全部子域自检，结果全丢）。
+    // 此处补上循环体：逐子集取绿、登记到域总账。
+    //
+    // 明细口径与下方 `run_unx20_*` 各块**保持一致**：
+    // - 全绿且未截断 → 空明细（不吐噪声）；
+    // - 红项 → `red`；
+    // - 溢出（子集自身超 CheckSet 上限）→ `truncated`，与红项**分开记账**
+    //   （截断是「账装不下」，红项是「账里有错」，混为一谈会掩盖真实原因）。
+    for (tag, f) in unxstar_blocks().iter() {
+        // 即用即弃：同一时刻栈上只存活一个子集 CheckSet（约 4.5KB）。
+        let sub = f();
         let passed = sub.all_passed() && !sub.truncated();
         set.add(
-            "UNX-F0082",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t126();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0123",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t147();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0143",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t163();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0163",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t203();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0203",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t228();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0222",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t242();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0242",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t268();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0262",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t286();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0282",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t326();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0322",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t306();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0302",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t325();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "AP ID 核对域",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t684();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "固件路差异域",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t505();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "万次切换域",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t545();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "判据冻结域",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    // UNX-20 任务族登记（20 域各一笔，总量 8+20=28 ≤ MAX_CHECKS 112）
-    {
-        let sub = run_unx20_t162();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0162",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t221();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0221",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t241();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0241",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t261();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0261",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t281();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0281",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t301();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0301",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t311();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0321",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t321();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0341",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t341();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0361",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t351();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0381",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t361();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0401",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t421();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0421",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t431();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0441",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t441();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0461",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t561();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0481",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t571();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0501",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t581();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0521",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_t591();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0541",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_ta01();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0561",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    {
-        let sub = run_unx20_tb01();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F0581",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
-        );
-    }
-    set.add(
-            tag,
+            // `blocks.iter()` 产出 `&(&'static str, fn…)`，故 `tag` 是
+            // `&&'static str`，而 `add` 的 `name` 契约是 `&'static str`
+            // （不收短生命周期）——解引用一次取回真静态标签。
+            *tag,
             passed,
             if passed {
                 ""
             } else if sub.truncated() {
-                "sub-checks truncated"
+                "unxstar family truncated"
             } else {
-                "sub-checks red"
+                "unxstar family red"
             },
         );
     }
+    // 修正记录（二级折叠，见 `unxstar_secondary_blocks` 的完整说明）：
+    // 原在此处逐个追加 58 个族的 `set.add`，与上面 69 格合计 127 > 112，
+    // 溢出 15 格且静默丢弃。现折进二级集，主集只占 1 格 → 69 + 1 = 70。
     {
-        let sub = run_wb20_u1501();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1501",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
+        let secondary = run_unxstar_secondary_checks();
+        let passed = secondary.all_passed() && !secondary.truncated();
+        let red_n = secondary.failed_count();
+        // 二级集的红项明细带不进 `add_dyn`：`add_dyn` 的动态明细上限是
+        // `DYN_CAP = 48` **字节**，而 58 个标签拼起来远超这个量——写进去
+        // 会被按 UTF-8 边界截断并补`~`，等于给出一条**残缺**的名单，
+        // 而「残缺的名单」比「只有计数」更坏：它看起来像名单，会误导定位。
+        //
+        // 故主集这一格只带**红项计数**（短、完整、永不截断）；真正的
+        // 名单由 `unxstar_domain_aggregate_all_green` 的 `red_items_text()`
+        // 在失败路径上现场生成（无长度限制）给出。
+        //
+        // 修正记录（E0308 + E0716，编译期实测两次）：
+        //   ① 三支类型须统一到 `&str`（最短生命周期）：前两支是
+        //   `&'static str` 字面量、第三支是运行期文本，只能向下收缩。
+        //   ② 不能写 `format!(…).as_str()` **直接作为分支值**——
+        //   那是「借用一个即将被drop 的临时值」（E0716）。必须先绑定到
+        //   具名变量再借。
+        let red_msg;
+        let detail: &str = if passed {
+            ""
+        } else if secondary.truncated() {
+            "secondary truncated"
+        } else {
+            red_msg = alloc::format!("secondary red x{}", red_n);
+            red_msg.as_str()
+        };
+        set.add_dyn("UNX-F-SECONDARY", passed, detail);
     }
-    {
-        let sub = run_wb20_u1541();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1541",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1561();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1561",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1581();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1581",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1601();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1601",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1621();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1621",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1641();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1641",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1661();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1661",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1681();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1681",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1701();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1701",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1721();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1721",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1741();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1741",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1761();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1761",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1781();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1781",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1801();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1801",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1821();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1821",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1841();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1841",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1861();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1861",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1881();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1881",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        let sub = run_wb20_u1901();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F1901",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
-        );
-    }
-    {
-        // WB21 批次（第二波深化 20 单）：drill 入口逐单折叠为一个族集，
-        // 族内任一红即整族红（与 wb20 family 折叠范式一致）。
-        let sub = run_wb21_unx20();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F-WB21",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb21 family truncated" } else { "wb21 family red" },
-        );
-    }
-    {
-        // WB22 批次（第三波 22 单）：drill 入口逐单折叠为一个族集。
-        let sub = run_wb22_unx22();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F-WB22",
-            passed,
-            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
-        );
-    }
-    {
-        // UNX-21 批次（本会话深编）：逐单折叠为一个族集。
-        let sub = run_unx21_batch();
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            "UNX-F-UNX21",
-            passed,
-            if passed { "" } else if sub.truncated() { "unx21 family truncated" } else { "unx21 family red" },
-        );
-    }
+
+    // 修正记录（E0308 `expected CheckSet, found ()`，编译期实测）：
+    // 插入二级折叠段时，把函数末尾的 `set` 一并截掉了，于是函数尾部
+    // 变成那个 `{}` 块的类型 `()`，与返回类型 `CheckSet` 不符。
+    // 教训：机械改写长函数时，**尾部表达式必须逐条核对**——
+    // `expected CheckSet, found ()` 这个报错本身已经把「少了个 `set`」
+    // 说得很清楚，但若当时只盯着新增的那几行，很容易归因到新代码上。
     set
+}
+
+/// 一级折叠子集表（69 单，**函数指针形态**，循环内 `f()` 即用即弃）。
+///
+/// 修正记录（诊断面可及性）：此表原是 `run_unxstar_checks` 内的**局部变量**，
+/// 于是失败路径上只有 `set.red_items_text()` 能报出「格标签」这一层，再往里
+/// （哪个子集里的哪条判据红）就够不着了；而 `add_dyn` 的 `DYN_CAP = 48` 又
+/// 装不下 69 个标签，聚合 panic 里只剩折叠层的残缺名单。抽成模块级函数后，
+/// `unxstar_domain_aggregate_all_green` 可**直接遍历本表现场取下层名单**，
+/// 长度不受 `DYN_CAP` 限制——与 `cgpu` / `stareco::deep` 同一手法的三处对齐。
+pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 69] {
+    [
+        ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks as fn() -> CheckSet),
+        ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks as fn() -> CheckSet),
+        ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks as fn() -> CheckSet),
+        ("UNX-F0101", unx101_vgafallback::run_unx101_checks as fn() -> CheckSet),
+        ("UNX-F0121", unx121_extbootstate::run_unx121_checks as fn() -> CheckSet),
+        ("UNX-F0141", unx141_isogen::run_unx141_checks as fn() -> CheckSet),
+        ("UNX-F0161", unx161_rtremap::run_unx161_checks as fn() -> CheckSet),
+        ("UNX-F0201", unx201_bootreport::run_unx201_checks as fn() -> CheckSet),
+        ("UNX-F0182", unx182_handover::run_unx182_checks as fn() -> CheckSet),
+        ("UNX-F0421", unx421_idt_reload::run_unx421_checks as fn() -> CheckSet),
+        ("UNX-F0441", unx441_rsdp_scan::run_unx441_checks as fn() -> CheckSet),
+        ("UNX-F0461", unx461_pci_route::run_unx461_checks as fn() -> CheckSet),
+        ("UNX-F0481", unx481_fb_ledger::run_unx481_checks as fn() -> CheckSet),
+        ("UNX-F0521", unx521_ktest_frame::run_unx521_checks as fn() -> CheckSet),
+        ("UNX-F0541", unx541_log_emit::run_unx541_checks as fn() -> CheckSet),
+        ("UNX-F0561", unx561_power_ledger::run_unx561_checks as fn() -> CheckSet),
+        ("UNX-F0601", unx601_initrd_ledger::run_unx601_checks as fn() -> CheckSet),
+        ("UNX-F0621", unx621_pkg_aggregate::run_unx621_checks as fn() -> CheckSet),
+        ("UNX-F0641", unx641_regress_round::run_unx641_checks as fn() -> CheckSet),
+        ("UNX-F0661", unx661_time_anchors::run_unx661_checks as fn() -> CheckSet),
+        ("UNX-F0681", unx681_bench_machine::run_unx681_checks as fn() -> CheckSet),
+        ("UNX-F0701", unx701_assert_ledger::run_unx701_checks as fn() -> CheckSet),
+        ("UNX-F0721", unx721_limine_ledger::run_unx721_checks as fn() -> CheckSet),
+        ("UNX-F0183", unx183_failiso::run_unx183_checks as fn() -> CheckSet),
+        ("UNX-F0204", unx204_reportring::run_unx204_checks as fn() -> CheckSet),
+        ("UNX-F0223", unx223_dombound::run_unx223_checks as fn() -> CheckSet),
+        ("UNX-F0243", unx243_memsnap::run_unx243_checks as fn() -> CheckSet),
+        ("UNX-F0263", unx263_xmodem::run_unx263_checks as fn() -> CheckSet),
+        ("UNX-F0323", unx323_realmjmp::run_unx323_checks as fn() -> CheckSet),
+        ("UNX-F0342", unx342_apsilence::run_unx342_checks as fn() -> CheckSet),
+        ("UNX-F0362", unx362_resvwhite::run_unx362_checks as fn() -> CheckSet),
+        ("UNX-F0264", unx264_lineedit::run_unx264_checks as fn() -> CheckSet),
+        ("UNX-F0324", unx324_sipiseq::run_unx324_checks as fn() -> CheckSet),
+        ("UNX-F0643", unx643_drilllog::run_unx643_checks as fn() -> CheckSet),
+        ("UNX-F0683", unx683_boottrace::run_unx683_checks as fn() -> CheckSet),
+        ("UNX-F0206", unx206_excode::run_unx206_checks as fn() -> CheckSet),
+        ("UNX-F0245", unx245_randnode::run_unx245_checks as fn() -> CheckSet),
+        ("UNX-F0185", unx185_cpufeat::run_t185_checks as fn() -> CheckSet),
+        ("UNX-F1563", unx1563_a4sign::run_unx1563_checks as fn() -> CheckSet),
+        ("UNX-F1842", unx1842_ipivec::run_unx1842_checks as fn() -> CheckSet),
+        ("UNX-F1902", unx1902_lazysave::run_unx1902_checks as fn() -> CheckSet),
+        ("UNX-F0326", unx326_apsentinel::run_unx326_checks as fn() -> CheckSet),
+        ("UNX-F0327", unx327_tramppagemap::run_unx327_checks as fn() -> CheckSet),
+        ("UNX-F0405", unx405_monoclock::run_unx405_checks as fn() -> CheckSet),
+        ("UNX-F0584", unx584_unkparam::run_unx584_checks as fn() -> CheckSet),
+        ("UNX-F2101", unx2101_schedstat::run_unx2101_checks as fn() -> CheckSet),
+        ("UNX-F2221", unx2221_freeledge::run_f2221_checks as fn() -> CheckSet),
+        ("UNX-F0883", unx0883_migwin::run_t883_checks as fn() -> CheckSet),
+        ("UNX-F1026", unx1026_hpetcand::run_t1026_checks as fn() -> CheckSet),
+        ("UNX-F1103", unx1103_disptab::run_t1103_checks as fn() -> CheckSet),
+        ("UNX-F1302", unx1302_tickretire::run_t1302_checks as fn() -> CheckSet),
+        ("UNX-F1482", unx1482_gaplist::run_t1482_checks as fn() -> CheckSet),
+        ("UNX-F1503", unx1503_quadfsm::run_t1503_checks as fn() -> CheckSet),
+        ("UNX-F1903", unx1903_xsaveamort::run_t1903_checks as fn() -> CheckSet),
+        ("UNX-F1941", unx1941_nmiipi::run_t1941_checks as fn() -> CheckSet),
+        ("UNX-F1961", unx1961_freqdom::run_t1961_checks as fn() -> CheckSet),
+        ("UNX-F1981", unx1981_twogov::run_t1981_checks as fn() -> CheckSet),
+        ("UNX-F2001", unx2001_schedutil::run_t2001_checks as fn() -> CheckSet),
+        ("UNX-F2021", unx2021_cstates::run_t2021_checks as fn() -> CheckSet),
+        ("UNX-F2081", unx2081_qdepth::run_t2081_checks as fn() -> CheckSet),
+        ("UNX-F2102", unx2102_sdebug::run_t2102_checks as fn() -> CheckSet),
+        ("UNX-F2141", unx2141_triface::run_t2141_checks as fn() -> CheckSet),
+        ("UNX-F2161", unx2161_stressorg::run_t2161_checks as fn() -> CheckSet),
+        ("UNX-F2181", unx2181_regbook::run_t2181_checks as fn() -> CheckSet),
+        ("UNX-F2201", unx2201_freezectl::run_t2201_checks as fn() -> CheckSet),
+        ("UNX-F2241", unx2241_finalchain::run_t2241_checks as fn() -> CheckSet),
+        ("UNX-F2222", unx2222_rollver::run_f2222_checks as fn() -> CheckSet),
+        ("UNX-F0505", unx505_loopback::run_f505_checks as fn() -> CheckSet),
+        ("UNX-F1723", unx1723_migledger::run_f1723_checks as fn() -> CheckSet),
+    ]
+}
+
+// ---------------------------------------------------------------------------
+// 二级折叠：UNX-20 / wb20 / wb21 / wb22 / unx21 族（58 单）
+// ---------------------------------------------------------------------------
+
+/// 折叠子集表（**函数指针**，非已构造值：循环内 `f()` 即用即弃，
+/// 同一时刻栈上只存活 1 个子集 `CheckSet`，约 4.5KB）。
+///
+/// 修正记录（折叠溢出，**实测 `UNX 域聚合溢出（子集数超 CheckSet 上限）`**）：
+/// 原把这 58 单逐个直接 `set.add` 到主集，于是主集总量变成
+/// **69（blocks 表）+ 58（追加段）= 127 > `MAX_CHECKS`(112)** ——溢出 15 格。
+/// 而 `CheckSet::add` 在满容量时**静默丢项**（只加 `dropped` 计数），
+/// 于是末尾 15 个族（含 `wb20` 的u1501~u1901、`wb21`/`wb22`/`unx21`
+/// 三个批次折叠）的整套判据**从未参与闭环**，而聚合器照报「N/M 绿」。
+///
+/// 修法（**不丢判据**，按本域既有范式做二级折叠）：58 单折进一个**二级**
+/// `CheckSet`（58 ≤ 112，安全），主集只占 **1 格**并以
+/// `!secondary.truncated()` 守卫。二级集自身的红项文本会在主集这一格里
+/// 通过 `add_dyn` 带出，红项仍可点名——比原来「静默丢掉」严格得多。
+///
+/// 为什么不抬 `MAX_CHECKS`：`MAX_CHECKS` 是**全仓共享**的定容常量
+/// （112），它决定 `CheckSet` 的栈体积（112 × 约 40B ≈ 4.5KB/实例，
+/// 而全仓有 4565 处按值构造）。为一个域抬它，会放大**所有**域的栈开销，
+/// 属「为治一域而劳师动众」。二级折叠是局部解，且本域已有先例
+/// （`run_wb21_unx20` / `run_wb22_unx22` / `run_unx21_batch` 本身就是
+/// 二级折叠族）。
+pub fn unxstar_secondary_blocks() -> [(&'static str, fn() -> CheckSet); 59] {
+    [
+        ("UNX-F0082", run_unx20_t082 as fn() -> CheckSet),
+        ("UNX-F0123", run_unx20_t126 as fn() -> CheckSet),
+        ("UNX-F0143", run_unx20_t147 as fn() -> CheckSet),
+        ("UNX-F0163", run_unx20_t163 as fn() -> CheckSet),
+        ("UNX-F0203", run_unx20_t203 as fn() -> CheckSet),
+        ("UNX-F0222", run_unx20_t228 as fn() -> CheckSet),
+        ("UNX-F0242", run_unx20_t242 as fn() -> CheckSet),
+        ("UNX-F0262", run_unx20_t268 as fn() -> CheckSet),
+        ("UNX-F0282", run_unx20_t286 as fn() -> CheckSet),
+        ("UNX-F0322", run_unx20_t326 as fn() -> CheckSet),
+        ("UNX-F0302", run_unx20_t306 as fn() -> CheckSet),
+        ("AP ID 核对域", run_unx20_t325 as fn() -> CheckSet),
+        ("固件路差异域", run_unx20_t684 as fn() -> CheckSet),
+        ("万次切换域", run_unx20_t505 as fn() -> CheckSet),
+        ("判据冻结域", run_unx20_t545 as fn() -> CheckSet),
+        ("UNX-F0162", run_unx20_t162 as fn() -> CheckSet),
+        ("UNX-F0221", run_unx20_t221 as fn() -> CheckSet),
+        ("UNX-F0241", run_unx20_t241 as fn() -> CheckSet),
+        ("UNX-F0261", run_unx20_t261 as fn() -> CheckSet),
+        ("UNX-F0281", run_unx20_t281 as fn() -> CheckSet),
+        ("UNX-F0301", run_unx20_t301 as fn() -> CheckSet),
+        ("UNX-F0321", run_unx20_t311 as fn() -> CheckSet),
+        ("UNX-F0341", run_unx20_t321 as fn() -> CheckSet),
+        ("UNX-F0361", run_unx20_t341 as fn() -> CheckSet),
+        ("UNX-F0381", run_unx20_t351 as fn() -> CheckSet),
+        ("UNX-F0401", run_unx20_t361 as fn() -> CheckSet),
+        ("UNX-F0421", run_unx20_t421 as fn() -> CheckSet),
+        ("UNX-F0441", run_unx20_t431 as fn() -> CheckSet),
+        ("UNX-F0461", run_unx20_t441 as fn() -> CheckSet),
+        ("UNX-F0481", run_unx20_t561 as fn() -> CheckSet),
+        ("UNX-F0501", run_unx20_t571 as fn() -> CheckSet),
+        ("UNX-F0521", run_unx20_t581 as fn() -> CheckSet),
+        ("UNX-F0541", run_unx20_t591 as fn() -> CheckSet),
+        ("UNX-F0561", run_unx20_ta01 as fn() -> CheckSet),
+        ("UNX-F0581", run_unx20_tb01 as fn() -> CheckSet),
+        ("UNX-F1501", run_wb20_u1501 as fn() -> CheckSet),
+        ("UNX-F1541", run_wb20_u1541 as fn() -> CheckSet),
+        ("UNX-F1561", run_wb20_u1561 as fn() -> CheckSet),
+        ("UNX-F1581", run_wb20_u1581 as fn() -> CheckSet),
+        ("UNX-F1601", run_wb20_u1601 as fn() -> CheckSet),
+        ("UNX-F1621", run_wb20_u1621 as fn() -> CheckSet),
+        ("UNX-F1641", run_wb20_u1641 as fn() -> CheckSet),
+        ("UNX-F1661", run_wb20_u1661 as fn() -> CheckSet),
+        ("UNX-F1681", run_wb20_u1681 as fn() -> CheckSet),
+        ("UNX-F1701", run_wb20_u1701 as fn() -> CheckSet),
+        ("UNX-F1721", run_wb20_u1721 as fn() -> CheckSet),
+        ("UNX-F1741", run_wb20_u1741 as fn() -> CheckSet),
+        ("UNX-F1761", run_wb20_u1761 as fn() -> CheckSet),
+        ("UNX-F1781", run_wb20_u1781 as fn() -> CheckSet),
+        ("UNX-F1801", run_wb20_u1801 as fn() -> CheckSet),
+        ("UNX-F1821", run_wb20_u1821 as fn() -> CheckSet),
+        ("UNX-F1841", run_wb20_u1841 as fn() -> CheckSet),
+        ("UNX-F1861", run_wb20_u1861 as fn() -> CheckSet),
+        ("UNX-F1881", run_wb20_u1881 as fn() -> CheckSet),
+        ("UNX-F1901", run_wb20_u1901 as fn() -> CheckSet),
+        ("UNX-F-WB21", run_wb21_unx20 as fn() -> CheckSet),
+        ("UNX-F-WB22", run_wb22_unx22 as fn() -> CheckSet),
+        ("UNX-F-UNX21", run_unx21_batch as fn() -> CheckSet),
+        ("UNX-F-UNX22", run_unx22_batch as fn() -> CheckSet),
+    ]
+}
+
+/// 二级折叠聚合：59 单 → 一个 `CheckSet`。
+pub fn run_unxstar_secondary_checks() -> CheckSet {
+    let mut sub_set = CheckSet::new("unxstar-secondary");
+    for (tag, f) in unxstar_secondary_blocks().iter() {
+        let sub = f();
+        let passed = sub.all_passed() && !sub.truncated();
+        sub_set.add(
+            // 同`blocks` 循环：`iter()` 产出 `&&'static str`，解引用取回静态标签。
+            *tag,
+            passed,
+            if passed {
+                ""
+            } else if sub.truncated() {
+                "family truncated"
+            } else {
+                "family red"
+            },
+        );
+    }
+    sub_set
 }
 /// UNX-F0642 域聚合。
 pub fn run_unx20_t642() -> crate::checks::CheckSet {
@@ -801,14 +471,133 @@ mod tests {
     #[test]
     fn unxstar_domain_aggregate_all_green() {
         let set = run_unxstar_checks();
-        let (passed, failed) = set.tally();
-        assert!(
-            set.all_passed(),
-            "UNX 册自检存在红项：{}/{} 绿",
-            passed,
-            passed + failed
-        );
         assert!(!set.truncated(), "UNX 域聚合溢出（子集数超 CheckSet 上限）");
+        if set.all_passed() {
+            return;
+        }
+        let (passed, failed) = set.tally();
+        // 修正记录（诊断面）：原断言只报「N/M 绿」，不报哪几条红；unxstar
+        // 有 69 个折叠子集，红项定位靠二分重跑是分钟级成本。
+        // 注意把 `!truncated()` 守卫**提到前面**：原先它在 `all_passed()`
+        // 之后，若折叠溢出，`all_passed()` 可能先红并panic，溢出这条更
+        // 根本的病因就被盖住了——先查病因再看症状。
+        //
+        // 追加「穿透 `DYN_CAP` 定点名」段（与 `cgpu` / `stareco::deep` 对齐）：
+        // `add_dyn` 的动态明细上限 `DYN_CAP = 48` **字节**，69 个格标签
+        // 拼起来远超此量 ⇒ 折叠层那份名单在 panic 里必然被截断补`~`，只剩
+        // 残缺的前几个，看不到「哪个子集里的哪条判据红」。故**绕过 `add_dyn`，
+        // 直接遍历两张函数指针表现场取下层名单**，长度不受限。
+        let mut detail = String::new();
+        for (tag, f) in unxstar_blocks().iter() {
+            let sub = f();
+            if sub.all_passed() && !sub.truncated() {
+                continue;
+            }
+            if !detail.is_empty() {
+                detail.push('\n');
+            }
+            detail.push('[');
+            detail.push_str(tag);
+            detail.push_str("] ");
+            let reds = sub.red_items_text();
+            if reds.is_empty() {
+                detail.push_str("(truncated)");
+            } else {
+                detail.push_str(&reds);
+            }
+        }
+        // 二级折叠表同样穿透：主集那一格只带「红项计数」，真正的名单在此补。
+        for (tag, f) in unxstar_secondary_blocks().iter() {
+            let sub = f();
+            if sub.all_passed() && !sub.truncated() {
+                continue;
+            }
+            if !detail.is_empty() {
+                detail.push('\n');
+            }
+            detail.push_str("[2nd ");
+            detail.push_str(tag);
+            detail.push_str("] ");
+            let reds = sub.red_items_text();
+            if reds.is_empty() {
+                detail.push_str("(truncated)");
+            } else {
+                detail.push_str(&reds);
+            }
+            // 修正记录（诊断段自己也撞 `DYN_SLOTS`）：上面拿到的是**二级聚合集**
+            // 的名单，而 wb21 这类族内部的明细是走 `add_dyn` 落的
+            // ——`DYN_SLOTS` 只有 8，8 条红项刚好占满 8 槽 ⇒
+            // `red_items_text()` 只吐标签、**明细全空**（实测：8 条 wb21 红项
+            // 打印出来只有 `UNX-F0404; UNX-F0583; …`，看不到一条失败原因）。
+            //
+            // 这正是戒律「`DYN_SLOTS` 是稀缺资源」在**诊断路径**上的表现：
+            // 聚合器把明细放进 `add_dyn` 时就已经丢了，事后无论怎么
+            // `red_items_text()` 都捞不回来。唯一可靠办法是**再往下一层**，
+            // 绕开定容槽，直接现调被测入口。
+            if *tag == "UNX-F-WB21" {
+                detail.push('\n');
+                detail.push_str("    [wb21 drill 逐条报告] ");
+                detail.push_str(&wb21_drill_report());
+            }
+        }
+        panic!(
+            "UNX 册自检存在红项：{}/{} 绿；红项：{}\n{}",
+            passed,
+            passed + failed,
+            set.red_items_text(),
+            detail
+        );
+    }
+
+    /// **折叠不丢判据**：主集格数 == blocks表长 + 1（二级折叠那1 格）。
+    ///
+    /// 修正记录（这条判据存在的理由：本域刚犯过一次静默丢判据）：
+    /// 折叠是把「N 个子集」压成「1 个汇总判据」的变换，天生**容易静默丢**——
+    /// 丢的那几格不会报错，只是永远不参与闭环。本条把「主集格数」与
+    /// 「折叠表长度」**用等式钉死**，任何一侧被漏改都会立刻报红。
+    #[test]
+    fn unxstar_fold_does_not_drop_subsets() {
+        let set = run_unxstar_checks();
+        // blocks 表是 `run_unxstar_checks` 内的局部变量，故此处用「主集格数
+        // − 二级折叠那 1 格 == 一级表长」无法直接验证；改为断言三条硬事实：
+        // ① 主集不溢出（否则末尾若干族被静默丢弃）；
+        // ② 二级集恰好装满 58 格且不溢出（它承载了原58 个直接 add）；
+        // ③ 二级表长度 == 二级集格数（表与聚合一一对应，无重复无遗漏）。
+        assert!(!set.truncated(), "主集溢出：折叠表有子集被静默丢弃");
+        let secondary = run_unxstar_secondary_checks();
+        assert!(
+            !secondary.truncated(),
+            "二级集溢出：{} 格装不下 {} 个族——须再折一层",
+            secondary.len() + secondary.dropped(),
+            unxstar_secondary_blocks().len()
+        );
+        assert_eq!(
+            secondary.len(),
+            unxstar_secondary_blocks().len(),
+            "二级集格数须等于二级表长度（表与聚合必须一一对应）"
+        );
+        // 主集格数 = 一级表 69 + 二级折叠 1 格。这是「没有第三处暗格」的锚。
+        assert_eq!(
+            set.len(),
+            70,
+            "UNX 主集格数应为 70（一级 69 + 二级折叠 1）；实测 {}",
+            set.len()
+        );
+    }
+
+    /// 二级折叠表标签唯一（重复格会让某个族白跑，且掩盖「少一个族」）。
+    #[test]
+    fn unxstar_secondary_tags_unique() {
+        let table = unxstar_secondary_blocks();
+        for i in 0..table.len() {
+            for j in (i + 1)..table.len() {
+                assert_ne!(
+                    table[i].0, table[j].0,
+                    "二级折叠表标签重复：{}",
+                    table[i].0
+                );
+            }
+        }
     }
 }
 
@@ -914,6 +703,45 @@ pub mod unx2110_lockfreeread;
 pub mod unx2111_c5conaccount;
 // unx2112_o1conaccount —— UNX-F2112 与O1对标采样对账（导出面×对标采样接口版本三一致+F2019/F2074接口族双锚对齐+采样谱27格封闭，0xDA 段六码）
 pub mod unx2112_o1conaccount;
+// unx2113_batchassert —— UNX-F2113 批内自检与断言聚合（挂接核对+黑户零+二维族频登记+分族账守恒+LCG 256轮+指纹重放，0xDD 段六码）
+pub mod unx2113_batchassert;
+// unx2114_docgraph —— UNX-F2114 导出文档图三面图（proc/sysfs/debug 三面节点边+环检测+深度上限+冻结v1 FNV，0xDE 段六码）
+pub mod unx2114_docgraph;
+// unx2115_secdecl —— UNX-F2115 权限与安全声明（三面全只读红线+权限最小化+敏感字段零导出+越权注入10/10拒，0xDF 段六码）
+pub mod unx2115_secdecl;
+// unx2116_bignuma —— UNX-F2116 大核数扩展声明（核数阶梯八阶闭集+每阶核态逐核核对+缩核注入10/10拒，0xE0 段六码）
+pub mod unx2116_bignuma;
+// unx2117_conserve —— UNX-F2117 导出守恒复核（三面导出和==账源总额+增减逐笔留痕+漂移注入10/10拒，0xE5 段六码）
+pub mod unx2117_conserve;
+// unx2118_trictri —— UNX-F2118 B24/B25 三方对账（主册×副册逐条对拍+域册见证+缺口/多出/口径三类错条注入10/10拒，0xF0 段六码）
+pub mod unx2118_trictri;
+// unx2119_fmtfreeze —— UNX-F2119 版本冻结（列序/单位/版本三冻结列+FNV指纹钉死+漂移注入10/10拒+解冻留痕，0xF1 段六码）
+pub mod unx2119_fmtfreeze;
+// unx2120_batchtotal —— UNX-F2120 批级总成（七域分账和==批总账+红项必溯源+漏域注入10/10拒，0xF3 段六码）
+pub mod unx2120_batchtotal;
+
+/// UNX-22 批次域聚合（F2110..F2120 十一单折叠：族内任一红即整族红）。
+/// F2110/F2111/F2112 三单此前落地未挂聚合——随本批一并接入。
+pub fn run_unx22_batch() -> crate::checks::CheckSet {
+    let mut set = crate::checks::CheckSet::new("UNX22-batch");
+    let entries: [(&'static str, bool, &'static str); 11] = [
+        ("UNX-F2110", unx2110_lockfreeread::self_check().all_passed(), "unx22 2110 无锁读基准族红"),
+        ("UNX-F2111", unx2111_c5conaccount::self_check().all_passed(), "unx22 2111 C5对账族红"),
+        ("UNX-F2112", unx2112_o1conaccount::self_check().all_passed(), "unx22 2112 O1对标族红"),
+        ("UNX-F2113", unx2113_batchassert::self_check().all_passed(), "unx22 2113 批内自检族红"),
+        ("UNX-F2114", unx2114_docgraph::self_check().all_passed(), "unx22 2114 文档图族红"),
+        ("UNX-F2115", unx2115_secdecl::self_check().all_passed(), "unx22 2115 安全声明族红"),
+        ("UNX-F2116", unx2116_bignuma::self_check().all_passed(), "unx22 2116 大核数族红"),
+        ("UNX-F2117", unx2117_conserve::self_check().all_passed(), "unx22 2117 守恒复核族红"),
+        ("UNX-F2118", unx2118_trictri::self_check().all_passed(), "unx22 2118 三方对账族红"),
+        ("UNX-F2119", unx2119_fmtfreeze::self_check().all_passed(), "unx22 2119 版本冻结族红"),
+        ("UNX-F2120", unx2120_batchtotal::self_check().all_passed(), "unx22 2120 批级总成族红"),
+    ];
+    for (tag, ok, detail) in entries.iter() {
+        set.add(tag, *ok, if *ok { "" } else { detail });
+    }
+    set
+}
 
 
 
@@ -1648,6 +1476,10 @@ pub mod unx120_notify;
 pub mod unx121storm_stress;
 pub mod unx122doc_freeze;
 pub mod unx123_deadlock;
+pub mod unx124_faultinj;
+pub mod unx125_latency;
+pub mod unx126_summary;
+pub mod unx127_explain;
 pub mod unx702_acpi80;
 pub mod unx722_verfp;
 pub mod unx742_upgrade;
@@ -2388,34 +2220,96 @@ pub mod unx1741_idlest;
 /// WB21 批次域聚合（第二波深化 20 单：各模块 drill 验收入口逐单折叠，
 /// 族内任一红即整族红；F1501~F1741 的 12 单与 wb20 首波同特性号，
 /// 故标签带 -D2 后缀区分第二波深化）。
+///
+/// 修正记录一（明细被丢弃）：原表把每个入口的返回值**当场拆成 `.0`**，
+/// 失败时的 `String` 报告被扔掉，明细写死成静态串（如
+/// `"wb21 hpetcap drill red"`）。于是 8 条红项的 panic 里全是同一句废话，
+/// **看不到任何失败原因**——而这些入口（`drill_green` / `drill_100k` …）
+/// 恰恰会把失败原因写在报告里（如 `Err(d).full()` 的偏差明细）。
+/// 现改为在循环内现调、取报告、按 `DYN_CAP` 放进动态明细槽。
+///
+/// 修正记录二（值数组 = 构造即全跑，与全仓纪律相反）：原表是
+/// `[(&str, bool, &str); 20]`，数组元素是**已求值的结果** ⇒ 20 个演练
+/// 在进循环之前就全部跑完、各自一份返回值在栈上并存。`unxstar_checks`
+/// 已因同一原因（310KB 栈）改成函数指针表，此处沿用同一手法。
 pub fn run_wb21_unx20() -> crate::checks::CheckSet {
     let mut set = crate::checks::CheckSet::new("WB21-unx20");
-    let entries: [(&'static str, bool, &'static str); 20] = [
-        ("UNX-F0404", unx404_hpetcap::drill_green().0, "wb21 hpetcap drill red"),
-        ("UNX-F0583", unx583_wlparams::drill_green().0, "wb21 wlparams drill red"),
-        ("UNX-F1102", unx1102_stubaudit::pump_100k().0, "wb21 stubaudit pump red"),
-        ("UNX-F1201", unx1201_polloop::drill_1m().0, "wb21 polloop drill red"),
-        ("UNX-F1301", unx1301_retire::drill_10().0, "wb21 retire drill red"),
-        ("UNX-F1421", unx1421_latdist::drill_100k().0, "wb21 latdist drill red"),
-        ("UNX-F1441", unx1441_schema::drill_full().0, "wb21 schema drill red"),
-        ("UNX-F1461", unx1461_zeroeq::drill_10rounds().0, "wb21 zeroeq drill red"),
-        ("UNX-F1501-D2", unx1501_regmat::drill_full().0, "wb21 regmat drill red"),
-        ("UNX-F1541-D2", unx1541_dombind::drill_seal().0, "wb21 dombind drill red"),
-        ("UNX-F1561-D2", unx1561_cosign::drill_cosign().0, "wb21 cosign drill red"),
-        ("UNX-F1581-D2", unx1581_domreg::drill_800().0, "wb21 domreg drill red"),
-        ("UNX-F1601-D2", unx1601_smpcons::drill_full().0, "wb21 smpcons drill red"),
-        ("UNX-F1621-D2", unx1621_percpu::drill_layout().0, "wb21 percpu drill red"),
-        ("UNX-F1641-D2", unx1641_runqueue::drill_full().0, "wb21 runqueue drill red"),
-        ("UNX-F1661-D2", unx1661_schedcls::drill_chain().0, "wb21 schedcls drill red"),
-        ("UNX-F1681-D2", unx1681_timeslice::drill_model().0, "wb21 timeslice drill red"),
-        ("UNX-F1701-D2", unx1701_loadtrk::drill_model().0, "wb21 loadtrk drill red"),
-        ("UNX-F1721-D2", unx1721_balexec::drill_chain().0, "wb21 balexec drill red"),
-        ("UNX-F1741-D2", unx1741_idlest::drill_cycle().0, "wb21 idlest drill red"),
-    ];
-    for (tag, ok, detail) in entries.iter() {
-        set.add(tag, *ok, if *ok { "" } else { detail });
+    for (tag, f) in wb21_blocks().iter() {
+        // 即用即弃：同一时刻只存活一份 `(bool, String)`。
+        let (ok, report) = f();
+        if ok {
+            set.add(tag, true, "");
+        } else {
+            // 失败原因取自 drill 自己的报告（可含偏差明细），而不是
+            // 「XX drill red」这种同词反复。
+            // 注意 `detail` 必须声明在**循环体作用域**（不能定义在
+            // `else` 块内）——`add_dyn` 只借用它一瞬。
+            let detail: String = if report.is_empty() {
+                alloc::format!("wb21 drill red：{} 无报告", tag)
+            } else {
+                report
+            };
+            set.add_dyn(tag, false, &detail);
+        }
     }
     set
+}
+
+/// WB21 批次 20 单的 drill 入口表（**函数指针**，循环内 `f()` 即用即弃）。
+///
+/// 提取为模块级函数的理由与 `unxstar_blocks` 同源：聚合表若是函数内局部
+/// 变量，失败路径上就够不着下层；而 `DYN_SLOTS = 8` 恰好会被 8 条红占满，
+/// 使 `red_items_text()` 只剩标签——诊断必须能**再往下一层**现调入口。
+pub fn wb21_blocks() -> [(&'static str, fn() -> (bool, String)); 20] {
+    [
+        ("UNX-F0404", unx404_hpetcap::drill_green),
+        ("UNX-F0583", unx583_wlparams::drill_green),
+        ("UNX-F1102", unx1102_stubaudit::pump_100k),
+        ("UNX-F1201", unx1201_polloop::drill_1m),
+        ("UNX-F1301", unx1301_retire::drill_10),
+        ("UNX-F1421", unx1421_latdist::drill_100k),
+        ("UNX-F1441", unx1441_schema::drill_full),
+        ("UNX-F1461", unx1461_zeroeq::drill_10rounds),
+        ("UNX-F1501-D2", unx1501_regmat::drill_full),
+        ("UNX-F1541-D2", unx1541_dombind::drill_seal),
+        ("UNX-F1561-D2", unx1561_cosign::drill_cosign),
+        ("UNX-F1581-D2", unx1581_domreg::drill_800),
+        ("UNX-F1601-D2", unx1601_smpcons::drill_full),
+        ("UNX-F1621-D2", unx1621_percpu::drill_layout),
+        ("UNX-F1641-D2", unx1641_runqueue::drill_full),
+        ("UNX-F1661-D2", unx1661_schedcls::drill_chain),
+        ("UNX-F1681-D2", unx1681_timeslice::drill_model),
+        ("UNX-F1701-D2", unx1701_loadtrk::drill_model),
+        ("UNX-F1721-D2", unx1721_balexec::drill_chain),
+        ("UNX-F1741-D2", unx1741_idlest::drill_cycle),
+    ]
+}
+
+/// WB21 逐条 drill 报告（**只在失败路径上**被诊断段调用；长度不受限）。
+///
+/// 存在的理由：聚合器 `add_dyn` 的动态明细上限 `DYN_SLOTS = 8` 会被
+/// 8 条红刚好占满，`CheckSet::red_items_text()` 于是只剩标签——而这些
+/// drill 自己返回的 `String` 才带真正的失败原因。此函数**绕开定容槽**
+/// 直接现调 20 个入口，把红项的报告逐条拼起来。
+pub fn wb21_drill_report() -> String {
+    let mut s = String::new();
+    for (tag, f) in wb21_blocks().iter() {
+        let (ok, report) = f();
+        if ok {
+            continue;
+        }
+        if !s.is_empty() {
+            s.push('\n');
+        }
+        s.push_str(tag);
+        s.push_str(" => ");
+        if report.is_empty() {
+            s.push_str("(无报告)");
+        } else {
+            s.push_str(&report);
+        }
+    }
+    s
 }
 pub mod unx882_rtereprog;
 
@@ -2628,84 +2522,890 @@ pub fn run_wb22_unx22() -> crate::checks::CheckSet {
     set
 }
 
-// ===================== AI-WB3 · CoRun UNX-A4 批 40 单深化版（0x12C0~0x2A80 段四十码） =====================
-// unx2321_unisign3 ↔ UNX-F2321 CoRun·UNX-A3-B37（册目标 310 行；诊断码段 0x12C0–0x12FF）
+pub mod unx982_throttle;
+pub mod unx983_stormgrade;
+// ==== 孤儿模块补注册批次 WB-A1（2026-10-12）：文件在链外导致功能不可达 ====
+pub mod unx080_idt;
+pub mod unx082_lapicbase;
+pub mod unx084_leveltrigger;
+pub mod unx088_irqaffinity;
+pub mod unx090_irqregister;
+pub mod unx091_msixmultivec;
+pub mod unx092_handlerregistry;
+pub mod unx093_sharedvector;
+pub mod unx094_irqcontext;
+pub mod unx095_floodtest;
+pub mod unx096_auditreplay;
+pub mod unx097_enableseq;
+pub mod unx098_dualcapability;
+pub mod unx099_intxpath;
+pub mod unx100_irqname;
+pub mod unx101_crosscheck;
+pub mod unx102_irqstats;
+pub mod unx103_handlertime;
+pub mod unx104_teardown;
+pub mod unx105_sharedalert;
+// ==== 孤儿模块补注册 WB-A2（2026-10-12）====
+pub mod unx1061_equiv;
+pub mod unx1061_polycost;
+pub mod unx1061_registry;
+pub mod unx1061_threesrc;
+pub mod unx1061_traitface;
+pub mod unx106_contract;
+pub mod unx107_faultharness;
+pub mod unx1081_eventlog;
+pub mod unx1081_f1079regr;
+pub mod unx1081_slewmode;
+pub mod unx1081_sourceaudit;
+pub mod unx1081_stepmode;
+pub mod unx108_healthsummary;
+pub mod unx109_ktb06;
+pub mod unx1141_distrib;
+pub mod unx1141_f0943align;
+pub mod unx1141_percentiles;
+pub mod unx1141_pervec;
+pub mod unx1141_timecap;
+pub mod unx1161_conserve;
+pub mod unx1161_exitcond;
+pub mod unx1161_million;
+pub mod unx1161_pending;
+pub mod unx1161_quota;
+pub mod unx1181_applylat;
+pub mod unx1181_illegalrefuse;
+pub mod unx1181_readback;
+pub mod unx1181_routermap;
+pub mod unx1181_targetreg;
+pub mod unx1221_dualmode;
+pub mod unx1221_exitall;
+pub mod unx1221_hundthou;
+pub mod unx1221_serialize;
+pub mod unx1221_twosrc;
+pub mod unx122_stagewatchdog;
+pub mod unx122_stagewd;
+pub mod unx122grid;
+pub mod unx122mx;
+pub mod unx123_wdtime;
+pub mod unx124_wdstall;
+pub mod unx125_wddiag;
+pub mod unx142_gpthdr;
+pub mod unx142grid;
+pub mod unx142mx;
+pub mod unx143_gptpart;
+pub mod unx144_espfat;
+pub mod unx145_imgsync;
+pub mod unx1743_idleres;
+pub mod unx1763_statmac;
+pub mod unx1783_crossscan;
+pub mod unx1803_resched;
+pub mod unx1823_saveframe;
+pub mod unx1843_ipirx;
+pub mod unx1863_ipishoot;
+pub mod unx1883_trireg;
+pub mod unx202_schemaver;
+pub mod unx2261_settle;
+pub mod unx2281_expand;
+pub mod unx2321_consign;
 pub mod unx2321_unisign3;
-// unx2341_udomregress ↔ UNX-F2341 CoRun·UNX-A3-B38（册目标 330 行；诊断码段 0x13C0–0x13FF）
 pub mod unx2341_udomregress;
-// unx2361_udecLARE3 ↔ UNX-F2361 CoRun·UNX-A3-B39（册目标 310 行；诊断码段 0x15C0–0x15FF）
 pub mod unx2361_udecLARE3;
-// unx2381_ufinalacct ↔ UNX-F2381 CoRun·UNX-A3-B40（册目标 350 行；诊断码段 0x1640–0x167F）
 pub mod unx2381_ufinalacct;
-// unx2402_ufreemap ↔ UNX-F2402 CoRun·UNX-A4-B01（册目标 300 行；诊断码段 0x16C0–0x16FF）
+pub mod unx2401_u2401barrier;
+pub mod unx2401_u2401bgrid;
+pub mod unx2401_u2401bmx;
+pub mod unx2401_u2401core;
+pub mod unx2401_u2401dual;
+pub mod unx2401_u2401grid;
+pub mod unx2401_u2401map;
+pub mod unx2401_u2401merge;
+pub mod unx2401_u2401mix;
+pub mod unx2401_u2401mx;
+pub mod unx2401_u2401pipe;
+pub mod unx2401_u2401sm;
 pub mod unx2402_ufreemap;
-// unx2422_uorder14 ↔ UNX-F2422 CoRun·UNX-A4-B02（册目标 300 行；诊断码段 0x1740–0x177F）
+pub mod unx2421_u2421barrier;
+pub mod unx2421_u2421bgrid;
+pub mod unx2421_u2421bmx;
+pub mod unx2421_u2421core;
+pub mod unx2421_u2421dual;
+pub mod unx2421_u2421grid;
+pub mod unx2421_u2421map;
+pub mod unx2421_u2421merge;
+pub mod unx2421_u2421mix;
+pub mod unx2421_u2421mx;
+pub mod unx2421_u2421pipe;
+pub mod unx2421_u2421sm;
 pub mod unx2422_uorder14;
-// unx2442_urefill ↔ UNX-F2442 CoRun·UNX-A4-B03（册目标 300 行；诊断码段 0x17C0–0x17FF）
+pub mod unx2441_u2441barrier;
+pub mod unx2441_u2441bgrid;
+pub mod unx2441_u2441bmx;
+pub mod unx2441_u2441core;
+pub mod unx2441_u2441dual;
+pub mod unx2441_u2441grid;
+pub mod unx2441_u2441map;
+pub mod unx2441_u2441merge;
+pub mod unx2441_u2441mix;
+pub mod unx2441_u2441mx;
+pub mod unx2441_u2441pipe;
+// ==== 孤儿模块补注册 WB-A3（2026-10-12）====
+pub mod unx2441_u2441sm;
 pub mod unx2442_urefill;
-// unx2482_uorder9raw ↔ UNX-F2482 CoRun·UNX-A4-B05（册目标 300 行；诊断码段 0x18C0–0x18FF）
+pub mod unx2461_u2461barrier;
+pub mod unx2461_u2461bgrid;
+pub mod unx2461_u2461bmx;
+pub mod unx2461_u2461core;
+pub mod unx2461_u2461dual;
+pub mod unx2461_u2461grid;
+pub mod unx2461_u2461map;
+pub mod unx2461_u2461merge;
+pub mod unx2461_u2461mix;
+pub mod unx2461_u2461mx;
+pub mod unx2461_u2461pipe;
+pub mod unx2461_u2461sm;
+pub mod unx2481_u2481barrier;
+pub mod unx2481_u2481bgrid;
+pub mod unx2481_u2481bmx;
+pub mod unx2481_u2481core;
+pub mod unx2481_u2481dual;
+pub mod unx2481_u2481grid;
+pub mod unx2481_u2481map;
+pub mod unx2481_u2481merge;
+pub mod unx2481_u2481mix;
+pub mod unx2481_u2481mx;
+pub mod unx2481_u2481pipe;
+pub mod unx2481_u2481sm;
 pub mod unx2482_uorder9raw;
-// unx2502_uhptime ↔ UNX-F2502 CoRun·UNX-A4-B06（册目标 280 行；诊断码段 0x1A80–0x1ABF）
+pub mod unx2501_u2501barrier;
+pub mod unx2501_u2501bgrid;
+pub mod unx2501_u2501bmx;
+pub mod unx2501_u2501core;
+pub mod unx2501_u2501dual;
+pub mod unx2501_u2501grid;
+pub mod unx2501_u2501map;
+pub mod unx2501_u2501merge;
+pub mod unx2501_u2501mix;
+pub mod unx2501_u2501mx;
+pub mod unx2501_u2501pipe;
+pub mod unx2501_u2501sm;
 pub mod unx2502_uhptime;
-// unx2562_uaspcreate ↔ UNX-F2562 CoRun·UNX-A4-B09（册目标 300 行；诊断码段 0x1BC0–0x1BFF）
+pub mod unx2521_u2521barrier;
+pub mod unx2521_u2521bgrid;
+pub mod unx2521_u2521bmx;
+pub mod unx2521_u2521core;
+pub mod unx2521_u2521dual;
+pub mod unx2521_u2521grid;
+pub mod unx2521_u2521map;
+pub mod unx2521_u2521merge;
+pub mod unx2521_u2521mix;
+pub mod unx2521_u2521mx;
+pub mod unx2521_u2521pipe;
+pub mod unx2521_u2521sm;
+pub mod unx2541_u2541barrier;
+pub mod unx2541_u2541bgrid;
+pub mod unx2541_u2541bmx;
+pub mod unx2541_u2541core;
+pub mod unx2541_u2541dual;
+pub mod unx2541_u2541grid;
+pub mod unx2541_u2541map;
+pub mod unx2541_u2541merge;
+pub mod unx2541_u2541mix;
+pub mod unx2541_u2541mx;
+pub mod unx2541_u2541pipe;
+pub mod unx2541_u2541sm;
+pub mod unx2561_u2561barrier;
+pub mod unx2561_u2561bgrid;
+pub mod unx2561_u2561bmx;
+pub mod unx2561_u2561core;
+pub mod unx2561_u2561dual;
+pub mod unx2561_u2561grid;
+pub mod unx2561_u2561map;
+pub mod unx2561_u2561merge;
+pub mod unx2561_u2561mix;
+pub mod unx2561_u2561mx;
+pub mod unx2561_u2561pipe;
+pub mod unx2561_u2561sm;
 pub mod unx2562_uaspcreate;
-// unx2582_uvmainject ↔ UNX-F2582 CoRun·UNX-A4-B10（册目标 300 行；诊断码段 0x1C40–0x1C7F）
+pub mod unx2581_u2581barrier;
+pub mod unx2581_u2581bgrid;
+pub mod unx2581_u2581bmx;
+pub mod unx2581_u2581core;
+pub mod unx2581_u2581dual;
+pub mod unx2581_u2581grid;
+pub mod unx2581_u2581map;
+pub mod unx2581_u2581merge;
+pub mod unx2581_u2581mix;
+pub mod unx2581_u2581mx;
+pub mod unx2581_u2581pipe;
+pub mod unx2581_u2581sm;
 pub mod unx2582_uvmainject;
-// unx2602_upfentry ↔ UNX-F2602 CoRun·UNX-A4-B11（册目标 300 行；诊断码段 0x1C80–0x1CBF）
+pub mod unx2601_u2601barrier;
+pub mod unx2601_u2601bgrid;
+pub mod unx2601_u2601bmx;
+pub mod unx2601_u2601core;
+pub mod unx2601_u2601dual;
+pub mod unx2601_u2601grid;
+pub mod unx2601_u2601map;
+pub mod unx2601_u2601merge;
+pub mod unx2601_u2601mix;
+pub mod unx2601_u2601mx;
+pub mod unx2601_u2601pipe;
+pub mod unx2601_u2601sm;
 pub mod unx2602_upfentry;
-// unx2622_upcidbook ↔ UNX-F2622 CoRun·UNX-A4-B12（册目标 300 行；诊断码段 0x1CC0–0x1CFF）
+pub mod unx2621_u2621barrier;
+pub mod unx2621_u2621bgrid;
+pub mod unx2621_u2621bmx;
+pub mod unx2621_u2621core;
+pub mod unx2621_u2621dual;
+pub mod unx2621_u2621grid;
+pub mod unx2621_u2621map;
+pub mod unx2621_u2621merge;
+pub mod unx2621_u2621mix;
+pub mod unx2621_u2621mx;
+pub mod unx2621_u2621pipe;
+pub mod unx2621_u2621sm;
 pub mod unx2622_upcidbook;
-// unx2642_uptebatchro ↔ UNX-F2642 CoRun·UNX-A4-B13（册目标 280 行；诊断码段 0x1D40–0x1D7F）
+pub mod unx2641_u2641barrier;
+pub mod unx2641_u2641bgrid;
+pub mod unx2641_u2641bmx;
+pub mod unx2641_u2641core;
+// ==== 孤儿模块补注册 WB-A4（2026-10-12）====
+pub mod unx2641_u2641dual;
+pub mod unx2641_u2641grid;
+pub mod unx2641_u2641map;
+pub mod unx2641_u2641merge;
+pub mod unx2641_u2641mix;
+pub mod unx2641_u2641mx;
+pub mod unx2641_u2641pipe;
+pub mod unx2641_u2641sm;
 pub mod unx2642_uptebatchro;
-// unx2662_ulookup ↔ UNX-F2662 CoRun·UNX-A4-B14（册目标 280 行；诊断码段 0x1D80–0x1DBF）
+pub mod unx2661_u2661barrier;
+pub mod unx2661_u2661bgrid;
+pub mod unx2661_u2661bmx;
+pub mod unx2661_u2661core;
+pub mod unx2661_u2661dual;
+pub mod unx2661_u2661grid;
+pub mod unx2661_u2661map;
+pub mod unx2661_u2661merge;
+pub mod unx2661_u2661mix;
+pub mod unx2661_u2661mx;
+pub mod unx2661_u2661pipe;
+pub mod unx2661_u2661sm;
 pub mod unx2662_ulookup;
-// unx2682_ucacheif ↔ UNX-F2682 CoRun·UNX-A4-B15（册目标 340 行；诊断码段 0x1DC0–0x1DFF）
+pub mod unx2681_u2681barrier;
+pub mod unx2681_u2681bgrid;
+pub mod unx2681_u2681bmx;
+pub mod unx2681_u2681core;
+pub mod unx2681_u2681dual;
+pub mod unx2681_u2681grid;
+pub mod unx2681_u2681map;
+pub mod unx2681_u2681merge;
+pub mod unx2681_u2681mix;
+pub mod unx2681_u2681mx;
+pub mod unx2681_u2681pipe;
+pub mod unx2681_u2681sm;
 pub mod unx2682_ucacheif;
-// unx2702_ulrufield ↔ UNX-F2702 CoRun·UNX-A4-B16（册目标 340 行；诊断码段 0x1E40–0x1E7F）
+pub mod unx2701_u2701barrier;
+pub mod unx2701_u2701bgrid;
+pub mod unx2701_u2701bmx;
+pub mod unx2701_u2701core;
+pub mod unx2701_u2701dual;
+pub mod unx2701_u2701grid;
+pub mod unx2701_u2701map;
+pub mod unx2701_u2701merge;
+pub mod unx2701_u2701mix;
+pub mod unx2701_u2701mx;
+pub mod unx2701_u2701pipe;
+pub mod unx2701_u2701sm;
 pub mod unx2702_ulrufield;
-// unx2722_uanonevict ↔ UNX-F2722 CoRun·UNX-A4-B17（册目标 300 行；诊断码段 0x1E80–0x1EBF）
+pub mod unx2721_u2721barrier;
+pub mod unx2721_u2721bgrid;
+pub mod unx2721_u2721bmx;
+pub mod unx2721_u2721core;
+pub mod unx2721_u2721dual;
+pub mod unx2721_u2721grid;
+pub mod unx2721_u2721map;
+pub mod unx2721_u2721merge;
+pub mod unx2721_u2721mix;
+pub mod unx2721_u2721mx;
+pub mod unx2721_u2721pipe;
+pub mod unx2721_u2721sm;
 pub mod unx2722_uanonevict;
-// unx2762_umaptbl ↔ UNX-F2762 CoRun·UNX-A4-B19（册目标 300 行；诊断码段 0x1EC0–0x1EFF）
+pub mod unx2741_u2741barrier;
+pub mod unx2741_u2741bgrid;
+pub mod unx2741_u2741bmx;
+pub mod unx2741_u2741core;
+pub mod unx2741_u2741dual;
+pub mod unx2741_u2741grid;
+pub mod unx2741_u2741map;
+pub mod unx2741_u2741merge;
+pub mod unx2741_u2741mix;
+pub mod unx2741_u2741mx;
+pub mod unx2741_u2741pipe;
+pub mod unx2741_u2741sm;
+pub mod unx2761_u2761barrier;
+pub mod unx2761_u2761bgrid;
+pub mod unx2761_u2761bmx;
+pub mod unx2761_u2761core;
+pub mod unx2761_u2761dual;
+pub mod unx2761_u2761grid;
+pub mod unx2761_u2761map;
+pub mod unx2761_u2761merge;
+pub mod unx2761_u2761mix;
+pub mod unx2761_u2761mx;
+pub mod unx2761_u2761pipe;
+pub mod unx2761_u2761sm;
 pub mod unx2762_umaptbl;
-// unx2782_ubuddymerge ↔ UNX-F2782 CoRun·UNX-A4-B20（册目标 360 行；诊断码段 0x1F40–0x1F7F）
+pub mod unx2781_u2781barrier;
+pub mod unx2781_u2781bgrid;
+pub mod unx2781_u2781bmx;
+pub mod unx2781_u2781core;
+pub mod unx2781_u2781dual;
+pub mod unx2781_u2781grid;
+pub mod unx2781_u2781map;
+pub mod unx2781_u2781merge;
+pub mod unx2781_u2781mix;
+pub mod unx2781_u2781mx;
+pub mod unx2781_u2781pipe;
+pub mod unx2781_u2781sm;
 pub mod unx2782_ubuddymerge;
-// unx2801_ubigpoolcap ↔ UNX-F2801 CoRun·UNX-A4-B21（册目标 300 行；诊断码段 0x1F80–0x1FBF）
+pub mod unx2801_u2801barrier;
+pub mod unx2801_u2801bgrid;
+pub mod unx2801_u2801bmx;
+pub mod unx2801_u2801core;
+pub mod unx2801_u2801dual;
+pub mod unx2801_u2801grid;
+pub mod unx2801_u2801map;
+pub mod unx2801_u2801merge;
+pub mod unx2801_u2801mix;
+pub mod unx2801_u2801mx;
+pub mod unx2801_u2801pipe;
+pub mod unx2801_u2801sm;
 pub mod unx2801_ubigpoolcap;
-// unx2841_ubigasp ↔ UNX-F2841 CoRun·UNX-A4-B23（册目标 340 行；诊断码段 0x20C0–0x20FF）
+pub mod unx2821_u2821barrier;
+pub mod unx2821_u2821bgrid;
+pub mod unx2821_u2821bmx;
+pub mod unx2821_u2821core;
+pub mod unx2821_u2821dual;
+pub mod unx2821_u2821grid;
+pub mod unx2821_u2821map;
+pub mod unx2821_u2821merge;
+pub mod unx2821_u2821mix;
+pub mod unx2821_u2821mx;
+pub mod unx2821_u2821pipe;
+pub mod unx2821_u2821sm;
+pub mod unx2841_u2841barrier;
+pub mod unx2841_u2841bgrid;
+pub mod unx2841_u2841bmx;
+pub mod unx2841_u2841core;
+pub mod unx2841_u2841dual;
+pub mod unx2841_u2841grid;
+pub mod unx2841_u2841map;
+pub mod unx2841_u2841merge;
+pub mod unx2841_u2841mix;
+pub mod unx2841_u2841mx;
+pub mod unx2841_u2841pipe;
+pub mod unx2841_u2841sm;
 pub mod unx2841_ubigasp;
-// unx2861_ubigmatrix ↔ UNX-F2861 CoRun·UNX-A4-B24（册目标 340 行；诊断码段 0x2140–0x217F）
+pub mod unx284_paniclayer;
+pub mod unx285_panicstop;
+pub mod unx2861_u2861barrier;
+pub mod unx2861_u2861bgrid;
+pub mod unx2861_u2861bmx;
+pub mod unx2861_u2861core;
+pub mod unx2861_u2861dual;
+pub mod unx2861_u2861grid;
+pub mod unx2861_u2861map;
+pub mod unx2861_u2861merge;
+pub mod unx2861_u2861mix;
+pub mod unx2861_u2861mx;
+pub mod unx2861_u2861pipe;
+pub mod unx2861_u2861sm;
 pub mod unx2861_ubigmatrix;
-// unx2901_ucachestress ↔ UNX-F2901 CoRun·UNX-A4-B26（册目标 340 行；诊断码段 0x21C0–0x21FF）
+pub mod unx2881_u2881barrier;
+pub mod unx2881_u2881bgrid;
+pub mod unx2881_u2881bmx;
+pub mod unx2881_u2881core;
+pub mod unx2881_u2881dual;
+pub mod unx2881_u2881grid;
+pub mod unx2881_u2881map;
+pub mod unx2881_u2881merge;
+pub mod unx2881_u2881mix;
+pub mod unx2881_u2881mx;
+pub mod unx2881_u2881pipe;
+pub mod unx2881_u2881sm;
+pub mod unx2901_u2901barrier;
+pub mod unx2901_u2901bgrid;
+pub mod unx2901_u2901bmx;
+pub mod unx2901_u2901core;
+pub mod unx2901_u2901dual;
+pub mod unx2901_u2901grid;
+pub mod unx2901_u2901map;
+pub mod unx2901_u2901merge;
+pub mod unx2901_u2901mix;
+pub mod unx2901_u2901mx;
+pub mod unx2901_u2901pipe;
+pub mod unx2901_u2901sm;
 pub mod unx2901_ucachestress;
-// unx2941_udomstress ↔ UNX-F2941 CoRun·UNX-A4-B28（册目标 340 行；诊断码段 0x2240–0x227F）
+pub mod unx2921_u2921barrier;
+pub mod unx2921_u2921bgrid;
+pub mod unx2921_u2921bmx;
+pub mod unx2921_u2921core;
+pub mod unx2921_u2921dual;
+pub mod unx2921_u2921grid;
+pub mod unx2921_u2921map;
+pub mod unx2921_u2921merge;
+pub mod unx2921_u2921mix;
+pub mod unx2921_u2921mx;
+pub mod unx2921_u2921pipe;
+pub mod unx2921_u2921sm;
+pub mod unx2941_u2941barrier;
+pub mod unx2941_u2941bgrid;
+pub mod unx2941_u2941bmx;
+pub mod unx2941_u2941core;
+pub mod unx2941_u2941dual;
+pub mod unx2941_u2941grid;
+pub mod unx2941_u2941map;
+pub mod unx2941_u2941merge;
+pub mod unx2941_u2941mix;
+pub mod unx2941_u2941mx;
+pub mod unx2941_u2941pipe;
+// ==== 孤儿模块补注册 WB-A5（2026-10-12）====
+pub mod unx2941_u2941sm;
 pub mod unx2941_udomstress;
-// unx2981_udomclose ↔ UNX-F2981 CoRun·UNX-A4-B30（册目标 280 行；诊断码段 0x22C0–0x22FF）
+pub mod unx2961_u2961barrier;
+pub mod unx2961_u2961bgrid;
+pub mod unx2961_u2961bmx;
+pub mod unx2961_u2961core;
+pub mod unx2961_u2961dual;
+pub mod unx2961_u2961grid;
+pub mod unx2961_u2961map;
+pub mod unx2961_u2961merge;
+pub mod unx2961_u2961mix;
+pub mod unx2961_u2961mx;
+pub mod unx2961_u2961pipe;
+pub mod unx2961_u2961sm;
+pub mod unx2981_u2981barrier;
+pub mod unx2981_u2981bgrid;
+pub mod unx2981_u2981bmx;
+pub mod unx2981_u2981core;
+pub mod unx2981_u2981dual;
+pub mod unx2981_u2981grid;
+pub mod unx2981_u2981map;
+pub mod unx2981_u2981merge;
+pub mod unx2981_u2981mix;
+pub mod unx2981_u2981mx;
+pub mod unx2981_u2981pipe;
+pub mod unx2981_u2981sm;
 pub mod unx2981_udomclose;
-// unx3001_udualchain ↔ UNX-F3001 CoRun·UNX-A4-B31（册目标 400 行；诊断码段 0x2340–0x237F）
+pub mod unx3001_u3001barrier;
+pub mod unx3001_u3001bgrid;
+pub mod unx3001_u3001bmx;
+pub mod unx3001_u3001core;
+pub mod unx3001_u3001dual;
+pub mod unx3001_u3001grid;
+pub mod unx3001_u3001map;
+pub mod unx3001_u3001merge;
+pub mod unx3001_u3001mix;
+pub mod unx3001_u3001mx;
+pub mod unx3001_u3001pipe;
+pub mod unx3001_u3001sm;
 pub mod unx3001_udualchain;
-// unx3021_utier3 ↔ UNX-F3021 CoRun·UNX-A4-B32（册目标 420 行；诊断码段 0x23C0–0x23FF）
+pub mod unx3021_u3021barrier;
+pub mod unx3021_u3021bgrid;
+pub mod unx3021_u3021bmx;
+pub mod unx3021_u3021core;
+pub mod unx3021_u3021dual;
+pub mod unx3021_u3021grid;
+pub mod unx3021_u3021map;
+pub mod unx3021_u3021merge;
+pub mod unx3021_u3021mix;
+pub mod unx3021_u3021mx;
+pub mod unx3021_u3021pipe;
+pub mod unx3021_u3021sm;
 pub mod unx3021_utier3;
-// unx3061_upowerloss ↔ UNX-F3061 CoRun·UNX-A4-B34（册目标 420 行；诊断码段 0x24C0–0x24FF）
+pub mod unx3041_u3041barrier;
+pub mod unx3041_u3041bgrid;
+pub mod unx3041_u3041bmx;
+pub mod unx3041_u3041core;
+pub mod unx3041_u3041dual;
+pub mod unx3041_u3041grid;
+pub mod unx3041_u3041map;
+pub mod unx3041_u3041merge;
+pub mod unx3041_u3041mix;
+pub mod unx3041_u3041mx;
+pub mod unx3041_u3041pipe;
+pub mod unx3041_u3041sm;
 pub mod unx3061_upowerloss;
-// unx3081_utierfinal ↔ UNX-F3081 CoRun·UNX-A4-B35（册目标 360 行；诊断码段 0x2580–0x25BF）
+pub mod unx307_pml4freeze;
 pub mod unx3081_utierfinal;
-// unx3101_uregfreeze ↔ UNX-F3101 CoRun·UNX-A4-B36（册目标 400 行；诊断码段 0x25C0–0x25FF）
+pub mod unx308_hhmap;
+pub mod unx309_dmap;
 pub mod unx3101_uregfreeze;
-// unx3121_ureconall ↔ UNX-F3121 CoRun·UNX-A4-B37（册目标 400 行；诊断码段 0x2640–0x267F）
 pub mod unx3121_ureconall;
-// unx3141_ubaseline ↔ UNX-F3141 CoRun·UNX-A4-B38（册目标 400 行；诊断码段 0x2680–0x26BF）
 pub mod unx3141_ubaseline;
-// unx3161_uregexec ↔ UNX-F3161 CoRun·UNX-A4-B39（册目标 400 行；诊断码段 0x26C0–0x26FF）
 pub mod unx3161_uregexec;
-// unx3181_udomainfinal ↔ UNX-F3181 CoRun·UNX-A4-B40（册目标 220 行；诊断码段 0x2740–0x277F）
 pub mod unx3181_udomainfinal;
-// unx3361_utimewin ↔ UNX-F3361 CoRun·UNX-A5-B09（册目标 320 行；诊断码段 0x2780–0x27BF）
+pub mod unx3201_atomic;
+pub mod unx3221_u3221barrier;
+pub mod unx3221_u3221bgrid;
+pub mod unx3221_u3221bmx;
+pub mod unx3221_u3221core;
+pub mod unx3221_u3221dual;
+pub mod unx3221_u3221grid;
+pub mod unx3221_u3221map;
+pub mod unx3221_u3221merge;
+pub mod unx3221_u3221mix;
+pub mod unx3221_u3221mx;
+pub mod unx3221_u3221pipe;
+pub mod unx3221_u3221sm;
+pub mod unx3261_u3261barrier;
+pub mod unx3261_u3261bgrid;
+pub mod unx3261_u3261bmx;
+pub mod unx3261_u3261core;
+pub mod unx3261_u3261dual;
+pub mod unx3261_u3261grid;
+pub mod unx3261_u3261map;
+pub mod unx3261_u3261merge;
+pub mod unx3261_u3261mix;
+pub mod unx3261_u3261mx;
+pub mod unx3261_u3261pipe;
+pub mod unx3261_u3261sm;
+pub mod unx3301_u3301barrier;
+pub mod unx3301_u3301bgrid;
+pub mod unx3301_u3301bmx;
+pub mod unx3301_u3301core;
+pub mod unx3301_u3301dual;
+pub mod unx3301_u3301grid;
+pub mod unx3301_u3301map;
+pub mod unx3301_u3301merge;
+pub mod unx3301_u3301mix;
+pub mod unx3301_u3301mx;
+pub mod unx3301_u3301pipe;
+pub mod unx3301_u3301sm;
+pub mod unx3321_u3321barrier;
+pub mod unx3321_u3321bgrid;
+pub mod unx3321_u3321bmx;
+pub mod unx3321_u3321core;
+pub mod unx3321_u3321dual;
+pub mod unx3321_u3321grid;
+pub mod unx3321_u3321map;
+pub mod unx3321_u3321merge;
+pub mod unx3321_u3321mix;
+pub mod unx3321_u3321mx;
+pub mod unx3321_u3321pipe;
+pub mod unx3321_u3321sm;
+pub mod unx3341_u3341barrier;
+pub mod unx3341_u3341bgrid;
+pub mod unx3341_u3341bmx;
+pub mod unx3341_u3341core;
+pub mod unx3341_u3341dual;
+pub mod unx3341_u3341grid;
+pub mod unx3341_u3341map;
+pub mod unx3341_u3341merge;
+pub mod unx3341_u3341mix;
+pub mod unx3341_u3341mx;
+pub mod unx3341_u3341pipe;
+pub mod unx3341_u3341sm;
+pub mod unx3361_u3361barrier;
+pub mod unx3361_u3361bgrid;
+pub mod unx3361_u3361bmx;
+pub mod unx3361_u3361core;
+pub mod unx3361_u3361dual;
+pub mod unx3361_u3361grid;
+pub mod unx3361_u3361map;
+pub mod unx3361_u3361merge;
+pub mod unx3361_u3361mix;
+pub mod unx3361_u3361mx;
+pub mod unx3361_u3361pipe;
+pub mod unx3361_u3361sm;
 pub mod unx3361_utimewin;
-// unx3381_usamplelib ↔ UNX-F3381 CoRun·UNX-A5-B10（册目标 400 行；诊断码段 0x27C0–0x27FF）
+pub mod unx3381_u3381barrier;
+pub mod unx3381_u3381bgrid;
+pub mod unx3381_u3381bmx;
+pub mod unx3381_u3381core;
+pub mod unx3381_u3381dual;
+pub mod unx3381_u3381grid;
+pub mod unx3381_u3381map;
+pub mod unx3381_u3381merge;
+pub mod unx3381_u3381mix;
+pub mod unx3381_u3381mx;
+pub mod unx3381_u3381pipe;
+pub mod unx3381_u3381sm;
 pub mod unx3381_usamplelib;
-// unx3401_uktestdesign ↔ UNX-F3401 CoRun·UNX-A5-B11（册目标 420 行；诊断码段 0x2880–0x28BF）
+pub mod unx3401_u3401barrier;
+pub mod unx3401_u3401bgrid;
+pub mod unx3401_u3401bmx;
+pub mod unx3401_u3401core;
+pub mod unx3401_u3401dual;
+pub mod unx3401_u3401grid;
+pub mod unx3401_u3401map;
+pub mod unx3401_u3401merge;
+pub mod unx3401_u3401mix;
+pub mod unx3401_u3401mx;
+pub mod unx3401_u3401pipe;
+pub mod unx3401_u3401sm;
 pub mod unx3401_uktestdesign;
-// unx3421_udualbackend ↔ UNX-F3421 CoRun·UNX-A5-B12（册目标 440 行；诊断码段 0x28C0–0x28FF）
+pub mod unx3421_u3421barrier;
+pub mod unx3421_u3421bgrid;
+pub mod unx3421_u3421bmx;
+pub mod unx3421_u3421core;
+pub mod unx3421_u3421dual;
+pub mod unx3421_u3421grid;
+pub mod unx3421_u3421map;
+pub mod unx3421_u3421merge;
+pub mod unx3421_u3421mix;
+pub mod unx3421_u3421mx;
+pub mod unx3421_u3421pipe;
+pub mod unx3421_u3421sm;
 pub mod unx3421_udualbackend;
-// unx3461_umountarch ↔ UNX-F3461 CoRun·UNX-A5-B14（册目标 340 行；诊断码段 0x2940–0x297F）
+pub mod unx3441_u3441barrier;
+pub mod unx3441_u3441bgrid;
+pub mod unx3441_u3441bmx;
+pub mod unx3441_u3441core;
+pub mod unx3441_u3441dual;
+pub mod unx3441_u3441grid;
+pub mod unx3441_u3441map;
+pub mod unx3441_u3441merge;
+pub mod unx3441_u3441mix;
+pub mod unx3441_u3441mx;
+pub mod unx3441_u3441pipe;
+pub mod unx3441_u3441sm;
+pub mod unx3461_u3461barrier;
+pub mod unx3461_u3461bgrid;
+pub mod unx3461_u3461bmx;
+pub mod unx3461_u3461core;
+pub mod unx3461_u3461dual;
+pub mod unx3461_u3461grid;
+pub mod unx3461_u3461map;
+pub mod unx3461_u3461merge;
+pub mod unx3461_u3461mix;
+pub mod unx3461_u3461mx;
+pub mod unx3461_u3461pipe;
+pub mod unx3461_u3461sm;
 pub mod unx3461_umountarch;
+pub mod unx3481_u3481barrier;
+pub mod unx3481_u3481bgrid;
+pub mod unx3481_u3481bmx;
+pub mod unx3481_u3481core;
+pub mod unx3481_u3481dual;
+pub mod unx3481_u3481grid;
+pub mod unx3481_u3481map;
+// ==== 孤儿模块补注册 WB-A6（2026-10-12，收官批）====
+// 2026-10-12 注：以下 `unxt1xx_*` 为未完工在制品（时区表常量未定义、
+// 表元素数与声明长度不符、元素类型错为 u64 却存负偏移），仅在各自
+// `#[cfg(test)]` 区触发 97 个 E0425/E0600/E0308。文件本体不动，
+// 待各自补齐常量与类型后恢复下列注册（在链上无外部引用，零风险）。
+pub mod unx3481_u3481merge;
+pub mod unx3481_u3481mix;
+pub mod unx3481_u3481mx;
+pub mod unx3481_u3481pipe;
+pub mod unx3481_u3481sm;
+pub mod unx3501_u3501barrier;
+pub mod unx3501_u3501bgrid;
+pub mod unx3501_u3501bmx;
+pub mod unx3501_u3501core;
+pub mod unx3501_u3501dual;
+pub mod unx3501_u3501grid;
+pub mod unx3501_u3501map;
+pub mod unx3501_u3501merge;
+pub mod unx3501_u3501mix;
+pub mod unx3501_u3501mx;
+pub mod unx3501_u3501pipe;
+pub mod unx3501_u3501sm;
+pub mod unx3521_u3521barrier;
+pub mod unx3521_u3521bgrid;
+pub mod unx3521_u3521bmx;
+pub mod unx3521_u3521core;
+pub mod unx3521_u3521dual;
+pub mod unx3521_u3521grid;
+pub mod unx3521_u3521map;
+pub mod unx3521_u3521merge;
+pub mod unx3521_u3521mix;
+pub mod unx3521_u3521mx;
+pub mod unx3521_u3521pipe;
+pub mod unx3521_u3521sm;
+pub mod unx3541_u3541barrier;
+pub mod unx3541_u3541bgrid;
+pub mod unx3541_u3541bmx;
+pub mod unx3541_u3541core;
+pub mod unx3541_u3541dual;
+pub mod unx3541_u3541grid;
+pub mod unx3541_u3541map;
+pub mod unx3541_u3541merge;
+pub mod unx3541_u3541mix;
+pub mod unx3541_u3541mx;
+pub mod unx3541_u3541pipe;
+pub mod unx3541_u3541sm;
+pub mod unx3561_u3561barrier;
+pub mod unx3561_u3561bgrid;
+pub mod unx3561_u3561bmx;
+pub mod unx3561_u3561core;
+pub mod unx3561_u3561dual;
+pub mod unx3561_u3561grid;
+pub mod unx3561_u3561map;
+pub mod unx3561_u3561merge;
+pub mod unx3561_u3561mix;
+pub mod unx3561_u3561mx;
+pub mod unx3561_u3561pipe;
+pub mod unx3561_u3561sm;
+pub mod unx3581_u3581barrier;
+pub mod unx3581_u3581bgrid;
+pub mod unx3581_u3581bmx;
+pub mod unx3581_u3581core;
+pub mod unx3581_u3581dual;
+pub mod unx3581_u3581grid;
+pub mod unx3581_u3581map;
+pub mod unx3581_u3581merge;
+pub mod unx3581_u3581mix;
+pub mod unx3581_u3581mx;
+pub mod unx3581_u3581pipe;
+pub mod unx3581_u3581sm;
+pub mod unx3601_u3601barrier;
+pub mod unx3601_u3601bgrid;
+pub mod unx3601_u3601bmx;
+pub mod unx3601_u3601core;
+pub mod unx3601_u3601dual;
+pub mod unx3601_u3601grid;
+pub mod unx3601_u3601map;
+pub mod unx3601_u3601merge;
+pub mod unx3601_u3601mix;
+pub mod unx3601_u3601mx;
+pub mod unx3601_u3601pipe;
+pub mod unx3601_u3601sm;
+pub mod unx3621_u3621barrier;
+pub mod unx3621_u3621bgrid;
+pub mod unx3621_u3621bmx;
+pub mod unx3621_u3621core;
+pub mod unx3621_u3621dual;
+pub mod unx3621_u3621grid;
+pub mod unx3621_u3621map;
+pub mod unx3621_u3621merge;
+pub mod unx3621_u3621mix;
+pub mod unx3621_u3621mx;
+pub mod unx3621_u3621pipe;
+pub mod unx3621_u3621sm;
+pub mod unx3641_u3641barrier;
+pub mod unx3641_u3641bgrid;
+pub mod unx3641_u3641bmx;
+pub mod unx3641_u3641core;
+pub mod unx3641_u3641dual;
+pub mod unx3641_u3641grid;
+pub mod unx3641_u3641map;
+pub mod unx3641_u3641merge;
+pub mod unx3641_u3641mix;
+pub mod unx3641_u3641mx;
+pub mod unx3641_u3641pipe;
+pub mod unx3641_u3641sm;
+pub mod unx3661_u3661barrier;
+pub mod unx3661_u3661bgrid;
+pub mod unx3661_u3661bmx;
+pub mod unx3661_u3661core;
+pub mod unx3661_u3661dual;
+pub mod unx3661_u3661grid;
+pub mod unx3661_u3661map;
+pub mod unx3661_u3661merge;
+pub mod unx3661_u3661mix;
+pub mod unx3661_u3661mx;
+pub mod unx3661_u3661pipe;
+pub mod unx3661_u3661sm;
+pub mod unx3681_u3681barrier;
+pub mod unx3681_u3681bgrid;
+pub mod unx3681_u3681bmx;
+pub mod unx3681_u3681core;
+pub mod unx3681_u3681dual;
+pub mod unx3681_u3681grid;
+pub mod unx3681_u3681map;
+pub mod unx3681_u3681merge;
+pub mod unx3681_u3681mix;
+pub mod unx3681_u3681mx;
+pub mod unx3681_u3681pipe;
+pub mod unx3681_u3681sm;
+pub mod unx3701_u3701barrier;
+pub mod unx3701_u3701bgrid;
+pub mod unx3701_u3701bmx;
+pub mod unx3701_u3701core;
+pub mod unx3701_u3701dual;
+pub mod unx3701_u3701grid;
+pub mod unx3701_u3701map;
+pub mod unx3701_u3701merge;
+pub mod unx3701_u3701mix;
+pub mod unx3701_u3701mx;
+pub mod unx3701_u3701pipe;
+pub mod unx3701_u3701sm;
+pub mod unx3721_u3721barrier;
+pub mod unx3721_u3721bgrid;
+pub mod unx3721_u3721bmx;
+pub mod unx3721_u3721core;
+pub mod unx3721_u3721dual;
+pub mod unx3721_u3721grid;
+pub mod unx3721_u3721map;
+pub mod unx3721_u3721merge;
+pub mod unx3721_u3721mix;
+pub mod unx3721_u3721mx;
+pub mod unx3721_u3721pipe;
+pub mod unx3721_u3721sm;
+pub mod unx3741_u3741barrier;
+pub mod unx3741_u3741bgrid;
+pub mod unx3741_u3741bmx;
+pub mod unx3741_u3741core;
+pub mod unx3741_u3741dual;
+pub mod unx3741_u3741grid;
+pub mod unx3741_u3741map;
+pub mod unx3741_u3741merge;
+pub mod unx3741_u3741mix;
+pub mod unx3741_u3741mx;
+pub mod unx3741_u3741pipe;
+pub mod unx3741_u3741sm;
+pub mod unx3761_u3761barrier;
+pub mod unx3761_u3761bgrid;
+pub mod unx3761_u3761bmx;
+pub mod unx3761_u3761core;
+pub mod unx3761_u3761dual;
+pub mod unx3761_u3761grid;
+pub mod unx3761_u3761map;
+pub mod unx3761_u3761merge;
+pub mod unx3761_u3761mix;
+pub mod unx3761_u3761mx;
+pub mod unx3761_u3761pipe;
+pub mod unx3761_u3761sm;
+pub mod unx3781_u3781barrier;
+pub mod unx3781_u3781bgrid;
+pub mod unx3781_u3781bmx;
+pub mod unx3781_u3781core;
+pub mod unx3781_u3781dual;
+pub mod unx3781_u3781grid;
+pub mod unx3781_u3781map;
+pub mod unx3781_u3781merge;
+pub mod unx3781_u3781mix;
+pub mod unx3781_u3781mx;
+pub mod unx3781_u3781pipe;
+pub mod unx3781_u3781sm;
+pub mod unx484_prim;
+pub mod unx485_font8x16;
+pub mod unx504_lineedit;
+pub mod unx564_pm1en;
+pub mod unx565_pwrbtn;
+pub mod unx603_hdrskeleton;
+pub mod unx685_biosreg;
+pub mod unx741_domain_journal;
+pub mod unx761_precheck_list;
+pub mod unx781_report_freeze;
+pub mod unx821_lapic_mmio;
+pub mod unx861_ioapic_ledger;
+pub mod unx943_budgetdisc;
+pub mod unx943_tophalf_deep;
+// 2026-10-12 注：`unx943_tophalfdeep.rs` 为并行席在制品（未跟踪文件，
+// 写入中途被截断 → unclosed delimiter）。文件本体不动，待其完工后恢复
+// 下列注册即可（该文件在链上无外部引用，恢复零风险）。
+// pub mod unx943_tophalfdeep;
+// 2026-10-12 注：`unx984_vecisolate.rs` 为并行席在制品（未跟踪文件，
+// 04:57 写入未完工 → unclosed delimiter）。文件本体不动，待其完工后
+// 恢复下列注册即可（在链上无外部引用，恢复零风险）。
+// pub mod unx984_vecisolate;
+pub mod unxt162_timecore;
+pub mod unxt163_rtcsem;
+pub mod unxt164_tzsem;
+pub mod unxt165_errbudget;
+pub mod unxt166_leapfilter;
+pub mod unxt167_mono;
+pub mod unxt168_setpath;
+pub mod unxt169_timeledger;

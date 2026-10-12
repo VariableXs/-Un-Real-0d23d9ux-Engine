@@ -395,11 +395,19 @@ impl ReConAccount {
 /// C5 对账正路径：签名新鲜 → 面绑定合法 → 样例互验 → 全过。
 pub fn reconcile(sig: &ConsumeSig, sample: &SampleRow, truth: &[u64; FIELD_N],
                  now_tick: u64) -> Result<(), u16> {
-    // 闸① 签名新鲜（版本+列指纹三元核；issued_tick 超窗 4096 拒）。
-    if !sig.fresh() || now_tick.saturating_sub(sig.issued_tick) > 4096 {
+    // 闸① 签名版本与时效（版本同代 + issued_tick 超窗 4096 拒）。
+    // 修正记录（F2120 聚合接入时暴露）：原闸把 col_fp 核对与时效混在
+    // `fresh()` 一处，指纹篡改（FpTamper）被归成 C_SIG_STALE，而该例
+    // 的预期判码是 C_COL_DRIFT——判码口径与漂移种类错位，压力 512 轮
+    // 下 misses=24。拆闸后：指纹不符归列漂移，时效/版本归签名过期。
+    if sig.ver != FMT_VER || now_tick.saturating_sub(sig.issued_tick) > 4096 {
         return Err(C_SIG_STALE);
     }
-    // 闸② 面绑定（三面闭集核——面 id 1..4 开区间）。
+    // 闸①b 列序指纹核对（钉死五列正序——漂移/篡改归列漂移码）。
+    if sig.col_fp != col_fp_of(&COL_ORDER_STD) {
+        return Err(C_COL_DRIFT);
+    }
+    // 闸② 面绑定（三面闭集核——面 id 1..3 开区间）。
     let fid = sig.face.id();
     if fid == 0 || fid > 3 {
         return Err(C_FACE_MISMATCH);
@@ -460,7 +468,9 @@ pub fn stress(seed: u64) -> StressOut {
             1 => ConsumeFace::Cgpu,
             _ => ConsumeFace::CoRun,
         };
-        let tick = r;
+        // tick 基准 10000 起：正路径 issued_tick==now 恒新鲜；过期构造
+        // issued_tick = tick-9096 恒落在窗口（4096）外 5000，必触发拒。
+        let tick = 10_000 + r;
         let sig = ConsumeSig::new(face, tick);
         let sample = SampleRow { fields: truth, tail: TAIL_MARK };
         // 正路径全过（同 tick 无漂）。
@@ -479,8 +489,16 @@ pub fn stress(seed: u64) -> StressOut {
                 let got = match DRIFT_ALL[i] {
                     DriftKind::ColSwap => C_COL_DRIFT,
                     DriftKind::VerBack | DriftKind::SigStale => {
-                        // 过期签名：issued_tick 回退 5000 tick。
-                        let stale = ConsumeSig { ver: FMT_VER, col_fp: sig.col_fp, face: sig.face, issued_tick: tick.saturating_sub(5000) };
+                        // 过期签名：issued_tick 退到窗（4096）外 5000 tick。
+                        // 修正记录：原写法 tick.saturating_sub(5000) 在
+                        // tick<5000 时饱和得 0（现窗口内），过期永不触发，
+                        // 压力下 misses=16。改为相对 now 固定退 9096。
+                        let stale = ConsumeSig {
+                            ver: FMT_VER,
+                            col_fp: sig.col_fp,
+                            face: sig.face,
+                            issued_tick: tick - 9096,
+                        };
                         match reconcile(&stale, &sample, &truth, tick) { Err(c) => c, Ok(()) => 0 }
                     }
                     DriftKind::UnitScale => {
