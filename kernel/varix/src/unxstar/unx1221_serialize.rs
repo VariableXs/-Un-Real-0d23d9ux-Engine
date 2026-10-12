@@ -187,13 +187,18 @@ fn c1_order() -> bool {
 }
 
 /// 同源乱序被拒。
+///
+/// 期望值按 `rate = accepted×10000/(accepted+rejected)` 独立重算：
+/// 三推一拒 ⇒ 2 接受 / 1 拒绝 ⇒ 2×10000/3 = 6666（截断取整）。
+/// （原断言写 7500 是拿三条全过当分子的误算——orphan 期无人编译，
+/// 注册进来才炸。判据值必须从公式独立复算，不能从情景印象倒推。）
 fn c2_reorder() -> bool {
     let mut s = Serializer::new();
     s.push(SeqEvent { src: 0, seq: 0 })
         && !s.push(SeqEvent { src: 0, seq: 2 })
         && s.rejected == 1
         && s.push(SeqEvent { src: 0, seq: 1 })
-        && s.rate() == 7500
+        && s.rate() == 6666
 }
 
 /// 段位守卫：全部诊断码落在本模块段内。

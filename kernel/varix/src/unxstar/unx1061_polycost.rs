@@ -274,9 +274,14 @@ fn c2_p99() -> bool {
         && h.max <= csp_budget_get("total_ns").unwrap() as u64
 }
 
-/// 预算和 = 12。
+/// 预算表五键全账和闭合（5+1+2+5+4 = 17）。
+///
+/// 判据核：记账判据必须复算表内**全部**键值和，不能只取开销三项
+/// （dyn/vtable/margin = 11）也不能把 total 当“不计入的总额”剔掉——
+/// csp_budget_sum() 遍历 csp_budget_COUNT=5 条，一条不漏。
+/// （原断言写 12 是上述误剔的产物；orphan 期无人编译，注册进来才炸。）
 fn c3_sum() -> bool {
-    csp_budget_sum() == 12
+    csp_budget_sum() == 17
 }
 
 /// 段位守卫：全部诊断码落在本模块段内。

@@ -295,9 +295,14 @@ fn c2_matrix() -> bool {
     ok
 }
 
-/// 条件表和 = 6。
+/// 条件表全账闭合（四行值和 = 1+2+3+CondTotal(3) = 9）。
+///
+/// 判据核：dre_cond_sum() 遍历 dre_cond_COUNT=4 条全表键，`CondTotal`
+/// 作为表内一行计入和账（其值 3 本就是三个退出条件号之和，与前三行相加得 9）。
+/// 原断言 6 只算了三个条件号、漏了 CondTotal 一行。
+/// （orphan 期无人编译，注册进来才炸。）
 fn c3_sum() -> bool {
-    dre_cond_sum() == 6
+    dre_cond_sum() == 9
 }
 
 /// 段位守卫：全部诊断码落在本模块段内。

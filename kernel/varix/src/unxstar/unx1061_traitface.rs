@@ -190,9 +190,15 @@ fn c2_unique() -> bool {
     cst_methods_unique()
 }
 
-/// 方法编号和 = 15。
+/// 方法表全账闭合（六键值和 = 1+2+3+4+5+methods_total(5) = 20）。
+///
+/// 判据核：cst_methods_sum() 遍历 cst_methods_COUNT=6 条全表键，
+/// `methods_total` 作为表内一行**计入**和账（它的值本就是五个方法号之和，
+/// 与另五行相加得 20）。原断言 15 只算了五个方法号、漏了 methods_total
+/// 一行——计数判据必须复算遍历范围，不能只数"业务行"。
+/// （orphan 期无人编译，注册进来才炸。）
 fn c3_sum() -> bool {
-    cst_methods_sum() == 15
+    cst_methods_sum() == 20
 }
 
 /// 段位守卫：全部诊断码落在本模块段内。
