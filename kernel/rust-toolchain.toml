@@ -1,0 +1,8 @@
+# 步骤 0039 · 工具链冻结（仅对 kernel/ 目录生效）
+# 锁死精确版本 1.97.1（见 docs/BASELINE.md）：
+# 写 "stable" 会让 rustup 在 stable 发版后自动升级/重装（1.98.1），
+# 多会话并行时极易因文件锁半途而废。改用精确版本号后 rustup 直接
+# 使用本机已安装的 1.97.1 工具链，不再触发自动更新。
+# 不在此列 components/targets —— 组件与目标已由环境预装。
+[toolchain]
+channel = "1.97.1"
