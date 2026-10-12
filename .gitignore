@@ -101,6 +101,20 @@ tools/
 
 # ── 构建产物（可再生，禁止入库）────────────────────────────────────
 # 2026-10-04：源码入库后 target/ 会产生巨量中间产物，必须排除。
+# 2026-10-12（AI-7 仓库卫生官）补漏：本段原先只有精确名 `target`，
+# 于是 `kernel/` 下的 **14 个变体目录**（`_target` / `_target_iso` /
+# `_target_audit` / `_target_wb_ai` / `_target_wb_ai2` / `_target_wb3` /
+# `_target_wb20` / `_target_wb23` / `_target_wb23_base` /
+# `_target_wb23_full` / `target_wb` / `target-a4` / `target-wb` /
+# `target-wb5` / `target-wbk`）全部漏网，累计堆到 **7.1G**。
+# 教训与本文件开头「源码保护红线」同源：靠人记住的清单不算清单。
+# 这里按前缀族覆盖，而不是逐个点名——点名式清单下次加变体又漏。
+# `*target-*` / `*target_*` / `*target[0-9]*` 三条合起来盖住
+#   target-a4 / target-wb / _target_iso / _target_wb23 这四种命名法。
+*target/
+*target-*/
+*target_*/
+*target[0-9]*/
 target/
 **/target/
 dist/
