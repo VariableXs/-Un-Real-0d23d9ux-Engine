@@ -141,15 +141,29 @@ pub struct XlateLedger {
 }
 
 impl XlateLedger {
-    /// 守恒式①：入 ≡ 直通 + 改写贡献（每次 \n→\r\n 贡献 1 入字节；\n→\r 同）。
+    /// 守恒式①：入 ≡ 直通 + 各改写档贡献（每个输入字节恰落入一个档）。
+    ///
+    /// 档位全集按 `xlate()` 的记账逐字节铺开：
+    ///   直通（普通字节 / CR / TAB / Passthrough 模式下的 LF）→ passthrough_bytes
+    ///   CrLf 模式的 LF（\n→\r\n，一入一出里的"入"）           → nl_to_crlf
+    ///   CrOnly 模式的 LF（\n→\r）                             → nl_to_cr
+    ///   LfOnly 模式的 LF（\n 直通不改写）                     → nl_kept
+    /// 四个档互斥且穷尽（每个输入字节必进其一），故入字节数 ≡ 四档之和。
+    /// 漏掉 nl_kept 这一档，LfOnly 模式下每个 \n 都让等式左侧多 1——
+    /// 回环核对 10 组用例 × 4 模式时第一组非空行即破守恒（见 C2 反例）。
     pub const fn input_conserves(&self) -> bool {
-        let translated_inputs = self.nl_to_crlf + self.nl_to_cr;
+        let translated_inputs = self.nl_to_crlf + self.nl_to_cr + self.nl_kept;
         self.input_bytes == self.passthrough_bytes + translated_inputs
     }
 
-    /// 守恒式②：FIFO 入口 ≡ 直通 + 改写产出（\n→\r\n 产 2 字节，\n→\r 产 1 字节）。
+    /// 守恒式②：FIFO 入口 ≡ 各档产出字节数。
+    ///
+    /// 产出侧逐字节数与入侧一一对应：直通 1、CrLf 改写 2、CrOnly 改写 1、
+    /// LfOnly 直通（改写旗为 false，但仍产 1 字节进 FIFO）1。
+    /// 漏掉 nl_kept 这一档，LfOnly 每个 \n 都让等式右侧少 1 而 fifo_in_bytes
+    /// 照实 +1 ⇒ 破守恒（与守恒式①同源，一并修）。
     pub const fn output_conserves(&self) -> bool {
-        let produced = self.passthrough_bytes + self.nl_to_crlf * 2 + self.nl_to_cr;
+        let produced = self.passthrough_bytes + self.nl_to_crlf * 2 + self.nl_to_cr + self.nl_kept;
         self.fifo_in_bytes == produced
     }
 
@@ -541,10 +555,25 @@ pub fn roundtrip_all_10x4() -> bool {
             pa.drain_all();
             // 路 B：整行 write_line。
             let mut pb = SerialPort::new(m);
-            if pb.write_line(v).is_err() {
+            let wr = pb.write_line(v);
+            pb.drain_all();
+            // 行超长用例（第 8/9 号向量 544/522 B 均 > LINE_MAX=512）：
+            // write_line 按 0x9703 显性拒收是**设计行为**（LINE_MAX 文档——
+            // "超长必须显性分段，不静默截断"），不是缺陷。回环核对这一格的
+            // 期望改为"口径一致 + 拒绝可观测"：write_line 必须拒（不得放行），
+            // 且 0x9703 必须入账（拒绝不许静默）。
+            if v.as_bytes().len() > LINE_MAX {
+                let rejected = matches!(wr, Err(ref e) if e.code == C_LINE_LONG);
+                let logged = pb.events().iter().any(|e| e.0 == C_LINE_LONG);
+                if !rejected || !logged {
+                    return false;
+                }
+                continue;
+            }
+            // —— 非超长用例：三路同源原判据 ——
+            if wr.is_err() {
                 return false;
             }
-            pb.drain_all();
             // 字节序一致主判据。
             if pa.stream != pb.stream || pa.events != pb.events {
                 return false;
@@ -819,6 +848,16 @@ mod tests {
     #[test]
     fn unx502_all_checks_green() {
         let set = run_unx502_checks();
+        let n = set.len();
+        let mut i = 0usize;
+        while i < n {
+            if let Some(c) = set.get(i) {
+                if !c.passed {
+                    panic!("UNX-F0502 RED: {} :: {}", c.name, c.detail);
+                }
+            }
+            i += 1;
+        }
         assert!(set.all_passed(), "UNX-F0502 domain checks must be green");
     }
 
