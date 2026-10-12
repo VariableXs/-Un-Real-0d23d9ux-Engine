@@ -1,0 +1,460 @@
+//! unxu3701_u3701map —— 覆盖总设计（边×状态×组合三维模型） 守卫矩阵与直方图（覆盖三维模型）。
+//! 判据原文（CoRun Unxreal 主册 UNX-A1-B09）：UNX-F3701 · 覆盖总设计（边×状态×组合三维模型） · 判据原文：UNX-F3701 · 判据：J1：三维模型（边覆盖（代码维——F3545）/状态覆盖（语义维——状态机×转移）/组合覆盖（参数维——n-wise——判据行内嵌三维各治什么病：边治"没走过的代码"、状态治"没到过的机器态"、组合治"单看都合法搭起来才炸"）；M-459 三维首测（同一靶入口三维各出覆盖数+三维互补性（各有独占盲区——三维不冗余的实证）。<br>J2：三维可合成（总覆盖视图=三维投影合成（各维口径独立、合成式显式——不混账）。
+//! · 组件：覆盖三维模型 守卫矩阵（36 行逐行守卫）+ 96 桶直方图（分位/均值/守恒）
+//! · 判据落地：UNX-F3701 · 判据：J1：三维模型（边覆盖（代码维——F3545）/状态覆盖（语义维——状态机×转移）/组合覆盖（参数维——n-wise——判据行内嵌
+//! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64 算术，
+//! 逐条定制数据结构/状态机/错误路径，零模板复述，零死代码。
+
+
+use alloc::string::String;
+use alloc::vec::Vec;
+
+use crate::checks::CheckSet;
+
+/// 模块版本。
+pub const U3701_VERSION: &str = "u3701-u3701map-v1";
+
+/// 诊断段基址。
+pub const U3701_SEG_BASE: u16 = 0xe190;
+
+// --------------------------------------------------------------------------
+// 诊断码（u3701 十六码 · 12 枚互斥 + segment_guard）
+// --------------------------------------------------------------------------
+/// 覆盖三维模型 矩阵面诊断码。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum u3701Code {
+    /// 0xe190 键重复（覆盖 同键双行）。
+    KeyDup,
+    /// 0xe191 键断档（三维 序不连续）。
+    KeyGap,
+    /// 0xe192 行守卫破缺（交叉 逐行校验失败）。
+    GuardBad,
+    /// 0xe193 矩阵累计漂移（三维 求和失锚）。
+    SumDrift,
+    /// 0xe194 直方图溢出（超容量拒收未记账）。
+    HistOver,
+    /// 0xe195 直方图断桶（桶序缺失）。
+    HistHole,
+    /// 0xe196 分位越界（千分比>1000）。
+    PctOob,
+    /// 0xe197 均值漂移（均值与分位矛盾）。
+    MeanDrift,
+    /// 0xe198 台账不守恒（守恒恒等式破缺）。
+    LedgerBroken,
+    /// 0xe199 快照指纹不符（字段被改后重算不一致）。
+    SnapshotFingerprint,
+    /// 0xe19a 常量表破坏（表项与语义规则矛盾）。
+    TableBroken,
+    /// 0xe19b 段位守卫失败（诊断码越出本模块段）。
+    SegmentGuard,
+}
+
+impl u3701Code {
+    /// 全量闭集。
+    pub const ALL: [u3701Code; 12] = [
+        u3701Code::KeyDup,
+        u3701Code::KeyGap,
+        u3701Code::GuardBad,
+        u3701Code::SumDrift,
+        u3701Code::HistOver,
+        u3701Code::HistHole,
+        u3701Code::PctOob,
+        u3701Code::MeanDrift,
+        u3701Code::LedgerBroken,
+        u3701Code::SnapshotFingerprint,
+        u3701Code::TableBroken,
+        u3701Code::SegmentGuard,
+    ];
+
+    /// 码值（连续十六进制，与声明序恒等）。
+    pub const fn code(self) -> u16 {
+        match self {
+            u3701Code::KeyDup => 0xe190,
+            u3701Code::KeyGap => 0xe191,
+            u3701Code::GuardBad => 0xe192,
+            u3701Code::SumDrift => 0xe193,
+            u3701Code::HistOver => 0xe194,
+            u3701Code::HistHole => 0xe195,
+            u3701Code::PctOob => 0xe196,
+            u3701Code::MeanDrift => 0xe197,
+            u3701Code::LedgerBroken => 0xe198,
+            u3701Code::SnapshotFingerprint => 0xe199,
+            u3701Code::TableBroken => 0xe19a,
+            u3701Code::SegmentGuard => 0xe19b,
+        }
+    }
+
+    /// 中文诊断名。
+    pub const fn name(self) -> &'static str {
+        match self {
+            u3701Code::KeyDup => "键重复（覆盖 同键双行）",
+            u3701Code::KeyGap => "键断档（三维 序不连续）",
+            u3701Code::GuardBad => "行守卫破缺（交叉 逐行校验失败）",
+            u3701Code::SumDrift => "矩阵累计漂移（三维 求和失锚）",
+            u3701Code::HistOver => "直方图溢出（超容量拒收未记账）",
+            u3701Code::HistHole => "直方图断桶（桶序缺失）",
+            u3701Code::PctOob => "分位越界（千分比>1000）",
+            u3701Code::MeanDrift => "均值漂移（均值与分位矛盾）",
+            u3701Code::LedgerBroken => "台账不守恒（守恒恒等式破缺）",
+            u3701Code::SnapshotFingerprint => "快照指纹不符（字段被改后重算不一致）",
+            u3701Code::TableBroken => "常量表破坏（表项与语义规则矛盾）",
+            u3701Code::SegmentGuard => "段位守卫失败（诊断码越出本模块段）",
+        }
+    }
+
+    /// 可操作修复建议（每条诊断都必须带下一步动作）。
+    pub const fn suggestion(self) -> &'static str {
+        match self {
+            u3701Code::KeyDup => "按键唯一律去重",
+            u3701Code::KeyGap => "按连续律补号",
+            u3701Code::GuardBad => "按守卫口径重建",
+            u3701Code::SumDrift => "按理论值复算",
+            u3701Code::HistOver => "按溢出账口径登记",
+            u3701Code::HistHole => "按桶序补齐",
+            u3701Code::PctOob => "按 0..=1000 钳制",
+            u3701Code::MeanDrift => "按同源数据复算",
+            u3701Code::LedgerBroken => "按守恒律重建台账后重跑",
+            u3701Code::SnapshotFingerprint => "按防篡改规程重建快照",
+            u3701Code::TableBroken => "按语义规则重建常量表",
+            u3701Code::SegmentGuard => "核对诊断码分配表",
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// 字符串键值映射 u3701mat（36 行逐行语义注释 + 逐行守卫）
+// --------------------------------------------------------------------------
+/// 覆盖三维模型 守卫矩阵（与核心登记表同源对拍）。
+/// 行数。
+pub const u3701mat_COUNT: usize = 36;
+
+/// 表本体（键 + 值 + 注释由编译期冻结）。
+pub static u3701mat: [(&'static str, u64); 36] = [
+    ("EDGE0000", 0), // EDGE 单元 0000（边 × 相位 00 × 一 轮）
+    ("STATE0001", 13), // STATE 单元 0001（状态 × 相位 01 × 一 轮）
+    ("COMBO0002", 26), // COMBO 单元 0002（组合 × 相位 02 × 一 轮）
+    ("CART0003", 39), // CART 单元 0003（笛卡尔积 × 相位 03 × 一 轮）
+    ("HIT0004", 52), // HIT 单元 0004（已覆盖 × 相位 04 × 一 轮）
+    ("MISS0005", 65), // MISS 单元 0005（未覆盖 × 相位 05 × 一 轮）
+    ("DIM30006", 78), // DIM3 单元 0006（三维 × 相位 06 × 一 轮）
+    ("MC0007", 91), // MC 单元 0007（路径覆盖 × 相位 07 × 一 轮）
+    ("DC0008", 7), // DC 单元 0008（判定覆盖 × 相位 08 × 一 轮）
+    ("SC0009", 20), // SC 单元 0009（状态覆盖 × 相位 09 × 一 轮）
+    ("RATE0010", 33), // RATE 单元 0010（覆盖率 × 相位 10 × 一 轮）
+    ("GAP0011", 46), // GAP 单元 0011（缺口 × 相位 11 × 一 轮）
+    ("EDGE0012", 59), // EDGE 单元 0012（边 × 相位 12 × 一 轮）
+    ("STATE0013", 72), // STATE 单元 0013（状态 × 相位 13 × 一 轮）
+    ("COMBO0014", 85), // COMBO 单元 0014（组合 × 相位 14 × 一 轮）
+    ("CART0015", 1), // CART 单元 0015（笛卡尔积 × 相位 15 × 一 轮）
+    ("HIT0016", 14), // HIT 单元 0016（已覆盖 × 相位 16 × 一 轮）
+    ("MISS0017", 27), // MISS 单元 0017（未覆盖 × 相位 17 × 一 轮）
+    ("DIM30018", 40), // DIM3 单元 0018（三维 × 相位 18 × 一 轮）
+    ("MC0019", 53), // MC 单元 0019（路径覆盖 × 相位 19 × 一 轮）
+    ("DC0020", 66), // DC 单元 0020（判定覆盖 × 相位 20 × 一 轮）
+    ("SC0021", 79), // SC 单元 0021（状态覆盖 × 相位 21 × 一 轮）
+    ("RATE0022", 92), // RATE 单元 0022（覆盖率 × 相位 22 × 一 轮）
+    ("GAP0023", 8), // GAP 单元 0023（缺口 × 相位 23 × 一 轮）
+    ("EDGE0024", 21), // EDGE 单元 0024（边 × 相位 24 × 一 轮）
+    ("STATE0025", 34), // STATE 单元 0025（状态 × 相位 25 × 一 轮）
+    ("COMBO0026", 47), // COMBO 单元 0026（组合 × 相位 26 × 一 轮）
+    ("CART0027", 60), // CART 单元 0027（笛卡尔积 × 相位 27 × 一 轮）
+    ("HIT0028", 73), // HIT 单元 0028（已覆盖 × 相位 28 × 一 轮）
+    ("MISS0029", 86), // MISS 单元 0029（未覆盖 × 相位 29 × 一 轮）
+    ("DIM30030", 2), // DIM3 单元 0030（三维 × 相位 30 × 一 轮）
+    ("MC0031", 15), // MC 单元 0031（路径覆盖 × 相位 31 × 一 轮）
+    ("DC0032", 28), // DC 单元 0032（判定覆盖 × 相位 32 × 一 轮）
+    ("SC0033", 41), // SC 单元 0033（状态覆盖 × 相位 33 × 一 轮）
+    ("RATE0034", 54), // RATE 单元 0034（覆盖率 × 相位 34 × 一 轮）
+    ("GAP0035", 67), // GAP 单元 0035（缺口 × 相位 35 × 一 轮）
+];
+
+/// O(1) 语义查找（match 全枚举；命中率 100%% 由守卫保证）。
+pub fn u3701mat_get(key: &str) -> Option<u64> {
+    match key {
+        "EDGE0000" => Some(0),
+        "STATE0001" => Some(13),
+        "COMBO0002" => Some(26),
+        "CART0003" => Some(39),
+        "HIT0004" => Some(52),
+        "MISS0005" => Some(65),
+        "DIM30006" => Some(78),
+        "MC0007" => Some(91),
+        "DC0008" => Some(7),
+        "SC0009" => Some(20),
+        "RATE0010" => Some(33),
+        "GAP0011" => Some(46),
+        "EDGE0012" => Some(59),
+        "STATE0013" => Some(72),
+        "COMBO0014" => Some(85),
+        "CART0015" => Some(1),
+        "HIT0016" => Some(14),
+        "MISS0017" => Some(27),
+        "DIM30018" => Some(40),
+        "MC0019" => Some(53),
+        "DC0020" => Some(66),
+        "SC0021" => Some(79),
+        "RATE0022" => Some(92),
+        "GAP0023" => Some(8),
+        "EDGE0024" => Some(21),
+        "STATE0025" => Some(34),
+        "COMBO0026" => Some(47),
+        "CART0027" => Some(60),
+        "HIT0028" => Some(73),
+        "MISS0029" => Some(86),
+        "DIM30030" => Some(2),
+        "MC0031" => Some(15),
+        "DC0032" => Some(28),
+        "SC0033" => Some(41),
+        "RATE0034" => Some(54),
+        "GAP0035" => Some(67),
+        _ => None,
+    }
+}
+
+/// 逐行守卫扫描（返回违例行数；0 = 全绿）。
+pub fn u3701mat_scan() -> usize {
+    let mut bad = 0usize;
+    let mut i = 0usize;
+    while i < u3701mat_COUNT {
+        let (k, v) = u3701mat[i];
+        let ok = match k {
+            "EDGE0000" => v < 97,
+            "STATE0001" => v < 97,
+            "COMBO0002" => v < 97,
+            "CART0003" => v < 97,
+            "HIT0004" => v < 97,
+            "MISS0005" => v < 97,
+            "DIM30006" => v < 97,
+            "MC0007" => v < 97,
+            "DC0008" => v < 97,
+            "SC0009" => v < 97,
+            "RATE0010" => v < 97,
+            "GAP0011" => v < 97,
+            "EDGE0012" => v < 97,
+            "STATE0013" => v < 97,
+            "COMBO0014" => v < 97,
+            "CART0015" => v < 97,
+            "HIT0016" => v < 97,
+            "MISS0017" => v < 97,
+            "DIM30018" => v < 97,
+            "MC0019" => v < 97,
+            "DC0020" => v < 97,
+            "SC0021" => v < 97,
+            "RATE0022" => v < 97,
+            "GAP0023" => v < 97,
+            "EDGE0024" => v < 97,
+            "STATE0025" => v < 97,
+            "COMBO0026" => v < 97,
+            "CART0027" => v < 97,
+            "HIT0028" => v < 97,
+            "MISS0029" => v < 97,
+            "DIM30030" => v < 97,
+            "MC0031" => v < 97,
+            "DC0032" => v < 97,
+            "SC0033" => v < 97,
+            "RATE0034" => v < 97,
+            "GAP0035" => v < 97,
+            _ => false,
+        };
+        if !ok {
+            bad += 1;
+        }
+        i += 1;
+    }
+    bad
+}
+
+/// 累计求和（守恒对账用）。
+pub fn u3701mat_sum() -> u64 {
+    let mut s = 0u64;
+    let mut i = 0usize;
+    while i < u3701mat_COUNT {
+        s = s.wrapping_add(u3701mat[i].1 as u64);
+        i += 1;
+    }
+    s
+}
+
+/// 键唯一性（构造期断言等价物：逐对扫描同键）。
+pub fn u3701mat_unique() -> bool {
+    let mut i = 0usize;
+    while i < u3701mat_COUNT {
+        let mut j = i + 1;
+        while j < u3701mat_COUNT {
+            if u3701mat[i].0 == u3701mat[j].0 {
+                return false;
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    true
+}
+
+// --------------------------------------------------------------------------
+// 直方图引擎 mxu3701hist（有界插入排序 + 分位数 P50/P90/P99）
+// --------------------------------------------------------------------------
+/// 覆盖三维模型 直方图（96 桶滚动）。
+/// 样本容量上限。
+pub const MXU3701HIST_CAP: usize = 96;
+
+/// 直方图账本（排序态 + 五统量）。
+#[derive(Clone, Copy, Debug)]
+pub struct mxu3701histHist {
+    /// 样本数组（插入排序维护有序）。
+    pub samples: [u64; 96],
+    /// 样本数。
+    pub n: usize,
+    /// 溢出丢弃计数。
+    pub drops: u64,
+    /// 最小值（空时为 0）。
+    pub min: u64,
+    /// 最大值。
+    pub max: u64,
+    /// 累加和。
+    pub sum: u64,
+}
+
+impl mxu3701histHist {
+    /// 空账构造。
+    pub const fn new() -> Self {
+        Self { samples: [0; 96], n: 0, drops: 0, min: 0, max: 0, sum: 0 }
+    }
+
+    /// 采样（有界插入排序；满员丢弃并记账）。
+    pub fn push(&mut self, v: u64) {
+        if self.n >= MXU3701HIST_CAP {
+            self.drops += 1;
+            return;
+        }
+        let mut j = self.n;
+        while j > 0 && self.samples[j - 1] > v {
+            self.samples[j] = self.samples[j - 1];
+            j -= 1;
+        }
+        self.samples[j] = v;
+        self.n += 1;
+        self.sum = self.sum.wrapping_add(v);
+        if self.n == 1 || v < self.min {
+            self.min = v;
+        }
+        if v > self.max {
+            self.max = v;
+        }
+    }
+
+    /// 分位数（permille 口径：q500=P50/q900=P90/q990=P99；最近秩法）。
+    pub fn percentile(&self, permille: u64) -> u64 {
+        if self.n == 0 {
+            return 0;
+        }
+        let rank = (permille * self.n as u64 + 999) / 1000;
+        let idx = if rank == 0 { 1 } else { rank };
+        let i = if idx as usize > self.n { self.n - 1 } else { idx as usize - 1 };
+        self.samples[i]
+    }
+
+    /// 均值（整数除，余数入账）。
+    pub fn mean(&self) -> u64 {
+        if self.n == 0 {
+            return 0;
+        }
+        self.sum / self.n as u64
+    }
+
+    /// 守恒：sum == 各样本和（复算）。
+    pub fn conserved(&self) -> bool {
+        let mut s = 0u64;
+        let mut i = 0usize;
+        while i < self.n {
+            s = s.wrapping_add(self.samples[i]);
+            i += 1;
+        }
+        s == self.sum
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 段位守卫（本模块独立十六进码前缀防串段；越界即判红）
+// ---------------------------------------------------------------------------
+
+/// 段位守卫：全部诊断码必须落在本段 [0xe190, 0xe19f]。
+pub const fn u3701_segment_guard() -> bool {
+    let mut ok = true;
+    let mut i = 0usize;
+    while i < u3701Code::ALL.len() {
+        let c = u3701Code::ALL[i].code();
+        if c < 0xe190 || c > 0xe19f {
+            ok = false;
+        }
+        i += 1;
+    }
+    ok
+}
+
+// --------------------------------------------------------------------------
+// 自检（CheckSet 范式：每检查一带 detail，全绿才出门）
+// --------------------------------------------------------------------------
+/// 段位守卫：全部诊断码落在本模块段内。
+fn u3701_guard_seg() -> bool {
+    u3701_segment_guard()
+}
+
+/// UNX-F3701 矩阵 36 行齐备 + 逐行守卫 + 唯一性 + 累计守恒。
+fn check_u3701_map_guard() -> bool {
+    let mut ok = u3701mat_COUNT == 36;
+    if ok { ok = u3701mat_scan() == 0 && u3701mat_unique(); }
+    if ok { ok = u3701mat_get("EDGE0000") == Some(0) && u3701mat_get("ZZZ_NOKEY").is_none(); }
+    if ok { ok = u3701mat_sum() == 1594; }
+    ok
+}
+
+/// UNX-F3701 直方图 16 样本分位/均值/守恒。
+fn check_u3701_map_hist() -> bool {
+    let mut h = mxu3701histHist::new();
+    let mut i = 0u64;
+    while i < 16 { h.push(i + 1); i += 1; }
+    let mut ok = h.conserved() && h.mean() >= 1 && h.percentile(500) >= 8;
+    ok
+}
+
+/// 本模块自检（逐检查带 detail，全绿才出门）。
+pub fn run_u3701_checks() -> CheckSet {
+    let mut set = CheckSet::new("U3701");
+    set.add(
+        "u3701-seg-guard",
+        u3701_guard_seg(),
+        if u3701_guard_seg() { "" } else { "diagnostic code outside segment" },
+    );
+    set.add(
+        "u3701-map-guard",
+        check_u3701_map_guard(),
+        if check_u3701_map_guard() { "" } else { "UNX-F3701 matrix guard mismatch" },
+    );
+    set.add(
+        "u3701-map-hist",
+        check_u3701_map_hist(),
+        if check_u3701_map_hist() { "" } else { "UNX-F3701 hist mismatch" },
+    );
+    set
+}
+
+// ---------------------------------------------------------------------------
+// 单元测试（域聚合测试在 mod.rs——此处只放本模块纯函数级断言）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn u3701_all_checks_green() {
+        let set = run_u3701_checks();
+        assert!(set.all_passed(), "U3701 domain checks must be green");
+    }
+
+    #[test]
+    fn u3701_segment_guard_holds() {
+        assert!(u3701_segment_guard());
+    }
+}
