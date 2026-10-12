@@ -207,10 +207,13 @@ impl KvParser {
             while i < b.len() && !(b[i] == b' ' || b[i] == b'\t' || b[i] == b'\r' || b[i] == b'\n') {
                 i += 1;
             }
-            tokens.push(&line[start..i]);
-            if tokens.len() > TOKENS_MAX {
+            // 封顶：达 TOKENS_MAX 即止取。判据是「bares.len() ≤ TOKENS_MAX」，
+            // 因此**先判后取**——若先 push 再判溢出，t0..t64 会取满 65 个
+            // （最后一个越界 token 仍进了 bares，c8「token 上限封顶」红线失守）。
+            if tokens.len() >= TOKENS_MAX {
                 break;
             }
+            tokens.push(&line[start..i]);
         }
 
         // —— 规则②：等号劈分（首 '=' 劈分；'=' 在头部 = 空 key 拒收）——
@@ -530,6 +533,16 @@ mod tests {
     #[test]
     fn unx582_all_checks_green() {
         let set = run_unx582_checks();
+        let n = set.len();
+        let mut i = 0usize;
+        while i < n {
+            if let Some(c) = set.get(i) {
+                if !c.passed {
+                    panic!("UNX-F0582 RED: {} :: {}", c.name, c.detail);
+                }
+            }
+            i += 1;
+        }
         assert!(set.all_passed(), "UNX-F0582 domain checks must be green");
     }
 

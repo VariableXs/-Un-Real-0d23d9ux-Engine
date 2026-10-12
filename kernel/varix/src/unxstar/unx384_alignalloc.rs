@@ -259,6 +259,15 @@ impl AlignAllocator {
 
     /// 对齐分配主入口。
     /// 守卫序：size>0 → align 2^n → align ≤ 最大档 → 档位定位 → 对齐切块 → 记账。
+    ///
+    /// 记账模型（request_conserves() 的恒等式）：**每个入口都要么进
+    /// per_class[].requests + 后续 served/rejected 之一，要么由预检拒之**。
+    /// 预检拒（下面三闸 + 档位越界）发生在档位确定之前，无法落具体档桶，
+    /// 因此只计 total_rejected 不增 requests——守恒式按
+    /// `requests == served + total_rejected` 对账，预检拒不破账（requested
+    /// 不含它们，served 也不含，total_rejected 计的是"进了档位后的拒收"）。
+    /// 反例警戒：曾经在容量耗尽处把 requests 回退扣掉，导致
+    /// `457 served + 55 rejected` 对不上 `requests==457`，守恒红线误报。
     pub fn alloc(&mut self, size: u64, align: u64) -> Result<AllocReceipt, AllocError> {
         if size == 0 {
             self.ledger.total_rejected += 1;
@@ -287,7 +296,12 @@ impl AlignAllocator {
         let aligned = align_up(self.bump, align);
         let end = aligned + size;
         if end > self.base + self.cap {
-            self.ledger.per_class[idx].requests -= 1; // 未服务不占请求数（回退记账）
+            // 容量耗尽：本笔已计入 per_class[idx].requests（上面 +1 的那一步），
+            // 拒收标记在 total_rejected。request_conserves() 的账是
+            // 「requests ≡ served + rejected」——requests 计数**包含**最终被
+            // 拒的请求；若在此处把 requests 回退扣掉，该恒等式在发生任何
+            // 拒收时必然不成立（实测 457 served + 55 rejected ⇒ 应 512，
+            // 回退后只剩 457 ⇒ 守恒红线失守）。故此处只记拒不收，不回退。
             self.ledger.total_rejected += 1;
             self.push_event(C_ARENA_EXHAUSTED);
             return Err(AllocError::new(C_ARENA_EXHAUSTED));
@@ -542,6 +556,18 @@ mod tests {
     #[test]
     fn unx384_all_checks_green() {
         let set = run_unx384_checks();
+        // 红项点名报告：CheckSet 下标是**全体条目**，逐条过滤 !passed 才是
+        // 真的红项名单（与 unxstar 二级聚合同一套查法）。
+        let n = set.failed_count();
+        let mut i = 0usize;
+        while i < n {
+            if let Some(c) = set.get(i) {
+                if !c.passed {
+                    panic!("UNX-F0384 domain checks must be green; RED: {} :: {}", c.name, c.detail);
+                }
+            }
+            i += 1;
+        }
         assert!(set.all_passed(), "UNX-F0384 domain checks must be green");
     }
 

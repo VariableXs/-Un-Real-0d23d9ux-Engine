@@ -240,6 +240,11 @@ impl TscCalibrator {
         let cpuid = cpuid_estimate(l15_den, l15_num, l15_xtal, l16_mhz).unwrap_or(0);
         if cpuid == 0 {
             self.events.push(CalibEvent { code: C_CPUID_ZERO, detail: code_text(C_CPUID_ZERO).to_string() });
+        } else if (l15_den == 0 || l15_num == 0 || l15_xtal == 0) && l16_mhz != 0 {
+            // 0x15 读零但 0x16 顶上：降级成功也要显性入账。0x9903 的语义是
+            // 「0x15 叶读零」，与"两叶俱灭"共用同一个码——降级本身**不阻塞**校准
+            // （cpuid 已由 0x16 给出非零值），但必须留痕，否则"降级路径"无从观测。
+            self.events.push(CalibEvent { code: C_CPUID_ZERO, detail: code_text(C_CPUID_ZERO).to_string() });
         }
 
         // 三源全灭 = 无中位数可用。
@@ -416,8 +421,13 @@ fn check_c9_median3() -> bool {
 }
 
 /// C10：bps 换算——10% = 1000bps、恰 50bps 边界、同值 = 0bps、零值 = 不可比。
+///
+/// 换算核：`rel_diff_bps = (hi-lo) × 10000 / lo`（相对差以**小者**为分母）。
+/// 所以"10%"必须是相对 lo 的 10%，不是相对 hi 的 10%：
+/// 3.0G↔2.7G 的差是 11.11%（分母 2.7G ⇒ 1111bps），拿它当 10% 是错例。
+/// 取 2.0G↔2.2G：200M × 10000 / 2.0G = 1000bps，恰是 lo 的 10%。
 fn check_c10_bps_math() -> bool {
-    rel_diff_bps(3_000_000_000, 2_700_000_000) == 1000
+    rel_diff_bps(2_200_000_000, 2_000_000_000) == 1000
         && rel_diff_bps(2_000_000_000, 2_010_000_000) == 50 // 恰 50bps（0.5% 边界）
         && rel_diff_bps(7, 7) == 0
         && rel_diff_bps(0, 7) == u64::MAX
@@ -497,6 +507,16 @@ mod tests {
     #[test]
     fn unx403_all_checks_green() {
         let set = run_unx403_checks();
+        let n = set.len();
+        let mut i = 0usize;
+        while i < n {
+            if let Some(c) = set.get(i) {
+                if !c.passed {
+                    panic!("UNX-F0403 RED: {} :: {}", c.name, c.detail);
+                }
+            }
+            i += 1;
+        }
         assert!(set.all_passed(), "UNX-F0403 domain checks must be green");
     }
 
