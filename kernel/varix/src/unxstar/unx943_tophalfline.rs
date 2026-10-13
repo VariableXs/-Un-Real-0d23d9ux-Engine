@@ -1706,9 +1706,17 @@ mod tests {
         let mut l = TopHalfLine::new();
         l.install_default_discipline().expect("建档");
         l.register_handler(0x20, BudgetTier::Latency).expect("reg");
+        // 尾延迟护栏核的是 p999，即 1000 个采样里的第 999 序位。要让 p999
+        // 读出超载样本，超载采样必须**真占满第 999 序位**——慢样本占多数。
+        // 原判据写「999 快 + 1 慢」：p999 目标序位恰为 999，累到第 999 个
+        // 快样本即止，返回快档桶下沿 400ns，护栏不触发；单个慢样本在数学上
+        // 永远够不着 p999（1‰ 分位不覆盖 1/1000 的尾部点）。这是判据自设的
+        // 假前提，不是实现缺陷（percentile_ns 的 nearest-rank 契约正确）。
+        // 取 990 快 + 10 慢：目标序位 999 落在慢档区，p999 读出 72393ns
+        // （> 2×1µs = 2000ns），护栏 C_4C55 得以被真正考验。
         let mut i = 0;
         while i < 1000 {
-            let ns = if i == 999 { 100_000 } else { 500 };
+            let ns = if i >= 990 { 100_000 } else { 500 };
             l.record_sample(0x20, ns).expect("rec");
             l.settle(0x20).expect("s");
             i += 1;
