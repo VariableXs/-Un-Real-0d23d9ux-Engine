@@ -100,8 +100,24 @@ pub struct FrozenParam {
 }
 
 /// 四列纪律闸（判据①缺列面）：逐列合法性核。
+/// 语义 = **基线直冻结**闸：format_version 必须恰等于 F1635_VERSION。
+/// 前进生成件（版本 = 基线 + k，由 expand() 产出）不走此闸——它们由
+/// `forward_columns_ok()` 核（见下）。
 pub const fn four_columns_ok(p: &FrozenParam) -> bool {
     p.format_version == F1635_VERSION
+        && p.refresh_beat >= BEAT_MIN
+        && p.refresh_beat <= BEAT_MAX
+        && p.perm_mask & !PERM_ALL == 0
+        && (p.expand_channel == 0 || p.expand_channel == F1897_CHANNEL)
+}
+
+/// 前进件四列闸：节拍/权限/通道三列纪律同基线，版本列改为「不低于基线」。
+/// expand() 每前进一次版本 +1，故前进件版本恒 > F1635_VERSION；若此处仍用
+/// `four_columns_ok()` 的等式核，任何一次扩容后整本账的 audit() 都必然失守
+/// （audit 逐件跑基线闸 → 首件之后就 false）——冷启动一致性与单调前进语义
+/// 本来就分离在这两个谓词里，混淆即自相矛盾。
+pub const fn forward_columns_ok(p: &FrozenParam) -> bool {
+    p.format_version >= F1635_VERSION
         && p.refresh_beat >= BEAT_MIN
         && p.refresh_beat <= BEAT_MAX
         && p.perm_mask & !PERM_ALL == 0
@@ -182,14 +198,26 @@ impl FreezeBook {
         self.chain = self.chain.wrapping_mul(0x100_0000_01B3);
         Ok(self.chain)
     }
-    /// 冻结核：全件四列合法 + 版本严格递增 + 指纹链可复算。
+    /// 冻结核：全件列纪律 + 版本严格递增 + 指纹链可复算。
+    /// 列纪律按件分档：基线直冻结件走 `four_columns_ok()`（版本须恰等于
+    /// F1635_VERSION 的等式闸），前进件走 `forward_columns_ok()`（版本
+    /// ≥ 基数的「不低于」闸）。expand() 每次把版本 +1，故第二个及以后的
+    /// 件几乎必然是前进件；一律套基线等式闸会让任何一次合法扩容之后的账
+    /// 在自己的 audit() 下失守。
     pub fn audit(&self) -> bool {
         let mut prev_v = 0u64;
+        let mut first = true;
         let mut chain = 0xD303_0000_0002_1080u64;
         for p in &self.items {
-            if p.format_version <= prev_v || !four_columns_ok(p) {
+            let cols_ok = if first {
+                four_columns_ok(p)
+            } else {
+                forward_columns_ok(p)
+            };
+            if p.format_version <= prev_v || !cols_ok {
                 return false;
             }
+            first = false;
             prev_v = p.format_version;
             chain ^= freeze_fp(p);
             chain = chain.wrapping_mul(0x100_0000_01B3);
