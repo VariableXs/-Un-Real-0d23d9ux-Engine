@@ -121,6 +121,218 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     for (tag, f) in unxstar_blocks().iter() {
         // 即用即弃：同一时刻栈上只存活一个子集 CheckSet（约 4.5KB）。
         let sub = f();
+    let blocks: [(&'static str, CheckSet); 69] = [
+        ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks()),
+        ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks()),
+        ("UNX-F0081", unx081_kaslr_entropy::run_unx081_checks()),
+        ("UNX-F0101", unx101_vgafallback::run_unx101_checks()),
+        ("UNX-F0121", unx121_extbootstate::run_unx121_checks()),
+        ("UNX-F0141", unx141_isogen::run_unx141_checks()),
+        ("UNX-F0161", unx161_rtremap::run_unx161_checks()),
+        ("UNX-F0201", unx201_bootreport::run_unx201_checks()),
+        ("UNX-F0182", unx182_handover::run_unx182_checks()),
+        ("UNX-F0421", unx421_idt_reload::run_unx421_checks()),
+        ("UNX-F0441", unx441_rsdp_scan::run_unx441_checks()),
+        ("UNX-F0461", unx461_pci_route::run_unx461_checks()),
+        ("UNX-F0481", unx481_fb_ledger::run_unx481_checks()),
+        ("UNX-F0521", unx521_ktest_frame::run_unx521_checks()),
+        ("UNX-F0541", unx541_log_emit::run_unx541_checks()),
+        ("UNX-F0561", unx561_power_ledger::run_unx561_checks()),
+        ("UNX-F0601", unx601_initrd_ledger::run_unx601_checks()),
+        ("UNX-F0621", unx621_pkg_aggregate::run_unx621_checks()),
+        ("UNX-F0641", unx641_regress_round::run_unx641_checks()),
+        ("UNX-F0661", unx661_time_anchors::run_unx661_checks()),
+        ("UNX-F0681", unx681_bench_machine::run_unx681_checks()),
+        ("UNX-F0701", unx701_assert_ledger::run_unx701_checks()),
+        ("UNX-F0721", unx721_limine_ledger::run_unx721_checks()),
+        ("UNX-F0183", unx183_failiso::run_unx183_checks()),
+        ("UNX-F0204", unx204_reportring::run_unx204_checks()),
+        ("UNX-F0223", unx223_dombound::run_unx223_checks()),
+        ("UNX-F0243", unx243_memsnap::run_unx243_checks()),
+        ("UNX-F0263", unx263_xmodem::run_unx263_checks()),
+        ("UNX-F0323", unx323_realmjmp::run_unx323_checks()),
+        ("UNX-F0342", unx342_apsilence::run_unx342_checks()),
+        ("UNX-F0362", unx362_resvwhite::run_unx362_checks()),
+        ("UNX-F0264", unx264_lineedit::run_unx264_checks()),
+        ("UNX-F0324", unx324_sipiseq::run_unx324_checks()),
+        ("UNX-F0643", unx643_drilllog::run_unx643_checks()),
+        ("UNX-F0683", unx683_boottrace::run_unx683_checks()),
+        ("UNX-F0206", unx206_excode::run_unx206_checks()),
+        ("UNX-F0245", unx245_randnode::run_unx245_checks()),
+        ("UNX-F0185", unx185_cpufeat::run_t185_checks()),
+        ("UNX-F1563", unx1563_a4sign::run_unx1563_checks()),
+        ("UNX-F1842", unx1842_ipivec::run_unx1842_checks()),
+        ("UNX-F1902", unx1902_lazysave::run_unx1902_checks()),
+        ("UNX-F0326", unx326_apsentinel::run_unx326_checks()),
+        ("UNX-F0327", unx327_tramppagemap::run_unx327_checks()),
+        ("UNX-F0405", unx405_monoclock::run_unx405_checks()),
+        ("UNX-F0584", unx584_unkparam::run_unx584_checks()),
+        ("UNX-F2101", unx2101_schedstat::run_unx2101_checks()),
+        ("UNX-F2221", unx2221_freeledge::run_f2221_checks()),
+        ("UNX-F0883", unx0883_migwin::run_t883_checks()),
+        ("UNX-F1026", unx1026_hpetcand::run_t1026_checks()),
+        ("UNX-F1103", unx1103_disptab::run_t1103_checks()),
+        ("UNX-F1302", unx1302_tickretire::run_t1302_checks()),
+        ("UNX-F1482", unx1482_gaplist::run_t1482_checks()),
+        ("UNX-F1503", unx1503_quadfsm::run_t1503_checks()),
+        ("UNX-F1903", unx1903_xsaveamort::run_t1903_checks()),
+        ("UNX-F1941", unx1941_nmiipi::run_t1941_checks()),
+        ("UNX-F1961", unx1961_freqdom::run_t1961_checks()),
+        ("UNX-F1981", unx1981_twogov::run_t1981_checks()),
+        ("UNX-F2001", unx2001_schedutil::run_t2001_checks()),
+        ("UNX-F2021", unx2021_cstates::run_t2021_checks()),
+        ("UNX-F2081", unx2081_qdepth::run_t2081_checks()),
+        ("UNX-F2102", unx2102_sdebug::run_t2102_checks()),
+        ("UNX-F2141", unx2141_triface::run_t2141_checks()),
+        ("UNX-F2161", unx2161_stressorg::run_t2161_checks()),
+        ("UNX-F2181", unx2181_regbook::run_t2181_checks()),
+        ("UNX-F2201", unx2201_freezectl::run_t2201_checks()),
+        ("UNX-F2241", unx2241_finalchain::run_t2241_checks()),
+        ("UNX-F2222", unx2222_rollver::run_f2222_checks()),
+        ("UNX-F0505", unx505_loopback::run_f505_checks()),
+        ("UNX-F1723", unx1723_migledger::run_f1723_checks()),
+    ];
+    for (tag, sub) in blocks.iter() {
+        let passed = sub.all_passed() && !sub.truncated();
+    
+    {
+        let sub = run_unx20_t082();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0082",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t126();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0123",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t147();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0143",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t163();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0163",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t203();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0203",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t228();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0222",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t242();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0242",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t268();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0262",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t286();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0282",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t326();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0322",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t306();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "UNX-F0302",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t325();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "AP ID 核对域",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t684();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "固件路差异域",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t505();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "万次切换域",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    {
+        let sub = run_unx20_t545();
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(
+            "判据冻结域",
+            passed,
+            if passed { "" } else if sub.truncated() { "unx20 family truncated" } else { "unx20 family red" },
+        );
+    }
+    // UNX-20 任务族登记（20 域各一笔，总量 8+20=28 ≤ MAX_CHECKS 112）
+    {
+        let sub = run_unx20_t162();
         let passed = sub.all_passed() && !sub.truncated();
         set.add(
             // `blocks.iter()` 产出 `&(&'static str, fn…)`，故 `tag` 是
@@ -371,6 +583,102 @@ pub fn run_unxstar_secondary_checks() -> CheckSet {
         );
     }
     sub_set
+        let sub = run_wb20_u1501();
+        set.add(
+            "UNX-F1501",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1541();
+        set.add(
+            "UNX-F1541",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1561();
+        set.add(
+            "UNX-F1561",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1581();
+        set.add(
+            "UNX-F1581",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1601();
+        set.add(
+            "UNX-F1601",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1621();
+        set.add(
+            "UNX-F1621",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1641();
+        set.add(
+            "UNX-F1641",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1661();
+        set.add(
+            "UNX-F1661",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1681();
+        set.add(
+            "UNX-F1681",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1701();
+        set.add(
+            "UNX-F1701",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1721();
+        set.add(
+            "UNX-F1721",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1741();
+        set.add(
+            "UNX-F1741",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1761();
+        set.add(
+            "UNX-F1761",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1781();
+        set.add(
+            "UNX-F1781",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1801();
+        set.add(
+            "UNX-F1801",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1821();
+        set.add(
+            "UNX-F1821",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1841();
+        set.add(
+            "UNX-F1841",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1861();
+        set.add(
+            "UNX-F1861",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1881();
+        set.add(
+            "UNX-F1881",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        let sub = run_wb20_u1901();
+        set.add(
+            "UNX-F1901",
+            if passed { "" } else if sub.truncated() { "wb20 family truncated" } else { "wb20 family red" },
+        // WB21 批次（第二波深化 20 单）：drill 入口逐单折叠为一个族集，
+        // 族内任一红即整族红（与 wb20 family 折叠范式一致）。
+        let sub = run_wb21_unx20();
+        set.add(
+            "UNX-F-WB21",
+            if passed { "" } else if sub.truncated() { "wb21 family truncated" } else { "wb21 family red" },
+        // WB22 批次（第三波 22 单）：drill 入口逐单折叠为一个族集。
+        let sub = run_wb22_unx22();
+        set.add(
+            "UNX-F-WB22",
+            if passed { "" } else if sub.truncated() { "wb22 family truncated" } else { "wb22 family red" },
+        // UNX-21 批次（本会话深编）：逐单折叠为一个族集。
+        let sub = run_unx21_batch();
+        set.add(
+            "UNX-F-UNX21",
+            if passed { "" } else if sub.truncated() { "unx21 family truncated" } else { "unx21 family red" },
 }
 /// UNX-F0642 域聚合。
 pub fn run_unx20_t642() -> crate::checks::CheckSet {
@@ -2311,6 +2619,30 @@ pub fn wb21_drill_report() -> String {
     }
     s
 }
+    let entries: [(&'static str, bool, &'static str); 20] = [
+        ("UNX-F0404", unx404_hpetcap::drill_green().0, "wb21 hpetcap drill red"),
+        ("UNX-F0583", unx583_wlparams::drill_green().0, "wb21 wlparams drill red"),
+        ("UNX-F1102", unx1102_stubaudit::pump_100k().0, "wb21 stubaudit pump red"),
+        ("UNX-F1201", unx1201_polloop::drill_1m().0, "wb21 polloop drill red"),
+        ("UNX-F1301", unx1301_retire::drill_10().0, "wb21 retire drill red"),
+        ("UNX-F1421", unx1421_latdist::drill_100k().0, "wb21 latdist drill red"),
+        ("UNX-F1441", unx1441_schema::drill_full().0, "wb21 schema drill red"),
+        ("UNX-F1461", unx1461_zeroeq::drill_10rounds().0, "wb21 zeroeq drill red"),
+        ("UNX-F1501-D2", unx1501_regmat::drill_full().0, "wb21 regmat drill red"),
+        ("UNX-F1541-D2", unx1541_dombind::drill_seal().0, "wb21 dombind drill red"),
+        ("UNX-F1561-D2", unx1561_cosign::drill_cosign().0, "wb21 cosign drill red"),
+        ("UNX-F1581-D2", unx1581_domreg::drill_800().0, "wb21 domreg drill red"),
+        ("UNX-F1601-D2", unx1601_smpcons::drill_full().0, "wb21 smpcons drill red"),
+        ("UNX-F1621-D2", unx1621_percpu::drill_layout().0, "wb21 percpu drill red"),
+        ("UNX-F1641-D2", unx1641_runqueue::drill_full().0, "wb21 runqueue drill red"),
+        ("UNX-F1661-D2", unx1661_schedcls::drill_chain().0, "wb21 schedcls drill red"),
+        ("UNX-F1681-D2", unx1681_timeslice::drill_model().0, "wb21 timeslice drill red"),
+        ("UNX-F1701-D2", unx1701_loadtrk::drill_model().0, "wb21 loadtrk drill red"),
+        ("UNX-F1721-D2", unx1721_balexec::drill_chain().0, "wb21 balexec drill red"),
+        ("UNX-F1741-D2", unx1741_idlest::drill_cycle().0, "wb21 idlest drill red"),
+    ];
+    for (tag, ok, detail) in entries.iter() {
+        set.add(tag, *ok, if *ok { "" } else { detail });
 pub mod unx882_rtereprog;
 
 // ===================== UNX-21 批次（本会话深编，0x6100~0x65cf 段） =====================
@@ -3409,3 +3741,45 @@ pub mod unxt166_leapfilter;
 pub mod unxt167_mono;
 pub mod unxt168_setpath;
 pub mod unxt169_timeledger;
+
+// ===================== AI-WB3 · CoRun UNX-A4 批 40 单深化版（诊断码段 0x12C0~0x2940 四十段） =====================
+// unx2321_unisign3 ↔ UNX-F2321（册目标见施工书；诊断码段 12C0–12C0 独占）
+// unx2341_udomregress ↔ UNX-F2341（册目标见施工书；诊断码段 13C0–13C0 独占）
+// unx2361_udecLARE3 ↔ UNX-F2361（册目标见施工书；诊断码段 15C0–15C0 独占）
+// unx2381_ufinalacct ↔ UNX-F2381（册目标见施工书；诊断码段 1640–1640 独占）
+// unx2402_ufreemap ↔ UNX-F2402（册目标见施工书；诊断码段 16C0–16C0 独占）
+// unx2422_uorder14 ↔ UNX-F2422（册目标见施工书；诊断码段 1740–1740 独占）
+// unx2442_urefill ↔ UNX-F2442（册目标见施工书；诊断码段 17C0–17C0 独占）
+// unx2482_uorder9raw ↔ UNX-F2482（册目标见施工书；诊断码段 18C0–18C0 独占）
+// unx2502_uhptime ↔ UNX-F2502（册目标见施工书；诊断码段 1A80–1A80 独占）
+// unx2562_uaspcreate ↔ UNX-F2562（册目标见施工书；诊断码段 1BC0–1BC0 独占）
+// unx2582_uvmainject ↔ UNX-F2582（册目标见施工书；诊断码段 1C40–1C40 独占）
+// unx2602_upfentry ↔ UNX-F2602（册目标见施工书；诊断码段 1C80–1C80 独占）
+// unx2622_upcidbook ↔ UNX-F2622（册目标见施工书；诊断码段 1CC0–1CC0 独占）
+// unx2642_uptebatchro ↔ UNX-F2642（册目标见施工书；诊断码段 1D40–1D40 独占）
+// unx2662_ulookup ↔ UNX-F2662（册目标见施工书；诊断码段 1D80–1D80 独占）
+// unx2682_ucacheif ↔ UNX-F2682（册目标见施工书；诊断码段 1DC0–1DC0 独占）
+// unx2702_ulrufield ↔ UNX-F2702（册目标见施工书；诊断码段 1E40–1E40 独占）
+// unx2722_uanonevict ↔ UNX-F2722（册目标见施工书；诊断码段 1E80–1E80 独占）
+// unx2762_umaptbl ↔ UNX-F2762（册目标见施工书；诊断码段 1EC0–1EC0 独占）
+// unx2782_ubuddymerge ↔ UNX-F2782（册目标见施工书；诊断码段 1F40–1F40 独占）
+// unx2801_ubigpoolcap ↔ UNX-F2801（册目标见施工书；诊断码段 1F80–1F80 独占）
+// unx2841_ubigasp ↔ UNX-F2841（册目标见施工书；诊断码段 20C0–20C0 独占）
+// unx2861_ubigmatrix ↔ UNX-F2861（册目标见施工书；诊断码段 2140–2140 独占）
+// unx2901_ucachestress ↔ UNX-F2901（册目标见施工书；诊断码段 21C0–21C0 独占）
+// unx2941_udomstress ↔ UNX-F2941（册目标见施工书；诊断码段 2240–2240 独占）
+// unx2981_udomclose ↔ UNX-F2981（册目标见施工书；诊断码段 22C0–22C0 独占）
+// unx3001_udualchain ↔ UNX-F3001（册目标见施工书；诊断码段 2340–2340 独占）
+// unx3021_utier3 ↔ UNX-F3021（册目标见施工书；诊断码段 23C0–23C0 独占）
+// unx3061_upowerloss ↔ UNX-F3061（册目标见施工书；诊断码段 24C0–24C0 独占）
+// unx3081_utierfinal ↔ UNX-F3081（册目标见施工书；诊断码段 2580–2580 独占）
+// unx3101_uregfreeze ↔ UNX-F3101（册目标见施工书；诊断码段 25C0–25C0 独占）
+// unx3121_ureconall ↔ UNX-F3121（册目标见施工书；诊断码段 2640–2640 独占）
+// unx3141_ubaseline ↔ UNX-F3141（册目标见施工书；诊断码段 2680–2680 独占）
+// unx3161_uregexec ↔ UNX-F3161（册目标见施工书；诊断码段 26C0–26C0 独占）
+// unx3181_udomainfinal ↔ UNX-F3181（册目标见施工书；诊断码段 2740–2740 独占）
+// unx3361_utimewin ↔ UNX-F3361（册目标见施工书；诊断码段 2780–2780 独占）
+// unx3381_usamplelib ↔ UNX-F3381（册目标见施工书；诊断码段 27C0–27C0 独占）
+// unx3401_uktestdesign ↔ UNX-F3401（册目标见施工书；诊断码段 2880–2880 独占）
+// unx3421_udualbackend ↔ UNX-F3421（册目标见施工书；诊断码段 28C0–28C0 独占）
+// unx3461_umountarch ↔ UNX-F3461（册目标见施工书；诊断码段 2940–2940 独占）

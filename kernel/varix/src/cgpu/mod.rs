@@ -612,3 +612,9 @@ pub fn run_cgpu20_g06c() -> crate::checks::CheckSet {
     set.add("CGPU-F3206", ok, if ok { "" } else { "cgpu20-g06c family sub-checks red" });
     set
 }
+// vcw07b_docsec_deep — CGPU-F3528 文档安全深化版（裁决书留痕可追责/三面同实例真复用+引擎指纹同源/降级最严闸零泄漏/跨版本两向差异签字结案/误杀申诉只追加不抹账/0x7680 段十二码）
+pub mod vcw07b_docsec_deep;
+// vcw09_docsite — CGPU-F3529 文档站（路由归一双射+路径穿越拒+静态幂等零动态零外链+增量最小重建传递闭包+拓扑环拒+三账守恒/0x7700 段十二码）
+pub mod vcw09_docsite;
+        ("CGPU-F3528-DEEP", vcw07b_docsec_deep::run_cgpu_f3528_deep_checks()),
+        ("CGPU-F3529", vcw09_docsite::run_cgpu_f3529_checks()),
