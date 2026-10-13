@@ -331,17 +331,23 @@ pub struct XCheck {
 impl XCheck {
     /// 交叉一致性判定：tsc_delta / hpet_delta 落带内。
     /// 口径：期望倍数 want = TSC_HZ/HPET_HZ = 240；实际倍数 got = tsc/hpet
-    /// （万分比×100 放大精度：got100 = tsc*100/hpet）；带宽 [want*0.95, want*1.05]
-    /// 折整数 [228, 252]（XCHECK_MIN/MAX_BP 万分比口径换算）。
+    /// （×100 放大精度：got100 = tsc*100/hpet）；带宽 [want*0.95, want*1.05]
+    /// 折整数 [22800, 25200]（XCHECK_MIN/MAX_BP 万分比口径换算）。
     /// hpet_delta=0 时视作平凡一致（无数据不判漂移——零分母诚实口径）。
+    ///
+    /// 标度自洽：got100 是「倍数 × 100」，故带宽换算的分母必须是 100
+    /// （9500/10000 = 0.95，乘回去即 want*9500/100）。此前写成 /10000，
+    /// 等于把 ×100 的量去配 ×10000 的带——带宽被压小 100 倍成 [228, 252]，
+    /// 而合法读数的 got100 恒为 24000，上下界同时够不着：带是**空集**，
+    /// 任何读数都判漂移。±50‰ 容差本身不变，只是换算除数与 got100 的标度对齐。
     pub const fn in_band(&self) -> bool {
         if self.hpet_delta == 0 {
             return true;
         }
         let want = TSC_HZ / HPET_HZ; // 240
         let got100 = self.tsc_delta * 100 / self.hpet_delta; // 倍数×100
-        let lo = want * XCHECK_MIN_BP / 10000; // 240*9500/10000 = 228
-        let hi = want * XCHECK_MAX_BP / 10000; // 240*10500/10000 = 252
+        let lo = want * XCHECK_MIN_BP / 100; // 240*9500/100 = 22800
+        let hi = want * XCHECK_MAX_BP / 100; // 240*10500/100 = 25200
         got100 >= lo && got100 <= hi
     }
     /// 出带判码（供调用方立案）。
@@ -480,7 +486,7 @@ pub fn run_unx1025_checks() -> CheckSet {
     let mut cs = CheckSet::new("UNX-F1025");
 
     // J-1 段守卫。
-    cs.add("0xCC段独占", seg_guard());
+    cs.add("0xCC段独占", seg_guard(), "");
 
     // J-2 读序断言：合法序通过 + 乱序探针被拦（判据①）。
     let mut reg = HpetReg::new();
@@ -488,37 +494,37 @@ pub fn run_unx1025_checks() -> CheckSet {
     let mut st: u64 = 0;
     let ok_read = coherent_read(&reg, &mut st) == Ok(reg.truth()) && st == READ_STEPS;
     let ok_disorder = disorder_probe(&reg) == Err(C_READ_ORDER);
-    cs.add("读序断言双向", ok_read && ok_disorder);
+    cs.add("读序断言双向", ok_read && ok_disorder, "");
 
     // J-3 双窗连贯：静态模型下读毕即连贯（无撕裂则零重读）。
-    cs.add("双窗连贯零重读", st == 3);
+    cs.add("双窗连贯零重读", st == 3, "");
 
     // J-4 单调性 10^6：抽样扫描零倒退（判据②）。
     let mut reg2 = HpetReg::new();
     let mut steps2: u64 = 0;
     let audit = mono_scan(&mut reg2, MONO_SCAN / MONO_SAMPLE_STEP, MONO_SAMPLE_STEP, &mut steps2);
-    cs.add("单调性抽样核", audit.regressions == 0 && audit.scans == MONO_SCAN / MONO_SAMPLE_STEP);
+    cs.add("单调性抽样核", audit.regressions == 0 && audit.scans == MONO_SCAN / MONO_SAMPLE_STEP, "");
 
     // J-5 回绕探针：模账单调不破、回绕恰 1 次。
     let (wok, wseen, wcnt) = wrap_probe();
-    cs.add("回绕模账", wok && wseen == 1 && wcnt == 1);
+    cs.add("回绕模账", wok && wseen == 1 && wcnt == 1, "");
 
     // J-6 读开销预算：平均步数 ≤ 24 步（判据③）。
-    cs.add("读开销<200ns口径", overhead_ok(steps2, audit.scans) && st <= READ_STEP_BUDGET);
+    cs.add("读开销<200ns口径", overhead_ok(steps2, audit.scans) && st <= READ_STEP_BUDGET, "");
 
     // J-7 TSC 交叉一致：同序列两钟增量落带（判据④）。
     let xc = xcheck_run(256, 7);
-    cs.add("TSC交叉一致", xc.in_band() && xc.breach_code() == 0);
+    cs.add("TSC交叉一致", xc.in_band() && xc.breach_code() == 0, "");
 
     // J-8 压力：4096 轮 LCG 全维度核。
     let sr = stress_read(4096, 0xCC25_0001);
-    cs.add("压力全维", sr.regressions == 0 && sr.overhead && sr.xband && sr.reads == 4096);
+    cs.add("压力全维", sr.regressions == 0 && sr.overhead && sr.xband && sr.reads == 4096, "");
 
     // J-9 指纹重放对拍：同种子恒同指纹。
     let f1 = fingerprint(&stress_read(512, 0xCC25_0002));
     let f2 = fingerprint(&stress_read(512, 0xCC25_0002));
     let f3 = fingerprint(&stress_read(512, 0xCC25_0003));
-    cs.add("指纹重放对拍", f1 == f2 && f1 != f3);
+    cs.add("指纹重放对拍", f1 == f2 && f1 != f3, "");
 
     // J-10 判码文本闭集：六码各得其所。
     let texts_ok = code_text(C_READ_ORDER) != "未知判码"
@@ -528,7 +534,7 @@ pub fn run_unx1025_checks() -> CheckSet {
         && code_text(C_TSC_DRIFT) != "未知判码"
         && code_text(C_WRAP_MISSED) != "未知判码"
         && code_text(0xCC00) == "未知判码";
-    cs.add("判码文本闭集", texts_ok);
+    cs.add("判码文本闭集", texts_ok, "");
 
     cs
 }
