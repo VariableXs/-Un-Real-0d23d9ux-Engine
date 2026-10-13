@@ -6,25 +6,25 @@
 
 ---
 
-## 目录（15 章详册）
+## 目录（15 章合订本：docs/Varix/README.md）
 
-| 章 | 内容 | 文件 |
+| 章 | 内容 | 章内直达 |
 |---|---|---|
-| 01 | 架构总览 | [docs/Varix/README/01-架构总览.md](docs/Varix/README/01-架构总览.md) |
-| 02 | 引导与平台 | [docs/Varix/README/02-引导与平台.md](docs/Varix/README/02-引导与平台.md) |
-| 03 | CPU 与中断 | [docs/Varix/README/03-CPU与中断.md](docs/Varix/README/03-CPU与中断.md) |
-| 04 | 内存管理 | [docs/Varix/README/04-内存管理.md](docs/Varix/README/04-内存管理.md) |
-| 05 | 进程与装载 | [docs/Varix/README/05-进程与装载.md](docs/Varix/README/05-进程与装载.md) |
-| 06 | 图形与桌面 | [docs/Varix/README/06-图形与桌面.md](docs/Varix/README/06-图形与桌面.md) |
-| 07 | 判据体系 | [docs/Varix/README/07-判据体系.md](docs/Varix/README/07-判据体系.md) |
-| 08 | 移植线 | [docs/Varix/README/08-移植线.md](docs/Varix/README/08-移植线.md) |
-| 09 | 兼容层 | [docs/Varix/README/09-兼容层.md](docs/Varix/README/09-兼容层.md) |
-| 10 | 已知边界 | [docs/Varix/README/10-已知边界.md](docs/Varix/README/10-已知边界.md) |
-| 11 | 工程纪律 | [docs/Varix/README/11-工程纪律.md](docs/Varix/README/11-工程纪律.md) |
-| 12 | 构建与测试 | [docs/Varix/README/12-构建与测试.md](docs/Varix/README/12-构建与测试.md) |
-| 13 | 路线图 | [docs/Varix/README/13-路线图.md](docs/Varix/README/13-路线图.md) |
-| 14 | 附录·实测数据 | [docs/Varix/README/14-附录-实测数据.md](docs/Varix/README/14-附录-实测数据.md) |
-| 15 | 语言与生态扩展 | [docs/Varix/README/15-语言与生态扩展.md](docs/Varix/README/15-语言与生态扩展.md) |
+| 01 | 架构总览 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 02 | 引导与平台 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 03 | CPU 与中断 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 04 | 内存管理 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 05 | 进程与装载 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 06 | 图形与桌面 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 07 | 判据体系 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 08 | 移植线 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 09 | 兼容层 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 10 | 已知边界 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 11 | 工程纪律 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 12 | 构建与测试 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 13 | 路线图 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 14 | 附录·实测数据 | [docs/Varix/README.md](docs/Varix/README.md) |
+| 15 | 语言与生态扩展 | [docs/Varix/README.md](docs/Varix/README.md) |
 
 ---
 
