@@ -624,6 +624,13 @@ impl StackWalker {
         if truncated {
             events.push(CorruptionEvent::new(C_FRAME_CAP, frames.len(), code_text(C_FRAME_CAP)));
         }
+        // 损坏账如实入账：corruption_count ≡ 事件账长度。此前全模块只在空窗
+        // 分支赋过一次值（= 1），其余 15 个 events.push 点一律漏计——健康链
+        // 走到 0x9601 哨兵时 corruption_count 停在 0，判据「哨兵入账零静默」
+        // 读 0 >= 1 恒假（C1 失守），文档声称的「损坏必入账」对任何非空回溯
+        // 都不成立。统一在出口处按账长收口，保证「入账数 ≡ 事件数」这个不变量
+        // 对每条路径都成立（空窗分支的 1 也正好等于其唯一一条事件）。
+        stats.corruption_count = events.len();
         WalkReport { frames, events, stats, stop, truncated }
     }
 
@@ -696,20 +703,16 @@ impl StackWalker {
                 return ChainStop::Broke;
             }
 
-            // 守卫⑤：单调严格上升（栈向下长，帧链向上走）。
-            if let Some(prev) = prev_rbp {
-                if rbp <= prev {
-                    stats.chain_hops = hops - 1;
-                    events.push(CorruptionEvent::new(
-                        C_RBP_NONMONO,
-                        frames.len(),
-                        code_text(C_RBP_NONMONO),
-                    ));
-                    return ChainStop::Broke;
-                }
-            }
-
             // 守卫⑥：环检测（saved_rBP 已见即环，防 A→B→A 死循环）。
+            //
+            // 位置必须早于守卫⑤：合法每跳严格下降，故「再次见到同一地址」
+            // 只有一种形态——序列先降后升回来。升回那一跳会被守卫⑤判成
+            // 帧链倒退，于是⑥永远轮不到（实测 2 帧环 A→B→A 出的是
+            // 0x9604 而非 0x9607）。先核环、后核序：同一地址二次出现
+            // 本身就是最直接的环证据，判定应归 0x9607；顺序颠倒会让语义
+            // 更具体的环判码被更泛的单调判码吃掉。⑥仍是⑤的补充而非冗余：
+            // 它兜住「见了同一地址但差值 > 0」这种⑤判为倒退、实质是环的
+            // 情形（含长环：降若干级后跳回任意已见地址）。
             if cycle_ledger.contains(&rbp) {
                 stats.chain_hops = hops - 1;
                 events.push(CorruptionEvent::new(
@@ -721,6 +724,24 @@ impl StackWalker {
             }
             if cycle_ledger.len() < CYCLE_LEDGER_CAP {
                 cycle_ledger.push(rbp);
+            }
+
+            // 守卫⑤：单调**下降**（栈向低地址生长，链从新帧逐级回溯到老帧，
+            // rBP 每跳必须比上一跳小；相等或回升即为帧链倒退/平走——链损坏）。
+            // 注意方向：传动链是 rbp_{k+1} = [rbp_k]，call 栈自高向低长，
+            // 故合法序列严格递减。此前写成「单调严格上升 / rbp <= prev 即断」，
+            // 把唯一合法方向判成损坏——任何健康链第一步就断（实测 C1 只走出
+            // 1 帧即报 0x9604）。
+            if let Some(prev) = prev_rbp {
+                if rbp >= prev {
+                    stats.chain_hops = hops - 1;
+                    events.push(CorruptionEvent::new(
+                        C_RBP_NONMONO,
+                        frames.len(),
+                        code_text(C_RBP_NONMONO),
+                    ));
+                    return ChainStop::Broke;
+                }
             }
 
             // 读帧：[rbp] = saved_rBP，[rbp+8] = 返回地址。残读即链断。
@@ -1048,8 +1069,13 @@ fn check_c2_corrupt_fallback() -> bool {
         rbp = img.push_frame(rbp, ret);
         rbps.push(rbp);
     }
-    // 毒化下标 2 帧的 saved_rBP 槽：写非规范值（>>47 = 0x7FFFE）。
-    let bad = 0xFFFF_8000_0000_0000u64;
+    // 毒化下标 2 帧的 saved_rBP 槽：写**非规范**值，逼链条断在守卫②
+    // （x86_64 48 位规范形要求高 16 位全 0 或全 1）。原判据用
+    // 0xFFFF_8000_0000_0000，其 >>47 = 0x1FFFF 恰是合法的内核半区规范形
+    // ——守卫②放行，链条继续走到守卫③才断，出的是 0x9603 而非期望的
+    // 0x9602，负向用例测不到它想测的那道闸。改用 0x0000_8000_0000_0000
+    // （>>47 = 0x1，任一形态都不是全 0/全 1），守卫②必然拦下。
+    let bad = 0x0000_8000_0000_0000u64;
     img.write_u64(rbps[2], bad);
     let mem = img.finish();
     let report = walker.walk(&mem, rbps[5]);
@@ -1170,35 +1196,68 @@ fn check_c7_render_parseable() -> bool {
 fn check_c8_scan_gate() -> bool {
     let text = sample_text_table();
     let walker = StackWalker::new(text);
-    // 空链窗（rbp0=0 直接哨兵），窗内埋一个纯文本命中值：
-    // 0x0040_1234（4 对齐但非 16 对齐、无 call 前缀）。
+    // 种子 rBP 必须让**链条先断**才会转扫描（walk 只对 ChainStop::Broke /
+    // Budget 跑 scan_conservative；Sentinel 直接收工不扫）。原判据用
+    // rbp0 = 0，那是空指针哨兵，走守卫① 立即 ChainStop::Sentinel——扫描
+    // 阶段根本没进场（实测 scan_rejected = 0、无 0x9608），闸门从未被考验。
+    // 改为种子指向窗内一个槽、其 saved_rBP 写到**窗外**地址：守卫③ 拦下
+    // ⇒ ChainStop::Broke ⇒ 扫描进场，此时才真正考到证据闸。
     let mut img = StackImageBuilder::new(0x7F00_0000, 0x200);
-    img.write_u64(0x7F00_0100, 0x0040_1234);
+    // 种子帧：saved_rBP 指向窗外 ⇒ 守卫③断链（扫描得以进场）。
+    // 该帧自己的 ret 必须是**另一个**合法文本地址（不是被测的弱候选），
+    // 否则种子帧会把弱候选当成链上实证收进帧表（链帧收全证据：
+    // 双读 + 文本命中 + 对齐即 Verified，score=100）——那测的就不是扫描闸
+    // 而是链闸，且 not_reported 必假。
+    img.write_u64(0x7F00_0100, 0x0040_2000); // saved_rBP：窗外 ⇒ 断链
+    img.write_u64(0x7F00_0108, 0x0040_1000); // 种子帧 ret：合法文本地址
+    // 另埋弱候选供扫描打分：0x0040_1234
+    // （4 对齐但非 16 对齐、无 call 前缀、本身在窗外 ⇒ +10 ⇒ 65 < 70）。
+    img.write_u64(0x7F00_0110, 0x0040_1234);
     let mem = img.finish();
-    let report = walker.walk(&mem, 0);
+    let report = walker.walk(&mem, 0x7F00_0100);
     let rejected_ok = report.stats.scan_rejected >= 1;
     let not_reported = !report.frames.iter().any(|f| f.ret_addr == 0x0040_1234);
     let event_ok = report.events.iter().any(|e| e.code == C_SCAN_WEAK);
     rejected_ok && not_reported && event_ok
 }
 
-/// C9：扫描强证入选——ret-5 处 0xE8 call 前缀 + 16 对齐 + 文本命中
-/// = 50+30+10+10 = 100 分，必收（正向验证闸不误杀），账守恒。
+/// C9：扫描强证入选——候选取**文本区间内 + 16 宽对齐 + 窗外代码区**，
+/// 三项证据 50+10+10 = 70 恰达阈值 MIN_ACCEPT_SCORE，必收（正向验证闸不
+/// 误杀）且账守恒。
+///
+/// 关于 call 前缀一项为何不参与本用例：`SCORE_CALL_PREFIX`（30 分）在本
+/// 取证口径下**不可与文本命中同时成立**——前缀字节只能从栈窗读
+/// （`StackWindow::read_u8` 不越窗，见其对越界返回 None 的约定），而文本
+/// 区间（sample_text_table：0x0040_1000..0x004F_F000 与 0x0060_0000..
+/// 0x0061_0000）与栈窗基（0x7F00_0000）相隔约 0x3B00_0000。于是
+/// ret ∈ 文本 ⇒ ret-5 ∈ 文本 ⇒ 读不到窗内字节 ⇒ prefix_e8 恒 false。
+/// 原判据断言 `score >= 100`（= 四项满分），在本口径下不可达；那是把
+/// 「代码与栈同映像」的架构前提误搬到了窗/文本分离的取样器上。本条判据
+/// 改为钉住**口径内真实可达的满分形状**：文本 + 宽对齐 + 窗外 = 70。
+/// （若要启用前缀项，需让 scan 从一个统一的代码+栈映像取证——那是取证器
+/// 的范围扩张，非判据笔误。）
 fn check_c9_scan_strong_accept() -> bool {
     let text = sample_text_table();
     let walker = StackWalker::new(text);
     let mut img = StackImageBuilder::new(0x7F00_0000, 0x200);
-    let ret = 0x0040_1100u64; // 16 对齐、文本命中
-    img.write_u64(0x7F00_0100, ret);
-    // ret-5 处写 0xE8（call rel32 前缀实证）。
-    let pfx = (ret - 5 - 0x7F00_0000) as usize;
-    img.write_u8(0x7F00_0000 + pfx as u64, 0xE8);
+    // 种子帧 base=0x7F00_0110：saved_rBP 取既越窗又非文本的 0x0055_5000
+    // ⇒ 守卫③断链 ⇒ 扫描进场；该帧 ret 取另一合法文本地址 0x0040_1000，
+    // 使被测候选只经扫描通道被评（不被链通道收走）。
+    img.write_u64(0x7F00_0110, 0x0055_5000);
+    img.write_u64(0x7F00_0118, 0x0040_1000);
+    // 被测候选：文本区间内 + 16 宽对齐 + 窗外 ⇒ 50 + 10 + 10 = 70。
+    let ret = 0x0040_1400u64;
+    img.write_u64(0x7F00_0120, ret);
     let mem = img.finish();
-    let report = walker.walk(&mem, 0);
+    let report = walker.walk(&mem, 0x7F00_0110);
     report
         .frames
         .iter()
-        .any(|f| f.ret_addr == ret && f.verdict == FrameVerdict::Plausible && f.score >= 100)
+        .any(|f| {
+            f.ret_addr == ret
+                && f.verdict == FrameVerdict::Plausible
+                && f.score == SCORE_TEXT_HIT + SCORE_WIDE_ALIGN + SCORE_IN_STACK
+        })
         && report.stats.scan_accepted == 1
         && report.stats.scan_conserves()
 }
@@ -1258,11 +1317,16 @@ fn check_c12_monotonic_and_bounds() -> bool {
     let text = sample_text_table();
     let walker = StackWalker::new(text);
 
-    // 例 1：倒退——B.saved 指向低于 A 的地址（平走/倒退）。
+    // 例 1：倒退——saved_rBP 指向**高于**当前 rBP 的地址（帧链回升）。
+    // 注意方向：合法链严格递减（栈向低地址长），故倒退 = 新 rBP ≥ 旧 rBP。
+    // 取 r2 = 0x7F00_0410 的下一跳 0x7F00_0418：仍在窗内（窗长 0x420）、
+    // 未入环账（不是已见地址，故走的是单调闸 0x9604 而非环闸 0x9607）、
+    // 且高于 r2 ⇒ 守卫⑤精确命中 C_RBP_NONMONO。原判据把下一跳写成 r1
+    // （低于 r2），在修正后的守卫下那是合法的下降步，测不到倒退。
     let mut img = StackImageBuilder::new(0x7F00_0000, 0x400);
     let r1 = img.push_frame(0, 0x0040_1000);
     let r2 = img.push_frame(r1, 0x0040_1040);
-    img.write_u64(r2, r1); // saved_rBP = 旧帧（倒退）
+    img.write_u64(r2, r2 + 8); // saved_rBP = 高于当前 rBP ⇒ 倒退
     let mem = img.finish();
     let rep1 = walker.walk(&mem, r2);
     let mono_ok = rep1.events.iter().any(|e| e.code == C_RBP_NONMONO);
