@@ -280,10 +280,16 @@ pub fn stress_scen(n: usize, seed: u64) -> ScenStress {
             id,
             anchor: alloc::format!("UNX-F2108-J1-S{}", id + 1),
             preface: "B30".to_string(),
+            // 带因轮转的三态：None = 运行态（合法，不走 skip 语义）；
+            // Some(非空) = skip 态带因（合法）；Some(空) = skip 态无因
+            // （**唯一触发 C_SKIP_NOREASON 的形状**）。零容忍判据核的是
+            // "Skipped 态必带非空因"，违规形只有 Some("") 一种——把无因
+            // 臂写成 None 是绕开了闸门而不是考验它，no_reason_blocked 会
+            // 结构性恒 0，"压力全维"判据随之永假。
             skip_reason: if with_reason {
                 Some("前置未就绪·带因".to_string())
             } else {
-                None
+                Some(String::new())
             },
             ktest: alloc::format!("kt_s{}", id),
         };
