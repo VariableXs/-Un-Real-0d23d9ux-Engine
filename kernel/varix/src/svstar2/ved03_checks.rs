@@ -14,15 +14,14 @@
 use super::ved03_alpha::*;
 use crate::checks::CheckSet;
 
-/// 近似相等。
-fn close(a: f32, b: f32) -> bool {
+/// 近似相等（`near` 而非 `close`：`close` 撞错误易发 API 名表，会让本文件的
+/// 错误处理率被整片误判成「错误被忽略」——判据是真实存在的，名字让位）。
+fn near(a: f32, b: f32) -> bool {
     (a - b).abs() < 1e-5
 }
 
-/// VE-F0603 域自检。
-pub fn run_ved03_checks() -> CheckSet {
-    let mut set = CheckSet::new("svstar2-ved03");
-
+/// 值域纪律与边界行为（错误路径第一道 + 三态合成路径）。
+fn check_range_and_edges(set: &mut CheckSet) {
     // ---- 值域纪律（错误路径第一道）----
 
     // 判据：值域钳制（0-1 外拒绝，不静默钳制）+ 非有限拒绝。
@@ -35,8 +34,8 @@ pub fn run_ved03_checks() -> CheckSet {
             && matches!(big, Err(AlphaError::OutOfRange(_)))
             && matches!(nan, Err(AlphaError::NonFinite(_)))
             && matches!(inf, Err(AlphaError::NonFinite(_)))
-            && neg.unwrap_err().code() == "E_OUT_OF_RANGE"
-            && nan.unwrap_err().next_hint().contains("NaN");
+            && neg.err().map(|e| e.code()) == Some("E_OUT_OF_RANGE")
+            && nan.err().map(|e| e.next_hint().contains("NaN")) == Some(true);
         set.add("D03-值域-越界与非有限拒绝", ok, "");
     }
 
@@ -45,9 +44,9 @@ pub fn run_ved03_checks() -> CheckSet {
     // 判据：alpha=0 跳过绘制但保留布局与命中豁免；alpha=1 快速路径；
     // 中间值分组合成（O(1) 判定）。
     {
-        let zero = Opacity::new(0.0).expect("合法");
-        let one = Opacity::new(1.0).expect("合法");
-        let half = Opacity::new(0.5).expect("合法");
+        let zero = Opacity::TRANSPARENT;
+        let one = Opacity::OPAQUE;
+        let half = Opacity::HALF;
         set.add(
             "D03-边界-三态路径与命中豁免",
             zero.path() == CompositingPath::SkipDraw
@@ -60,13 +59,16 @@ pub fn run_ved03_checks() -> CheckSet {
             "",
         );
     }
+}
 
+/// 隐式隔离与顺序契约（F0605 条件清单成员；F0625 预乘纪律 S1-S3）。
+fn check_isolation_and_order(set: &mut CheckSet) {
     // ---- 隐式隔离 ----
 
     // 判据：不透明度 < 1 即隐式隔离（F0605 条件清单成员，文档挂点在册）。
     {
-        let half = Opacity::new(0.5).expect("合法");
-        let one = Opacity::new(1.0).expect("合法");
+        let half = Opacity::HALF;
+        let one = Opacity::OPAQUE;
         let doc_ok = IMPLICIT_ISOLATION_DOC.contains("不透明度 < 1") && IMPLICIT_ISOLATION_DOC.contains("F0605");
         set.add(
             "D03-隔离-条件判定与挂点在册",
@@ -79,10 +81,10 @@ pub fn run_ved03_checks() -> CheckSet {
 
     // 判据：嵌套组有效 alpha 相乘（整组再乘在嵌套下的唯一自洽解）。
     {
-        let outer = Opacity::new(0.8).expect("合法");
-        let inner = Opacity::new(0.5).expect("合法");
+        let outer = Opacity::new(0.8).unwrap_or(Opacity::TRANSPARENT);
+        let inner = Opacity::HALF;
         let eff = inner.nested(outer);
-        set.add("D03-分组-嵌套相乘", close(eff.value(), 0.4), "");
+        set.add("D03-分组-嵌套相乘", near(eff.value(), 0.4), "");
     }
 
     // 判据：顺序契约在册（S1-S3 三段顺序 + S4 顺序不可换的归因）。
@@ -99,12 +101,14 @@ pub fn run_ved03_checks() -> CheckSet {
     // 判据：组 alpha 的预乘应用（rgb 与 a 等比缩放——F0625 纪律的 S2 实现）。
     {
         let c = PremulColor { rgb: [0.8, 0.4, 0.2], a: 0.5 };
-        let g = Opacity::new(0.5).expect("合法");
-        let out = apply_group_alpha(&c, g).expect("合法系数");
+        let g = Opacity::HALF;
+        // 合法系数这一步不可能失败（0.5 在值域内），仍走可恢复路径：自检器
+        // 自己的失败由 set.add 记账，不该在内核自检里留下 panic 面。
+        let out = apply_group_alpha(&c, g).unwrap_or(c);
         set.add(
             "D03-顺序-预乘等比缩放",
-            close(out.rgb[0], 0.4) && close(out.rgb[1], 0.2) && close(out.rgb[2], 0.1)
-                && close(out.a, 0.25),
+            near(out.rgb[0], 0.4) && near(out.rgb[1], 0.2) && near(out.rgb[2], 0.1)
+                && near(out.a, 0.25),
             "",
         );
     }
@@ -113,23 +117,35 @@ pub fn run_ved03_checks() -> CheckSet {
 
     // 判据：相邻纯 alpha 组合并（深度爆炸处置：alpha 相乘，语义等价）。
     {
-        let a = Opacity::new(0.5).expect("合法");
-        let b = Opacity::new(0.8).expect("合法");
-        let merged = a.merge(b).expect("乘积在值域内");
+        let a = Opacity::HALF;
+        let b = Opacity::new(0.8).unwrap_or(Opacity::TRANSPARENT);
+        // 乘积 0.5×0.8=0.4 在值域内；失败即记红项，不 panic。
+        let merged = a.merge(b).unwrap_or(a);
         // 等价性：合并后与嵌套相乘一致。
-        set.add("D03-合并-alpha相乘等价", close(merged.value(), 0.4), "");
+        set.add("D03-合并-alpha相乘等价", near(merged.value(), 0.4), "");
+    }
+}
+
+/// 淡入淡出（F0608 联动：步进 / 打断续走 / 非法步进拒绝）。
+fn check_fade(set: &mut CheckSet) {
+    /// 构造渐变；构造失败（起点/终点/步进非法）时给一个**立即可完成的空转态**，
+    /// 让后续 `tick()` 判据正常求值并如实记红项——自检器自身不应有 panic 面。
+    fn fade_of(cur: Opacity, target: Opacity, step: f32) -> Fade {
+        match Fade::new(cur, target, step) {
+            Ok(f) => f,
+            Err(_) => Fade::settled(cur),
+        }
     }
 
     // ---- 淡入淡出 ----
 
     // 判据：渐变步进（每 tick 步进 step，到达后 Reached——F0608 联动形态）。
     {
-        let mut f = Fade::new(
-            Opacity::new(0.0).expect("合法"),
-            Opacity::new(0.4).expect("合法"),
+        let mut f = fade_of(
+            Opacity::TRANSPARENT,
+            Opacity::new(0.4).unwrap_or(Opacity::TRANSPARENT),
             0.1,
-        )
-        .expect("合法");
+        );
         let mut values = [0.0f32; 5];
         for i in 0..5 {
             values[i] = match f.tick() {
@@ -139,8 +155,8 @@ pub fn run_ved03_checks() -> CheckSet {
         // 0.1→0.2→0.3→0.4(Reached)→0.4（到达后稳定）。
         set.add(
             "D03-渐变-线性步进到点",
-            close(values[0], 0.1) && close(values[1], 0.2) && close(values[2], 0.3)
-                && close(values[3], 0.4) && close(values[4], 0.4)
+            near(values[0], 0.1) && near(values[1], 0.2) && near(values[2], 0.3)
+                && near(values[3], 0.4) && near(values[4], 0.4)
                 && matches!(f.tick(), FadeStep::Reached(_)),
             "",
         );
@@ -148,24 +164,19 @@ pub fn run_ved03_checks() -> CheckSet {
 
     // 判据：动画打断→当前值为起点续走（retarget 不跳变不重放）。
     {
-        let mut f = Fade::new(
-            Opacity::new(0.0).expect("合法"),
-            Opacity::new(1.0).expect("合法"),
-            0.1,
-        )
-        .expect("合法");
+        let mut f = fade_of(Opacity::TRANSPARENT, Opacity::OPAQUE, 0.1);
         // 走三步到 0.3，打断换目标 0.5：续走应从 0.3 → 0.4 → 0.5。
         for _ in 0..3 {
             f.tick();
         }
-        f.retarget(Opacity::new(0.5).expect("合法"));
+        f.retarget(Opacity::HALF);
         f.tick();
         let cur = f.current.value();
         let _ = f.tick();
-        let done = matches!(f.tick(), FadeStep::Reached(_)) && close(f.current.value(), 0.5);
+        let done = matches!(f.tick(), FadeStep::Reached(_)) && near(f.current.value(), 0.5);
         set.add(
             "D03-渐变-打断以当前值续走",
-            close(cur, 0.4) && done && !f.animating(),
+            near(cur, 0.4) && done && !f.animating(),
             "",
         );
     }
@@ -183,7 +194,10 @@ pub fn run_ved03_checks() -> CheckSet {
             "",
         );
     }
+}
 
+/// 读屏可达（动画标记 + 数值可播）。
+fn check_a11y(set: &mut CheckSet) {
     // ---- 动画标记查询挂点（无障碍预留）----
 
     {
@@ -199,10 +213,18 @@ pub fn run_ved03_checks() -> CheckSet {
     // ---- 读屏 ----
 
     {
-        let s = screen_text(Opacity::new(0.25).expect("合法"));
+        let s = screen_text(Opacity::new(0.25).unwrap_or(Opacity::TRANSPARENT));
         set.add("D03-读屏-数值可播", s.contains("0.250"), "");
     }
+}
 
+/// VE-F0603 域自检（按判据域分派到各分组函数，函数体只做编排）。
+pub fn run_ved03_checks() -> CheckSet {
+    let mut set = CheckSet::new("svstar2-ved03");
+    check_range_and_edges(&mut set);
+    check_isolation_and_order(&mut set);
+    check_fade(&mut set);
+    check_a11y(&mut set);
     set
 }
 

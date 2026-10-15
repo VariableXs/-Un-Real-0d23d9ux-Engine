@@ -104,6 +104,8 @@ impl Opacity {
     pub const OPAQUE: Opacity = Opacity(1.0);
     /// 全透明（0.0）便捷构造。
     pub const TRANSPARENT: Opacity = Opacity(0.0);
+    /// 半透明（0.5）便捷构造（分组 / 顺序 / 合并三组判据的公共系数）。
+    pub const HALF: Opacity = Opacity(0.5);
 
     /// 取值。
     pub fn value(self) -> f32 {
@@ -230,6 +232,14 @@ impl Fade {
             return Err(AlphaError::NonFinite(step));
         }
         Ok(Fade { current, target, step })
+    }
+
+    /// 已完成的原地渐变（`current == target`，第一步即 `Reached`）。
+    ///
+    /// 给 `new` 的失败方当回退态用：自检/调用方拿到的是一个立即可判定
+    /// 「不处于动画中」的值，而不是 panic。
+    pub const fn settled(at: Opacity) -> Fade {
+        Fade { current: at, target: at, step: 1.0 }
     }
 
     /// 推进一步（逻辑 tick 注入）。

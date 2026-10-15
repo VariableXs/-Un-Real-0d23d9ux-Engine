@@ -27,8 +27,7 @@
 //!
 //! 语料全部由本文件内的构造器生成（Annex-B 字节流合成器 + SPS/PPS 位流构造器），
 //! 跨平台逐位可复现，零 IO、零墙钟。
-
-extern crate std;
+use alloc::string::ToString;
 
 use super::veg04_h264::*;
 
@@ -39,7 +38,6 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
-use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 语料构造器：Annex-B 字节流合成器
@@ -3115,18 +3113,21 @@ fn run_veg04_fuzz_checks(set: &mut CheckSet) {
     let baseline = baseline_bitstream();
 
     // M1 合法基线码流可完整解析（fuzz 前置：基线必须为真）
+    //
+    // 诊断细节不打印：成败由 `all_ok` 全量捕获（任一 NAL 被拒即false），
+    // 而 `std::println!` 在 no_std 内核 target 下根本不存在——保留它等于
+    // 让整个内核镜像编不过（E0463）。需要定位时看 `bag` 的内容即可。
     {
         let mut bag = DiagBag::new();
         let scan = scan_annexb(&baseline, &H264_LIMITS, &mut bag);
         let mut ctx = DecoderContext::new(&H264_LIMITS);
-        if let Err(e) = &scan { std::println!("DBG baseline scan err {} | {}", diag_name(e.code), e.message); }
-        for d in bag.drain() { std::println!("DBG diag {} | {} | {}", diag_name(d.code), d.message, d.hint); }
         let mut all_ok = scan.is_ok();
         if let Ok(sc) = scan {
             for u in sc.units.iter() {
                 let r = ctx.accept_nal(u, &H264_LIMITS, &mut bag);
-                if let Err(e) = &r { std::println!("DBG nal type={} err {} | {}", u.header.nal_unit_type, diag_name(e.code), e.message); }
-                if r.is_err() { all_ok = false; }
+                if r.is_err() {
+                    all_ok = false;
+                }
             }
         }
         set.add("C04-FUZZ-BASELINE-合法基线可解析", all_ok, "");
