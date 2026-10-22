@@ -704,3 +704,17 @@ pub mod cga140_midmile;
 pub mod cga141_aggcheck;
 pub mod cga142_freezeaudit;
 pub mod cga143_docfinal;
+
+// --------------------------------------------------------------------------
+// WB1022 批四（CGPU-F0144~F0153 · A 域终验收官组 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cga144_dedupsupp;
+pub mod cga145_acceptfin;
+pub mod cga146_stressfin;
+pub mod cga147_secfin;
+pub mod cga148_compatfin;
+pub mod cga149_declfin;
+pub mod cga150_kmfin;
+pub mod cga151_jointver;
+pub mod cga152_opplog;
+pub mod cga153_regressgate;
