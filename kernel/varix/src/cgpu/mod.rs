@@ -1457,6 +1457,26 @@ pub mod cgb433_topoarb;
 pub mod cgb434_biggercore;
 pub mod cgb435_aging;
 pub mod cgb436_fairdyn;
+mod cgb437_policyplug;
+mod cgb438_formal;
+mod cgb439_chaos;
+mod cgb440_stress;
+mod cgb441_storm;
+mod cgb442_explain;
+mod cgb443_multicoop;
+mod cgb444_snapmig;
+mod cgb445_advtelem;
+mod cgb446_advfuzz;
+mod cgb447_advapi;
+mod cgb448_c08close;
+mod cgb449_edgeover;
+mod cgb450_lowres;
+mod cgb451_emergency;
+mod cgb452_coldboot;
+mod cgb453_offline;
+mod cgb454_thermal;
+mod cgb455_battery;
+mod cgb456_rebuild;
 
 // ---- 死判据补登记（2026-10-22 接线 v2：模块已实现但从未入链）----
 // // cgb293_edgeviz.rs ↔ CGPU-F0293 依赖边可视化
