@@ -1734,6 +1734,50 @@ pub mod vec43_typesys;
 pub mod vec44_infer;
 pub mod vec45_swizzle;
 pub mod vec46_overload;
+pub mod vec47_builtinsig;
+pub mod vec48_consteval;
+pub mod vec49_storqual;
+pub mod vec50_iomatch;
+pub mod vec51_ctlflow;
+pub mod vec52_rwconflict;
+pub mod vec53_diagqual;
+pub mod vec54_corpus;
+pub mod vec55_perf;
+pub mod vec56_glsldiff;
+pub mod vec57_dialectsem;
+pub mod vec58_bridging;
+pub mod vec70_loopopt;
+pub mod vec81_variantsys;
+pub mod vec82_warmup;
+pub mod vec83_consist;
+pub mod vec84_fuse;
+pub mod vec85_cfopt;
+pub mod vec86_dataflow;
+pub mod vec87_regpress;
+pub mod vec88_unroll;
+pub mod vec89_passmgr;
+pub mod vec90_diffcheck;
+pub mod vec71_texdown;
+pub mod vec72_norm;
+pub mod vec73_entry;
+pub mod vec74_linker;
+pub mod vec75_cache;
+pub mod vec76_dbginfo;
+pub mod vec77_variant;
+pub mod vec78_mathlib;
+pub mod vec79_orchestr;
+pub mod vec80_irclose;
+pub mod vec59_semclose;
+pub mod vec60_handover;
+pub mod vec61_irstruct;
+pub mod vec62_irgen;
+pub mod vec63_ssa;
+pub mod vec64_irverify;
+pub mod vec65_irdump;
+pub mod vec66_fold;
+pub mod vec67_dce;
+pub mod vec68_cse;
+pub mod vec69_typeprop;
 ("VE-F0425", vec25_funcdecl::run_vec25_checks),
 ("VE-F0426", vec26_vardecl::run_vec26_checks),
 ("VE-F0427", vec27_stmt::run_vec27_checks),
@@ -1756,5 +1800,49 @@ pub mod vec46_overload;
 ("VE-F0444", vec44_infer::run_vec44_checks),
 ("VE-F0445", vec45_swizzle::run_vec45_checks),
 ("VE-F0446", vec46_overload::run_vec46_checks),
+("VE-F0447", vec47_builtinsig::run_vec47_checks),
+("VE-F0448", vec48_consteval::run_vec48_checks),
+("VE-F0449", vec49_storqual::run_vec49_checks),
+("VE-F0450", vec50_iomatch::run_vec50_checks),
+("VE-F0451", vec51_ctlflow::run_vec51_checks),
+("VE-F0452", vec52_rwconflict::run_vec52_checks),
+("VE-F0453", vec53_diagqual::run_vec53_checks),
+("VE-F0454", vec54_corpus::run_vec54_checks),
+("VE-F0455", vec55_perf::run_vec55_checks),
+("VE-F0456", vec56_glsldiff::run_vec56_checks),
+("VE-F0457", vec57_dialectsem::run_vec57_checks),
+("VE-F0458", vec58_bridging::run_vec58_checks),
+("VE-F0470", vec70_loopopt::run_vec70_checks),
+("VE-F0481", vec81_variantsys::run_vec81_checks),
+("VE-F0482", vec82_warmup::run_vec82_checks),
+("VE-F0483", vec83_consist::run_vec83_checks),
+("VE-F0484", vec84_fuse::run_vec84_checks),
+("VE-F0485", vec85_cfopt::run_vec85_checks),
+("VE-F0486", vec86_dataflow::run_vec86_checks),
+("VE-F0487", vec87_regpress::run_vec87_checks),
+("VE-F0488", vec88_unroll::run_vec88_checks),
+("VE-F0489", vec89_passmgr::run_vec89_checks),
+("VE-F0490", vec90_diffcheck::run_vec90_checks),
+("VE-F0471", vec71_texdown::run_vec71_checks),
+("VE-F0472", vec72_norm::run_vec72_checks),
+("VE-F0473", vec73_entry::run_vec73_checks),
+("VE-F0474", vec74_linker::run_vec74_checks),
+("VE-F0475", vec75_cache::run_vec75_checks),
+("VE-F0476", vec76_dbginfo::run_vec76_checks),
+("VE-F0477", vec77_variant::run_vec77_checks),
+("VE-F0478", vec78_mathlib::run_vec78_checks),
+("VE-F0479", vec79_orchestr::run_vec79_checks),
+("VE-F0480", vec80_irclose::run_vec80_checks),
+("VE-F0459", vec59_semclose::run_vec59_checks),
+("VE-F0460", vec60_handover::run_vec60_checks),
+("VE-F0461", vec61_irstruct::run_vec61_checks),
+("VE-F0462", vec62_irgen::run_vec62_checks),
+("VE-F0463", vec63_ssa::run_vec63_checks),
+("VE-F0464", vec64_irverify::run_vec64_checks),
+("VE-F0465", vec65_irdump::run_vec65_checks),
+("VE-F0466", vec66_fold::run_vec66_checks),
+("VE-F0467", vec67_dce::run_vec67_checks),
+("VE-F0468", vec68_cse::run_vec68_checks),
+("VE-F0469", vec69_typeprop::run_vec69_checks),
         ("VE-F0425", veb425_fndecl::run_veb425_checks),
         ("VE-F0426", veb426_vardecl::run_veb426_checks),
