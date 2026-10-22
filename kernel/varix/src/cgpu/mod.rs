@@ -312,7 +312,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 /// 于是「新增单忘登记」和「删单忘抹掉」两种漂移都在编译期被挡住，不需要靠
 /// 测试去数数。测试里再断言一次 `set.len()` 是为了守住「折叠过程自身没丢
 /// 子集」——那条路径编译期管不着。
-pub const CGPU_SUBSET_COUNT: usize = 59;
+pub const CGPU_SUBSET_COUNT: usize = 92;
 
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
 ///
@@ -330,77 +330,112 @@ pub const CGPU_SUBSET_COUNT: usize = 59;
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); CGPU_SUBSET_COUNT] = [
-        ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
-        ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
-("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
-("CGPU-F0014", vcg14_ressamp::run_vcg14_checks()),
-("CGPU-F0013", vcg13_textrast::run_vcg13_checks()),
-("CGPU-F0012", vca12_hwcompat::run_vca12_checks()),
-        ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
-        ("CGPU-E0002", cge02_lifecycle_checks::run_cge02_checks()),
-        ("CGPU-I1281", cgi01_bandwidth_checks::run_cgi01_checks()),
-        ("CGPU-M1921", cgm01_display_checks::run_cgm01_checks()),
-        ("CGPU-M1922", cgm02_display_checks::run_cgm02_checks()),
-        ("CGPU-J1441", vcj01_powerarch_checks::run_vcj01_checks()),
-        ("CGPU-L1761", vcl01_virtualarch_checks::run_vcl01_checks()),
-        ("CGPU-Q2561", vcq01_reliability_checks::run_vcq01_checks()),
-        ("CGPU-Q2562", vcq02_metrics_checks::run_vcq02_checks()),
-        ("CGPU-T3041", vct01_tbridge_checks::run_vct01_checks()),
-        ("CGPU-V3361", vcv01_realverify_checks::run_vcv01_checks()),
-        ("CGPU-V3362", vcv02_philosophy::run_vcv02_checks()),
-        ("CGPU-W0001", vcw01_sdkdoc_checks::run_vcw01_checks()),
-        ("CGPU-F0482", cgd02_frametimer_checks::run_cgd02_checks()),
-        ("CGPU-F0483", cgd03_frameledger_checks::run_cgd03_checks()),
-        ("CGPU-F0485", cgd05_ratecontract_checks::run_cgd05_checks()),
-        ("CGPU-F0486", cgm07_pacemodel_checks::run_cgm07_checks()),
-        ("CGPU-F0487", cgd06_latencyledger_checks::run_cgd06_ledger_checks()),
-        ("CGPU-F0488", cgd07_earlysubmit_checks::run_cgd07_checks()),
-        ("CGPU-P0501", cgp01_adaptivearch_checks::run_cgp01_checks()),
-        ("CGPU-P0502", cgp02_unifiedmodel_checks::run_cgp02_checks()),
-        ("CGPU-O0701", vco01_degrade_checks::run_vco01_checks()),
-        ("CGPU-R0901", cgr01_secure_checks::run_cgr01_checks()),
-        ("CGPU-R0902", cgr02_threatmodel_checks::run_cgr02_checks()),
-        ("CGPU-M1923", cgm03_edid_checks::run_cgm03_checks()),
-        ("CGPU-O0703", vco03_triggersrc_checks::run_vco03_checks()),
-        ("CGPU-M1924", cgm04_topology_checks::run_cgm04_checks()),
-        ("CGPU-O0704", vco04_priorcon_checks::run_vco04_checks()),
-        ("CGPU-M1925", cgm05_modes_checks::run_cgm05_checks()),
-        ("CGPU-P0208", cgp08_perf_checks::run_cgp08_checks()),
-        ("CGPU-O0705", vco05_statemachine_checks::run_vco05_checks()),
-        ("CGPU-O0706", vco06_executor_checks::run_vco06_checks()),
-        ("CGPU-O0707", vco07_recovery_checks::run_vco07_checks()),
+    let blocks: [(&'static str, fn() -> CheckSet); CGPU_SUBSET_COUNT] = [
+        ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks as fn() -> CheckSet),
+        ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks as fn() -> CheckSet),
+("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks as fn() -> CheckSet),
+("CGPU-F0014", vcg14_ressamp::run_vcg14_checks as fn() -> CheckSet),
+("CGPU-F0013", vcg13_textrast::run_vcg13_checks as fn() -> CheckSet),
+("CGPU-F0012", vca12_hwcompat::run_vca12_checks as fn() -> CheckSet),
+        ("CGPU-E0001", cge01_domain_checks::run_cge01_checks as fn() -> CheckSet),
+        ("CGPU-E0002", cge02_lifecycle_checks::run_cge02_checks as fn() -> CheckSet),
+        ("CGPU-I1281", cgi01_bandwidth_checks::run_cgi01_checks as fn() -> CheckSet),
+        ("CGPU-M1921", cgm01_display_checks::run_cgm01_checks as fn() -> CheckSet),
+        ("CGPU-M1922", cgm02_display_checks::run_cgm02_checks as fn() -> CheckSet),
+        ("CGPU-J1441", vcj01_powerarch_checks::run_vcj01_checks as fn() -> CheckSet),
+        ("CGPU-L1761", vcl01_virtualarch_checks::run_vcl01_checks as fn() -> CheckSet),
+        ("CGPU-Q2561", vcq01_reliability_checks::run_vcq01_checks as fn() -> CheckSet),
+        ("CGPU-Q2562", vcq02_metrics_checks::run_vcq02_checks as fn() -> CheckSet),
+        ("CGPU-T3041", vct01_tbridge_checks::run_vct01_checks as fn() -> CheckSet),
+        ("CGPU-V3361", vcv01_realverify_checks::run_vcv01_checks as fn() -> CheckSet),
+        ("CGPU-V3362", vcv02_philosophy::run_vcv02_checks as fn() -> CheckSet),
+        ("CGPU-W0001", vcw01_sdkdoc_checks::run_vcw01_checks as fn() -> CheckSet),
+        ("CGPU-F0482", cgd02_frametimer_checks::run_cgd02_checks as fn() -> CheckSet),
+        ("CGPU-F0483", cgd03_frameledger_checks::run_cgd03_checks as fn() -> CheckSet),
+        ("CGPU-F0485", cgd05_ratecontract_checks::run_cgd05_checks as fn() -> CheckSet),
+        ("CGPU-F0486", cgm07_pacemodel_checks::run_cgm07_checks as fn() -> CheckSet),
+        ("CGPU-F0487", cgd06_latencyledger_checks::run_cgd06_ledger_checks as fn() -> CheckSet),
+        ("CGPU-F0488", cgd07_earlysubmit_checks::run_cgd07_checks as fn() -> CheckSet),
+        ("CGPU-P0501", cgp01_adaptivearch_checks::run_cgp01_checks as fn() -> CheckSet),
+        ("CGPU-P0502", cgp02_unifiedmodel_checks::run_cgp02_checks as fn() -> CheckSet),
+        ("CGPU-O0701", vco01_degrade_checks::run_vco01_checks as fn() -> CheckSet),
+        ("CGPU-R0901", cgr01_secure_checks::run_cgr01_checks as fn() -> CheckSet),
+        ("CGPU-R0902", cgr02_threatmodel_checks::run_cgr02_checks as fn() -> CheckSet),
+        ("CGPU-M1923", cgm03_edid_checks::run_cgm03_checks as fn() -> CheckSet),
+        ("CGPU-O0703", vco03_triggersrc_checks::run_vco03_checks as fn() -> CheckSet),
+        ("CGPU-M1924", cgm04_topology_checks::run_cgm04_checks as fn() -> CheckSet),
+        ("CGPU-O0704", vco04_priorcon_checks::run_vco04_checks as fn() -> CheckSet),
+        ("CGPU-M1925", cgm05_modes_checks::run_cgm05_checks as fn() -> CheckSet),
+        ("CGPU-P0208", cgp08_perf_checks::run_cgp08_checks as fn() -> CheckSet),
+        ("CGPU-O0705", vco05_statemachine_checks::run_vco05_checks as fn() -> CheckSet),
+        ("CGPU-O0706", vco06_executor_checks::run_vco06_checks as fn() -> CheckSet),
+        ("CGPU-O0707", vco07_recovery_checks::run_vco07_checks as fn() -> CheckSet),
         // ── A 域 CPU 加速续组（F0015~F0023）──
-        ("CGPU-F0015", cga15_csconv::run_cga15_checks()),
-        ("CGPU-F0016", cga16_simdblend::run_cga16_checks()),
-        ("CGPU-F0017", cga17_yuvdec::run_cga17_checks()),
-        ("CGPU-F0018", cga18_texdec::run_cga18_checks()),
-        ("CGPU-F0019", cga19_prioq::run_cga19_checks()),
-        ("CGPU-F0020", cga20_numa::run_cga20_checks()),
-        ("CGPU-F0021", cga21_tilesort::run_cga21_checks()),
-        ("CGPU-F0022", cga22_tilereuse::run_cga22_checks()),
-        ("CGPU-F0023", cga23_quality::run_cga23_checks()),
+        ("CGPU-F0015", cga15_csconv::run_cga15_checks as fn() -> CheckSet),
+        ("CGPU-F0016", cga16_simdblend::run_cga16_checks as fn() -> CheckSet),
+        ("CGPU-F0017", cga17_yuvdec::run_cga17_checks as fn() -> CheckSet),
+        ("CGPU-F0018", cga18_texdec::run_cga18_checks as fn() -> CheckSet),
+        ("CGPU-F0019", cga19_prioq::run_cga19_checks as fn() -> CheckSet),
+        ("CGPU-F0020", cga20_numa::run_cga20_checks as fn() -> CheckSet),
+        ("CGPU-F0021", cga21_tilesort::run_cga21_checks as fn() -> CheckSet),
+        ("CGPU-F0022", cga22_tilereuse::run_cga22_checks as fn() -> CheckSet),
+        ("CGPU-F0023", cga23_quality::run_cga23_checks as fn() -> CheckSet),
     // 补登记四组"已实现但从未入账"的判据（闭环对账 _tools/audit_domain_closure.py
     // 查出）：此前连 `pub mod` 声明都没有，全文件从未被编译检查，等于死代码。
     // T02 对接协议分层 / W02 文档信息架构 / W03 文档生成管线 / W04 API 参考生成。
-        ("CGPU-T3042", vct02_layers_checks::run_vct02_checks()),
-        ("CGPU-W3522", vcw02_infoarch_checks::run_vcw02_checks()),
-        ("CGPU-W3523", vcw03_genpipeline_checks::run_vcw03_checks()),
-        ("CGPU-W3524", vcw04_apiref_checks::run_vcw04_checks()),
-        ("CGPU-F1605", vck05_taskgraph::run_vck05_checks()),
-        ("CGPU-F1607", vck07_sync::run_vck07_checks()),
-        ("CGPU-F1606", vck06_memcoh::run_vck06_checks()),
-        ("CGPU-X3684", vcx84_bandwidth::run_vcx84_checks()),
+        ("CGPU-T3042", vct02_layers_checks::run_vct02_checks as fn() -> CheckSet),
+        ("CGPU-W3522", vcw02_infoarch_checks::run_vcw02_checks as fn() -> CheckSet),
+        ("CGPU-W3523", vcw03_genpipeline_checks::run_vcw03_checks as fn() -> CheckSet),
+        ("CGPU-W3524", vcw04_apiref_checks::run_vcw04_checks as fn() -> CheckSet),
+        ("CGPU-F1605", vck05_taskgraph::run_vck05_checks as fn() -> CheckSet),
+        ("CGPU-F1607", vck07_sync::run_vck07_checks as fn() -> CheckSet),
+        ("CGPU-F1606", vck06_memcoh::run_vck06_checks as fn() -> CheckSet),
+        ("CGPU-X3684", vcx84_bandwidth::run_vcx84_checks as fn() -> CheckSet),
     // W-VB1 · CGPU-F0966 NVIDIA 功耗画像（骨架深化 1500+ 行+判据 20 条：
     // 双线 TDP/TGP+墙序目录双闸/曲线物理约束三关/双写对拍 31 点/J 域 F0854
     // 遥测对位/密封指纹/两权分立/审计满容拒记/0x51xx 十码）
-        ("CGPU-F0966", cgg06_nvpwr_checks::run_cgg06_checks()),
+        ("CGPU-F0966", cgg06_nvpwr_checks::run_cgg06_checks as fn() -> CheckSet),
     // CGPU-F3528/F3529 收口两组（模块与判据早已实现，此前折叠数组未登记，
     // 等于从未参与闭环）：vcw07b 文档安全深化 / vcw09 文档站。
-        ("CGPU-F3528-DEEP", vcw07b_docsec_deep::run_cgpu_f3528_deep_checks()),
-        ("CGPU-F3529", vcw09_docsite::run_cgpu_f3529_checks()),
+        ("CGPU-F3528-DEEP", vcw07b_docsec_deep::run_cgpu_f3528_deep_checks as fn() -> CheckSet),
+        ("CGPU-F3529", vcw09_docsite::run_cgpu_f3529_checks as fn() -> CheckSet),
+        ("CGPU-F0011", cga11_power_sched_checks::run_cga11_checks as fn() -> CheckSet),
+        ("CGPU-F0323", cgc03_budgetaccount::run_cgc03_checks as fn() -> CheckSet),
+        ("CGPU-F0007", cgc08_jankattrib::run_cgc08_checks as fn() -> CheckSet),
+        ("CGPU-F0008", cgc09_degradechain::run_cgc09_checks as fn() -> CheckSet),
+        ("CGPU-F1123", cgh03_pooltier::run_cgh03_checks as fn() -> CheckSet),
+        ("CGPU-F1124", cgh04_waterpress::run_cgh04_checks as fn() -> CheckSet),
+        ("CGPU-F1444", cgj04_amdsmu::run_cgj04_checks as fn() -> CheckSet),
+        ("CGPU-F1445", cgj05_nvml::run_cgj05_checks as fn() -> CheckSet),
+        ("CGPU-F1446", cgj06_pwrledger::run_cgj06_checks as fn() -> CheckSet),
+        ("CGPU-F2403", cgp03_sampling_checks::run_cgp03_checks as fn() -> CheckSet),
+        ("CGPU-F2404", cgp04_pipeline_checks::run_cgp04_checks as fn() -> CheckSet),
+        ("CGPU-F2405", cgp05_tiers_checks::run_cgp05_checks as fn() -> CheckSet),
+        ("CGPU-F2406", cgp06_query_checks::run_cgp06_checks as fn() -> CheckSet),
+        ("CGPU-F2407", cgp07_jmerge_checks::run_cgp07_checks as fn() -> CheckSet),
+        ("CGPU-F2409", cgp09_privacy_checks::run_cgp09_checks as fn() -> CheckSet),
+        ("CGPU-F1448", cgj08_pwrevent::run_t448_checks as fn() -> CheckSet),
+        ("CGPU-F0806", cgf06_certtier::run_t806_checks as fn() -> CheckSet),
+        ("CGPU-F1447", cgj05_pwrfilt::run_tj05_checks as fn() -> CheckSet),
+        ("CGPU-F1285", cgq01_txqueue::run_tq01_checks as fn() -> CheckSet),
+        ("CGPU-F1286", cgq02_txmerge::run_tq02_checks as fn() -> CheckSet),
+        ("CGPU-F3528", vcw07_docsec::run_tw07_checks as fn() -> CheckSet),
+        ("CGPU-F1603", vck03_hettask_checks::run_vck03_checks as fn() -> CheckSet),
+        ("CGPU-F1604", vck04_probe::run_vck04_checks as fn() -> CheckSet),
+        ("CGPU-F1763", vck10_vgpu::run_vck10_checks as fn() -> CheckSet),
+        ("CGPU-F1764", vck68_guestcap::run_vck68_checks as fn() -> CheckSet),
+        ("CGPU-F2883", vcs03_session::run_vcs03_checks as fn() -> CheckSet),
+        ("CGPU-F2884", vcs04_quota::run_vcs04_checks as fn() -> CheckSet),
+        ("CGPU-F2885", vcs05_isolate::run_vcs05_checks as fn() -> CheckSet),
+        ("CGPU-F3046", vct06_stackbudget::run_vct06_checks as fn() -> CheckSet),
+        ("CGPU-F3203", vcu03_scenecls::run_vcu03_checks as fn() -> CheckSet),
+        ("CGPU-F3204", vcu04_scoringsys::run_vcu04_checks as fn() -> CheckSet),
+        ("CGPU-F3205", vcu05_benchrunner::run_vcu05_checks as fn() -> CheckSet),
+        ("CGPU-F3526", vcw06_docsearch::run_vcw06_checks as fn() -> CheckSet),
     ];
-    for (tag, sub) in blocks.iter() {
+    for (tag, f) in blocks.iter() {
+        // 即用即弃：同一时刻栈上只存活一个子集 CheckSet（unxstar 同款手法）。
+        let sub = f();
         let passed = sub.all_passed() && !sub.truncated();
         set.add(
             tag,
@@ -718,3 +753,61 @@ pub mod cga150_kmfin;
 pub mod cga151_jointver;
 pub mod cga152_opplog;
 pub mod cga153_regressgate;
+
+// --------------------------------------------------------------------------
+// WB1022 批五（CGPU-F0154~F0163 · A域收官 + B域开局 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cga154_fuzzsched;
+pub mod cga155_a_b_joint;
+pub mod cga156_lessonbook;
+pub mod cga157_codeaudit;
+pub mod cga158_handoververify;
+pub mod cga159_crosstarget;
+pub mod cga160_domainfinal;
+pub mod cgb161_framegraph;
+pub mod cgb162_resautoedges;
+pub mod cgb163_toposort;
+
+// ---- 死判据补登记（2026-10-22 接线轮：模块早已实现但从未入链，等于从未参与编译与验收）----
+// //! cga11_power_sched_checks — CGPU-F0011 功耗感知调度·判据集（20 条）。
+pub mod cga11_power_sched_checks;
+// //! CGPU-F0007 · 卡顿归因引擎（CGPU-C 域 · 帧预算域 · C08 组 · 深化版）。
+pub mod cgc08_jankattrib;
+// //! CGPU-F0008 · 掉帧降质链（CGPU-C 域 · 帧预算域 · C09 组 · 深化版）。
+pub mod cgc09_degradechain;
+// //! CGPU-F1124 · 显存压力水位（cgh04_waterpress）
+pub mod cgh04_waterpress;
+// //! cgj04_amdsmu — CGPU-F1444 AMD SMU/驱动功耗接口（深化版）
+pub mod cgj04_amdsmu;
+// //! CGPU-F1445 · NVIDIA NVML 功耗查询（cgj05_nvml）
+pub mod cgj05_nvml;
+// //! CGPU-F2403 · 采样策略引擎域自检（锚点测试三组：引擎/DSL/自适应 + stamp）。
+pub mod cgp03_sampling_checks;
+// //! CGPU-F2404 · 遥测数据管道域自检（锚点测试两组：四段/背压 + stamp）。
+pub mod cgp04_pipeline_checks;
+// //! CGPU-F2405 · 遥测存储分层域自检（锚点测试一组：分层 + stamp）。
+pub mod cgp05_tiers_checks;
+// //! CGPU-F2406 · 遥测查询引擎域自检（锚点测试一组：查询 + stamp）。
+pub mod cgp06_query_checks;
+// //! CGPU-F2407 · 遥测与 J 域收口域自检（锚点测试一组：收编 + stamp）。
+pub mod cgp07_jmerge_checks;
+// //! cgp09_privacy_checks — CGPU-F2409 遥测隐私 · 域自检判据。
+pub mod cgp09_privacy_checks;
+// //! vck03_hettask_checks — CGPU-F1603 异构任务模型与标签 · 域自检判据。
+pub mod vck03_hettask_checks;
+// //! CGPU-F1604 · 异构能力探测与登记（K 域 CGPU 段 · 目标 320 行）
+pub mod vck04_probe;
+// //! vck10_vgpu — CGPU-F1763 虚拟 GPU 设备抽象（深化版）
+pub mod vck10_vgpu;
+// //! vcs03_session — CGPU-F2883 用户会话管理（生命周期/并发上限/超时回收）。
+pub mod vcs03_session;
+// //! vcs04_quota — CGPU-F2884 资源配额按用户（三配额切分 · R05 复用声明）。
+pub mod vcs04_quota;
+// //! vcs05_isolate — CGPU-F2885 用户数据隔离（数据/配置/缓存三面 · W02 复用声明）。
+pub mod vcs05_isolate;
+// //! vct06_stackbudget — CGPU-F3046 对接性能预算（协议栈每帧 < 0.1ms 的分层预算账）。
+pub mod vct06_stackbudget;
+// //! vcu05_benchrunner — CGPU-F3205 基准运行器（场景调度/计时/采集三功能）。
+pub mod vcu05_benchrunner;
+// //! CGPU-F3526 · 文档搜索（vcw06_docsearch）
+pub mod vcw06_docsearch;
