@@ -1437,6 +1437,26 @@ pub mod cgb413_intapi;
 pub mod cgb414_intdoc;
 pub mod cgb415_intbench;
 pub mod cgb416_c06close;
+pub mod cgb417_statarch;
+pub mod cgb418_staucube;
+pub mod cgb419_billreport;
+pub mod cgb420_profilestore;
+pub mod cgb421_drift;
+pub mod cgb422_seasonal;
+pub mod cgb423_anomaly;
+pub mod cgb424_capacity;
+pub mod cgb425_statexport;
+pub mod cgb426_storegov;
+pub mod cgb427_longtest;
+pub mod cgb428_statpriv;
+pub mod cgb429_stattelem;
+pub mod cgb430_statfuzz;
+pub mod cgb431_statapi;
+pub mod cgb432_c07close;
+pub mod cgb433_topoarb;
+pub mod cgb434_biggercore;
+pub mod cgb435_aging;
+pub mod cgb436_fairdyn;
 
 // ---- 死判据补登记（2026-10-22 接线 v2：模块已实现但从未入链）----
 // // cgb293_edgeviz.rs ↔ CGPU-F0293 依赖边可视化
