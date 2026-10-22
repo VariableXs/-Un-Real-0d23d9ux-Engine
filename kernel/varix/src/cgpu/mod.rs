@@ -840,3 +840,23 @@ pub mod cgb242_waitgraph;
 pub mod cgb243_tarjan;
 pub mod cgb244_confide;
 pub mod cgb245_resolve;
+pub mod cgb246_lockord;
+pub mod cgb247_watchdog;
+pub mod cgb248_selfprot;
+
+// --------------------------------------------------------------------------
+// WB1022 批八（CGPU-F0177~F0182 · B02 依赖解析深化前半 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb177_launchorder;
+pub mod cgb178_incupdate;
+pub mod cgb179_condbranch;
+pub mod cgb180_subgraph;
+pub mod cgb181_persist;
+pub mod cgb182_graphdiff;
+pub mod cgb249_schedint;
+pub mod cgb250_memint;
+pub mod cgb251_xproc;
+pub mod cgb252_diagrep;
+pub mod cgb253_staticpv;
+pub mod cgb254_overhead;
+pub mod cgb255_fuzzapi;
