@@ -351,6 +351,28 @@
 //! | [`vec22_checks`] | F0422 域自检（判据逐条映射，64 项：三大族 10 / arena 连续 8 / 一次释放 7 / 版本登记 9 / 错误路径与边界 19 / 上游对接 8 / 门禁自洽 3；变异双向验证 14/15全捕获，未捕获项由编译期数组长度声明在类型层拦截） | VE 册 #VE-F0422 |
 //! | [`vec23_transunit`] | F0423 翻译单元与全局声明解析（顶层四类声明序由恰好四个码段 + 引导词表逐条登记来源与理由钉死，F0404 未收的引导词显式标扩展并反向验证其确实不在 F0404 表内 / 依赖只登记不解析落成 DepLedger——边字段只有驻留号与两个跨度，想越权先得往字段里塞语义对象 / 九项移交裁定成 DutyLedger 带阶段与责任单，语义期项责任单一律 F044x / 语义期不越权给出双向纯度实测：改标识符与字面量两路摘要逐位相等、改语法摘要必变，且重复声明只进 Duplicate 边与注记不被语法期拒绝 / 文件级属性用单调游标挂接，定址取用恒零扫描且挂接条数守恒 / 空翻译单元与纯注释文件等五种情形各有专属裁定与告知码，合法但空一律注记级） | VE 册 #VE-F0423 |
 //! | [`vec23_checks`] | F0423 域自检（判据逐条映射，71 项：四类声明 11 / 依赖登记 9 / 语义期不越权 7 / 职责边界 7 / 显性语义裁定 8 / 错误路径与降级 10 / 区间完整性 3 / 性能与复杂度 4 / 上游对接 6 / 门禁 6；纯度项配反向对照、引导词来源反向验证 F0404、O(1) 挂接以扫描计数实测、五种空态各造一种输入、600 轮确定性模糊扫不变量） | VE 册 #VE-F0423 |
+//! | [`vec25_funcdecl`] | F0425 函数声明与参数解析（方向三值恢复级/重载纯登记/体原分离对账簿/决议纯度实测） | VE 册 #VE-F0425 |
+//! | [`vec26_vardecl`] | F0426 变量声明与限定符（四类收集槽重复不覆盖/只收不裁纯度/组合键位集溢出分离/数组维度恢复） | VE 册 #VE-F0426 |
+//! | [`vec27_stmt`] | F0427 语句解析（六形态闭集/作用域配对守恒/悬挂else就近配对条款引用/深度常量关系） | VE 册 #VE-F0427 |
+//! | [`vec28_expr`] | F0428 表达式解析（优先级爬升/表驱动自洽闸/语境歧义挂起保守路径/深度超限指源头） | VE 册 #VE-F0428 |
+//! | [`vec29_typesyn`] | F0429 类型语法（七形态闭集/语素只收不裁越界同构/别名冲突并存/维度恢复声明级） | VE 册 #VE-F0429 |
+//! | [`vec30_member`] | F0430 成员访问与下标（线性访问链/swizzle只收不裁/非法衔接双侧定位/方法条款引用） | VE 册 #VE-F0430 |
+//! | [`vec31_ctor`] | F0431 构造与转换（同形统一收/参数收全不裁数量/前缀括号歧义登记/深嵌套不崩） | VE 册 #VE-F0431 |
+//! | [`vec32_builtin`] | F0432 内建调用语法（统一路径换名同构/预检不裁决未知名不拒/遮蔽留证/签名留语义期） | VE 册 #VE-F0432 |
+//! | [`vec33_layout`] | F0433 属性布局限定符（键值语法面/八键合法集/重复两条都收/值域留语义期） | VE 册 #VE-F0433 |
+//! | [`vec34_recovery`] | F0434 语法错误恢复（三层同步集声明不越体界/启发建议可复算/级联爆发升级/不完整段标记双向核对） | VE 册 #VE-F0434 |
+//! | [`vec35_astverify`] | F0435 AST完整性验证器（三不变量逐节点/门禁两值闭集/首违定位单点/空树显性败不静默） | VE 册 #VE-F0435 |
+//! | [`vec36_astdump`] | F0436 AST转储与可视化（S式与缩进树双格式黄金对/懒展开O1创建单层下钻/反向定位灰态/确定性对拍） | VE 册 #VE-F0436 |
+//! | [`vec37_perfgen`] | F0437 语法性能工程（线性斜率判据倍增实测/零拷贝记号无文本字段/增量可行性登记/基准退化阻断） | VE 册 #VE-F0437 |
+//! | [`vec38_glslmap`] | F0438 GLSL语法兼容映射（差异表版本列裁定/三要素拒绝清单/黄金对拍四对/无裁定不猜） | VE 册 #VE-F0438 |
+//! | [`vec39_hlslwgsl`] | F0439 HLSL/WGSL映射（双方言独立表/同构复用双实例对拍/拒绝桶方言隔离/方言参数强制） | VE 册 #VE-F0439 |
+//! | [`vec40_c03close`] | F0440 语法组收口（十九件证据缺件报件名/双签异人/经验包机检谓词/缺陷三档清零） | VE 册 #VE-F0440 |
+//! | [`vec41_semaarch`] | F0441 语义分析架构（四遍序跳遍拦截/遍契约产物链/旁路单写者双写拦截/条款引用发布闸） | VE 册 #VE-F0441 |
+//! | [`vec42_symtab`] | F0442 符号表与作用域链（作用域树链式/逐级查找内层停/遮蔽事件警告可配同域拒/编辑距离建议） | VE 册 #VE-F0442 |
+//! | [`vec43_typesys`] | F0443 类型系统（九形态摘要互异/结构等价字段名不参与/等级表None不兼容/哨兵不雪崩） | VE 册 #VE-F0443 |
+//! | [`vec44_infer`] | F0444 表达式类型推导（单遍后序访问计数/短路哨兵诊断单点/旁路节点号键全覆盖/条款诊断两侧类型） | VE 册 #VE-F0444 |
+//! | [`vec45_swizzle`] | F0445 Swizzle语义验证（同族字符集/写重复检测读合法同本异判/条款加可复算示例/展开映射索引） | VE 册 #VE-F0445 |
+//! | [`vec46_overload`] | F0446 函数重载决议（三段过滤出局留痕/歧义全明细不偷选/用户遮内建统一决议/旁路重放确定） | VE 册 #VE-F0446 |
 //! | [`vel16_security`] | F2216 粒子安全（四限额各有对策不空转——池内存真调 vel08 PoolQuota::validate 超硬顶显性拒绝、纹理申购 checked_mul 防回滚后比上限（粒子资源面申购闸的诚实声明：GPU 纹理实体在纹理域）、发射器数 EmitterRegistry 运行时计数超限显性拒绝（不改计数+被拒记账）、绘制调用 DrawCallMeter 超限**降级声明不拒绘**（锚点矩阵原文——拒绘会让画面消失降级让画面变 Cheap 但仍在）；输入消毒三入口（配置加载/网络同步/脚本事件）钳制必记账——NaN 速度钳零向量、负发射率/超上限真调 vel03 clamp_emit_rate、超大池申请真调 vel08 quota 拒绝、畸形事件名真调 vel04 注册制查表拒收（F1925 同规则）；恶意数据防御三查——包围盒校验（越界/非有限坐标拒）、索引越界拒（index≥顶点数）、循环引用鸽笼限深检测（parent 链超节点数必成环），三查全过才装配三角形真调 vel03 build_cumulative_area（双向：不误伤合法输入）；隐私红线结构性——TelemetryPacket 仅四聚合字段（粒子数/生成率/水位/发射器数）类型上无 Vec 出口、白名单闭集与黑名单（position/velocity/color）不交+渲染面恰四段无内容字段双重验证） | VE 册 #VE-F2216 |
 //! | [`vel17_quality`] | F2217 粒子质量档位（档位树家族 L 域首实例（家族第五位 F2015/F2037/F2057/F2077/F2217）——三档双因子表锚点数值逐格钉死（1000‰/100%、500‰/80%、250‰/50%，千分整数沿用 F2210 定点纪律）、发射联动列天花板、折半关系真调 DENSITY_HALVE_PER_STEP；换绑产物 Binding 单一不可分对象——密度（模拟侧）×池上限（渲染侧）同结构体、混装过不了 binding_is_coherent、平滑降档类型事实（apply 无活粒子入口只收紧新生天花板、在制粒子按 F2205 寿命自然消亡、排空窗口真调 LIFETIME_MAX_SEC）；D04 全域无缝无叠覆盖+边界归档+越界拒+双向往返；F2210 执行器真演练（apply_step 两步→游标换算恰低档→密度耗尽转 EmissionShrink）；三方裁决家族规则（用户>档位>预算、缺席≠异见、全缺席保持现役、冲突回改不报错可查）；F1762 帧边界切换（staged 一次性消费、epoch 单调、非法请求连暂存不产生、最新意图覆盖）；记忆 F2015 同构（0xF217 v2 本体+v1 迁移列取表、FNV-8 单比特翻转 64 全检出、损坏/版本分型——Corrupt 回退默认中档、自洽未知版本显性拒绝不落默认）；家族不变量真调 vek15 TIER_COUNT；判据 40 项） | VE 册 #VE-F2217 |
 //! | [`veu12_checks`] | F4012 域自检（六族判据：分项预算/热表单源/合批复述/基准注册/开销执法/码段承载；双向用例——超支样本点名、风暴恰阈边界、万项块数 40、孤儿 covers 拒绝、执法清单与对账逐项相等防另立口径） | VE 册 #VE-F4012 |
@@ -549,6 +571,28 @@ pub mod vec23_checks;
 pub mod vec24_structblock;
 pub mod vec23_transunit;
 pub mod vec24_struct;
+pub mod vec25_funcdecl;
+pub mod vec26_vardecl;
+pub mod vec27_stmt;
+pub mod vec28_expr;
+pub mod vec29_typesyn;
+pub mod vec30_member;
+pub mod vec31_ctor;
+pub mod vec32_builtin;
+pub mod vec33_layout;
+pub mod vec34_recovery;
+pub mod vec35_astverify;
+pub mod vec36_astdump;
+pub mod vec37_perfgen;
+pub mod vec38_glslmap;
+pub mod vec39_hlslwgsl;
+pub mod vec40_c03close;
+pub mod vec41_semaarch;
+pub mod vec42_symtab;
+pub mod vec43_typesys;
+pub mod vec44_infer;
+pub mod vec45_swizzle;
+pub mod vec46_overload;
 pub mod vel16_security;
 pub mod vel17_quality;
 pub mod vea52_hotres;
@@ -597,16 +641,6 @@ pub mod vea32_resstate;
 pub mod vea33_alias;
 pub mod vea34_transient;
 pub mod vea35_readback;
-pub mod vea36_rtv;
-pub mod vea37_dsv;
-pub mod vea38_uav;
-pub mod vea39_msaa;
-pub mod vea40_fmtcap;
-pub mod vea41_upheap;
-pub mod vea42_initmode;
-pub mod vea43_sparse;
-pub mod vea44_rename;
-pub mod vea45_viewcache;
 pub mod vea36_rtview;
 pub mod vea37_dsview;
 pub mod vea38_uav;
@@ -617,6 +651,98 @@ pub mod vea42_initsem;
 pub mod vea43_sparse;
 pub mod vea44_rename;
 pub mod vea45_viewcache;
+pub mod vea65_waitgraph;
+// vea147_ghost — VE-F0147 拖放 ghost 表面（VE-A 域 A06）
+pub mod vea147_ghost;
+// vea148_cursor — VE-F0148 光标表面独立通道（VE-A 域 A06）
+pub mod vea148_cursor;
+// vea149_ime — VE-F0149 IME 候选窗表面（VE-A 域 A06）
+pub mod vea149_ime;
+pub mod vea150_bootanim;
+pub mod vea151_health;
+pub mod vea152_hotrestart;
+pub mod vea153_quota;
+pub mod vea154_erragg;
+pub mod vea155_freeze;
+pub mod vea156_pipelineviz;
+pub mod vea157_restimeline;
+pub mod vea158_pixelhist;
+pub mod vea159_framediff;
+pub mod vea160_scenegraph;
+pub mod vea161_shaderdbg;
+pub mod vea162_pickdbg;
+pub mod vea163_overdraw;
+pub mod vea164_bandwidth;
+pub mod vea165_barriertl;
+pub mod vea166_vrammap;
+pub mod vea167_bottleneck;
+pub mod vea168_velab;
+pub mod vea169_abtest;
+pub mod vea170_regcmp;
+pub mod vea171_testfw;
+pub mod vea172_goldstd;
+pub mod vea173_regress;
+pub mod vea66_mqcoord;
+pub mod vea67_extent;
+pub mod vea68_fmtneg;
+pub mod vea69_pstat;
+pub mod vea70_cbudget;
+pub mod vea71_precov;
+pub mod vea72_longframe;
+pub mod vea73_lowpwr;
+pub mod vea74_hud;
+pub mod vea75_consistency;
+pub mod vea95_snapshot;
+pub mod vea96_sampler;
+pub mod vea97_privacy;
+pub mod vea98_whitelist;
+pub mod vea99_replayidx;
+pub mod vea100_drift;
+pub mod vea101_export;
+pub mod vea102_subs;
+pub mod vea103_notify;
+pub mod vea104_quota;
+pub mod vea105_audit;
+pub mod vea107_migrate;
+pub mod vea108_switch;
+pub mod vea109_split;
+pub mod vea110_bw;
+pub mod vea111_balance;
+pub mod vea112_dock;
+pub mod vea113_route;
+pub mod vea114_fence;
+pub mod vea115_isolate;
+pub mod vea116_clone;
+pub mod vea117_agg;
+pub mod vea118_joint;
+pub mod vea119_topo;
+pub mod vea120_p2p;
+pub mod vea121_shader;
+pub mod vea122_negotiate;
+pub mod vea123_place;
+pub mod vea124_diag;
+pub mod vea125_skeleton;
+pub mod vea126_life;
+pub mod vea127_config;
+pub mod vea128_session;
+pub mod vea129_sleep;
+pub mod vea130_power;
+pub mod vea131_bgbudget;
+pub mod vea132_fastpath;
+pub mod vea133_occlude;
+pub mod vea134_desksleep;
+pub mod vea135_dpiscale;
+pub mod vea136_session;
+pub mod vea137_remote;
+pub mod vea138_record;
+pub mod vea139_screenshot;
+pub mod vea140_overlay;
+pub mod vea141_wallpaper;
+pub mod vea142_browser;
+pub mod vea143_video;
+pub mod vea144_game;
+pub mod vea145_scroll;
+pub mod vea146_banner;
 pub mod vea46_present;
 pub mod vea47_multibuf;
 pub mod vea48_vsync;
@@ -994,6 +1120,93 @@ pub mod ver08j_focusliaison;
 pub mod ver08k_api;
 pub mod ver08l_debugtool;
 pub mod ver08m_fuzz;
+pub mod ver08n_docs;
+pub mod ver08o_bench;
+pub mod ver08p_consistency;
+pub mod ver08q_tzmidnight;
+pub mod ver08r_conflict;
+pub mod ver08s_nudge;
+pub mod ver08t_groupclose;
+pub mod ver09a_ramp;
+pub mod ver09b_autodark;
+pub mod ver09c_cursor;
+pub mod ver09d_bootskin;
+pub mod ver09e_menuprefs;
+pub mod ver09f_sfx;
+pub mod ver09g_fonts;
+pub mod ver09h_icons;
+pub mod ver09i_profile;
+pub mod ver09j_presets;
+pub mod ver09k_layerchain;
+pub mod ver09l_boundary;
+pub mod ver09m_parity;
+pub mod ver09n_papi;
+pub mod ver09o_pdebug;
+pub mod ver09p_pfuzz;
+pub mod ver09q_pdocs;
+pub mod ver09r_pbench;
+pub mod ver09s_pconsis;
+pub mod ver09t_pclose;
+pub mod ver10a_market;
+pub mod ver10b_pkgsign;
+pub mod ver10c_review;
+pub mod ver10d_conflictcheck;
+pub mod ver10e_cloudsync;
+pub mod ver10f_multidevice;
+pub mod ver10g_importwiz;
+pub mod ver10h_bootanim;
+pub mod ver10i_notify;
+pub mod ver10j_settings;
+pub mod ver10k_tutorial;
+pub mod ver10l_budget;
+pub mod ver10m_docs;
+pub mod ver10n_fuzz;
+pub mod ver10o_bench;
+pub mod ver10p_consistency;
+pub mod ver10q_feedback;
+pub mod ver10r_jointgov;
+pub mod ver10s_leftover;
+pub mod ver10t_groupclose;
+pub mod ver11a_auditarch;
+pub mod ver11b_glasscheck;
+pub mod ver11c_visdiff;
+pub mod ver11d_dictrules;
+pub mod ver11e_motionscan;
+pub mod ver11f_soundaudit;
+pub mod ver11g_copyaudit;
+pub mod ver11h_a11yscan;
+pub mod ver11i_dispolow;
+pub mod ver11j_regressgate;
+pub mod ver11k_evolflow;
+pub mod ver11l_boundcheck;
+pub mod ver11m_thirdparty;
+pub mod ver11n_consistindex;
+pub mod ver11o_studio;
+pub mod ver11p_afuzz;
+pub mod ver11q_adoc;
+pub mod ver11r_abench;
+pub mod ver11s_leftover;
+pub mod ver11t_close;
+pub mod ver12a_domainagg;
+pub mod ver12b_freezelist;
+pub mod ver12c_perfledger;
+pub mod ver12d_memledger;
+pub mod ver12e_codebook;
+pub mod ver12f_docgen;
+pub mod ver12g_dedup;
+pub mod ver12h_acceptmatrix;
+pub mod ver12i_depgraph;
+pub mod ver12j_defectledger;
+pub mod ver12k_stress;
+pub mod ver12l_docfinal;
+pub mod ver12m_apifreeze;
+pub mod ver12n_benchfinal;
+pub mod ver12o_fuzzfinal;
+pub mod ver12p_consistfinal;
+pub mod ver12q_migrate;
+pub mod ver12r_ledger;
+pub mod ver12s_handover;
+pub mod ver12t_domaingate;
 pub mod ver02_arch;
 pub mod ver02_checks;
 pub mod ver03_arch;
@@ -1147,6 +1360,643 @@ pub mod ves05_bridge;
 pub mod ves06_preview;
 pub mod ves07_validator;
 pub mod ves07_checks;
+pub mod ves08_import;
+pub mod ves09_version;
+pub mod ves10_perfbudget;
+pub mod ves11_a11y;
+pub mod ves12_security;
+pub mod ves13_debugger;
+pub mod ves14_docs;
+pub mod ves15_extpoints;
+pub mod ves16_market;
+pub mod ves17_examples;
+pub mod ves18_integration;
+pub mod ves19_selfaudit;
+pub mod ves20_r01close;
+pub mod ves21_editorarch;
+pub mod ves22_tokenedit;
+pub mod ves23_livepreview;
+pub mod ves24_themediff;
+pub mod ves25_template;
+pub mod ves26_wizard;
+pub mod ves27_publish;
+pub mod ves28_importmig;
+pub mod ves29_editperf;
+pub mod ves30_edita11y;
+pub mod ves31_undo;
+pub mod ves32_collab;
+pub mod ves33_editdebug;
+pub mod ves34_edittest;
+pub mod ves35_editexample;
+pub mod ves36_stylelink;
+pub mod ves37_editdocs;
+pub mod ves38_editfuzz;
+pub mod ves39_r02integ;
+pub mod ves40_r02close;
+pub mod ves41_wallarch;
+pub mod ves42_walledit;
+pub mod ves43_motionwall;
+pub mod ves44_colorpick;
+pub mod ves45_iconworkshop;
+pub mod ves46_cursorworkshop;
+pub mod ves47_lockboot;
+pub mod ves48_assetexport;
+pub mod ves49_4kaccept;
+pub mod ves50_visuala11y;
+pub mod ves51_visualperf;
+pub mod ves52_visualsafety;
+pub mod vr07a_r07arch;
+pub mod vr07b_costmodel;
+pub mod vr07c_budget;
+pub mod vr07d_benchkit;
+pub mod vr07e_reggate;
+pub mod vr07f_largescale;
+pub mod vr07g_memgov;
+pub mod vr07h_cgpulink;
+pub mod vr07i_degrade;
+pub mod vr07j_longrun;
+pub mod vr07k_perfdebug;
+pub mod vr07l_perfdocs;
+pub mod vr07m_perffuzz;
+pub mod vr07n_integration;
+pub mod vr07o_debtledger;
+pub mod vr07p_assetbook;
+pub mod vr07q_toolchain;
+pub mod vr07r_businteg;
+pub mod vr07s_r07integ;
+pub mod vr07t_r07close;
+pub mod vr08a_r08arch;
+pub mod vr08b_toolaudit;
+pub mod vr08c_outputa11y;
+pub mod vr08d_cognia11y;
+pub mod vr08e_inclusion;
+pub mod vr08f_altchannel;
+pub mod vr08g_prefs;
+pub mod vr08h_assistech;
+pub mod vr08i_a11ytest;
+pub mod vr08j_auditool;
+pub mod vr08k_exemption;
+pub mod vr08l_a11ydocs;
+pub mod vr08m_crossdomain;
+pub mod vr08n_a11yfuzz;
+pub mod vr08o_walkthrough;
+pub mod vr08p_a11yassets;
+pub mod vr08q_culture;
+pub mod vr08r_market;
+pub mod vr08s_link;
+pub mod vr08t_r08close;
+pub mod vr09a_r09arch;
+pub mod vr09b_r01r03check;
+pub mod vr09c_r04r06check;
+pub mod vr09d_r07r08check;
+pub mod vr09e_paircheck;
+pub mod vr09f_apicheck;
+pub mod vr09g_testcheck;
+pub mod vr09h_perfcheck;
+pub mod vr09i_seccheck;
+pub mod vr09j_a11ycheck;
+pub mod vr09k_doccheck;
+pub mod vr09l_budgetcheck;
+pub mod vr09m_gosummary;
+pub mod vr09n_r09close;
+pub mod vr09o_walkthrough;
+pub mod vr09p_gonogo;
+pub mod vr09q_dryrun;
+pub mod vr09r_evoreserve;
+pub mod vr09s_kbarchive;
+pub mod vr09t_r09close;
+pub mod vr10a_ifaceledger;
+pub mod vr10b_dict;
+pub mod vr10c_joint40;
+pub mod vr10d_perfbaseline;
+pub mod vr10e_securityfinal;
+pub mod vr10f_a11yfinal;
+pub mod vr10g_obsfinal;
+pub mod vr10h_fuzzgate;
+pub mod vr10i_docschema;
+pub mod vr10j_basefreeze;
+pub mod vr10k_extfinal;
+pub mod vr10l_clearbook;
+pub mod vr10m_score20;
+pub mod vr10n_realwalk;
+pub mod vr10o_handover_s;
+pub mod vr10p_changectl;
+pub mod vr10q_kbarchive;
+pub mod vr10r_evofinal;
+pub mod vr10s_archive;
+pub mod vr10t_r10close;
+pub mod vet06_screenloop;
+pub mod vet07_texture;
+pub mod vet08_photosafe;
+pub mod vet09_cognitive;
+pub mod vet10_a11yperf;
+pub mod vet11_a11ytest;
+pub mod vet12_a11ydbg;
+pub mod vet13_apifreeze;
+pub mod vet14_a11ydoc;
+pub mod vet15_truthsrc;
+pub mod vet16_fuzz;
+pub mod vet17_s01joint;
+pub mod vet18_s01self;
+pub mod vet19_s01close;
+pub mod ves53_examples;
+pub mod ves54_visualdocs;
+pub mod ves55_copyright;
+pub mod ves56_ecobridge;
+pub mod ves57_visualdbg;
+pub mod ves58_r03integ;
+pub mod ves59_canvasfuzz;
+pub mod ves60_r03close;
+pub mod ves61_r04charter;
+pub mod ves62_prefstore;
+pub mod ves63_instantapply;
+pub mod ves64_sceneengine;
+pub mod ves65_profilepreset;
+pub mod ves66_themerec;
+pub mod ves67_prefexport;
+pub mod ves68_prefsync;
+pub mod ves69_conflictresolve;
+pub mod ves70_prefperf;
+pub mod ves71_prefa11y;
+pub mod ves72_prefprivacy;
+pub mod ves73_prefdbg;
+pub mod ves74_preftest;
+pub mod ves75_prefexamples;
+pub mod ves76_prefdocs;
+pub mod ves77_prefecobridge;
+pub mod ves78_r04integ;
+pub mod ves79_prefuzz;
+pub mod ves80_r04close;
+pub mod ves81_ecoops;
+pub mod ves82_marketops;
+pub mod ves83_creatorecon;
+pub mod ves84_comgov;
+pub mod ves85_qualcert;
+pub mod ves86_discovery;
+pub mod ves87_ratings;
+pub mod ves88_arbitration;
+pub mod ves89_ecodash;
+pub mod ves90_creatoolkit;
+pub mod ves91_newbiegrow;
+pub mod ves92_ecoevents;
+pub mod ves93_ecolink;
+pub mod ves94_ecoi18n;
+pub mod ves95_ecosec;
+pub mod ves96_ecotest;
+pub mod ves97_ecoprivacy;
+pub mod ves98_r05integ;
+pub mod ves99_ecodocs;
+pub mod ves100_r05close;
+pub mod ves101_qualityarch;
+pub mod ves102_scoreengine;
+pub mod ves103_consistencyscan;
+pub mod ves104_a11yscan;
+pub mod ves105_perfscan;
+pub mod ves106_compatscan;
+pub mod ves107_regression;
+pub mod ves108_qualreport;
+pub mod ves109_improve;
+pub mod ves110_qualgate;
+pub mod ves111_qualrank;
+pub mod ves112_qualmarket;
+pub mod ves113_qualtool;
+pub mod ves114_qualtest;
+pub mod ves115_qualprivacy;
+pub mod ves116_qualdocs;
+pub mod ves117_ecoaudit;
+pub mod ves118_r06integ;
+pub mod ves119_qualfuzz;
+pub mod ves120_r06close;
+pub mod ves121_hcarch;
+pub mod ves122_forcedcolors;
+pub mod ves123_hctheme;
+pub mod ves124_cvdadapt;
+pub mod ves125_cvdsafe;
+pub mod ves126_contrast;
+pub mod ves127_textboost;
+pub mod ves128_graphicreplace;
+pub mod ves129_hcperf;
+pub mod ves130_hcfuzz;
+pub mod ves131_hctest;
+pub mod ves132_hcexamples;
+pub mod ves133_hcdocs;
+pub mod ves134_colormotion;
+pub mod ves135_coloreco;
+pub mod ves136_colordebug;
+pub mod ves137_colorbench;
+pub mod ves138_s02integ;
+pub mod ves139_s02preflight;
+pub mod ves140_s02close;
+pub mod ves141_srbridge;
+pub mod ves142_focustrack;
+pub mod ves143_textannot;
+pub mod ves144_graphicat;
+pub mod ves145_announce;
+pub mod ves146_navrender;
+pub mod ves147_virta11y;
+pub mod ves148_surface;
+pub mod ves149_srperf;
+pub mod ves150_srtest;
+pub mod ves151_srdebug;
+pub mod ves152_srdocs;
+pub mod ves153_n08final;
+pub mod ves154_srfuzz;
+pub mod ves155_srwalk;
+pub mod ves156_sri18n;
+pub mod ves157_s03integ;
+pub mod ves158_atmatrix;
+pub mod ves159_s03preflight;
+pub mod ves160_s03close;
+pub mod ves190_perfinteg;
+pub mod ves191_legacyclear;
+pub mod ves192_assetroll;
+pub mod ves193_s07preflight;
+pub mod ves194_s07close;
+// ---- S08 无障碍测试与工具链组（VE-F3941~F3960 · AI-WBV1022）----
+pub mod ves195_s08arch;
+pub mod ves196_s08auto;
+pub mod ves197_s08review;
+pub mod ves198_s08sim;
+pub mod ves199_s08corpus;
+pub mod ves200_s08regress;
+pub mod ves201_s08usertest;
+pub mod ves202_s08board;
+pub mod ves203_s08apiref;
+pub mod ves204_s08examples;
+pub mod ves205_s08docmap;
+pub mod ves206_s08ext;
+pub mod ves207_s08thirdparty;
+pub mod ves208_s08matrix;
+pub mod ves209_s08fuzz;
+pub mod ves210_s08walk;
+pub mod ves211_s08asset;
+pub mod ves212_s08reserve;
+pub mod ves213_s08integ;
+pub mod ves214_s08close;
+pub mod ves215_s09scope;
+pub mod ves216_s09s0103;
+pub mod ves217_s09s0406;
+pub mod ves218_s09s0708;
+pub mod ves219_s09pairs;
+pub mod ves220_s09api;
+pub mod ves221_s09testasset;
+pub mod ves222_s09perfasset;
+pub mod ves223_s09secasset;
+pub mod ves224_s09duoasset;
+pub mod ves225_s09docasset;
+pub mod ves226_s09fix;
+pub mod ves227_s09nine;
+pub mod ves228_s09prescore;
+pub mod ves229_s09walkpre;
+pub mod ves230_s09goreport;
+pub mod ves231_s09drill;
+pub mod ves232_s09reserve;
+pub mod ves233_s09kb;
+pub mod ves234_s09close;
+pub mod ves235_s10ledger;
+pub mod ves236_s10dict;
+pub mod ves237_s10jitest;
+pub mod ves238_s10perf;
+pub mod ves239_s10sec;
+pub mod ves240_s10a11y;
+pub mod ves241_s10obs;
+pub mod ves242_s10fuzz;
+pub mod ves243_s10docs;
+pub mod ves244_s10freeze;
+pub mod ves245_s10ext;
+pub mod ves246_s10recon;
+pub mod ves247_s10score;
+pub mod ves248_s10walk;
+pub mod ves249_s10handover;
+pub mod ves250_s10change;
+pub mod ves251_s10kb;
+pub mod ves252_s10reserve;
+pub mod ves253_s10evidence;
+pub mod ves254_s10declare;
+pub mod ves255_s11a11y;
+pub mod ves256_s11sec;
+pub mod ves257_s11apifreeze;
+pub mod ves258_s11docs;
+pub mod ves259_s11integ;
+pub mod ves260_s11close;
+pub mod ves261_s12bidi;
+pub mod ves262_s12mirror;
+pub mod ves263_s12mixdir;
+pub mod ves264_s12ctrl;
+pub mod ves265_s12anim;
+pub mod ves266_s12icon;
+pub mod ves267_s12table;
+pub mod ves268_s12ime;
+pub mod ves269_s12corpus;
+pub mod ves270_s12debug;
+pub mod ves271_s12font;
+pub mod ves272_s12a11y;
+pub mod ves273_s12perf;
+pub mod ves274_s12fuzz;
+pub mod ves275_s12examples;
+pub mod ves276_s12docs;
+pub mod ves277_s12nlayout;
+pub mod ves278_s12integ;
+pub mod ves279_s12legacy;
+pub mod ves280_s12close;
+pub mod ves281_s13arch;
+pub mod ves282_s13cjk;
+pub mod ves283_s13indic;
+pub mod ves284_s13shaping;
+pub mod ves285_s13latin;
+pub mod ves286_s13mixline;
+pub mod ves287_s13break;
+pub mod ves288_s13n02;
+pub mod ves289_s13quality;
+pub mod ves290_s13perf;
+pub mod ves291_s14debug;
+pub mod ves292_s14corpus;
+pub mod ves293_s14examples;
+pub mod ves294_s14docs;
+pub mod ves295_s14fuzz;
+pub mod ves296_s14qfont;
+pub mod ves297_s14sa11y;
+pub mod ves298_s14integ;
+pub mod ves299_s14legacy;
+pub mod ves300_s14close;
+pub mod ves301_s15t04arch;
+pub mod ves302_s15extract;
+pub mod ves303_s15tm;
+pub mod ves304_s15mt;
+pub mod ves305_s15postedit;
+pub mod ves306_s15lqa;
+pub mod ves307_s15style;
+pub mod ves308_s15ctx;
+pub mod ves309_s15progress;
+pub mod ves310_s15score;
+pub mod ves311_s16a11y;
+pub mod ves312_s16sec;
+pub mod ves313_s16perf;
+pub mod ves314_s16debug;
+pub mod ves315_s16test;
+pub mod ves316_s16examples;
+pub mod ves317_s16docs;
+pub mod ves318_s16fuzz;
+pub mod ves319_s16integ;
+pub mod ves320_s16close;
+pub mod ves321_s17arch;
+pub mod ves322_s17font;
+pub mod ves323_s17image;
+pub mod ves324_s17audio;
+pub mod ves325_s17video;
+pub mod ves326_s17pack;
+pub mod ves327_s17dl;
+pub mod ves328_s17hot;
+pub mod ves329_s17verify;
+pub mod ves330_s17qdom;
+pub mod ves331_s18perf;
+pub mod ves332_s18sec;
+pub mod ves333_s18debug;
+pub mod ves334_s18test;
+pub mod ves335_s18example;
+pub mod ves336_s18docs;
+pub mod ves337_s18battery;
+pub mod ves338_s18fuzz;
+pub mod ves339_s18integ;
+pub mod ves340_s18close;
+pub mod ves341_s19arch;
+pub mod ves342_s19law;
+pub mod ves343_s19residency;
+pub mod ves344_s19content;
+pub mod ves345_s19pay;
+pub mod ves346_s19fmt;
+pub mod ves347_s19addr;
+pub mod ves348_s19test;
+pub mod ves349_s19cfg;
+pub mod ves350_s19ldom;
+pub mod ves351_s19debug;
+pub mod ves352_s19docs;
+pub mod ves353_s19market;
+pub mod ves354_s19fuzz;
+pub mod ves355_s19example;
+pub mod ves356_s19perf;
+pub mod ves357_s19rdom;
+pub mod ves358_s19integ;
+pub mod ves359_s19selfcheck;
+pub mod ves360_s19close;
+pub mod ves361_s20arch;
+pub mod ves362_s20cost;
+pub mod ves363_s20budget;
+pub mod ves364_s20bench;
+pub mod ves365_s20gate;
+pub mod ves366_s20scale;
+pub mod ves367_s20mem;
+pub mod ves368_s20cgpu;
+pub mod ves369_s20degrade;
+pub mod ves370_s20lowend;
+pub mod ves371_s20soak;
+pub mod ves372_s20debug;
+pub mod ves373_s20docs;
+pub mod ves374_s20fuzz;
+pub mod ves375_s20integ;
+pub mod ves376_s20ledger;
+pub mod ves377_s20assets;
+pub mod ves378_s20selfcheck;
+pub mod ves379_s20linkup;
+pub mod ves380_s20close;
+pub mod ves381_s21arch;
+pub mod ves382_s21autotest;
+pub mod ves383_s21linter;
+pub mod ves384_s21sim;
+pub mod ves385_s21corpus;
+pub mod ves386_s21regress;
+pub mod ves387_s21usertest;
+pub mod ves388_s21board;
+pub mod ves389_s21apiref;
+pub mod ves390_s21examples;
+pub mod ves391_s21docs;
+pub mod ves392_s21ext;
+pub mod ves393_s21thirdparty;
+pub mod ves394_s21compat;
+pub mod ves395_s21fuzzgate;
+pub mod ves396_s21walkthrough;
+pub mod ves397_s21assets;
+pub mod ves398_s21evolve;
+pub mod ves399_s21integ;
+pub mod ves400_s21close;
+pub mod ves401_s22arch;
+pub mod ves402_s22t01t03;
+pub mod ves403_s22t04t06;
+pub mod ves404_s22t07t08;
+pub mod ves405_s22pairaudit;
+pub mod ves406_s22apiinv;
+pub mod ves407_s22testasset;
+pub mod ves408_s22perfasset;
+pub mod ves409_s22secasset;
+pub mod ves410_s22a11yasset;
+pub mod ves411_s22docasset;
+pub mod ves412_s22gapfill;
+pub mod ves413_s22ninegrid;
+pub mod ves414_s22prescore;
+pub mod ves415_s22drywalk;
+pub mod ves416_s22goreport;
+pub mod ves417_s22dryrun;
+pub mod ves418_s22reserve;
+pub mod ves419_s22karchive;
+pub mod ves420_s22close;
+pub mod ves421_s23apiaccount;
+pub mod ves422_s23lexterm;
+pub mod ves423_s23joint;
+pub mod ves424_s23perfbase;
+pub mod ves425_s23secfinal;
+pub mod ves426_s23a11yfinal;
+pub mod ves427_s23obsfinal;
+pub mod ves428_s23fuzzgate;
+pub mod ves429_s23docschema;
+pub mod ves430_s23freeze;
+pub mod ves431_s23extfinal;
+pub mod ves432_s23ledger;
+pub mod ves433_s23score;
+pub mod ves434_s23walk;
+pub mod ves435_s23handover;
+pub mod ves436_s23discipline;
+pub mod ves437_s23knowledge;
+pub mod ves438_s23reserve;
+pub mod ves439_s23evidence;
+pub mod ves440_s23declare;
+pub mod ves441_s24metrics;
+pub mod ves442_s24flow;
+pub mod ves443_s24graph;
+pub mod ves444_s24lexin;
+pub mod ves445_s24token;
+pub mod ves446_s24copy;
+pub mod ves447_s24perf;
+pub mod ves448_s24sec;
+pub mod ves449_s24debug;
+pub mod ves450_s24apifreeze;
+pub mod ves451_s24docs;
+pub mod ves452_s24joint;
+pub mod ves453_s24selfcheck;
+pub mod ves454_s24close;
+pub mod ves455_s25engine;
+pub mod ves456_s25dsl;
+pub mod ves457_s25validator;
+pub mod ves458_s25version;
+pub mod ves459_s25conflict;
+pub mod ves460_s25impact;
+pub mod ves461_s25test;
+pub mod ves462_s25gen;
+pub mod ves463_s25market;
+pub mod ves464_s25adr;
+pub mod ves465_s25perf;
+pub mod ves466_s25sec;
+pub mod ves467_s25debug;
+pub mod ves468_s25fuzz;
+pub mod ves469_s25example;
+pub mod ves470_s25docs;
+pub mod ves471_s25sum;
+pub mod ves472_s25joint;
+pub mod ves473_s25selfcheck;
+pub mod ves474_s25close;
+pub mod ves475_s26arch;
+pub mod ves476_s26static;
+pub mod ves477_s26dynamic;
+pub mod ves478_s26visual;
+pub mod ves479_s26interact;
+pub mod ves480_s26perf;
+pub mod ves481_s27a11y;
+pub mod ves482_s27report;
+pub mod ves483_s27baseline;
+pub mod ves484_s27ci;
+pub mod ves485_s27perf;
+pub mod ves486_s27sec;
+pub mod ves487_s27debug;
+pub mod ves488_s27fuzz;
+pub mod ves489_s27example;
+pub mod ves490_s27docs;
+pub mod ves491_s27sum;
+pub mod ves492_s27joint;
+pub mod ves493_s27selfcheck;
+pub mod ves494_s27close;
+pub mod ves495_s28gov;
+pub mod ves496_s28process;
+pub mod ves497_s28violation;
+pub mod ves498_s28evolve;
+pub mod ves499_s28version;
+pub mod ves500_s28arbitrate;
+pub mod ves501_s28culture;
+pub mod ves502_s28train;
+pub mod ves503_s28trend;
+pub mod ves504_s28alert;
+pub mod ves505_s28accept;
+pub mod ves506_s28auto;
+pub mod ves507_s28gperf;
+pub mod ves508_s28gtest;
+pub mod ves509_s28gdoc;
+pub mod ves510_s28gfuzz;
+pub mod ves511_s28gex;
+pub mod ves512_s28joint;
+pub mod ves513_s28selfcheck;
+pub mod ves514_s28close;
+pub mod ves515_s29outline;
+pub mod ves516_s29ci;
+pub mod ves517_s29review;
+pub mod ves518_s29ide;
+pub mod ves519_s29design;
+pub mod ves520_s29debug;
+pub mod ves521_s29board;
+pub mod ves522_s29gate;
+pub mod ves523_s29docs;
+pub mod ves524_s29sdk;
+pub mod ves525_s29itest;
+pub mod ves526_s29idoc;
+pub mod ves527_s29iperf;
+pub mod ves528_s29isec;
+pub mod ves529_s29iex;
+pub mod ves530_s29ifuzz;
+pub mod ves531_s29map;
+pub mod ves532_s29joint;
+pub mod ves533_s29selfcheck;
+pub mod ves534_s29close;
+pub mod ves535_s30outline;
+pub mod ves536_s30newfeat;
+pub mod ves537_s30cross;
+pub mod ves538_s30release;
+pub mod ves539_s30theme;
+pub mod ves540_s30plugin;
+pub mod ves541_s31team;
+pub mod ves542_s31ai;
+pub mod ves543_s31test;
+pub mod ves544_s31doc;
+pub mod ves545_s31perf;
+pub mod ves546_s31example;
+pub mod ves547_s31fuzz;
+pub mod ves548_s31roi;
+pub mod ves549_s31joint;
+pub mod ves550_s31dict;
+pub mod ves551_s31feedback;
+pub mod ves552_s31joint06;
+pub mod ves553_s31selfcheck;
+pub mod ves554_s31close;
+pub mod ves555_s32arch;
+pub mod ves556_s32cost;
+pub mod ves557_s32budget;
+pub mod ves558_s32bench;
+pub mod ves559_s32gate;
+pub mod ves560_s32scale;
+pub mod vet4a_video;
+pub mod vet4b_audioalt;
+pub mod vet4c_livemedia;
+pub mod vet4d_motionscale;
+pub mod vet4e_vestibular;
+pub mod vet4f_photoscan;
+pub mod vet4g_mediactrl;
+pub mod vet4h_mediaapi;
+pub mod vet4i_motalt;
+pub mod vet4j_mediatest;
+pub mod vet4k_motaltdbg;
+pub mod vet4l_mediadoc;
+pub mod vet4m_motaltfuzz;
+pub mod vet4n_ghmedia;
+pub mod vet4o_motaltex;
+pub mod vet4p_s04joint;
+pub mod vet4q_s04preflight;
+pub mod vet4r_s04close;
 pub mod vez50_arch;
 pub mod vez50_checks;
 pub mod vez51_requirements;
@@ -1228,6 +2078,151 @@ pub mod veb227_mediacaps;
 pub mod veb231_freqpower;
 pub mod veb232_hotplug;
 pub mod veb233_dualscreen;
+pub mod veb234_intelarch;
+pub mod veb235_intelbugtbl;
+pub mod veb236_intelcert;
+pub mod veb237_intelfloor;
+pub mod veb238_inteldrvdiff;
+pub mod veb239_inteldbg;
+pub mod veb240_intelclose;
+pub mod veb241_amdident;
+pub mod veb242_amdvram;
+pub mod veb243_amdsubmit;
+// veb244_amdsched ↔ VE-F0244 AMD 调度器语义对接（0xAF40 段）
+pub mod veb244_amdsched;
+// veb245_amddcn ↔ VE-F0245 AMD DCN 显示控制（0xAFC0 段）
+pub mod veb245_amddcn;
+// veb246_amdvrr ↔ VE-F0246 AMD VRR 可变刷新（0xB1C0 段）
+pub mod veb246_amdvrr;
+// veb247_amdmedia ↔ VE-F0247 AMD 媒体引擎（0xB840 段）
+pub mod veb247_amdmedia;
+// veb248_amdsharch ↔ VE-F0248 AMD 共享架构（0xB8C0 段）
+pub mod veb248_amdsharch;
+// veb249_amddcc ↔ VE-F0249 AMD 显存压缩感知（0xB940 段）
+pub mod veb249_amddcc;
+// veb250_amdcache ↔ VE-F0250 AMD 片上缓存提示（0xB9C0 段）
+pub mod veb250_amdcache;
+// veb251_amderr ↔ VE-F0251 AMD 错误分级处置（0xBA40 段）
+pub mod veb251_amderr;
+// veb252_amdmgpu ↔ VE-F0252 AMD 多卡拓扑（0xBB40 段）
+pub mod veb252_amdmgpu;
+// veb253_amdtelemetry ↔ VE-F0253 AMD 四维采样（0xBC40 段）
+pub mod veb253_amdtelemetry;
+// veb254_amdmst ↔ VE-F0254 AMD MST 拓扑（0xBCC0 段）
+pub mod veb254_amdmst;
+// veb255_amdcert ↔ VE-F0255 AMD 认证矩阵（0xBF40 段）
+pub mod veb255_amdcert;
+// veb256_amdfloor ↔ VE-F0256 AMD 下限声明（0xBFC0 段）
+pub mod veb256_amdfloor;
+// veb257_amddiff ↔ VE-F0257 AMD 版本差异表（0xC0C0 段）
+pub mod veb257_amddiff;
+// veb258_amddebug ↔ VE-F0258 AMD 调试协议（0xC140 段）
+pub mod veb258_amddebug;
+// veb259_amdevade ↔ VE-F0259 AMD 缺陷规避表（0xC340 段）
+pub mod veb259_amdevade;
+// veb260_amdident ↔ VE-F0260 AMD PCI 识别（0xC440 段）
+pub mod veb260_amdident;
+pub mod veb261_nvid; // NVIDIA设备识别
+pub mod veb262_nvpath; // NVIDIA驱动路径
+pub mod veb263_nvvram; // NVIDIA Vram管理
+pub mod veb264_nvsubmit; // NVIDIA提交通路
+pub mod veb265_nvdisplay; // NVIDIA显示输出
+pub mod veb266_nvvrr; // NVIDIA VRR
+pub mod veb267_nvvdec; // NVIDIA编解码位
+pub mod veb268_nvshader; // NVIDIA着色器位
+pub mod veb269_nvlimit; // NVIDIA限制表
+pub mod veb270_nvcert; // NVIDIA认证窗
+pub mod veb271_nvfloor; // NVIDIA下限
+pub mod veb272_nvdiff; // NVIDIA版本差异
+pub mod veb273_nvdbg; // NVIDIA调试通道
+pub mod veb274_nvwhitelist; // NVIDIA规避表
+pub mod veb275_nvpwr; // NVIDIA功耗遥测
+pub mod veb276_nvmgpu; // NVIDIA多卡语义
+pub mod veb277_nvpres; // NVIDIA呈现映射
+pub mod veb278_nvfall; // NVIDIA回退策略
+pub mod veb279_nvconsist; // NVIDIA组一致性
+pub mod veb280_nvclose; // NVIDIA组收口
+pub mod veb281_mliid; // Mali设备识别
+pub mod veb282_mlidrm; // Mali DRM评估
+pub mod veb283_mlivm; // Mali显存对接
+pub mod veb284_mlisub; // Mali命令提交
+pub mod veb285_mlitile; // Mali Tiling
+pub mod veb286_mlidc; // Mali显示控制器
+pub mod veb287_mlicap; // Mali能力探测
+pub mod veb288_mlishb; // Mali着色器后端
+pub mod veb289_mliastc; // Mali ASTC
+pub mod veb290_mlipwr; // Mali功耗热预算
+pub mod veb291_mlifreq; // Mali频率联动
+pub mod veb292_mlierr; // Mali错误恢复
+pub mod veb293_mlicert; // Mali认证矩阵
+pub mod veb294_mliftl; // Mali下限声明
+pub mod veb295_mlivdf; // Mali版本差异
+pub mod veb296_mlidbg; // Mali调试通道
+pub mod veb297_mliwkv; // Mali规避表
+pub mod veb298_mlisoc; // Mali SoC变体
+pub mod veb299_mlipb; // Mali性能基线
+pub mod veb300_mliclose; // Mali组收口
+pub mod veb301_adrid; // Adreno识别
+pub mod veb302_adrstack; // Adreno开源栈
+pub mod veb303_adrtile; // Adreno Tiling
+pub mod veb304_adrsub; // Adreno提交通路
+pub mod veb305_adrcap; // Adreno能力位
+pub mod veb306_pvrid; // PVR识别
+pub mod veb307_pvrodrv; // PVR开源驱动
+pub mod veb308_pvrtile; // PVR Tiling
+pub mod veb309_mobbw; // 移动带宽准则
+pub mod veb310_mobthermal; // 移动热节流
+pub mod veb311_andeco; // Android生态评估
+pub mod veb312_mobdpu; // 移动DPU
+pub mod veb313_adrcert; // Adreno认证
+pub mod veb314_pvrcert; // PVR预留矩阵
+pub mod veb315_mobfloor; // 移动两族下限
+pub mod veb316_mobvdf; // 移动版本差异
+pub mod veb317_mobdbg; // 移动调试通道
+pub mod veb318_mobwkv; // 移动规避表
+pub mod veb319_mobbase; // 移动性能基线
+pub mod veb320_mobclose; // 移动组收口
+pub mod veb321_rveco; // RISCV生态盘点
+pub mod veb322_idframe; // 识别框架预留
+pub mod veb323_gendrm; // 通用DRM
+pub mod veb324_rvsoft; // 软渲优先
+pub mod veb325_rvisa; // ISA差异研究
+pub mod veb326_rvv; // RVV加速
+pub mod veb327_rvcert; // 原型认证预留
+pub mod veb328_evcirc; // 成熟度追踪
+pub mod veb329_negpre; // 协商接口预留
+pub mod veb330_exdecl; // 实验档声明
+pub mod veb331_boardrec; // 开发板采购矩阵
+pub mod veb332_tskel; // 测试骨架预留
+pub mod veb333_docbound; // 文档诚实边界
+pub mod veb334_comint; // 社区协作接口
+pub mod veb335_timeline; // 时间轴评估
+pub mod veb336_riskreg; // 风险登记
+pub mod veb337_upstream; // 上游策略
+pub mod veb338_qemupath; // QEMU模拟路径
+pub mod veb339_groupcons; // 组内一致性骨架
+pub mod veb340_gclose; // 组收口移交
+pub mod veb341_sfreg; // 软渲驱动注册
+pub mod veb342_cov2d; // 2D全覆盖声明
+pub mod veb343_tilepar; // 瓦片并行深化
+pub mod veb344_simmx; // SIMD派发矩阵
+pub mod veb345_bound3d; // 3D边界清单
+pub mod veb346_soa; // SoA内存布局
+pub mod veb347_sfdegrade; // 软渲降质联动
+pub mod veb348_mtscale; // 多线程伸缩验证
+pub mod veb349_res4k; // 4K底线策略
+pub mod veb350_sfpwr; // 软渲功耗声明
+pub mod veb351_abtest; // 软硬路径总对拍
+pub mod veb352_cloudvm; // 云VM唯一性场景
+pub mod veb353_mixrend; // 软渲GPU混合渲染
+pub mod veb354_diagpanel; // 软渲诊断面板
+pub mod veb355_allgreen; // 一致性全绿核验
+pub mod veb356_hwfloor; // 下限硬件声明
+pub mod veb357_evolve; // 版本演进策略
+pub mod veb358_workaround; // 软渲规避表
+pub mod veb359_sfdoc; // 软渲文档三清单
+pub mod veb360_b8close; // B8组收口移交
+pub mod veb361_drvlife; // 驱动生命周期总管
 pub mod vch01_budgetpool;
 pub mod vch01_budgetpool_checks;
 pub mod vch02_ledger;
@@ -1235,6 +2230,8 @@ pub mod vch02_ledger_checks;
 
 pub use vea01_index::{ProbeReport, effective_renderer, run_a01};
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 域标识（CheckSet 聚合用）。
@@ -1271,10 +2268,21 @@ pub mod vea88_reclaim;
 // vea89_pressure ↔ VE-F0089 显存压力事件广播（三级水位/风暴合并/响应审计/水位校准，0xE7Dx 子块十六码）
 pub mod vea89_pressure;
 
+// 批 A02c（AI-WB-1022）：呈现协商段 F0057~F0061 + 策略调度段 F0085/F0090~F0092
+pub mod vea57_pasneg;
+pub mod vea58_hdrmeta;
+pub mod vea59_csout;
+pub mod vea60_surfshare;
+pub mod vea61_extbuf;
+pub mod vea85_appforce;
+pub mod vea90_prioage;
+pub mod vea91_fairaudit;
+pub mod vea92_svcquota;
+
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, fn() -> CheckSet); 516] = [
+    let blocks: &[(&'static str, fn() -> CheckSet)] = &[
         ("VE-F0001", vea01_index::run_vea01_checks),
         // ── 批17（0xF800~0xFF80 段，16 单）──
         ("VE-F0645", ved45_dirtprop::run_ved45_checks),
@@ -1306,6 +2314,16 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F5161", vey16_selfcheck::run_vey16_checks),
         ("VE-F5181", vey18_topaudit::run_vey18_checks),
         ("VE-F5221", vez22_particlearch::run_vez22_checks),
+        ("VE-F5222", vez22b_emitter::run_vez22b_checks),
+        ("VE-F5223", vez23b_sim::run_vez23b_checks),
+        ("VE-F5224", vez24_render::run_vez24_checks),
+        ("VE-F5242", vez42_bloom::run_vez42_checks),
+        ("VE-F5243", vez43_dof::run_vez43_checks),
+        ("VE-F5244", vez44_grade::run_vez44_checks),
+        ("VE-F5245", vez45_mblur::run_vez45_checks),
+        ("VE-F5246", vez46_ssr::run_vez46_checks),
+        ("VE-F5249", vez49_chain::run_vez49_checks),
+        ("VE-F5248", vez48_params::run_vez48_checks),
         ("VE-F5241", vez24_pparch::run_vez24_checks),
         ("VE-F5261", vez26_envarch::run_vez26_checks),
         ("VE-F5281", vez28_transarch::run_vez28_checks),
@@ -1354,6 +2372,28 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0421", vec21_checks::run_vec21_checks),
 ("VE-F0422", vec22_checks::run_vec22_checks),
 ("VE-F0423", vec23_checks::run_vec23_checks),
+("VE-F0425", vec25_funcdecl::run_vec25_checks),
+("VE-F0426", vec26_vardecl::run_vec26_checks),
+("VE-F0427", vec27_stmt::run_vec27_checks),
+("VE-F0428", vec28_expr::run_vec28_checks),
+("VE-F0429", vec29_typesyn::run_vec29_checks),
+("VE-F0430", vec30_member::run_vec30_checks),
+("VE-F0431", vec31_ctor::run_vec31_checks),
+("VE-F0432", vec32_builtin::run_vec32_checks),
+("VE-F0433", vec33_layout::run_vec33_checks),
+("VE-F0434", vec34_recovery::run_vec34_checks),
+("VE-F0435", vec35_astverify::run_vec35_checks),
+("VE-F0436", vec36_astdump::run_vec36_checks),
+("VE-F0437", vec37_perfgen::run_vec37_checks),
+("VE-F0438", vec38_glslmap::run_vec38_checks),
+("VE-F0439", vec39_hlslwgsl::run_vec39_checks),
+("VE-F0440", vec40_c03close::run_vec40_checks),
+("VE-F0441", vec41_semaarch::run_vec41_checks),
+("VE-F0442", vec42_symtab::run_vec42_checks),
+("VE-F0443", vec43_typesys::run_vec43_checks),
+("VE-F0444", vec44_infer::run_vec44_checks),
+("VE-F0445", vec45_swizzle::run_vec45_checks),
+("VE-F0446", vec46_overload::run_vec46_checks),
         ("VE-F2216", vel16_security::run_vel16_checks),
         ("VE-F2217", vel17_quality::run_vel17_checks),
         ("VE-F0053", vea53_hotplug::run_vea53_checks),
@@ -1430,17 +2470,6 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0033", vea33_alias::run_vea33_checks),
         ("VE-F0034", vea34_transient::run_vea34_checks),
         ("VE-F0035", vea35_readback::run_vea35_checks),
-        ("VE-F0036", vea36_rtv::run_vea36_checks),
-        ("VE-F0037", vea37_dsv::run_vea37_checks),
-        ("VE-F0038", vea38_uav::run_vea38_checks),
-        ("VE-F0039", vea39_msaa::run_vea39_checks),
-        ("VE-F0040", vea40_fmtcap::run_vea40_checks),
-        ("VE-F0041", vea41_upheap::run_vea41_checks),
-        ("VE-F0042", vea42_initmode::run_vea42_checks),
-        ("VE-F0043", vea43_sparse::run_vea43_checks),
-        ("VE-F0044", vea44_rename::run_vea44_checks),
-        ("VE-F0045", vea45_viewcache::run_vea45_checks),
-        // ── 批 A02b（F0036~F0045 资源视图段缺口补写）+ F0200 域移交包 ──
         ("VE-F0036", vea36_rtview::run_vea36_checks),
         ("VE-F0037", vea37_dsview::run_vea37_checks),
         ("VE-F0038", vea38_uav::run_vea38_checks),
@@ -1451,6 +2480,68 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0043", vea43_sparse::run_vea43_checks),
         ("VE-F0044", vea44_rename::run_vea44_checks),
         ("VE-F0045", vea45_viewcache::run_vea45_checks),
+        ("VE-F0065", vea65_waitgraph::run_vea65_checks),
+        ("VE-F0066", vea66_mqcoord::run_vea66_checks),
+        ("VE-F0067", vea67_extent::run_vea67_checks),
+        ("VE-F0068", vea68_fmtneg::run_vea68_checks),
+        ("VE-F0069", vea69_pstat::run_vea69_checks),
+        ("VE-F0070", vea70_cbudget::run_vea70_checks),
+        ("VE-F0071", vea71_precov::run_vea71_checks),
+        ("VE-F0072", vea72_longframe::run_vea72_checks),
+        ("VE-F0073", vea73_lowpwr::run_vea73_checks),
+        ("VE-F0074", vea74_hud::run_vea74_checks),
+        ("VE-F0075", vea75_consistency::run_vea75_checks),
+        ("VE-F0095", vea95_snapshot::run_vea95_checks),
+        ("VE-F0096", vea96_sampler::run_vea96_checks),
+        ("VE-F0097", vea97_privacy::run_vea97_checks),
+        ("VE-F0098", vea98_whitelist::run_vea98_checks),
+        ("VE-F0099", vea99_replayidx::run_vea99_checks),
+        ("VE-F0100", vea100_drift::run_vea100_checks),
+        ("VE-F0101", vea101_export::run_vea101_checks),
+        ("VE-F0102", vea102_subs::run_vea102_checks),
+        ("VE-F0103", vea103_notify::run_vea103_checks),
+        ("VE-F0104", vea104_quota::run_vea104_checks),
+        ("VE-F0105", vea105_audit::run_vea105_checks),
+        ("VE-F0107", vea107_migrate::run_vea107_checks),
+        ("VE-F0108", vea108_switch::run_vea108_checks),
+        ("VE-F0109", vea109_split::run_vea109_checks),
+        ("VE-F0110", vea110_bw::run_vea110_checks),
+        ("VE-F0111", vea111_balance::run_vea111_checks),
+        ("VE-F0112", vea112_dock::run_vea112_checks),
+        ("VE-F0113", vea113_route::run_vea113_checks),
+        ("VE-F0114", vea114_fence::run_vea114_checks),
+        ("VE-F0115", vea115_isolate::run_vea115_checks),
+        ("VE-F0116", vea116_clone::run_vea116_checks),
+        ("VE-F0117", vea117_agg::run_vea117_checks),
+        ("VE-F0118", vea118_joint::run_vea118_checks),
+        ("VE-F0119", vea119_topo::run_vea119_checks),
+        ("VE-F0120", vea120_p2p::run_vea120_checks),
+        ("VE-F0121", vea121_shader::run_vea121_checks),
+        ("VE-F0122", vea122_negotiate::run_vea122_checks),
+        ("VE-F0123", vea123_place::run_vea123_checks),
+        ("VE-F0124", vea124_diag::run_vea124_checks),
+        ("VE-F0125", vea125_skeleton::run_vea125_checks),
+        ("VE-F0126", vea126_life::run_vea126_checks),
+        ("VE-F0127", vea127_config::run_vea127_checks),
+        ("VE-F0128", vea128_session::run_vea128_checks),
+        ("VE-F0129", vea129_sleep::run_vea129_checks),
+        ("VE-F0130", vea130_power::run_vea130_checks),
+        ("VE-F0131", vea131_bgbudget::run_vea131_checks),
+        ("VE-F0132", vea132_fastpath::run_vea132_checks),
+        ("VE-F0133", vea133_occlude::run_vea133_checks),
+        ("VE-F0134", vea134_desksleep::run_vea134_checks),
+        ("VE-F0135", vea135_dpiscale::run_vea135_checks),
+        ("VE-F0136", vea136_session::run_vea136_checks),
+        ("VE-F0137", vea137_remote::run_vea137_checks),
+        ("VE-F0138", vea138_record::run_vea138_checks),
+        ("VE-F0139", vea139_screenshot::run_vea139_checks),
+        ("VE-F0140", vea140_overlay::run_vea140_checks),
+        ("VE-F0141", vea141_wallpaper::run_vea141_checks),
+        ("VE-F0142", vea142_browser::run_vea142_checks),
+        ("VE-F0143", vea143_video::run_vea143_checks),
+        ("VE-F0144", vea144_game::run_vea144_checks),
+        ("VE-F0145", vea145_scroll::run_vea145_checks),
+        ("VE-F0146", vea146_banner::run_vea146_checks),
         ("VE-F0200", veb00_handover::run_veb00_checks),
         ("VE-F0046", vea46_present::run_vea46_checks),
         ("VE-F0047", vea47_multibuf::run_vea47_checks),
@@ -1638,6 +2729,66 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3414-a", ver01n_checks::run_ver01n_checks_a),
         ("VE-F3414-b", ver01n_checks::run_ver01n_checks_b),
         ("VE-F3421", ver06a_checks::run_ver06a_checks),
+        ("VE-F3541", ver10a_market::run_market_checks),
+        ("VE-F3542", ver10b_pkgsign::run_sign_checks),
+        ("VE-F3543", ver10c_review::run_review_checks),
+        ("VE-F3544", ver10d_conflictcheck::run_conflict_checks),
+        ("VE-F3545", ver10e_cloudsync::run_sync_checks),
+        ("VE-F3546", ver10f_multidevice::run_device_checks),
+        ("VE-F3547", ver10g_importwiz::run_import_checks),
+        ("VE-F3548", ver10h_bootanim::run_boot_checks),
+        ("VE-F3549", ver10i_notify::run_notify_checks),
+        ("VE-F3550", ver10j_settings::run_settings_checks),
+        ("VE-F3551", ver10k_tutorial::run_tutorial_checks),
+        ("VE-F3552", ver10l_budget::run_budget_checks),
+        ("VE-F3553", ver10m_docs::run_doc_checks),
+        ("VE-F3554", ver10n_fuzz::run_fuzz_checks),
+        ("VE-F3555", ver10o_bench::run_bench_checks),
+        ("VE-F3556", ver10p_consistency::run_consist_checks),
+        ("VE-F3557", ver10q_feedback::run_feedback_checks),
+        ("VE-F3558", ver10r_jointgov::run_gov_checks),
+        ("VE-F3559", ver10s_leftover::run_leftover_checks),
+        ("VE-F3560", ver10t_groupclose::run_gate_checks),
+        ("VE-F3561", ver11a_auditarch::run_audit_checks),
+        ("VE-F3562", ver11b_glasscheck::run_glass_checks),
+        ("VE-F3563", ver11c_visdiff::run_diff_checks),
+        ("VE-F3564", ver11d_dictrules::run_rule_checks),
+        ("VE-F3565", ver11e_motionscan::run_motion_checks),
+        ("VE-F3566", ver11f_soundaudit::run_sound_checks),
+        ("VE-F3567", ver11g_copyaudit::run_copy_checks),
+        ("VE-F3568", ver11h_a11yscan::run_a11y_checks),
+        ("VE-F3569", ver11i_dispolow::run_dispo_checks),
+        ("VE-F3570", ver11j_regressgate::run_gate5_checks),
+        ("VE-F3571", ver11k_evolflow::run_evo_checks),
+        ("VE-F3572", ver11l_boundcheck::run_bound_checks),
+        ("VE-F3573", ver11m_thirdparty::run_third_checks),
+        ("VE-F3574", ver11n_consistindex::run_index_checks),
+        ("VE-F3575", ver11o_studio::run_studio_checks),
+        ("VE-F3576", ver11p_afuzz::run_afuzz_checks),
+        ("VE-F3577", ver11q_adoc::run_adoc_checks),
+        ("VE-F3578", ver11r_abench::run_abench_checks),
+        ("VE-F3579", ver11s_leftover::run_leftover9_checks),
+        ("VE-F3580", ver11t_close::run_close9_checks),
+        ("VE-F3581", ver12a_domainagg::run_agg_checks),
+        ("VE-F3582", ver12b_freezelist::run_freeze_checks),
+        ("VE-F3583", ver12c_perfledger::run_perf_checks),
+        ("VE-F3584", ver12d_memledger::run_mem_checks),
+        ("VE-F3585", ver12e_codebook::run_book_checks),
+        ("VE-F3586", ver12f_docgen::run_gen_checks),
+        ("VE-F3587", ver12g_dedup::run_dedup_checks),
+        ("VE-F3588", ver12h_acceptmatrix::run_matrix_checks),
+        ("VE-F3589", ver12i_depgraph::run_dep_checks),
+        ("VE-F3590", ver12j_defectledger::run_defect_checks),
+        ("VE-F3591", ver12k_stress::run_stress_checks),
+        ("VE-F3592", ver12l_docfinal::run_docfinal_checks),
+        ("VE-F3593", ver12m_apifreeze::run_apifreeze_checks),
+        ("VE-F3594", ver12n_benchfinal::run_benchfinal_checks),
+        ("VE-F3595", ver12o_fuzzfinal::run_fuzzfinal_checks),
+        ("VE-F3596", ver12p_consistfinal::run_consistfinal_checks),
+        ("VE-F3597", ver12q_migrate::run_migrate_checks),
+        ("VE-F3598", ver12r_ledger::run_ledger_checks),
+        ("VE-F3599", ver12s_handover::run_handover_checks),
+        ("VE-F3600", ver12t_domaingate::run_domaingate_checks),
         ("VE-F3601", ver02_arch::run_ver02_checks),
         ("VE-F3602", ver03_arch::run_ver03_checks),
         ("VE-F3603", ver04_arch::run_ver04_checks),
@@ -1740,6 +2891,643 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F3604-b", ves04_checks::run_ves04_checks_b),
         ("VE-F3606", ves06_preview::run_ves06_checks),
         ("VE-F3607", ves07_checks::run_ves07_all_checks),
+        ("VE-F3608", ves08_import::run_ves08_checks),
+        ("VE-F3609", ves09_version::run_ves09_checks),
+        ("VE-F3610", ves10_perfbudget::run_ves10_checks),
+        ("VE-F3611", ves11_a11y::run_ves11_checks),
+        ("VE-F3612", ves12_security::run_ves12_checks),
+        ("VE-F3613", ves13_debugger::run_ves13_checks),
+        ("VE-F3614", ves14_docs::run_ves14_checks),
+        ("VE-F3615", ves15_extpoints::run_ves15_checks),
+        ("VE-F3616", ves16_market::run_ves16_checks),
+        ("VE-F3617", ves17_examples::run_ves17_checks),
+        ("VE-F3618", ves18_integration::run_ves18_checks),
+        ("VE-F3619", ves19_selfaudit::run_ves19_checks),
+        ("VE-F3620", ves20_r01close::run_ves20_checks),
+        ("VE-F3621", ves21_editorarch::run_ves21_checks),
+        ("VE-F3622", ves22_tokenedit::run_ves22_checks),
+        ("VE-F3623", ves23_livepreview::run_ves23_checks),
+        ("VE-F3624", ves24_themediff::run_ves24_checks),
+        ("VE-F3625", ves25_template::run_ves25_checks),
+        ("VE-F3626", ves26_wizard::run_ves26_checks),
+        ("VE-F3627", ves27_publish::run_ves27_checks),
+        ("VE-F3628", ves28_importmig::run_ves28_checks),
+        ("VE-F3629", ves29_editperf::run_ves29_checks),
+        ("VE-F3630", ves30_edita11y::run_ves30_checks),
+        ("VE-F3631", ves31_undo::run_ves31_checks),
+        ("VE-F3632", ves32_collab::run_ves32_checks),
+        ("VE-F3633", ves33_editdebug::run_ves33_checks),
+        ("VE-F3634", ves34_edittest::run_ves34_checks),
+        ("VE-F3635", ves35_editexample::run_ves35_checks),
+        ("VE-F3636", ves36_stylelink::run_ves36_checks),
+        ("VE-F3637", ves37_editdocs::run_ves37_checks),
+        ("VE-F3638", ves38_editfuzz::run_ves38_checks),
+        ("VE-F3639", ves39_r02integ::run_ves39_checks),
+        ("VE-F3640", ves40_r02close::run_ves40_checks),
+        ("VE-F3641", ves41_wallarch::run_ves41_checks),
+        ("VE-F3642", ves42_walledit::run_ves42_checks),
+        ("VE-F3643", ves43_motionwall::run_ves43_checks),
+        ("VE-F3644", ves44_colorpick::run_ves44_checks),
+        ("VE-F3645", ves45_iconworkshop::run_ves45_checks),
+        ("VE-F3646", ves46_cursorworkshop::run_ves46_checks),
+        ("VE-F3647", ves47_lockboot::run_ves47_checks),
+        ("VE-F3648", ves48_assetexport::run_ves48_checks),
+        ("VE-F3649", ves49_4kaccept::run_ves49_checks),
+        ("VE-F3650", ves50_visuala11y::run_ves50_checks),
+        ("VE-F3651", ves51_visualperf::run_ves51_checks),
+        ("VE-F3652", ves52_visualsafety::run_ves52_checks),
+        ("VE-F3653", ves53_examples::run_ves53_checks),
+        ("VE-F3654", ves54_visualdocs::run_ves54_checks),
+        ("VE-F3655", ves55_copyright::run_ves55_checks),
+        ("VE-F3656", ves56_ecobridge::run_ves56_checks),
+        ("VE-F3657", ves57_visualdbg::run_ves57_checks),
+        ("VE-F3658", ves58_r03integ::run_ves58_checks),
+        ("VE-F3659", ves59_canvasfuzz::run_ves59_checks),
+        ("VE-F3721", vr07a_r07arch::run_vr07a_checks),
+        ("VE-F3722", vr07b_costmodel::run_vr07b_checks),
+        ("VE-F3723", vr07c_budget::run_vr07c_checks),
+        ("VE-F3724", vr07d_benchkit::run_vr07d_checks),
+        ("VE-F3725", vr07e_reggate::run_vr07e_checks),
+        ("VE-F3726", vr07f_largescale::run_vr07f_checks),
+        ("VE-F3727", vr07g_memgov::run_vr07g_checks),
+        ("VE-F3728", vr07h_cgpulink::run_vr07h_checks),
+        ("VE-F3729", vr07i_degrade::run_vr07i_checks),
+        ("VE-F3730", vr07j_longrun::run_vr07j_checks),
+        ("VE-F3731", vr07k_perfdebug::run_vr07k_checks),
+        ("VE-F3732", vr07l_perfdocs::run_vr07l_checks),
+        ("VE-F3733", vr07m_perffuzz::run_vr07m_checks),
+        ("VE-F3734", vr07n_integration::run_vr07n_checks),
+        ("VE-F3735", vr07o_debtledger::run_vr07o_checks),
+        ("VE-F3736", vr07p_assetbook::run_vr07p_checks),
+        ("VE-F3737", vr07q_toolchain::run_vr07q_checks),
+        ("VE-F3738", vr07r_businteg::run_vr07r_checks),
+        ("VE-F3739", vr07s_r07integ::run_vr07s_checks),
+        ("VE-F3740", vr07t_r07close::run_vr07t_checks),
+        ("VE-F3741", vr08a_r08arch::run_vr08a_checks),
+        ("VE-F3742", vr08b_toolaudit::run_vr08b_checks),
+        ("VE-F3743", vr08c_outputa11y::run_vr08c_checks),
+        ("VE-F3744", vr08d_cognia11y::run_vr08d_checks),
+        ("VE-F3745", vr08e_inclusion::run_vr08e_checks),
+        ("VE-F3746", vr08f_altchannel::run_vr08f_checks),
+        ("VE-F3747", vr08g_prefs::run_vr08g_checks),
+        ("VE-F3748", vr08h_assistech::run_vr08h_checks),
+        ("VE-F3749", vr08i_a11ytest::run_vr08i_checks),
+        ("VE-F3750", vr08j_auditool::run_vr08j_checks),
+        ("VE-F3751", vr08k_exemption::run_vr08k_checks),
+        ("VE-F3752", vr08l_a11ydocs::run_vr08l_checks),
+        ("VE-F3753", vr08m_crossdomain::run_vr08m_checks),
+        ("VE-F3754", vr08n_a11yfuzz::run_vr08n_checks),
+        ("VE-F3755", vr08o_walkthrough::run_vr08o_checks),
+        ("VE-F3756", vr08p_a11yassets::run_vr08p_checks),
+        ("VE-F3757", vr08q_culture::run_vr08q_checks),
+        ("VE-F3758", vr08r_market::run_vr08r_checks),
+        ("VE-F3759", vr08s_link::run_vr08s_checks),
+        ("VE-F3760", vr08t_r08close::run_vr08t_checks),
+        ("VE-F3761", vr09a_r09arch::run_vr09a_checks),
+        ("VE-F3762", vr09b_r01r03check::run_vr09b_checks),
+        ("VE-F3763", vr09c_r04r06check::run_vr09c_checks),
+        ("VE-F3764", vr09d_r07r08check::run_vr09d_checks),
+        ("VE-F3765", vr09e_paircheck::run_vr09e_checks),
+        ("VE-F3766", vr09f_apicheck::run_vr09f_checks),
+        ("VE-F3767", vr09g_testcheck::run_vr09g_checks),
+        ("VE-F3768", vr09h_perfcheck::run_vr09h_checks),
+        ("VE-F3769", vr09i_seccheck::run_vr09i_checks),
+        ("VE-F3770", vr09j_a11ycheck::run_vr09j_checks),
+        ("VE-F3771", vr09k_doccheck::run_vr09k_checks),
+        ("VE-F3772", vr09l_budgetcheck::run_vr09l_checks),
+        ("VE-F3773", vr09m_gosummary::run_vr09m_checks),
+        ("VE-F3774", vr09n_r09close::run_vr09n_checks),
+        ("VE-F3775", vr09o_walkthrough::run_vr09o_checks),
+        ("VE-F3776", vr09p_gonogo::run_vr09p_checks),
+        ("VE-F3777", vr09q_dryrun::run_vr09q_checks),
+        ("VE-F3778", vr09r_evoreserve::run_vr09r_checks),
+        ("VE-F3779", vr09s_kbarchive::run_vr09s_checks),
+        ("VE-F3780", vr09t_r09close::run_vr09t_checks),
+        ("VE-F3781", vr10a_ifaceledger::run_vr10a_checks),
+        ("VE-F3782", vr10b_dict::run_vr10b_checks),
+        ("VE-F3783", vr10c_joint40::run_vr10c_checks),
+        ("VE-F3784", vr10d_perfbaseline::run_vr10d_checks),
+        ("VE-F3785", vr10e_securityfinal::run_vr10e_checks),
+        ("VE-F3786", vr10f_a11yfinal::run_vr10f_checks),
+        ("VE-F3787", vr10g_obsfinal::run_vr10g_checks),
+        ("VE-F3788", vr10h_fuzzgate::run_vr10h_checks),
+        ("VE-F3789", vr10i_docschema::run_vr10i_checks),
+        ("VE-F3790", vr10j_basefreeze::run_vr10j_checks),
+        ("VE-F3791", vr10k_extfinal::run_vr10k_checks),
+        ("VE-F3792", vr10l_clearbook::run_vr10l_checks),
+        ("VE-F3793", vr10m_score20::run_vr10m_checks),
+        ("VE-F3794", vr10n_realwalk::run_vr10n_checks),
+        ("VE-F3795", vr10o_handover_s::run_vr10o_checks),
+        ("VE-F3796", vr10p_changectl::run_vr10p_checks),
+        ("VE-F3797", vr10q_kbarchive::run_vr10q_checks),
+        ("VE-F3798", vr10r_evofinal::run_vr10r_checks),
+        ("VE-F3799", vr10s_archive::run_vr10s_checks),
+        ("VE-F3800", vr10t_r10close::run_vr10t_checks),
+        ("VE-F3807", vet06_screenloop::run_f3807_checks),
+        ("VE-F3808", vet07_texture::run_f3808_checks),
+        ("VE-F3809", vet08_photosafe::run_f3809_checks),
+        ("VE-F3810", vet09_cognitive::run_f3810_checks),
+        ("VE-F3811", vet10_a11yperf::run_f3811_checks),
+        ("VE-F3812", vet11_a11ytest::run_f3812_checks),
+        ("VE-F3813", vet12_a11ydbg::run_f3813_checks),
+        ("VE-F3814", vet13_apifreeze::run_f3814_checks),
+        ("VE-F3815", vet14_a11ydoc::run_f3815_checks),
+        ("VE-F3816", vet15_truthsrc::run_f3816_checks),
+        ("VE-F3817", vet16_fuzz::run_f3817_checks),
+        ("VE-F3818", vet17_s01joint::run_f3818_checks),
+        ("VE-F3819", vet18_s01self::run_f3819_checks),
+        ("VE-F3820", vet19_s01close::run_f3820_checks),
+        ("VE-F3660", ves60_r03close::run_ves60_checks),
+        ("VE-F3661", ves61_r04charter::run_ves61_checks),
+        ("VE-F3662", ves62_prefstore::run_ves62_checks),
+        ("VE-F3663", ves63_instantapply::run_ves63_checks),
+        ("VE-F3664", ves64_sceneengine::run_ves64_checks),
+        ("VE-F3665", ves65_profilepreset::run_ves65_checks),
+        ("VE-F3666", ves66_themerec::run_ves66_checks),
+        ("VE-F3667", ves67_prefexport::run_ves67_checks),
+        ("VE-F3668", ves68_prefsync::run_ves68_checks),
+        ("VE-F3669", ves69_conflictresolve::run_ves69_checks),
+        ("VE-F3670", ves70_prefperf::run_ves70_checks),
+        ("VE-F3671", ves71_prefa11y::run_ves71_checks),
+        ("VE-F3672", ves72_prefprivacy::run_ves72_checks),
+        ("VE-F3673", ves73_prefdbg::run_ves73_checks),
+        ("VE-F3674", ves74_preftest::run_ves74_checks),
+        ("VE-F3675", ves75_prefexamples::run_ves75_checks),
+        ("VE-F3676", ves76_prefdocs::run_ves76_checks),
+        ("VE-F3677", ves77_prefecobridge::run_ves77_checks),
+        ("VE-F3678", ves78_r04integ::run_ves78_checks),
+        ("VE-F3679", ves79_prefuzz::run_ves79_checks),
+        ("VE-F3680", ves80_r04close::run_ves80_checks),
+        ("VE-F3681", ves81_ecoops::run_ves81_checks),
+        ("VE-F3682", ves82_marketops::run_ves82_checks),
+        ("VE-F3683", ves83_creatorecon::run_ves83_checks),
+        ("VE-F3684", ves84_comgov::run_ves84_checks),
+        ("VE-F3685", ves85_qualcert::run_ves85_checks),
+        ("VE-F3686", ves86_discovery::run_ves86_checks),
+        ("VE-F3687", ves87_ratings::run_ves87_checks),
+        ("VE-F3688", ves88_arbitration::run_ves88_checks),
+        ("VE-F3689", ves89_ecodash::run_ves89_checks),
+        ("VE-F3690", ves90_creatoolkit::run_ves90_checks),
+        ("VE-F3691", ves91_newbiegrow::run_ves91_checks),
+        ("VE-F3692", ves92_ecoevents::run_ves92_checks),
+        ("VE-F3693", ves93_ecolink::run_ves93_checks),
+        ("VE-F3694", ves94_ecoi18n::run_ves94_checks),
+        ("VE-F3695", ves95_ecosec::run_ves95_checks),
+        ("VE-F3696", ves96_ecotest::run_ves96_checks),
+        ("VE-F3697", ves97_ecoprivacy::run_ves97_checks),
+        ("VE-F3698", ves98_r05integ::run_ves98_checks),
+        ("VE-F3699", ves99_ecodocs::run_ves99_checks),
+        ("VE-F3700", ves100_r05close::run_ves100_checks),
+        ("VE-F3701", ves101_qualityarch::run_ves101_checks),
+        ("VE-F3702", ves102_scoreengine::run_ves102_checks),
+        ("VE-F3703", ves103_consistencyscan::run_ves103_checks),
+        ("VE-F3704", ves104_a11yscan::run_ves104_checks),
+        ("VE-F3705", ves105_perfscan::run_ves105_checks),
+        ("VE-F3706", ves106_compatscan::run_ves106_checks),
+        ("VE-F3707", ves107_regression::run_ves107_checks),
+        ("VE-F3708", ves108_qualreport::run_ves108_checks),
+        ("VE-F3709", ves110_qualgate::run_ves110_checks),
+        ("VE-F3710", ves109_improve::run_ves109_checks),
+        ("VE-F3711", ves111_qualrank::run_ves111_checks),
+        ("VE-F3712", ves112_qualmarket::run_ves112_checks),
+        ("VE-F3713", ves113_qualtool::run_ves113_checks),
+        ("VE-F3714", ves114_qualtest::run_ves114_checks),
+        ("VE-F3715", ves115_qualprivacy::run_ves115_checks),
+        ("VE-F3716", ves116_qualdocs::run_ves116_checks),
+        ("VE-F3717", ves117_ecoaudit::run_ves117_checks),
+        ("VE-F3718", ves118_r06integ::run_ves118_checks),
+        ("VE-F3719", ves119_qualfuzz::run_ves119_checks),
+        ("VE-F3720", ves120_r06close::run_ves120_checks),
+        ("VE-F3821", ves121_hcarch::run_ves121_checks),
+        ("VE-F3822", ves122_forcedcolors::run_ves122_checks),
+        ("VE-F3823", ves123_hctheme::run_ves123_checks),
+        ("VE-F3824", ves124_cvdadapt::run_ves124_checks),
+        ("VE-F3825", ves125_cvdsafe::run_ves125_checks),
+        ("VE-F3826", ves126_contrast::run_ves126_checks),
+        ("VE-F3827", ves127_textboost::run_ves127_checks),
+        ("VE-F3828", ves128_graphicreplace::run_ves128_checks),
+        ("VE-F3829", ves129_hcperf::run_ves129_checks),
+        ("VE-F3830", ves130_hcfuzz::run_ves130_checks),
+        ("VE-F3831", ves131_hctest::run_ves131_checks),
+        ("VE-F3832", ves132_hcexamples::run_ves132_checks),
+        ("VE-F3833", ves133_hcdocs::run_ves133_checks),
+        ("VE-F3834", ves134_colormotion::run_ves134_checks),
+        ("VE-F3835", ves135_coloreco::run_ves135_checks),
+        ("VE-F3836", ves136_colordebug::run_ves136_checks),
+        ("VE-F3837", ves137_colorbench::run_ves137_checks),
+        ("VE-F3838", ves138_s02integ::run_ves138_checks),
+        ("VE-F3839", ves139_s02preflight::run_ves139_checks),
+        ("VE-F3840", ves140_s02close::run_ves140_checks),
+        ("VE-F3841", ves141_srbridge::run_ves141_checks),
+        ("VE-F3842", ves142_focustrack::run_ves142_checks),
+        ("VE-F3843", ves143_textannot::run_ves143_checks),
+        ("VE-F3844", ves144_graphicat::run_ves144_checks),
+        ("VE-F3845", ves145_announce::run_ves145_checks),
+        ("VE-F3846", ves146_navrender::run_ves146_checks),
+        ("VE-F3847", ves147_virta11y::run_ves147_checks),
+        ("VE-F3848", ves148_surface::run_ves148_checks),
+        ("VE-F3849", ves149_srperf::run_ves149_checks),
+        ("VE-F3850", ves150_srtest::run_ves150_checks),
+        ("VE-F3851", ves151_srdebug::run_ves151_checks),
+        ("VE-F3852", ves152_srdocs::run_ves152_checks),
+        ("VE-F3853", ves153_n08final::run_ves153_checks),
+        ("VE-F3854", ves154_srfuzz::run_ves154_checks),
+        ("VE-F3855", ves155_srwalk::run_ves155_checks),
+        ("VE-F3856", ves156_sri18n::run_ves156_checks),
+        ("VE-F3857", ves157_s03integ::run_ves157_checks),
+        ("VE-F3858", ves158_atmatrix::run_ves158_checks),
+        ("VE-F3859", ves159_s03preflight::run_ves159_checks),
+        ("VE-F3860", ves160_s03close::run_ves160_checks),
+        ("VE-F3936", ves190_perfinteg::run_ves190_checks),
+        ("VE-F3937", ves191_legacyclear::run_ves191_checks),
+        ("VE-F3938", ves192_assetroll::run_ves192_checks),
+        ("VE-F3939", ves193_s07preflight::run_ves193_checks),
+        ("VE-F3940", ves194_s07close::run_ves194_checks),
+        // ---- S08 组（VE-F3941~F3960 · AI-WBV1022）----
+        ("VE-F3941", ves195_s08arch::run_ves195_checks),
+        ("VE-F3942", ves196_s08auto::run_ves196_checks),
+        ("VE-F3943", ves197_s08review::run_ves197_checks),
+        ("VE-F3944", ves198_s08sim::run_ves198_checks),
+        ("VE-F3945", ves199_s08corpus::run_ves199_checks),
+        ("VE-F3946", ves200_s08regress::run_ves200_checks),
+        ("VE-F3947", ves201_s08usertest::run_ves201_checks),
+        ("VE-F3948", ves202_s08board::run_ves202_checks),
+        ("VE-F3949", ves203_s08apiref::run_ves203_checks),
+        ("VE-F3950", ves204_s08examples::run_ves204_checks),
+        ("VE-F3951", ves205_s08docmap::run_ves205_checks),
+        ("VE-F3952", ves206_s08ext::run_ves206_checks),
+        ("VE-F3953", ves207_s08thirdparty::run_ves207_checks),
+        ("VE-F3954", ves208_s08matrix::run_ves208_checks),
+        ("VE-F3955", ves209_s08fuzz::run_ves209_checks),
+        ("VE-F3956", ves210_s08walk::run_ves210_checks),
+        ("VE-F3957", ves211_s08asset::run_ves211_checks),
+        ("VE-F3958", ves212_s08reserve::run_ves212_checks),
+        ("VE-F3959", ves213_s08integ::run_ves213_checks),
+        ("VE-F3960", ves214_s08close::run_ves214_checks),
+        ("VE-F3961", ves215_s09scope::run_ves215_checks),
+        ("VE-F3962", ves216_s09s0103::run_ves216_checks),
+        ("VE-F3963", ves217_s09s0406::run_ves217_checks),
+        ("VE-F3964", ves218_s09s0708::run_ves218_checks),
+        ("VE-F3965", ves219_s09pairs::run_ves219_checks),
+        ("VE-F3966", ves220_s09api::run_ves220_checks),
+        ("VE-F3967", ves221_s09testasset::run_ves221_checks),
+        ("VE-F3968", ves222_s09perfasset::run_ves222_checks),
+        ("VE-F3969", ves223_s09secasset::run_ves223_checks),
+        ("VE-F3970", ves224_s09duoasset::run_ves224_checks),
+        ("VE-F3971", ves225_s09docasset::run_ves225_checks),
+        ("VE-F3972", ves226_s09fix::run_ves226_checks),
+        ("VE-F3973", ves227_s09nine::run_ves227_checks),
+        ("VE-F3974", ves228_s09prescore::run_ves228_checks),
+        ("VE-F3975", ves229_s09walkpre::run_ves229_checks),
+        ("VE-F3976", ves230_s09goreport::run_ves230_checks),
+        ("VE-F3977", ves231_s09drill::run_ves231_checks),
+        ("VE-F3978", ves232_s09reserve::run_ves232_checks),
+        ("VE-F3979", ves233_s09kb::run_ves233_checks),
+        ("VE-F3980", ves234_s09close::run_ves234_checks),
+        ("VE-F3981", ves235_s10ledger::run_ves235_checks),
+        ("VE-F3982", ves236_s10dict::run_ves236_checks),
+        ("VE-F3983", ves237_s10jitest::run_ves237_checks),
+        ("VE-F3984", ves238_s10perf::run_ves238_checks),
+        ("VE-F3985", ves239_s10sec::run_ves239_checks),
+        ("VE-F3986", ves240_s10a11y::run_ves240_checks),
+        ("VE-F3987", ves241_s10obs::run_ves241_checks),
+        ("VE-F3988", ves242_s10fuzz::run_ves242_checks),
+        ("VE-F3989", ves243_s10docs::run_ves243_checks),
+        ("VE-F3990", ves244_s10freeze::run_ves244_checks),
+        ("VE-F3991", ves245_s10ext::run_ves245_checks),
+        ("VE-F3992", ves246_s10recon::run_ves246_checks),
+        ("VE-F3993", ves247_s10score::run_ves247_checks),
+        ("VE-F3994", ves248_s10walk::run_ves248_checks),
+        ("VE-F3995", ves249_s10handover::run_ves249_checks),
+        ("VE-F3996", ves250_s10change::run_ves250_checks),
+        ("VE-F3997", ves251_s10kb::run_ves251_checks),
+        ("VE-F3998", ves252_s10reserve::run_ves252_checks),
+        ("VE-F3999", ves253_s10evidence::run_ves253_checks),
+        ("VE-F4000", ves254_s10declare::run_ves254_checks),
+        ("VE-F4015", ves255_s11a11y::run_ves255_checks),
+        ("VE-F4016", ves256_s11sec::run_ves256_checks),
+        ("VE-F4017", ves257_s11apifreeze::run_ves257_checks),
+        ("VE-F4018", ves258_s11docs::run_ves258_checks),
+        ("VE-F4019", ves259_s11integ::run_ves259_checks),
+        ("VE-F4020", ves260_s11close::run_ves260_checks),
+        ("VE-F4021", ves261_s12bidi::run_ves261_checks),
+        ("VE-F4022", ves262_s12mirror::run_ves262_checks),
+        ("VE-F4023", ves263_s12mixdir::run_ves263_checks),
+        ("VE-F4024", ves264_s12ctrl::run_ves264_checks),
+        ("VE-F4025", ves265_s12anim::run_ves265_checks),
+        ("VE-F4026", ves266_s12icon::run_ves266_checks),
+        ("VE-F4027", ves267_s12table::run_ves267_checks),
+        ("VE-F4028", ves268_s12ime::run_ves268_checks),
+        ("VE-F4029", ves269_s12corpus::run_ves269_checks),
+        ("VE-F4030", ves270_s12debug::run_ves270_checks),
+        ("VE-F4031", ves271_s12font::run_ves271_checks),
+        ("VE-F4032", ves272_s12a11y::run_ves272_checks),
+        ("VE-F4033", ves273_s12perf::run_ves273_checks),
+        ("VE-F4034", ves274_s12fuzz::run_ves274_checks),
+        ("VE-F4035", ves275_s12examples::run_ves275_checks),
+        ("VE-F4036", ves276_s12docs::run_ves276_checks),
+        ("VE-F4037", ves277_s12nlayout::run_ves277_checks),
+        ("VE-F4038", ves278_s12integ::run_ves278_checks),
+        ("VE-F4039", ves279_s12legacy::run_ves279_checks),
+        ("VE-F4040", ves280_s12close::run_ves280_checks),
+        ("VE-F4041", ves281_s13arch::run_ves281_checks),
+        ("VE-F4042", ves282_s13cjk::run_ves282_checks),
+        ("VE-F4043", ves283_s13indic::run_ves283_checks),
+        ("VE-F4044", ves284_s13shaping::run_ves284_checks),
+        ("VE-F4045", ves285_s13latin::run_ves285_checks),
+        ("VE-F4046", ves286_s13mixline::run_ves286_checks),
+        ("VE-F4047", ves287_s13break::run_ves287_checks),
+        ("VE-F4048", ves288_s13n02::run_ves288_checks),
+        ("VE-F4049", ves289_s13quality::run_ves289_checks),
+        ("VE-F4050", ves290_s13perf::run_ves290_checks),
+        ("VE-F4051", ves291_s14debug::run_ves291_checks),
+        ("VE-F4052", ves292_s14corpus::run_ves292_checks),
+        ("VE-F4053", ves293_s14examples::run_ves293_checks),
+        ("VE-F4054", ves294_s14docs::run_ves294_checks),
+        ("VE-F4055", ves295_s14fuzz::run_ves295_checks),
+        ("VE-F4056", ves296_s14qfont::run_ves296_checks),
+        ("VE-F4057", ves297_s14sa11y::run_ves297_checks),
+        ("VE-F4058", ves298_s14integ::run_ves298_checks),
+        ("VE-F4059", ves299_s14legacy::run_ves299_checks),
+        ("VE-F4060", ves300_s14close::run_ves300_checks),
+        ("VE-F4061", ves301_s15t04arch::run_ves301_checks),
+        ("VE-F4062", ves302_s15extract::run_ves302_checks),
+        ("VE-F4063", ves303_s15tm::run_ves303_checks),
+        ("VE-F4064", ves304_s15mt::run_ves304_checks),
+        ("VE-F4065", ves305_s15postedit::run_ves305_checks),
+        ("VE-F4066", ves306_s15lqa::run_ves306_checks),
+        ("VE-F4067", ves307_s15style::run_ves307_checks),
+        ("VE-F4068", ves308_s15ctx::run_ves308_checks),
+        ("VE-F4069", ves309_s15progress::run_ves309_checks),
+        ("VE-F4070", ves310_s15score::run_ves310_checks),
+        ("VE-F4071", ves311_s16a11y::run_ves311_checks),
+        ("VE-F4072", ves312_s16sec::run_ves312_checks),
+        ("VE-F4073", ves313_s16perf::run_ves313_checks),
+        ("VE-F4074", ves314_s16debug::run_ves314_checks),
+        ("VE-F4075", ves315_s16test::run_ves315_checks),
+        ("VE-F4076", ves316_s16examples::run_ves316_checks),
+        ("VE-F4077", ves317_s16docs::run_ves317_checks),
+        ("VE-F4078", ves318_s16fuzz::run_ves318_checks),
+        ("VE-F4079", ves319_s16integ::run_ves319_checks),
+        ("VE-F4080", ves320_s16close::run_ves320_checks),
+        ("VE-F4081", ves321_s17arch::run_ves321_checks),
+        ("VE-F4082", ves322_s17font::run_ves322_checks),
+        ("VE-F4083", ves323_s17image::run_ves323_checks),
+        ("VE-F4084", ves324_s17audio::run_ves324_checks),
+        ("VE-F4085", ves325_s17video::run_ves325_checks),
+        ("VE-F4086", ves326_s17pack::run_ves326_checks),
+        ("VE-F4087", ves327_s17dl::run_ves327_checks),
+        ("VE-F4088", ves328_s17hot::run_ves328_checks),
+        ("VE-F4089", ves329_s17verify::run_ves329_checks),
+        ("VE-F4090", ves330_s17qdom::run_ves330_checks),
+        ("VE-F4091", ves331_s18perf::run_ves331_checks),
+        ("VE-F4092", ves332_s18sec::run_ves332_checks),
+        ("VE-F4093", ves333_s18debug::run_ves333_checks),
+        ("VE-F4094", ves334_s18test::run_ves334_checks),
+        ("VE-F4095", ves335_s18example::run_ves335_checks),
+        ("VE-F4096", ves336_s18docs::run_ves336_checks),
+        ("VE-F4097", ves337_s18battery::run_ves337_checks),
+        ("VE-F4098", ves338_s18fuzz::run_ves338_checks),
+        ("VE-F4099", ves339_s18integ::run_ves339_checks),
+        ("VE-F4100", ves340_s18close::run_ves340_checks),
+        ("VE-F4101", ves341_s19arch::run_ves341_checks),
+        ("VE-F4102", ves342_s19law::run_ves342_checks),
+        ("VE-F4103", ves343_s19residency::run_ves343_checks),
+        ("VE-F4104", ves344_s19content::run_ves344_checks),
+        ("VE-F4105", ves345_s19pay::run_ves345_checks),
+        ("VE-F4106", ves346_s19fmt::run_ves346_checks),
+        ("VE-F4107", ves347_s19addr::run_ves347_checks),
+        ("VE-F4108", ves348_s19test::run_ves348_checks),
+        ("VE-F4109", ves349_s19cfg::run_ves349_checks),
+        ("VE-F4110", ves350_s19ldom::run_ves350_checks),
+        ("VE-F4111", ves351_s19debug::run_ves351_checks),
+        ("VE-F4112", ves352_s19docs::run_ves352_checks),
+        ("VE-F4113", ves353_s19market::run_ves353_checks),
+        ("VE-F4114", ves354_s19fuzz::run_ves354_checks),
+        ("VE-F4115", ves355_s19example::run_ves355_checks),
+        ("VE-F4116", ves356_s19perf::run_ves356_checks),
+        ("VE-F4117", ves357_s19rdom::run_ves357_checks),
+        ("VE-F4118", ves358_s19integ::run_ves358_checks),
+        ("VE-F4119", ves359_s19selfcheck::run_ves359_checks),
+        ("VE-F4120", ves360_s19close::run_ves360_checks),
+        ("VE-F4121", ves361_s20arch::run_ves361_checks),
+        ("VE-F4122", ves362_s20cost::run_ves362_checks),
+        ("VE-F4123", ves363_s20budget::run_ves363_checks),
+        ("VE-F4124", ves364_s20bench::run_ves364_checks),
+("VE-F4125", ves365_s20gate::run_ves365_checks),
+("VE-F4126", ves366_s20scale::run_ves366_checks),
+("VE-F4127", ves367_s20mem::run_ves367_checks),
+("VE-F4128", ves368_s20cgpu::run_ves368_checks),
+("VE-F4129", ves369_s20degrade::run_ves369_checks),
+("VE-F4130", ves370_s20lowend::run_ves370_checks),
+("VE-F4131", ves371_s20soak::run_ves371_checks),
+("VE-F4132", ves372_s20debug::run_ves372_checks),
+("VE-F4133", ves373_s20docs::run_ves373_checks),
+("VE-F4134", ves374_s20fuzz::run_ves374_checks),
+("VE-F4135", ves375_s20integ::run_ves375_checks),
+("VE-F4136", ves376_s20ledger::run_ves376_checks),
+("VE-F4137", ves377_s20assets::run_ves377_checks),
+("VE-F4138", ves378_s20selfcheck::run_ves378_checks),
+("VE-F4139", ves379_s20linkup::run_ves379_checks),
+("VE-F4140", ves380_s20close::run_ves380_checks),
+("VE-F4141", ves381_s21arch::run_ves381_checks),
+("VE-F4142", ves382_s21autotest::run_ves382_checks),
+("VE-F4143", ves383_s21linter::run_ves383_checks),
+("VE-F4144", ves384_s21sim::run_ves384_checks),
+("VE-F4145", ves385_s21corpus::run_ves385_checks),
+("VE-F4146", ves386_s21regress::run_ves386_checks),
+("VE-F4147", ves387_s21usertest::run_ves387_checks),
+("VE-F4148", ves388_s21board::run_ves388_checks),
+("VE-F4149", ves389_s21apiref::run_ves389_checks),
+("VE-F4150", ves390_s21examples::run_ves390_checks),
+("VE-F4151", ves391_s21docs::run_ves391_checks),
+("VE-F4152", ves392_s21ext::run_ves392_checks),
+("VE-F4153", ves393_s21thirdparty::run_ves393_checks),
+("VE-F4154", ves394_s21compat::run_ves394_checks),
+("VE-F4155", ves395_s21fuzzgate::run_ves395_checks),
+("VE-F4156", ves396_s21walkthrough::run_ves396_checks),
+("VE-F4157", ves397_s21assets::run_ves397_checks),
+("VE-F4158", ves398_s21evolve::run_ves398_checks),
+("VE-F4159", ves399_s21integ::run_ves399_checks),
+("VE-F4160", ves400_s21close::run_ves400_checks),
+("VE-F4161", ves401_s22arch::run_ves401_checks),
+("VE-F4162", ves402_s22t01t03::run_ves402_checks),
+("VE-F4163", ves403_s22t04t06::run_ves403_checks),
+("VE-F4164", ves404_s22t07t08::run_ves404_checks),
+("VE-F4165", ves405_s22pairaudit::run_ves405_checks),
+("VE-F4166", ves406_s22apiinv::run_ves406_checks),
+("VE-F4167", ves407_s22testasset::run_ves407_checks),
+("VE-F4168", ves408_s22perfasset::run_ves408_checks),
+("VE-F4169", ves409_s22secasset::run_ves409_checks),
+("VE-F4170", ves410_s22a11yasset::run_ves410_checks),
+("VE-F4171", ves411_s22docasset::run_ves411_checks),
+("VE-F4172", ves412_s22gapfill::run_ves412_checks),
+("VE-F4173", ves413_s22ninegrid::run_ves413_checks),
+("VE-F4174", ves414_s22prescore::run_ves414_checks),
+("VE-F4175", ves415_s22drywalk::run_ves415_checks),
+("VE-F4176", ves416_s22goreport::run_ves416_checks),
+("VE-F4177", ves417_s22dryrun::run_ves417_checks),
+("VE-F4178", ves418_s22reserve::run_ves418_checks),
+("VE-F4179", ves419_s22karchive::run_ves419_checks),
+("VE-F4180", ves420_s22close::run_ves420_checks),
+("VE-F4181", ves421_s23apiaccount::run_ves421_checks),
+("VE-F4182", ves422_s23lexterm::run_ves422_checks),
+("VE-F4183", ves423_s23joint::run_ves423_checks),
+("VE-F4184", ves424_s23perfbase::run_ves424_checks),
+("VE-F4185", ves425_s23secfinal::run_ves425_checks),
+("VE-F4186", ves426_s23a11yfinal::run_ves426_checks),
+("VE-F4187", ves427_s23obsfinal::run_ves427_checks),
+("VE-F4188", ves428_s23fuzzgate::run_ves428_checks),
+("VE-F4189", ves429_s23docschema::run_ves429_checks),
+("VE-F4190", ves430_s23freeze::run_ves430_checks),
+("VE-F4191", ves431_s23extfinal::run_ves431_checks),
+("VE-F4192", ves432_s23ledger::run_ves432_checks),
+("VE-F4193", ves433_s23score::run_ves433_checks),
+("VE-F4194", ves434_s23walk::run_ves434_checks),
+("VE-F4195", ves435_s23handover::run_ves435_checks),
+("VE-F4196", ves436_s23discipline::run_ves436_checks),
+("VE-F4197", ves437_s23knowledge::run_ves437_checks),
+("VE-F4198", ves438_s23reserve::run_ves438_checks),
+("VE-F4199", ves439_s23evidence::run_ves439_checks),
+("VE-F4200", ves440_s23declare::run_ves440_checks),
+("VE-F4207", ves441_s24metrics::run_ves441_checks),
+("VE-F4208", ves442_s24flow::run_ves442_checks),
+("VE-F4209", ves443_s24graph::run_ves443_checks),
+("VE-F4210", ves444_s24lexin::run_ves444_checks),
+("VE-F4211", ves445_s24token::run_ves445_checks),
+("VE-F4212", ves446_s24copy::run_ves446_checks),
+("VE-F4213", ves447_s24perf::run_ves447_checks),
+("VE-F4214", ves448_s24sec::run_ves448_checks),
+("VE-F4215", ves449_s24debug::run_ves449_checks),
+("VE-F4216", ves450_s24apifreeze::run_ves450_checks),
+("VE-F4217", ves451_s24docs::run_ves451_checks),
+("VE-F4218", ves452_s24joint::run_ves452_checks),
+("VE-F4219", ves453_s24selfcheck::run_ves453_checks),
+("VE-F4220", ves454_s24close::run_ves454_checks),
+("VE-F4221", ves455_s25engine::run_ves455_checks),
+("VE-F4222", ves456_s25dsl::run_ves456_checks),
+("VE-F4223", ves457_s25validator::run_ves457_checks),
+("VE-F4224", ves458_s25version::run_ves458_checks),
+("VE-F4225", ves459_s25conflict::run_ves459_checks),
+("VE-F4226", ves460_s25impact::run_ves460_checks),
+("VE-F4227", ves461_s25test::run_ves461_checks),
+("VE-F4228", ves462_s25gen::run_ves462_checks),
+("VE-F4229", ves463_s25market::run_ves463_checks),
+("VE-F4230", ves464_s25adr::run_ves464_checks),
+("VE-F4231", ves465_s25perf::run_ves465_checks),
+("VE-F4232", ves466_s25sec::run_ves466_checks),
+("VE-F4233", ves467_s25debug::run_ves467_checks),
+("VE-F4234", ves468_s25fuzz::run_ves468_checks),
+("VE-F4235", ves469_s25example::run_ves469_checks),
+("VE-F4236", ves470_s25docs::run_ves470_checks),
+("VE-F4237", ves471_s25sum::run_ves471_checks),
+("VE-F4238", ves472_s25joint::run_ves472_checks),
+("VE-F4239", ves473_s25selfcheck::run_ves473_checks),
+("VE-F4240", ves474_s25close::run_ves474_checks),
+("VE-F4241", ves475_s26arch::run_ves475_checks),
+("VE-F4242", ves476_s26static::run_ves476_checks),
+("VE-F4243", ves477_s26dynamic::run_ves477_checks),
+("VE-F4244", ves478_s26visual::run_ves478_checks),
+("VE-F4245", ves479_s26interact::run_ves479_checks),
+("VE-F4246", ves480_s26perf::run_ves480_checks),
+("VE-F4247", ves481_s27a11y::run_ves481_checks),
+("VE-F4248", ves482_s27report::run_ves482_checks),
+("VE-F4249", ves483_s27baseline::run_ves483_checks),
+("VE-F4250", ves484_s27ci::run_ves484_checks),
+("VE-F4251", ves485_s27perf::run_ves485_checks),
+("VE-F4252", ves486_s27sec::run_ves486_checks),
+("VE-F4253", ves487_s27debug::run_ves487_checks),
+("VE-F4254", ves488_s27fuzz::run_ves488_checks),
+("VE-F4255", ves489_s27example::run_ves489_checks),
+("VE-F4256", ves490_s27docs::run_ves490_checks),
+("VE-F4257", ves491_s27sum::run_ves491_checks),
+("VE-F4258", ves492_s27joint::run_ves492_checks),
+("VE-F4259", ves493_s27selfcheck::run_ves493_checks),
+("VE-F4260", ves494_s27close::run_ves494_checks),
+("VE-F4261", ves495_s28gov::run_ves495_checks),
+("VE-F4262", ves496_s28process::run_ves496_checks),
+("VE-F4263", ves497_s28violation::run_ves497_checks),
+("VE-F4264", ves498_s28evolve::run_ves498_checks),
+("VE-F4265", ves499_s28version::run_ves499_checks),
+("VE-F4266", ves500_s28arbitrate::run_ves500_checks),
+("VE-F4267", ves501_s28culture::run_ves501_checks),
+("VE-F4268", ves502_s28train::run_ves502_checks),
+("VE-F4269", ves503_s28trend::run_ves503_checks),
+("VE-F4270", ves504_s28alert::run_ves504_checks),
+("VE-F4271", ves505_s28accept::run_ves505_checks),
+("VE-F4272", ves506_s28auto::run_ves506_checks),
+("VE-F4273", ves507_s28gperf::run_ves507_checks),
+("VE-F4274", ves508_s28gtest::run_ves508_checks),
+("VE-F4275", ves509_s28gdoc::run_ves509_checks),
+("VE-F4276", ves510_s28gfuzz::run_ves510_checks),
+("VE-F4277", ves511_s28gex::run_ves511_checks),
+("VE-F4278", ves512_s28joint::run_ves512_checks),
+("VE-F4279", ves513_s28selfcheck::run_ves513_checks),
+("VE-F4280", ves514_s28close::run_ves514_checks),
+("VE-F4281", ves515_s29outline::run_ves515_checks),
+("VE-F4282", ves516_s29ci::run_ves516_checks),
+("VE-F4283", ves517_s29review::run_ves517_checks),
+("VE-F4284", ves518_s29ide::run_ves518_checks),
+("VE-F4285", ves519_s29design::run_ves519_checks),
+("VE-F4286", ves520_s29debug::run_ves520_checks),
+("VE-F4287", ves521_s29board::run_ves521_checks),
+("VE-F4288", ves522_s29gate::run_ves522_checks),
+("VE-F4289", ves523_s29docs::run_ves523_checks),
+("VE-F4290", ves524_s29sdk::run_ves524_checks),
+("VE-F4291", ves525_s29itest::run_ves525_checks),
+("VE-F4292", ves526_s29idoc::run_ves526_checks),
+("VE-F4293", ves527_s29iperf::run_ves527_checks),
+("VE-F4294", ves528_s29isec::run_ves528_checks),
+("VE-F4295", ves529_s29iex::run_ves529_checks),
+("VE-F4296", ves530_s29ifuzz::run_ves530_checks),
+("VE-F4297", ves531_s29map::run_ves531_checks),
+("VE-F4298", ves532_s29joint::run_ves532_checks),
+("VE-F4299", ves533_s29selfcheck::run_ves533_checks),
+("VE-F4300", ves534_s29close::run_ves534_checks),
+("VE-F4301", ves535_s30outline::run_ves535_checks),
+("VE-F4302", ves536_s30newfeat::run_ves536_checks),
+("VE-F4303", ves537_s30cross::run_ves537_checks),
+("VE-F4304", ves538_s30release::run_ves538_checks),
+("VE-F4305", ves539_s30theme::run_ves539_checks),
+("VE-F4306", ves540_s30plugin::run_ves540_checks),
+("VE-F1418", ves541_s31team::run_ves541_checks),
+("VE-F1419", ves542_s31ai::run_ves542_checks),
+("VE-F1420", ves543_s31test::run_ves543_checks),
+("VE-F1421", ves544_s31doc::run_ves544_checks),
+("VE-F1422", ves545_s31perf::run_ves545_checks),
+("VE-F1423", ves546_s31example::run_ves546_checks),
+("VE-F1424", ves547_s31fuzz::run_ves547_checks),
+("VE-F1425", ves548_s31roi::run_ves548_checks),
+("VE-F1426", ves549_s31joint::run_ves549_checks),
+("VE-F1427", ves550_s31dict::run_ves550_checks),
+("VE-F1428", ves551_s31feedback::run_ves551_checks),
+("VE-F1429", ves552_s31joint06::run_ves552_checks),
+("VE-F1430", ves553_s31selfcheck::run_ves553_checks),
+("VE-F1431", ves554_s31close::run_ves554_checks),
+("VE-F1432", ves555_s32arch::run_ves555_checks),
+("VE-F1433", ves556_s32cost::run_ves556_checks),
+("VE-F1434", ves557_s32budget::run_ves557_checks),
+("VE-F1435", ves558_s32bench::run_ves558_checks),
+("VE-F1436", ves559_s32gate::run_ves559_checks),
+("VE-F1437", ves560_s32scale::run_ves560_checks),
+        ("VE-F3863", vet4a_video::run_f3863_checks),
+        ("VE-F3864", vet4b_audioalt::run_f3864_checks),
+        ("VE-F3865", vet4c_livemedia::run_f3865_checks),
+        ("VE-F3866", vet4d_motionscale::run_f3866_checks),
+        ("VE-F3867", vet4e_vestibular::run_f3867_checks),
+        ("VE-F3868", vet4f_photoscan::run_f3868_checks),
+        ("VE-F3869", vet4g_mediactrl::run_f3869_checks),
+        ("VE-F3870", vet4h_mediaapi::run_f3870_checks),
+        ("VE-F3871", vet4i_motalt::run_f3871_checks),
+        ("VE-F3872", vet4j_mediatest::run_f3872_checks),
+        ("VE-F3873", vet4k_motaltdbg::run_f3873_checks),
+        ("VE-F3874", vet4l_mediadoc::run_f3874_checks),
+        ("VE-F3875", vet4m_motaltfuzz::run_f3875_checks),
+        ("VE-F3876", vet4n_ghmedia::run_f3876_checks),
+        ("VE-F3877", vet4o_motaltex::run_f3877_checks),
+        ("VE-F3878", vet4p_s04joint::run_f3878_checks),
+        ("VE-F3879", vet4q_s04preflight::run_f3879_checks),
+        ("VE-F3880", vet4r_s04close::run_f3880_checks),
         ("VE-F1614-a", vef17_checks::run_vef17_checks_a_standalone),
         ("VE-F1614-b", vef17_checks::run_vef17_checks_b_standalone),
         ("VE-F1614-c", vef17_checks::run_vef17_checks_c_standalone),
@@ -1792,6 +3580,135 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0231", veb231_freqpower::run_veb231_checks),
         ("VE-F0232", veb232_hotplug::run_veb232_checks),
         ("VE-F0233", veb233_dualscreen::run_veb233_checks),
+        // ── 批 A03（AI-WB-1022 · Intel 核显组收尾 + AMD 组开工 · 0xE4xx-0xEAxx 段）──
+        ("VE-F0234", veb234_intelarch::run_veb234_checks),
+        ("VE-F0235", veb235_intelbugtbl::run_veb235_checks),
+        ("VE-F0236", veb236_intelcert::run_veb236_checks),
+        ("VE-F0237", veb237_intelfloor::run_veb237_checks),
+        ("VE-F0238", veb238_inteldrvdiff::run_veb238_checks),
+        ("VE-F0239", veb239_inteldbg::run_veb239_checks),
+        ("VE-F0240", veb240_intelclose::run_veb240_checks),
+        ("VE-F0241", veb241_amdident::run_veb241_checks),
+        ("VE-F0242", veb242_amdvram::run_veb242_checks),
+        ("VE-F0243", veb243_amdsubmit::run_veb243_checks),
+        ("VE-F0244", veb244_amdsched::run_veb244_checks),
+        ("VE-F0245", veb245_amddcn::run_veb245_checks),
+        ("VE-F0246", veb246_amdvrr::run_veb246_checks),
+        ("VE-F0247", veb247_amdmedia::run_veb247_checks),
+        ("VE-F0248", veb248_amdsharch::run_veb248_checks),
+        ("VE-F0249", veb249_amddcc::run_veb249_checks),
+        ("VE-F0250", veb250_amdcache::run_veb250_checks),
+        ("VE-F0251", veb251_amderr::run_veb251_checks),
+        ("VE-F0252", veb252_amdmgpu::run_veb252_checks),
+        ("VE-F0253", veb253_amdtelemetry::run_veb253_checks),
+        ("VE-F0254", veb254_amdmst::run_veb254_checks),
+        ("VE-F0255", veb255_amdcert::run_veb255_checks),
+        ("VE-F0256", veb256_amdfloor::run_veb256_checks),
+        ("VE-F0257", veb257_amddiff::run_veb257_checks),
+        ("VE-F0258", veb258_amddebug::run_veb258_checks),
+        ("VE-F0259", veb259_amdevade::run_veb259_checks),
+        ("VE-F0260", veb260_amdident::run_veb260_checks),
+        ("VE-F0261", veb261_nvid::run_veb261_checks),
+        ("VE-F0262", veb262_nvpath::run_veb262_checks),
+        ("VE-F0263", veb263_nvvram::run_veb263_checks),
+        ("VE-F0264", veb264_nvsubmit::run_veb264_checks),
+        ("VE-F0265", veb265_nvdisplay::run_veb265_checks),
+        ("VE-F0266", veb266_nvvrr::run_veb266_checks),
+        ("VE-F0267", veb267_nvvdec::run_veb267_checks),
+        ("VE-F0268", veb268_nvshader::run_veb268_checks),
+        ("VE-F0269", veb269_nvlimit::run_veb269_checks),
+        ("VE-F0270", veb270_nvcert::run_veb270_checks),
+        ("VE-F0271", veb271_nvfloor::run_veb271_checks),
+        ("VE-F0272", veb272_nvdiff::run_veb272_checks),
+        ("VE-F0273", veb273_nvdbg::run_veb273_checks),
+        ("VE-F0274", veb274_nvwhitelist::run_veb274_checks),
+        ("VE-F0275", veb275_nvpwr::run_veb275_checks),
+        ("VE-F0276", veb276_nvmgpu::run_veb276_checks),
+        ("VE-F0277", veb277_nvpres::run_veb277_checks),
+        ("VE-F0278", veb278_nvfall::run_veb278_checks),
+        ("VE-F0279", veb279_nvconsist::run_veb279_checks),
+        ("VE-F0280", veb280_nvclose::run_veb280_checks),
+        ("VE-F0281", veb281_mliid::run_veb281_checks),
+        ("VE-F0282", veb282_mlidrm::run_veb282_checks),
+        ("VE-F0283", veb283_mlivm::run_veb283_checks),
+        ("VE-F0284", veb284_mlisub::run_veb284_checks),
+        ("VE-F0285", veb285_mlitile::run_veb285_checks),
+        ("VE-F0286", veb286_mlidc::run_veb286_checks),
+        ("VE-F0287", veb287_mlicap::run_veb287_checks),
+        ("VE-F0288", veb288_mlishb::run_veb288_checks),
+        ("VE-F0289", veb289_mliastc::run_veb289_checks),
+        ("VE-F0290", veb290_mlipwr::run_veb290_checks),
+        ("VE-F0291", veb291_mlifreq::run_veb291_checks),
+        ("VE-F0292", veb292_mlierr::run_veb292_checks),
+        ("VE-F0293", veb293_mlicert::run_veb293_checks),
+        ("VE-F0294", veb294_mliftl::run_veb294_checks),
+        ("VE-F0295", veb295_mlivdf::run_veb295_checks),
+        ("VE-F0296", veb296_mlidbg::run_veb296_checks),
+        ("VE-F0297", veb297_mliwkv::run_veb297_checks),
+        ("VE-F0298", veb298_mlisoc::run_veb298_checks),
+        ("VE-F0299", veb299_mlipb::run_veb299_checks),
+        ("VE-F0300", veb300_mliclose::run_veb300_checks),
+        ("VE-F0301", veb301_adrid::run_veb301_checks),
+        ("VE-F0302", veb302_adrstack::run_veb302_checks),
+        ("VE-F0303", veb303_adrtile::run_veb303_checks),
+        ("VE-F0304", veb304_adrsub::run_veb304_checks),
+        ("VE-F0305", veb305_adrcap::run_veb305_checks),
+        ("VE-F0306", veb306_pvrid::run_veb306_checks),
+        ("VE-F0307", veb307_pvrodrv::run_veb307_checks),
+        ("VE-F0308", veb308_pvrtile::run_veb308_checks),
+        ("VE-F0309", veb309_mobbw::run_veb309_checks),
+        ("VE-F0310", veb310_mobthermal::run_veb310_checks),
+        ("VE-F0311", veb311_andeco::run_veb311_checks),
+        ("VE-F0312", veb312_mobdpu::run_veb312_checks),
+        ("VE-F0313", veb313_adrcert::run_veb313_checks),
+        ("VE-F0314", veb314_pvrcert::run_veb314_checks),
+        ("VE-F0315", veb315_mobfloor::run_veb315_checks),
+        ("VE-F0316", veb316_mobvdf::run_veb316_checks),
+        ("VE-F0317", veb317_mobdbg::run_veb317_checks),
+        ("VE-F0318", veb318_mobwkv::run_veb318_checks),
+        ("VE-F0319", veb319_mobbase::run_veb319_checks),
+        ("VE-F0320", veb320_mobclose::run_veb320_checks),
+        ("VE-F0321", veb321_rveco::run_veb321_checks),
+        ("VE-F0322", veb322_idframe::run_veb322_checks),
+        ("VE-F0323", veb323_gendrm::run_veb323_checks),
+        ("VE-F0324", veb324_rvsoft::run_veb324_checks),
+        ("VE-F0325", veb325_rvisa::run_veb325_checks),
+        ("VE-F0326", veb326_rvv::run_veb326_checks),
+        ("VE-F0327", veb327_rvcert::run_veb327_checks),
+        ("VE-F0328", veb328_evcirc::run_veb328_checks),
+        ("VE-F0329", veb329_negpre::run_veb329_checks),
+        ("VE-F0330", veb330_exdecl::run_veb330_checks),
+        ("VE-F0331", veb331_boardrec::run_veb331_checks),
+        ("VE-F0332", veb332_tskel::run_veb332_checks),
+        ("VE-F0333", veb333_docbound::run_veb333_checks),
+        ("VE-F0334", veb334_comint::run_veb334_checks),
+        ("VE-F0335", veb335_timeline::run_veb335_checks),
+        ("VE-F0336", veb336_riskreg::run_veb336_checks),
+        ("VE-F0337", veb337_upstream::run_veb337_checks),
+        ("VE-F0338", veb338_qemupath::run_veb338_checks),
+        ("VE-F0339", veb339_groupcons::run_veb339_checks),
+        ("VE-F0340", veb340_gclose::run_veb340_checks),
+        ("VE-F0341", veb341_sfreg::run_veb341_checks),
+        ("VE-F0342", veb342_cov2d::run_veb342_checks),
+        ("VE-F0343", veb343_tilepar::run_veb343_checks),
+        ("VE-F0344", veb344_simmx::run_veb344_checks),
+        ("VE-F0345", veb345_bound3d::run_veb345_checks),
+        ("VE-F0346", veb346_soa::run_veb346_checks),
+        ("VE-F0347", veb347_sfdegrade::run_veb347_checks),
+        ("VE-F0348", veb348_mtscale::run_veb348_checks),
+        ("VE-F0349", veb349_res4k::run_veb349_checks),
+        ("VE-F0350", veb350_sfpwr::run_veb350_checks),
+        ("VE-F0351", veb351_abtest::run_veb351_checks),
+        ("VE-F0352", veb352_cloudvm::run_veb352_checks),
+        ("VE-F0353", veb353_mixrend::run_veb353_checks),
+        ("VE-F0354", veb354_diagpanel::run_veb354_checks),
+        ("VE-F0355", veb355_allgreen::run_veb355_checks),
+        ("VE-F0356", veb356_hwfloor::run_veb356_checks),
+        ("VE-F0357", veb357_evolve::run_veb357_checks),
+        ("VE-F0358", veb358_workaround::run_veb358_checks),
+        ("VE-F0359", veb359_sfdoc::run_veb359_checks),
+        ("VE-F0360", veb360_b8close::run_veb360_checks),
+        ("VE-F0361", veb361_drvlife::run_veb361_checks),
         ("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks),
         ("CGPU-F1122", vch02_ledger_checks::run_vch02_checks),
     // W-VB1 · VE-F5803 感知系统（三类通道闭集/感知模型非真值结构级红线/
@@ -1832,6 +3749,148 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0087", vea87_streambind::run_vea87_checks),
         ("VE-F0088", vea88_reclaim::run_vea88_checks),
         ("VE-F0089", vea89_pressure::run_vea89_checks),
+        // ── 批 A02c（F0057~F0061 呈现协商段 + F0085/F0090~F0092 策略调度段缺口补写，AI-WB-1022）──
+        ("VE-F0057", vea57_pasneg::run_vea57_checks),
+        ("VE-F0058", vea58_hdrmeta::run_vea58_checks),
+        ("VE-F0059", vea59_csout::run_vea59_checks),
+        ("VE-F0060", vea60_surfshare::run_vea60_checks),
+        ("VE-F0061", vea61_extbuf::run_vea61_checks),
+        ("VE-F0085", vea85_appforce::run_vea85_checks),
+        ("VE-F0090", vea90_prioage::run_vea90_checks),
+        ("VE-F0091", vea91_fairaudit::run_vea91_checks),
+        ("VE-F0092", vea92_svcquota::run_vea92_checks),
+
+// ---- 死判据接线（2026-10-22：59 条定义后零调用，判据从未参与闭环）----
+        ("UNX-F0061", unx06_arbiter::run_unx06_checks),
+        ("VE-F0147", vea147_ghost::run_vea147_checks),
+        ("VE-F0148", vea148_cursor::run_vea148_checks),
+        ("VE-F0149", vea149_ime::run_vea149_checks),
+        ("VE-F0150", vea150_bootanim::run_vea150_checks),
+        ("VE-F0151", vea151_health::run_vea151_checks),
+        ("VE-F0152", vea152_hotrestart::run_vea152_checks),
+        ("VE-F0153", vea153_quota::run_vea153_checks),
+        ("VE-F0154", vea154_erragg::run_vea154_checks),
+        ("VE-F0155", vea155_freeze::run_vea155_checks),
+        ("VE-F0156", vea156_pipelineviz::run_vea156_checks),
+        ("VE-F0157", vea157_restimeline::run_vea157_checks),
+        ("VE-F0158", vea158_pixelhist::run_vea158_checks),
+        ("VE-F0159", vea159_framediff::run_vea159_checks),
+        ("VE-F0160", vea160_scenegraph::run_vea160_checks),
+        ("VE-F0161", vea161_shaderdbg::run_vea161_checks),
+        ("VE-F0162", vea162_pickdbg::run_vea162_checks),
+        ("VE-F0163", vea163_overdraw::run_vea163_checks),
+        ("VE-F0164", vea164_bandwidth::run_vea164_checks),
+        ("VE-F0165", vea165_barriertl::run_vea165_checks),
+        ("VE-F0166", vea166_vrammap::run_vea166_checks),
+        ("VE-F0167", vea167_bottleneck::run_vea167_checks),
+        ("VE-F0168", vea168_velab::run_vea168_checks),
+        ("VE-F0169", vea169_abtest::run_vea169_checks),
+        ("VE-F0170", vea170_regcmp::run_vea170_checks),
+        ("VE-F0171", vea171_testfw::run_vea171_checks),
+        ("VE-F0172", vea172_goldstd::run_vea172_checks),
+        ("VE-F0173", vea173_regress::run_vea173_checks),
+        ("VE-F6001", vead01_physarch::run_vead01_checks),
+        ("VE-F6002", vead02_worldsched::run_vead02_checks),
+        ("VE-F6202", veae02_inputabs::run_veae02_checks),
+        ("VE-F6204", veae04_devfsm::run_veae04_checks),
+        ("VE-F6205", veae05_imecoex::run_veae05_checks),
+        ("VE-F5801", veai01_checks::run_veai01_checks),
+        ("VE-F0214", veb14_checks::run_veb14_checks),
+        ("VE-F0218", veb18_checks::run_veb18_checks),
+        ("VE-F0220", veb20_checks::run_veb20_checks),
+        ("VE-F0228", veb228_fence::run_veb228_checks),
+        ("VE-F0229", veb229_errparse::run_veb229_checks),
+        ("VE-F0230", veb230_checks::run_veb230_checks),
+        ("VE-F0811", vee11_checks::run_vee11_checks),
+        ("VE-F0811", vee11_checks::run_vee11_meta_checks),
+        ("VE-F0812", vee12_checks::run_vee12_checks),
+        ("VE-F0812", vee12_checks::run_vee12_meta_checks),
+        ("VE-F0813", vee13_checks::run_vee13_meta_checks),
+        ("VE-F1006", vef06_checks::run_vef06_checks),
+        ("VE-F1007", vef07_checks::run_vef07_checks),
+        ("VE-F1614", vef17_checks::run_vef17_checks),
+        ("VE-F1615", vef18_checks::run_vef18_checks),
+        ("VE-F1616", vef19_checks::run_vef19_checks),
+        ("VE-F1620", vef23_closeout::run_vef23_checks),
+        ("VE-F1621", vef24_pipeline::run_vef24_checks),
+        ("VE-F1204", veg04_checks::run_veg04_checks),
+        ("VE-F1413", veh14_resample_service::run_veh14_checks),
+        ("VE-F1812", vej12_exposure::checks::run_vej12_checks),
+        ("VE-F1813", vej13_lightfuzz::checks::run_vej13_checks),
+        ("VE-F1814", vej14_lightbench::checks::run_vej14_checks),
+        ("VE-F1815", vej15_lightapi::checks::run_vej15_checks),
+        ("VE-F1816", vej16_lightdoc::checks::run_vej16_checks),
+        ("VE-F1817", vej17_lightconsistency::checks::run_vej17_checks),
+        ("VE-F2002", vek02_dagexec::checks::run_vek02_checks),
+        ("VE-F2003", vek03_rtpool::checks::run_vek03_checks),
+        ("VE-F2016", vek16_ppfuzz::checks::run_vek16_checks),
+        ("VE-F2017", vek17_ppbench::checks::run_vek17_checks),
+        ("VE-F2018", vek18_ppapi::checks::run_vek18_checks),
+        ("VE-F2408", vem08_checks::run_vem08_checks),
+        ("VE-F2410", vem10_checks::run_vem10_checks),
+        ("VE-F2603-A", ven03_checks::run_ven03_checks_a),
+        ("VE-F2603-B", ven03_checks::run_ven03_checks_b),
+        ("VE-F2605", ven05_checks::run_ven05_checks),
+        ("VE-F2606", ven06_checks::run_ven06_checks),
+        ("VE-F2609", ven09_fuzz::run_ven09_checks),
+        ("VE-F4207", veu07_metrics::run_veu07_checks),
+        ("VE-F4013", veu13_i18n_font::run_veu13_checks),
+        ("VE-F4014", veu14_translation::run_veu14_checks),
+        ("VE-F4402", vev02_monitor::run_vev02_checks),
+        ("VE-F4801", vey01_xarch::run_vey01_checks),
+        ("VE-F4802", vey02_cli::run_vey02_checks),
+        ("VE-F4803", vey48_scaffold::run_vey48_checks),
+        ("VE-F6005", vez17_bridge::run_vez17_checks),
+        ("VE-F6006", vez18_dbg::run_vez18_checks),
+        ("VE-F6007", vez19_determ::run_vez19_checks),
+        ("VE-F5411", vez20_netdoc::run_vez20_checks),
+        ("VE-F5001", vez50_checks::run_vez50_checks),
+        ("VE-F5608", veab08_listeners::run_veab08_checks_cs as fn() -> CheckSet),
+        ("VE-F6010", vead10_physec::run_vead10_checks_cs as fn() -> CheckSet),
+        ("VE-F6203", veae03_evtbus::run_veae03_checks_cs as fn() -> CheckSet),
+        ("VE-F3861", ves161_s04arch::run_ves161_checks),
+        ("VE-F3862", ves162_motionalt::run_ves162_checks),
+        ("VE-F0362", veb362_verneg::run_veb362_checks),
+        ("VE-F0363", veb363_hotswap::run_veb363_checks),
+        ("VE-F0364", veb364_depcheck::run_veb364_checks),
+        ("VE-F0365", veb365_sigver::run_veb365_checks),
+        ("VE-F0366", veb366_rollback::run_veb366_checks),
+        ("VE-F0367", veb367_devbus::run_veb367_checks),
+        ("VE-F0368", veb368_removeclean::run_veb368_checks),
+        ("VE-F0369", veb369_sandbox::run_veb369_checks),
+        ("VE-F0370", veb370_healthmon::run_veb370_checks),
+        ("VE-F0371", veb371_perfprof::run_veb371_checks),
+        ("VE-F0372", veb372_feedback::run_veb372_checks),
+        ("VE-F0373", veb373_coarbit::run_veb373_checks),
+        ("VE-F0374", veb374_cfgpersist::run_veb374_checks),
+        ("VE-F0375", veb375_upqueue::run_veb375_checks),
+        ("VE-F0376", veb376_capdown::run_veb376_checks),
+        ("VE-F0377", veb377_breaker::run_veb377_checks),
+        ("VE-F0378", veb378_drivtest::run_veb378_checks),
+        ("VE-F0379", veb379_docindex::run_veb379_checks),
+        ("VE-F0380", veb380_hotplug::run_veb380_checks),
+        ("VE-F0381", veb381_bagg::run_veb381_checks),
+        ("VE-F0382", veb382_iffreeze::run_veb382_checks),
+        ("VE-F0383", veb383_perfbase::run_veb383_checks),
+        ("VE-F0384", veb384_membook::run_veb384_checks),
+        ("VE-F0385", veb385_errtab::run_veb385_checks),
+        ("VE-F0386", veb386_docgen::run_veb386_checks),
+        ("VE-F0387", veb387_dupaudit::run_veb387_checks),
+        ("VE-F0388", veb388_acceptmx::run_veb388_checks),
+        ("VE-F0389", veb389_depgraph::run_veb389_checks),
+        ("VE-F0390", veb390_deftab::run_veb390_checks),
+        ("VE-F0391", veb391_stresskit::run_veb391_checks),
+        ("VE-F0392", veb392_secscan::run_veb392_checks),
+        ("VE-F0393", veb393_compat::run_veb393_checks),
+        ("VE-F0394", veb394_hwmatrix::run_veb394_checks),
+        ("VE-F0395", veb395_drivsdk::run_veb395_checks),
+        ("VE-F0396", veb396_donedecl::run_veb396_checks),
+        ("VE-F0397", veb397_handover::run_veb397_checks),
+        ("VE-F0398", veb398_knowbase::run_veb398_checks),
+        ("VE-F0399", veb399_evolve::run_veb399_checks),
+        ("VE-F0400", veb400_final::run_veb400_checks),
+        ("VE-F0425", veb425_fndecl::run_veb425_checks),
+        ("VE-F0426", veb426_vardecl::run_veb426_checks),
     ];
     // 修正记录（真缺陷·容量与栈双爆）：本表原有 492 行，而 `CheckSet` 的
     // 容量是 `MAX_CHECKS = 112`。两个后果都是实测级的：
@@ -1846,15 +3905,45 @@ pub fn run_svstar2_checks() -> CheckSet {
     // 又保住「红在哪一组」的可定位性（明细里给出首个红项标签与红项数）。
     // 分块大小 32：505 行 ÷ 32 = 16 组（末组 25 行），恰好铺满 16 个组标签
     // （GROUP 取 48 只能覆盖 8×48=384 行，会漏跑 121 行——分块必须能覆盖全表）。
+    // 分块大小 32：978 行 ÷ 32 = 31 组（末组 18 行）。
+    //
+    // **修正记录（静默漏跑 466 条判据，实测级缺陷）**：原实现把组标签写死成
+    // `[&'static str; 16]`（G01..G16），循环条件是 `gi < GROUP_TAGS.len()`，
+    // 于是覆盖面被硬钉在 16×32 = 512 行。而 `blocks` 表已长到 978 行 ⇒
+    // **第 513~978 行（466 个子集）从未被执行**，且没有任何报错、没有计数、
+    // 报表仍是 `PASS`——这是「判据体系看起来全绿、实际一半没跑」的最坏形态。
+    //
+    // 修法：组数由表长**推导**（`(len+GROUP-1)/GROUP`），组标签按块下标
+    // 在 32 个预置静态串里取用。为什么不用 `format!`：`set.add` 的 name 契约
+    // 是 `&'static str`，动态拼接只能走 `add_dyn`（48 字节明细槽），会把
+    // 「红在哪一组」压成截断文本。用静态串表既保住 `add` 的零分配路径，
+    // 又保住标签的可读性。上限 32 组 = 1024 行，当前 978 行在界内；若表继续
+    // 增长到 1024 行以上，`run_svstar2_checks` 会在下方显式记账一条红项
+    // （见「容量自检」段），而不是继续静默漏跑。
     const GROUP: usize = 32;
-    const GROUP_TAGS: [&'static str; 16] = [
-        "VE-G01", "VE-G02", "VE-G03", "VE-G04",
-        "VE-G05", "VE-G06", "VE-G07", "VE-G08",
-        "VE-G09", "VE-G10", "VE-G11", "VE-G12",
-        "VE-G13", "VE-G14", "VE-G15", "VE-G16",
+    const GROUP_TAGS: [&'static str; 32] = [
+        "VE-G01", "VE-G02", "VE-G03", "VE-G04", "VE-G05", "VE-G06", "VE-G07", "VE-G08",
+        "VE-G09", "VE-G10", "VE-G11", "VE-G12", "VE-G13", "VE-G14", "VE-G15", "VE-G16",
+        "VE-G17", "VE-G18", "VE-G19", "VE-G20", "VE-G21", "VE-G22", "VE-G23", "VE-G24",
+        "VE-G25", "VE-G26", "VE-G27", "VE-G28", "VE-G29", "VE-G30", "VE-G31", "VE-G32",
     ];
+    let group_count = (blocks.len() + GROUP - 1) / GROUP;
+    // 容量自检：组数超出标签表容量必须**显式报红**，绝不静默截断。
+    // （`CheckSet` 本身容量 112，32 组 + 若干单条判据仍在界内。）
+    if group_count > GROUP_TAGS.len() {
+        set.add(
+            "VE-GROUP-OVERFLOW",
+            false,
+            "svstar2 blocks 行数超出组标签容量，判据表被截断执行",
+        );
+    }
+    let groups_run = if group_count > GROUP_TAGS.len() {
+        GROUP_TAGS.len()
+    } else {
+        group_count
+    };
     let mut gi = 0usize;
-    while gi < GROUP_TAGS.len() && gi * GROUP < blocks.len() {
+    while gi < groups_run && gi * GROUP < blocks.len() {
         let lo = gi * GROUP;
         let hi = if lo + GROUP < blocks.len() { lo + GROUP } else { blocks.len() };
         let mut ok = true;
@@ -1968,6 +4057,16 @@ pub mod vey14_testasset;
 pub mod vey16_selfcheck;
 pub mod vey18_topaudit;
 pub mod vez22_particlearch;
+pub mod vez22b_emitter;
+pub mod vez23b_sim;
+pub mod vez24_render;
+pub mod vez42_bloom;
+pub mod vez43_dof;
+pub mod vez44_grade;
+pub mod vez45_mblur;
+pub mod vez46_ssr;
+pub mod vez49_chain;
+pub mod vez48_params;
 pub mod vez24_pparch;
 pub mod vez26_envarch;
 pub mod vez28_transarch;
@@ -1975,3 +4074,131 @@ pub mod vez30_perfarch;
 // ── 批19（0x9480 散段，1 单）────────────────────────────────────────
 // ve5610_audiotel ↔ VE-F5610 音频遥测（三类聚合+内容不记+会话抽样+HRTF 分级；0x9480 段）
 pub mod ve5610_audiotel;
+
+// ---- 死判据补登记（2026-10-22 接线轮：模块早已实现但从未入链）----
+// //! UNX-F0061 · 三源冲突仲裁策略器（CoRun · UNX-A1-B04 内存图三源合并）
+pub mod unx06_arbiter;
+// //! VE-F6001 · 物理域总架构（VE-AD 域 · AD01 批次开工 · 目标 340 行）
+pub mod vead01_physarch;
+// //! VE-F6002 · 物理世界与调度（VE-AD 域 · AD01 批次 · 目标 300 行）
+pub mod vead02_worldsched;
+// //! VE-F6202 · 输入抽象层（veae02_inputabs）
+pub mod veae02_inputabs;
+// //! VE-F6204 · 输入状态机（veae04_devfsm）
+pub mod veae04_devfsm;
+// //! VE-F5801 自检 · AI 域总架构（判据逐条映射：四层架构 / AI 三律 / 可预期
+pub mod veai01_checks;
+// //! VE-F0228 · Intel 硬件围栏映射（VE-B 域 · Intel 核显组 · 目标 340 行）
+pub mod veb228_fence;
+// //! VE-F0229 · Intel 错误状态解析（VE-B 域 · Intel 核显组 · 目标 400 行）
+pub mod veb229_errparse;
+// //! VE-F0230 判据层：Intel 固件接口只读状态（锚点判据逐条映射）
+pub mod veb230_checks;
+// //! # VE-F0813 · 文字渲染示例域自检
+pub mod vee13_checks;
+// //! VE-F1006 · PNG 动画 APNG 域自检（判据逐条映射，80 项分 a/b/c 三族）
+pub mod vef06_checks;
+// //! VE-F1620 · I01 组收口与 I02 移交（VE-I 域 · I01 批次收口 · 目标 320 行）
+pub mod vef23_closeout;
+// //! VE-F1621 · 顶点流水线架构（VE-I 域 · I02 批次开工 · 目标 420 行）
+pub mod vef24_pipeline;
+// //! VE-F1413 · 引擎级重采样服务（VE-H 域 · 播放链同核服务化 · 目标 380 行）
+pub mod veh14_resample_service;
+// //! VE-F1812 · 曝光与亮度语义（VE-J 域 · 光照与氛围组）
+pub mod vej12_exposure;
+// //! VE-F1813 · 光照 fuzz（VE-J 域 · 光照与氛围组）
+pub mod vej13_lightfuzz;
+// //! VE-F1814 · 光照基准（VE-J 域 · 光照与氛围组）
+pub mod vej14_lightbench;
+// //! VE-F1815 · 光照 API 冻结 v1（VE-J 域 · 光照与氛围组）
+pub mod vej15_lightapi;
+// //! VE-F1816 · 光照文档（VE-J 域 · 光照与氛围组）
+pub mod vej16_lightdoc;
+// //! VE-F1817 · 光照一致性（VE-J 域 · 光照与氛围组）
+pub mod vej17_lightconsistency;
+// //! VE-F2002 · 后处理 DAG 执行器（Rust 迁移版 · VE-K 域）
+pub mod vek02_dagexec;
+// //! VE-F2003 · 中间渲染目标池（Rust 迁移版 · VE-K 域）
+pub mod vek03_rtpool;
+// //! VE-F2016 · 后处理 fuzz（VE-K 域 · 后处理架构与 Bloom 组）
+pub mod vek16_ppfuzz;
+// //! VE-F2017 · 后处理基准（VE-K 域 · 后处理架构与 Bloom 组）
+pub mod vek17_ppbench;
+// //! VE-F2018 · 后处理 API 冻结 v1（VE-K 域 · 后处理架构与 Bloom 组）
+pub mod vek18_ppapi;
+// //! VE-F2609 · 控件树 fuzz（VE-N 域 · UI 内核架构与控件树组 · 目标 300 行）
+pub mod ven09_fuzz;
+// //! VE-F4207 · 一致性度量体系（VE-U 域 · 一致性与验收批 · 目标 360 行）
+pub mod veu07_metrics;
+// //! VE-F4013 · 国际化与 O06 字体深化（VE-U 域 · 任务段 · 目标 340 行）
+pub mod veu13_i18n_font;
+// //! VE-F4014 · 国际化与翻译流程（VE-U 域 · 任务段 · 目标 320 行）
+pub mod veu14_translation;
+// //! VE-F4801 · X 域开工与工具链总架构（VE-Y 域 · 工具链与调试域 · 目标 380 行）
+pub mod vey01_xarch;
+// //! VE-F4802 · 统一 CLI 框架（VE-Y 域 · 工具链与调试域 · 目标 340 行）
+pub mod vey02_cli;
+// //! VE-F4803 · 脚手架生成器（VE-Y 域 · 工具链段 · 目标 320 行）
+pub mod vey48_scaffold;
+// //! VE-F6005 · 物理与渲染对接（vez17_bridge）
+pub mod vez17_bridge;
+// //! VE-F6006 · 物理调试支持（vez18_dbg）
+pub mod vez18_dbg;
+// //! VE-F6007 · 物理确定性（vez19_determ）
+pub mod vez19_determ;
+// //! VE-F5411 · 网络文档（vez20_netdoc）
+pub mod vez20_netdoc;
+
+// ---- 实现模块补登记（2026-10-22：判据接线时发现实现兄弟模块同样未入链）----
+pub mod veai01_aiarch;
+pub mod veb230_firmstate;
+pub mod vee13_examples;
+pub mod vef06_apng;
+
+// ---- 死判据补登记（2026-10-22 接线 v2：模块已实现但从未入链）----
+// //! VE-F3861 S04 开工与动效无障碍总纲（SEG 0xCCxx）。
+pub mod ves161_s04arch;
+// //! VE-F3862 动效渲染替代引擎（SEG 0xCDxx）。
+pub mod ves162_motionalt;
+// ---- VE-B 域 041 批（AI-WBB-1022 · veb362+）----
+pub mod veb362_verneg;
+pub mod veb363_hotswap;
+pub mod veb364_depcheck;
+pub mod veb365_sigver;
+pub mod veb366_rollback;
+pub mod veb367_devbus; // 设备事件总线
+pub mod veb368_removeclean; // 移除清理
+pub mod veb369_sandbox; // 隔离沙箱
+pub mod veb370_healthmon; // 健康监测
+pub mod veb371_perfprof; // 性能档案
+pub mod veb372_feedback; // 反馈收集
+pub mod veb373_coarbit; // 共存仲裁
+pub mod veb374_cfgpersist; // 配置持久化
+pub mod veb375_upqueue; // 升级排队
+pub mod veb376_capdown; // 能力降级协商
+pub mod veb377_breaker; // 崩溃熔断器
+pub mod veb378_drivtest; // 驱动测试沙箱
+pub mod veb379_docindex; // 文档自动索引
+pub mod veb380_hotplug; // 热插拔组收口
+pub mod veb381_bagg; // B域聚合自检
+pub mod veb382_iffreeze; // 接口冻结清单
+pub mod veb383_perfbase; // 性能基线总账
+pub mod veb384_membook; // 内存总账
+pub mod veb385_errtab; // 错误码总表
+pub mod veb386_docgen; // 文档自动生成
+pub mod veb387_dupaudit; // 查重终审
+pub mod veb388_acceptmx; // 验收矩阵
+pub mod veb389_depgraph; // 依赖图
+pub mod veb390_deftab; // 缺陷总账
+pub mod veb391_stresskit; // 压测套件
+pub mod veb392_secscan; // 安全审查
+pub mod veb393_compat; // 兼容承诺
+pub mod veb394_hwmatrix; // 硬件覆盖矩阵总结
+pub mod veb395_drivsdk; // 驱动接入SDK
+pub mod veb396_donedecl; // 完成宣告
+pub mod veb397_handover; // C域移交包
+pub mod veb398_knowbase; // 知识库
+pub mod veb399_evolve; // 十年演进预留
+pub mod veb400_final; // B域终验
+pub mod veb425_fndecl; // 函数声明与参数解析
+pub mod veb426_vardecl; // 变量声明与限定符
