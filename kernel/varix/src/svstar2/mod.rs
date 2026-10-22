@@ -1690,3 +1690,71 @@ mod tests {
         assert_eq!(r.len(), 1, "VE-F0001 由内核 Rust 侧实现并可执行");
     }
 }
+//! | [`vec25_funcdecl`] | F0425 函数声明与参数解析（方向三值恢复级/重载纯登记/体原分离对账簿/决议纯度实测） | VE 册 #VE-F0425 |
+//! | [`vec26_vardecl`] | F0426 变量声明与限定符（四类收集槽重复不覆盖/只收不裁纯度/组合键位集溢出分离/数组维度恢复） | VE 册 #VE-F0426 |
+//! | [`vec27_stmt`] | F0427 语句解析（六形态闭集/作用域配对守恒/悬挂else就近配对条款引用/深度常量关系） | VE 册 #VE-F0427 |
+//! | [`vec28_expr`] | F0428 表达式解析（优先级爬升/表驱动自洽闸/语境歧义挂起保守路径/深度超限指源头） | VE 册 #VE-F0428 |
+//! | [`vec29_typesyn`] | F0429 类型语法（七形态闭集/语素只收不裁越界同构/别名冲突并存/维度恢复声明级） | VE 册 #VE-F0429 |
+//! | [`vec30_member`] | F0430 成员访问与下标（线性访问链/swizzle只收不裁/非法衔接双侧定位/方法条款引用） | VE 册 #VE-F0430 |
+//! | [`vec31_ctor`] | F0431 构造与转换（同形统一收/参数收全不裁数量/前缀括号歧义登记/深嵌套不崩） | VE 册 #VE-F0431 |
+//! | [`vec32_builtin`] | F0432 内建调用语法（统一路径换名同构/预检不裁决未知名不拒/遮蔽留证/签名留语义期） | VE 册 #VE-F0432 |
+//! | [`vec33_layout`] | F0433 属性布局限定符（键值语法面/八键合法集/重复两条都收/值域留语义期） | VE 册 #VE-F0433 |
+//! | [`vec34_recovery`] | F0434 语法错误恢复（三层同步集声明不越体界/启发建议可复算/级联爆发升级/不完整段标记双向核对） | VE 册 #VE-F0434 |
+//! | [`vec35_astverify`] | F0435 AST完整性验证器（三不变量逐节点/门禁两值闭集/首违定位单点/空树显性败不静默） | VE 册 #VE-F0435 |
+//! | [`vec36_astdump`] | F0436 AST转储与可视化（S式与缩进树双格式黄金对/懒展开O1创建单层下钻/反向定位灰态/确定性对拍） | VE 册 #VE-F0436 |
+//! | [`vec37_perfgen`] | F0437 语法性能工程（线性斜率判据倍增实测/零拷贝记号无文本字段/增量可行性登记/基准退化阻断） | VE 册 #VE-F0437 |
+//! | [`vec38_glslmap`] | F0438 GLSL语法兼容映射（差异表版本列裁定/三要素拒绝清单/黄金对拍四对/无裁定不猜） | VE 册 #VE-F0438 |
+//! | [`vec39_hlslwgsl`] | F0439 HLSL/WGSL映射（双方言独立表/同构复用双实例对拍/拒绝桶方言隔离/方言参数强制） | VE 册 #VE-F0439 |
+//! | [`vec40_c03close`] | F0440 语法组收口（十九件证据缺件报件名/双签异人/经验包机检谓词/缺陷三档清零） | VE 册 #VE-F0440 |
+//! | [`vec41_semaarch`] | F0441 语义分析架构（四遍序跳遍拦截/遍契约产物链/旁路单写者双写拦截/条款引用发布闸） | VE 册 #VE-F0441 |
+//! | [`vec42_symtab`] | F0442 符号表与作用域链（作用域树链式/逐级查找内层停/遮蔽事件警告可配同域拒/编辑距离建议） | VE 册 #VE-F0442 |
+//! | [`vec43_typesys`] | F0443 类型系统（九形态摘要互异/结构等价字段名不参与/等级表None不兼容/哨兵不雪崩） | VE 册 #VE-F0443 |
+//! | [`vec44_infer`] | F0444 表达式类型推导（单遍后序访问计数/短路哨兵诊断单点/旁路节点号键全覆盖/条款诊断两侧类型） | VE 册 #VE-F0444 |
+//! | [`vec45_swizzle`] | F0445 Swizzle语义验证（同族字符集/写重复检测读合法同本异判/条款加可复算示例/展开映射索引） | VE 册 #VE-F0445 |
+//! | [`vec46_overload`] | F0446 函数重载决议（三段过滤出局留痕/歧义全明细不偷选/用户遮内建统一决议/旁路重放确定） | VE 册 #VE-F0446 |
+pub mod vec25_funcdecl;
+pub mod vec26_vardecl;
+pub mod vec27_stmt;
+pub mod vec28_expr;
+pub mod vec29_typesyn;
+pub mod vec30_member;
+pub mod vec31_ctor;
+pub mod vec32_builtin;
+pub mod vec33_layout;
+pub mod vec34_recovery;
+pub mod vec35_astverify;
+pub mod vec36_astdump;
+pub mod vec37_perfgen;
+pub mod vec38_glslmap;
+pub mod vec39_hlslwgsl;
+pub mod vec40_c03close;
+pub mod vec41_semaarch;
+pub mod vec42_symtab;
+pub mod vec43_typesys;
+pub mod vec44_infer;
+pub mod vec45_swizzle;
+pub mod vec46_overload;
+("VE-F0425", vec25_funcdecl::run_vec25_checks),
+("VE-F0426", vec26_vardecl::run_vec26_checks),
+("VE-F0427", vec27_stmt::run_vec27_checks),
+("VE-F0428", vec28_expr::run_vec28_checks),
+("VE-F0429", vec29_typesyn::run_vec29_checks),
+("VE-F0430", vec30_member::run_vec30_checks),
+("VE-F0431", vec31_ctor::run_vec31_checks),
+("VE-F0432", vec32_builtin::run_vec32_checks),
+("VE-F0433", vec33_layout::run_vec33_checks),
+("VE-F0434", vec34_recovery::run_vec34_checks),
+("VE-F0435", vec35_astverify::run_vec35_checks),
+("VE-F0436", vec36_astdump::run_vec36_checks),
+("VE-F0437", vec37_perfgen::run_vec37_checks),
+("VE-F0438", vec38_glslmap::run_vec38_checks),
+("VE-F0439", vec39_hlslwgsl::run_vec39_checks),
+("VE-F0440", vec40_c03close::run_vec40_checks),
+("VE-F0441", vec41_semaarch::run_vec41_checks),
+("VE-F0442", vec42_symtab::run_vec42_checks),
+("VE-F0443", vec43_typesys::run_vec43_checks),
+("VE-F0444", vec44_infer::run_vec44_checks),
+("VE-F0445", vec45_swizzle::run_vec45_checks),
+("VE-F0446", vec46_overload::run_vec46_checks),
+        ("VE-F0425", veb425_fndecl::run_veb425_checks),
+        ("VE-F0426", veb426_vardecl::run_veb426_checks),
