@@ -1477,6 +1477,26 @@ mod cgb453_offline;
 mod cgb454_thermal;
 mod cgb455_battery;
 mod cgb456_rebuild;
+mod cgb457_upgrademig;
+mod cgb458_edgecfg;
+mod cgb459_drills;
+mod cgb460_edgetelem;
+mod cgb461_crossfuzz;
+mod cgb462_edgeapi;
+mod cgb463_edgedoc;
+mod cgb464_c09close;
+mod cgb465_apiledger;
+mod cgb466_invariant;
+mod cgb467_fuzzmaster;
+mod cgb468_perfbaseline;
+mod cgb469_fairfinal;
+mod cgb470_secfinal;
+mod cgb471_consistency;
+mod cgb472_boardmodel;
+mod cgb473_defectsettle;
+mod cgb474_docmaster;
+mod cgb475_20dims;
+mod cgb476_handoff;
 
 // ---- 死判据补登记（2026-10-22 接线 v2：模块已实现但从未入链）----
 // // cgb293_edgeviz.rs ↔ CGPU-F0293 依赖边可视化
