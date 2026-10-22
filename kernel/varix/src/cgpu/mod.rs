@@ -1501,3 +1501,18 @@ mod cgb473_defectsettle;
 mod cgb474_docmaster;
 mod cgb475_20dims;
 mod cgb476_handoff;
+// ---- 批七（2026-10-23）：C10 尾四单 + D01 帧计时组，F0481~F0486 他 AI 已领 ----
+mod cgb477_changectl;
+mod cgb478_archival;
+mod cgb479_rehearsal;
+mod cgb480_declare;
+mod cgb487_latbook;
+mod cgb488_earlysub;
+mod cgb489_timecal;
+mod cgb490_frametelem;
+mod cgb491_clockfuzz;
+mod cgb492_timeapi;
+mod cgb493_timedoc;
+mod cgb494_timebench;
+mod cgb495_timeconsist;
+mod cgb496_d01close;
