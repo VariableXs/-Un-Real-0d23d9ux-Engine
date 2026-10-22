@@ -373,6 +373,50 @@
 //! | [`vec44_infer`] | F0444 表达式类型推导（单遍后序访问计数/短路哨兵诊断单点/旁路节点号键全覆盖/条款诊断两侧类型） | VE 册 #VE-F0444 |
 //! | [`vec45_swizzle`] | F0445 Swizzle语义验证（同族字符集/写重复检测读合法同本异判/条款加可复算示例/展开映射索引） | VE 册 #VE-F0445 |
 //! | [`vec46_overload`] | F0446 函数重载决议（三段过滤出局留痕/歧义全明细不偷选/用户遮内建统一决议/旁路重放确定） | VE 册 #VE-F0446 |
+//! | [`vec47_builtinsig`] | F0447 内建函数库签名全集（签名五元组/单源联动决议/条款号/用例全覆盖） | VE 册 #VE-F0447 |
+//! | [`vec48_consteval`] | F0448 常量表达式求值（语境表驱动/编译期报错/结果缓存/条款诊断） | VE 册 #VE-F0448 |
+//! | [`vec49_storqual`] | F0449 存储限定符语义（组合裁定表/双侧定位/默认显性/映射登记） | VE 册 #VE-F0449 |
+//! | [`vec50_iomatch`] | F0450 输入输出接口匹配（三元匹配/双侧诊断/未供未消/结果表） | VE 册 #VE-F0450 |
+//! | [`vec51_ctlflow`] | F0451 控制流语义验证（return 全路径/语境判定/轻量摘要） | VE 册 #VE-F0451 |
+//! | [`vec52_rwconflict`] | F0452 资源读写冲突检测（读写序/只读违规/别名归并/三级建议） | VE 册 #VE-F0452 |
+//! | [`vec53_diagqual`] | F0453 语义错误报告质量（推导路径/条款引用/三要素/抽查制） | VE 册 #VE-F0453 |
+//! | [`vec54_corpus`] | F0454 语义组测试语料（三区/诊断快照方向归因/缺例阻断） | VE 册 #VE-F0454 |
+//! | [`vec55_perf`] | F0455 语义分析性能（线性判据/预分配/上界封顶/按遍分列） | VE 册 #VE-F0455 |
+//! | [`vec56_glsldiff`] | F0456 GLSL 语义差异表（版本×族×裁定/分工/显性拒绝） | VE 册 #VE-F0456 |
+//! | [`vec57_dialectsem`] | F0457 HLSL/WGSL 语义差异表（同构第二用/双方言/冲突裁定） | VE 册 #VE-F0457 |
+//! | [`vec58_bridging`] | F0458 语义到 IR 衔接接口（三类只读查询/契约冻结/fake先行对拍/版本联动） | VE 册 #VE-F0458 |
+//! | [`vec59_semclose`] | F0459 语义组收口（十八件证据/双签指纹当前/三方法论经验包/缺陷三色清零） | VE 册 #VE-F0459 |
+//! | [`vec60_handover`] | F0460 组移交（四件套/类型映射Opaque显性/三态核对/升版重核） | VE 册 #VE-F0460 |
+//! | [`vec61_irstruct`] | F0461 IR 数据结构（四元组指令/SSA就绪单定义/可序列化版本头/三原则记录） | VE 册 #VE-F0461 |
+//! | [`vec62_irgen`] | F0462 AST→IR 生成器（求值序左先右后/映射规则表/位置全程/显性拒绝回传） | VE 册 #VE-F0462 |
+//! | [`vec63_ssa`] | F0463 SSA 构造（迭代支配树/最小SSA支配边界/前驱一致性/深链不爆栈） | VE 册 #VE-F0463 |
+//! | [`vec64_irverify`] | F0464 IR 验证器（三类不变量/可达性预检/门禁不缓存/灰态抽查） | VE 册 #VE-F0464 |
+//! | [`vec65_irdump`] | F0465 IR 转储可视化（三层缩进版本头/CFG懒展开阈值/反向定位/灰态口径一致） | VE 册 #VE-F0465 |
+//! | [`vec66_fold`] | F0466 常量折叠（语义下沉复用/规则表keep语义/对拍终值一致/幂等二次零改动） | VE 册 #VE-F0466 |
+//! | [`vec67_dce`] | F0467 死代码消除（可达加活跃/白名单同源/保守未知引用跳过/统计分账） | VE 册 #VE-F0467 |
+//! | [`vec68_cse`] | F0468 公共子表达式消除（同键支配消除/副作用失效保守/对拍copy保值/分账） | VE 册 #VE-F0468 |
+//! | [`vec69_typeprop`] | F0469 类型传播（下沉同值映射/dot归约/宽度强化幂等/矛盾双侧拦截） | VE 册 #VE-F0469 |
+//! | [`vec70_loopopt`] | F0470 循环优化族（自然循环回边闭包/副作用护栏/LICM不变链闭包/候选标注） | VE 册 #VE-F0470 |
+//! | [`vec71_texdown`] | F0471 纹理访问降级（能力位驱动/标注随指令/损失显性/决策可溯） | VE 册 #VE-F0471 |
+//! | [`vec72_norm`] | F0472 资源访问归一化（标准形态/序保持/清包装留痕/失败回滚） | VE 册 #VE-F0472 |
+//! | [`vec73_entry`] | F0473 入口点规范化（唯一入口带明细/规范化表/匹配联动回溯/版本留痕） | VE 册 #VE-F0473 |
+//! | [`vec74_linker`] | F0474 IR 链接器（三节合并/冲突即错双侧/跨模块重绑定/验证复用回滚） | VE 册 #VE-F0474 |
+//! | [`vec75_cache`] | F0475 序列化缓存（版本头兼容二选一/双哈希键控/LRU配额/校验和弃用） | VE 册 #VE-F0475 |
+//! | [`vec76_dbginfo`] | F0476 调试信息装饰（全量落库/改名溯源/位置随优化走/可剥离告知） | VE 册 #VE-F0476 |
+//! | [`vec77_variant`] | F0477 变体参数化（三维参数集/按需缓存/组合上限防护/回退标注） | VE 册 #VE-F0477 |
+//! | [`vec78_mathlib`] | F0478 数学扩展库（三要素登记/两路实现/四元数噪声对拍/版本留痕） | VE 册 #VE-F0478 |
+//! | [`vec79_orchestr`] | F0479 流水线编排（六段序/契约传递拦截/增量跳过门禁/事件回放） | VE 册 #VE-F0479 |
+//! | [`vec80_irclose`] | F0480 IR 组收口（十九件证据/双签指纹当前/三方法论/门禁未验阻断） | VE 册 #VE-F0480 |
+//! | [`vec81_variantsys`] | F0481 变体系统总成（三元组恒等键/四态状态机非法迁移拒/联动缓存命中/失败隔离） | VE 册 #VE-F0481 |
+//! | [`vec82_warmup`] | F0482 变体预热（双因子概率排序/预算floor面/取消即时/顺延账可溯） | VE 册 #VE-F0482 |
+//! | [`vec83_consist`] | F0483 变体一致性（预期维排除对拍/差异维定位/歧义保守判/覆盖门槛有牙） | VE 册 #VE-F0483 |
+//! | [`vec84_fuse`] | F0484 指令组合优化（三栏模式表/能力位驱动/他处使用不融/语义同源对拍） | VE 册 #VE-F0484 |
+//! | [`vec85_cfopt`] | F0485 控制流优化（直通合并按ID/常量分支消除/phi活跃保护/验证回滚） | VE 册 #VE-F0485 |
+//! | [`vec86_dataflow`] | F0486 数据流优化（拷贝链穿透防环/区间复用提示/phi三态简化/保守停有账） | VE 册 #VE-F0486 |
+//! | [`vec87_regpress`] | F0487 寄存器压力（活跃扫描曲线/热区标注/预警限频/校准限频一次） | VE 册 #VE-F0487 |
+//! | [`vec88_unroll`] | F0488 循环展开（三档决策/代价核算/降档保护链/索引常量核对） | VE 册 #VE-F0488 |
+//! | [`vec89_passmgr`] | F0489 Pass 管理器（注册重名拒/固定序前置拒启/隔离单pass/关键门禁回退） | VE 册 #VE-F0489 |
+//! | [`vec90_diffcheck`] | F0490 对拍框架（参考执行器/双层抽样/首违定位/N-A显性阻断） | VE 册 #VE-F0490 |
 //! | [`vel16_security`] | F2216 粒子安全（四限额各有对策不空转——池内存真调 vel08 PoolQuota::validate 超硬顶显性拒绝、纹理申购 checked_mul 防回滚后比上限（粒子资源面申购闸的诚实声明：GPU 纹理实体在纹理域）、发射器数 EmitterRegistry 运行时计数超限显性拒绝（不改计数+被拒记账）、绘制调用 DrawCallMeter 超限**降级声明不拒绘**（锚点矩阵原文——拒绘会让画面消失降级让画面变 Cheap 但仍在）；输入消毒三入口（配置加载/网络同步/脚本事件）钳制必记账——NaN 速度钳零向量、负发射率/超上限真调 vel03 clamp_emit_rate、超大池申请真调 vel08 quota 拒绝、畸形事件名真调 vel04 注册制查表拒收（F1925 同规则）；恶意数据防御三查——包围盒校验（越界/非有限坐标拒）、索引越界拒（index≥顶点数）、循环引用鸽笼限深检测（parent 链超节点数必成环），三查全过才装配三角形真调 vel03 build_cumulative_area（双向：不误伤合法输入）；隐私红线结构性——TelemetryPacket 仅四聚合字段（粒子数/生成率/水位/发射器数）类型上无 Vec 出口、白名单闭集与黑名单（position/velocity/color）不交+渲染面恰四段无内容字段双重验证） | VE 册 #VE-F2216 |
 //! | [`vel17_quality`] | F2217 粒子质量档位（档位树家族 L 域首实例（家族第五位 F2015/F2037/F2057/F2077/F2217）——三档双因子表锚点数值逐格钉死（1000‰/100%、500‰/80%、250‰/50%，千分整数沿用 F2210 定点纪律）、发射联动列天花板、折半关系真调 DENSITY_HALVE_PER_STEP；换绑产物 Binding 单一不可分对象——密度（模拟侧）×池上限（渲染侧）同结构体、混装过不了 binding_is_coherent、平滑降档类型事实（apply 无活粒子入口只收紧新生天花板、在制粒子按 F2205 寿命自然消亡、排空窗口真调 LIFETIME_MAX_SEC）；D04 全域无缝无叠覆盖+边界归档+越界拒+双向往返；F2210 执行器真演练（apply_step 两步→游标换算恰低档→密度耗尽转 EmissionShrink）；三方裁决家族规则（用户>档位>预算、缺席≠异见、全缺席保持现役、冲突回改不报错可查）；F1762 帧边界切换（staged 一次性消费、epoch 单调、非法请求连暂存不产生、最新意图覆盖）；记忆 F2015 同构（0xF217 v2 本体+v1 迁移列取表、FNV-8 单比特翻转 64 全检出、损坏/版本分型——Corrupt 回退默认中档、自洽未知版本显性拒绝不落默认）；家族不变量真调 vek15 TIER_COUNT；判据 40 项） | VE 册 #VE-F2217 |
 //! | [`veu12_checks`] | F4012 域自检（六族判据：分项预算/热表单源/合批复述/基准注册/开销执法/码段承载；双向用例——超支样本点名、风暴恰阈边界、万项块数 40、孤儿 covers 拒绝、执法清单与对账逐项相等防另立口径） | VE 册 #VE-F4012 |
@@ -593,6 +637,59 @@ pub mod vec43_typesys;
 pub mod vec44_infer;
 pub mod vec45_swizzle;
 pub mod vec46_overload;
+pub mod vec47_builtinsig;
+pub mod vec48_consteval;
+pub mod vec49_storqual;
+pub mod vec50_iomatch;
+pub mod vec51_ctlflow;
+pub mod vec52_rwconflict;
+pub mod vec53_diagqual;
+pub mod vec54_corpus;
+pub mod vec55_perf;
+pub mod vec56_glsldiff;
+pub mod vec57_dialectsem;
+pub mod vec58_bridging;
+pub mod vec70_loopopt;
+pub mod vec81_variantsys;
+pub mod vec82_warmup;
+pub mod vec83_consist;
+pub mod vec84_fuse;
+pub mod vec85_cfopt;
+pub mod vec86_dataflow;
+pub mod vec87_regpress;
+pub mod vec88_unroll;
+pub mod vec89_passmgr;
+pub mod vec90_diffcheck;
+pub mod vec91_perfbase;
+pub mod vec92_diagir;
+pub mod vec93_budget;
+pub mod vec94_determinism;
+pub mod vec95_limits;
+pub mod vec96_optlog;
+pub mod vec97_corpus;
+pub mod vec98_fuzz;
+pub mod vec99_masterbook;
+pub mod vec71_texdown;
+pub mod vec72_norm;
+pub mod vec73_entry;
+pub mod vec74_linker;
+pub mod vec75_cache;
+pub mod vec76_dbginfo;
+pub mod vec77_variant;
+pub mod vec78_mathlib;
+pub mod vec79_orchestr;
+pub mod vec80_irclose;
+pub mod vec59_semclose;
+pub mod vec60_handover;
+pub mod vec61_irstruct;
+pub mod vec62_irgen;
+pub mod vec63_ssa;
+pub mod vec64_irverify;
+pub mod vec65_irdump;
+pub mod vec66_fold;
+pub mod vec67_dce;
+pub mod vec68_cse;
+pub mod vec69_typeprop;
 pub mod vel16_security;
 pub mod vel17_quality;
 pub mod vea52_hotres;
@@ -1979,6 +2076,40 @@ pub mod ves557_s32budget;
 pub mod ves558_s32bench;
 pub mod ves559_s32gate;
 pub mod ves560_s32scale;
+pub mod ves561_s32mem;
+pub mod ves562_s32pwr;
+pub mod ves563_s32cgpu;
+pub mod ves564_s32degrade;
+pub mod ves565_s32lowend;
+pub mod ves566_s32longrun;
+pub mod ves567_s32debug;
+pub mod ves568_s32pdoc;
+pub mod ves569_s32pfuzz;
+pub mod ves570_s32pjoint;
+pub mod ves571_s32ledger;
+pub mod ves572_s32asset;
+pub mod ves573_s32selfcheck;
+pub mod ves574_s32close;
+pub mod ves575_s33outline;
+pub mod ves576_s33auto;
+pub mod ves577_s33review;
+pub mod ves578_s33sim;
+pub mod ves579_s33corpus;
+pub mod ves580_s33regress;
+pub mod ves581_s33utest;
+pub mod ves582_s33board;
+pub mod ves583_s33api;
+pub mod ves584_s33examples;
+pub mod ves585_s33docmap;
+pub mod ves586_s33ext;
+pub mod ves587_s33third;
+pub mod ves588_s33compat;
+pub mod ves589_s33fuzzgate;
+pub mod ves590_s33walk;
+pub mod ves591_s33assets;
+pub mod ves592_s33evolve;
+pub mod ves593_s33joint08;
+pub mod ves594_s33close;
 pub mod vet4a_video;
 pub mod vet4b_audioalt;
 pub mod vet4c_livemedia;
@@ -2394,6 +2525,59 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F0444", vec44_infer::run_vec44_checks),
 ("VE-F0445", vec45_swizzle::run_vec45_checks),
 ("VE-F0446", vec46_overload::run_vec46_checks),
+("VE-F0447", vec47_builtinsig::run_vec47_checks),
+("VE-F0448", vec48_consteval::run_vec48_checks),
+("VE-F0449", vec49_storqual::run_vec49_checks),
+("VE-F0450", vec50_iomatch::run_vec50_checks),
+("VE-F0451", vec51_ctlflow::run_vec51_checks),
+("VE-F0452", vec52_rwconflict::run_vec52_checks),
+("VE-F0453", vec53_diagqual::run_vec53_checks),
+("VE-F0454", vec54_corpus::run_vec54_checks),
+("VE-F0455", vec55_perf::run_vec55_checks),
+("VE-F0456", vec56_glsldiff::run_vec56_checks),
+("VE-F0457", vec57_dialectsem::run_vec57_checks),
+("VE-F0458", vec58_bridging::run_vec58_checks),
+("VE-F0470", vec70_loopopt::run_vec70_checks),
+("VE-F0481", vec81_variantsys::run_vec81_checks),
+("VE-F0482", vec82_warmup::run_vec82_checks),
+("VE-F0483", vec83_consist::run_vec83_checks),
+("VE-F0484", vec84_fuse::run_vec84_checks),
+("VE-F0485", vec85_cfopt::run_vec85_checks),
+("VE-F0486", vec86_dataflow::run_vec86_checks),
+("VE-F0487", vec87_regpress::run_vec87_checks),
+("VE-F0488", vec88_unroll::run_vec88_checks),
+("VE-F0489", vec89_passmgr::run_vec89_checks),
+("VE-F0490", vec90_diffcheck::run_vec90_checks),
+    ("VE-F0491", vec91_perfbase::run_vec91_checks),
+    ("VE-F0492", vec92_diagir::run_vec92_checks),
+    ("VE-F0493", vec93_budget::run_vec93_checks),
+    ("VE-F0494", vec94_determinism::run_vec94_checks),
+    ("VE-F0495", vec95_limits::run_vec95_checks),
+    ("VE-F0496", vec96_optlog::run_vec96_checks),
+    ("VE-F0497", vec97_corpus::run_vec97_checks),
+    ("VE-F0498", vec98_fuzz::run_vec98_checks),
+    ("VE-F0499", vec99_masterbook::run_vec99_checks),
+("VE-F0471", vec71_texdown::run_vec71_checks),
+("VE-F0472", vec72_norm::run_vec72_checks),
+("VE-F0473", vec73_entry::run_vec73_checks),
+("VE-F0474", vec74_linker::run_vec74_checks),
+("VE-F0475", vec75_cache::run_vec75_checks),
+("VE-F0476", vec76_dbginfo::run_vec76_checks),
+("VE-F0477", vec77_variant::run_vec77_checks),
+("VE-F0478", vec78_mathlib::run_vec78_checks),
+("VE-F0479", vec79_orchestr::run_vec79_checks),
+("VE-F0480", vec80_irclose::run_vec80_checks),
+("VE-F0459", vec59_semclose::run_vec59_checks),
+("VE-F0460", vec60_handover::run_vec60_checks),
+("VE-F0461", vec61_irstruct::run_vec61_checks),
+("VE-F0462", vec62_irgen::run_vec62_checks),
+("VE-F0463", vec63_ssa::run_vec63_checks),
+("VE-F0464", vec64_irverify::run_vec64_checks),
+("VE-F0465", vec65_irdump::run_vec65_checks),
+("VE-F0466", vec66_fold::run_vec66_checks),
+("VE-F0467", vec67_dce::run_vec67_checks),
+("VE-F0468", vec68_cse::run_vec68_checks),
+("VE-F0469", vec69_typeprop::run_vec69_checks),
         ("VE-F2216", vel16_security::run_vel16_checks),
         ("VE-F2217", vel17_quality::run_vel17_checks),
         ("VE-F0053", vea53_hotplug::run_vea53_checks),
@@ -3490,26 +3674,60 @@ pub fn run_svstar2_checks() -> CheckSet {
 ("VE-F4304", ves538_s30release::run_ves538_checks),
 ("VE-F4305", ves539_s30theme::run_ves539_checks),
 ("VE-F4306", ves540_s30plugin::run_ves540_checks),
-("VE-F1418", ves541_s31team::run_ves541_checks),
-("VE-F1419", ves542_s31ai::run_ves542_checks),
-("VE-F1420", ves543_s31test::run_ves543_checks),
-("VE-F1421", ves544_s31doc::run_ves544_checks),
-("VE-F1422", ves545_s31perf::run_ves545_checks),
-("VE-F1423", ves546_s31example::run_ves546_checks),
-("VE-F1424", ves547_s31fuzz::run_ves547_checks),
-("VE-F1425", ves548_s31roi::run_ves548_checks),
-("VE-F1426", ves549_s31joint::run_ves549_checks),
-("VE-F1427", ves550_s31dict::run_ves550_checks),
-("VE-F1428", ves551_s31feedback::run_ves551_checks),
-("VE-F1429", ves552_s31joint06::run_ves552_checks),
-("VE-F1430", ves553_s31selfcheck::run_ves553_checks),
-("VE-F1431", ves554_s31close::run_ves554_checks),
-("VE-F1432", ves555_s32arch::run_ves555_checks),
-("VE-F1433", ves556_s32cost::run_ves556_checks),
-("VE-F1434", ves557_s32budget::run_ves557_checks),
-("VE-F1435", ves558_s32bench::run_ves558_checks),
-("VE-F1436", ves559_s32gate::run_ves559_checks),
-("VE-F1437", ves560_s32scale::run_ves560_checks),
+("VE-F4307", ves541_s31team::run_ves541_checks),
+("VE-F4308", ves542_s31ai::run_ves542_checks),
+("VE-F4309", ves543_s31test::run_ves543_checks),
+("VE-F4310", ves544_s31doc::run_ves544_checks),
+("VE-F4311", ves545_s31perf::run_ves545_checks),
+("VE-F4312", ves546_s31example::run_ves546_checks),
+("VE-F4313", ves547_s31fuzz::run_ves547_checks),
+("VE-F4314", ves548_s31roi::run_ves548_checks),
+("VE-F4315", ves549_s31joint::run_ves549_checks),
+("VE-F4316", ves550_s31dict::run_ves550_checks),
+("VE-F4317", ves551_s31feedback::run_ves551_checks),
+("VE-F4318", ves552_s31joint06::run_ves552_checks),
+("VE-F4319", ves553_s31selfcheck::run_ves553_checks),
+("VE-F4320", ves554_s31close::run_ves554_checks),
+("VE-F4321", ves555_s32arch::run_ves555_checks),
+("VE-F4322", ves556_s32cost::run_ves556_checks),
+("VE-F4323", ves557_s32budget::run_ves557_checks),
+("VE-F4324", ves558_s32bench::run_ves558_checks),
+("VE-F4325", ves559_s32gate::run_ves559_checks),
+("VE-F4326", ves560_s32scale::run_ves560_checks),
+("VE-F4327", ves561_s32mem::run_ves561_checks),
+("VE-F4328", ves562_s32pwr::run_ves562_checks),
+("VE-F4329", ves563_s32cgpu::run_ves563_checks),
+("VE-F4330", ves564_s32degrade::run_ves564_checks),
+("VE-F4331", ves565_s32lowend::run_ves565_checks),
+("VE-F4332", ves566_s32longrun::run_ves566_checks),
+("VE-F4333", ves567_s32debug::run_ves567_checks),
+("VE-F4334", ves568_s32pdoc::run_ves568_checks),
+("VE-F4335", ves569_s32pfuzz::run_ves569_checks),
+("VE-F4336", ves570_s32pjoint::run_ves570_checks),
+("VE-F4337", ves571_s32ledger::run_ves571_checks),
+("VE-F4338", ves572_s32asset::run_ves572_checks),
+("VE-F4339", ves573_s32selfcheck::run_ves573_checks),
+("VE-F4340", ves574_s32close::run_ves574_checks),
+("VE-F4341", ves575_s33outline::run_ves575_checks),
+("VE-F4342", ves576_s33auto::run_ves576_checks),
+("VE-F4343", ves577_s33review::run_ves577_checks),
+("VE-F4344", ves578_s33sim::run_ves578_checks),
+("VE-F4345", ves579_s33corpus::run_ves579_checks),
+("VE-F4346", ves580_s33regress::run_ves580_checks),
+    ("VE-F4347", ves581_s33utest::run_ves581_checks),
+    ("VE-F4348", ves582_s33board::run_ves582_checks),
+    ("VE-F4349", ves583_s33api::run_ves583_checks),
+    ("VE-F4350", ves584_s33examples::run_ves584_checks),
+    ("VE-F4351", ves585_s33docmap::run_ves585_checks),
+    ("VE-F4352", ves586_s33ext::run_ves586_checks),
+    ("VE-F4353", ves587_s33third::run_ves587_checks),
+    ("VE-F4354", ves588_s33compat::run_ves588_checks),
+    ("VE-F4355", ves589_s33fuzzgate::run_ves589_checks),
+    ("VE-F4356", ves590_s33walk::run_ves590_checks),
+    ("VE-F4357", ves591_s33assets::run_ves591_checks),
+    ("VE-F4358", ves592_s33evolve::run_ves592_checks),
+    ("VE-F4359", ves593_s33joint08::run_ves593_checks),
+    ("VE-F4360", ves594_s33close::run_ves594_checks),
         ("VE-F3863", vet4a_video::run_f3863_checks),
         ("VE-F3864", vet4b_audioalt::run_f3864_checks),
         ("VE-F3865", vet4c_livemedia::run_f3865_checks),
@@ -3891,6 +4109,137 @@ pub fn run_svstar2_checks() -> CheckSet {
         ("VE-F0400", veb400_final::run_veb400_checks),
         ("VE-F0425", veb425_fndecl::run_veb425_checks),
         ("VE-F0426", veb426_vardecl::run_veb426_checks),
+        ("VE-F0500", vec100_optclose::run_vec100_checks),
+        ("VE-F0501", vec101_glslarch::run_vec101_checks),
+        ("VE-F0502", vec102_irgen::run_vec102_checks),
+        ("VE-F0503", vec103_cfstruct::run_vec103_checks),
+        ("VE-F0504", vec104_verext::run_vec104_checks),
+        ("VE-F0505", vec105_quality::run_vec105_checks),
+        ("VE-F0506", vec106_diff::run_vec106_checks),
+        ("VE-F0507", vec107_perf::run_vec107_checks),
+        ("VE-F0508", vec108_errfb::run_vec108_checks),
+        ("VE-F0509", vec109_suite::run_vec109_checks),
+        ("VE-F0510", vec110_limits::run_vec110_checks),
+        ("VE-F0511", vec111_incremental::run_vec111_checks),
+        ("VE-F0512", vec112_extpoint::run_vec112_checks),
+        ("VE-F0513", vec113_unittest::run_vec113_checks),
+        ("VE-F0514", vec114_tuning::run_vec114_checks),
+        ("VE-F0515", vec115_fmtopt::run_vec115_checks),
+        ("VE-F0516", vec116_consist::run_vec116_checks),
+        ("VE-F0517", vec117_fuzz::run_vec117_checks),
+        ("VE-F0518", vec118_docs::run_vec118_checks),
+        ("VE-F0519", vec119_ledger::run_vec119_checks),
+        ("VE-F0520", vec120_glclose::run_vec120_checks),
+        ("VE-F0521", vec121_hlarch::run_vec121_checks),
+        ("VE-F0522", vec122_hltype::run_vec122_checks),
+        ("VE-F0523", vec123_hldecl::run_vec123_checks),
+        ("VE-F0524", vec124_hlalloc::run_vec124_checks),
+        ("VE-F0525", vec125_hlgen::run_vec125_checks),
+        ("VE-F0526", vec126_hlcflow::run_vec126_checks),
+        ("VE-F0527", vec127_hlsvsem::run_vec127_checks),
+        ("VE-F0528", vec128_hlverify::run_vec128_checks),
+        ("VE-F0529", vec129_hldiff::run_vec129_checks),
+        ("VE-F0530", vec130_hlqual::run_vec130_checks),
+        ("VE-F0531", vec131_hlerr::run_vec131_checks),
+        ("VE-F0532", vec132_sm6eval::run_vec132_checks),
+        ("VE-F0533", vec133_hlsuite::run_vec133_checks),
+        ("VE-F0534", vec134_hllimits::run_vec134_checks),
+        ("VE-F0535", vec135_hlincr::run_vec135_checks),
+        ("VE-F0536", vec136_hlfuzz::run_vec136_checks),
+        ("VE-F0537", vec137_hldocs::run_vec137_checks),
+        ("VE-F0538", vec138_hlledger::run_vec138_checks),
+        ("VE-F0539", vec139_hlproto::run_vec139_checks),
+        ("VE-F0540", vec140_hlclose::run_vec140_checks),
+        ("VE-F0541", vec141_wgarch::run_vec141_checks),
+        ("VE-F0542", vec142_wgtype::run_vec142_checks),
+        ("VE-F0543", vec143_wgdecl::run_vec143_checks),
+        ("VE-F0544", vec144_wggen::run_vec144_checks),
+        ("VE-F0545", vec145_wgchk::run_vec145_checks),
+        ("VE-F0546", vec146_wgcflow::run_vec146_checks),
+        ("VE-F0547", vec147_wgspace::run_vec147_checks),
+        ("VE-F0548", vec148_wgdiff::run_vec148_checks),
+        ("VE-F0549", vec149_webgpu::run_vec149_checks),
+        ("VE-F0550", vec150_wgqual::run_vec150_checks),
+        ("VE-F0551", vec151_wgerrfb::run_vec151_checks),
+        ("VE-F0552", vec152_wgsuite::run_vec152_checks),
+        ("VE-F0553", vec153_wglimit::run_vec153_checks),
+        ("VE-F0554", vec154_wgincr::run_vec154_checks),
+        ("VE-F0555", vec155_wgfuzz::run_vec155_checks),
+        ("VE-F0556", vec156_wgdocs::run_vec156_checks),
+        ("VE-F0557", vec157_tribackend::run_vec157_checks),
+        ("VE-F0558", vec158_tridiff::run_vec158_checks),
+        ("VE-F0559", vec159_pluginreg::run_vec159_checks),
+        ("VE-F0560", vec160_wgclose::run_vec160_checks),
+        ("VE-F0561", vec161_spvarch::run_vec161_checks),
+        ("VE-F0562", vec162_spvmod::run_vec162_checks),
+        ("VE-F0563", vec163_spvtype::run_vec163_checks),
+        ("VE-F0564", vec164_spvdecor::run_vec164_checks),
+        ("VE-F0565", vec165_spvinst::run_vec165_checks),
+        ("VE-F0566", vec166_spvcf::run_vec166_checks),
+        ("VE-F0567", vec167_spvval::run_vec167_checks),
+        ("VE-F0568", vec168_spvrefl::run_vec168_checks),
+        ("VE-F0569", vec169_spvdiff::run_vec169_checks),
+        ("VE-F0570", vec170_spvopt::run_vec170_checks),
+        ("VE-F0571", vec171_spvver::run_vec171_checks),
+        ("VE-F0572", vec172_spvsuite::run_vec172_checks),
+        ("VE-F0573", vec173_spvlimit::run_vec173_checks),
+        ("VE-F0574", vec174_spvdbg::run_vec174_checks),
+        ("VE-F0575", vec175_spvfuzz::run_vec175_checks),
+        ("VE-F0576", vec176_spvdocs::run_vec176_checks),
+        ("VE-F0577", vec177_spvroad::run_vec177_checks),
+        ("VE-F0578", vec178_quadjudge::run_vec178_checks),
+        ("VE-F0579", vec179_backendpick::run_vec179_checks),
+        ("VE-F0580", vec180_groupclose::run_vec180_checks),
+        ("VE-F0581", vec181_hotsvc::run_vec181_checks),
+        ("VE-F0582", vec182_incrpipe::run_vec182_checks),
+        ("VE-F0583", vec183_budget::run_vec183_checks),
+        ("VE-F0584", vec184_hotroll::run_vec184_checks),
+        ("VE-F0585", vec185_editproto::run_vec185_checks),
+        ("VE-F0586", vec186_hotperf::run_vec186_checks),
+        ("VE-F0587", vec187_varlink::run_vec187_checks),
+        ("VE-F0588", vec188_multifile::run_vec188_checks),
+        ("VE-F0589", vec189_telem::run_vec189_checks),
+        ("VE-F0590", vec190_cachetotal::run_vec190_checks),
+        ("VE-F0591", vec191_workerpool::run_vec191_checks),
+        ("VE-F0592", vec192_prioq::run_vec192_checks),
+        ("VE-F0593", vec193_resgov::run_vec193_checks),
+        ("VE-F0594", vec194_errgloss::run_vec194_checks),
+        ("VE-F0595", vec195_caggr::run_vec195_checks),
+        ("VE-F0596", vec196_freeze::run_vec196_checks),
+        ("VE-F0597", vec197_cledger::run_vec197_checks),
+        ("VE-F0598", vec198_quadaudit::run_vec198_checks),
+        ("VE-F0599", vec199_cannoun::run_vec199_checks),
+        ("VE-F0700", vec300_fclose::run_vec300_checks),
+        ("VE-F0701", vec301_scanaa::run_vec301_checks),
+        ("VE-F0702", vec302_anaa::run_vec302_checks),
+        ("VE-F0703", vec303_stencil::run_vec303_checks),
+        ("VE-F0704", vec304_anaflow::run_vec304_checks),
+        ("VE-F0705", vec305_bigpath::run_vec305_checks),
+        ("VE-F0706", vec306_framecache::run_vec306_checks),
+        ("VE-F0707", vec307_textpath::run_vec307_checks),
+        ("VE-F0708", vec308_skia::run_vec308_checks),
+        ("VE-F0709", vec309_aelsimd::run_vec309_checks),
+        ("VE-F0710", vec310_rasterpar::run_vec310_checks),
+        ("VE-F0711", vec311_nestedclip::run_vec311_checks),
+        ("VE-F0712", vec312_sparse::run_vec312_checks),
+        ("VE-F0713", vec313_rastermem::run_vec313_checks),
+        ("VE-F0714", vec314_rasterfuzz::run_vec314_checks),
+        ("VE-F0715", vec315_cpugpu::run_vec315_checks),
+        ("VE-F0716", vec316_svge2e::run_vec316_checks),
+        ("VE-F0717", vec317_rasterdoc::run_vec317_checks),
+        ("VE-F0718", vec318_rasterbench::run_vec318_checks),
+        ("VE-F0719", vec319_rclose::run_vec319_checks),
+        ("VE-F0720", vec320_rsum::run_vec320_checks),
+        ("VE-F0721", vec321_bezcore::run_vec321_checks),
+        ("VE-F0722", vec322_arclen::run_vec322_checks),
+        ("VE-F0723", vec323_split::run_vec323_checks),
+        ("VE-F0724", vec324_intersect::run_vec324_checks),
+        ("VE-F0725", vec325_nearest::run_vec325_checks),
+        ("VE-F0726", vec326_bbox::run_vec326_checks),
+        ("VE-F0727", vec327_fit::run_vec327_checks),
+        ("VE-F0728", vec328_offset::run_vec328_checks),
+        ("VE-F0729", vec329_degree::run_vec329_checks),
+        ("VE-F0730", vec330_roots::run_vec330_checks),
     ];
     // 修正记录（真缺陷·容量与栈双爆）：本表原有 492 行，而 `CheckSet` 的
     // 容量是 `MAX_CHECKS = 112`。两个后果都是实测级的：
@@ -4202,3 +4551,134 @@ pub mod veb399_evolve; // 十年演进预留
 pub mod veb400_final; // B域终验
 pub mod veb425_fndecl; // 函数声明与参数解析
 pub mod veb426_vardecl; // 变量声明与限定符
+pub mod vec100_optclose; // 优化组收口与后端移交
+pub mod vec101_glslarch; // GLSL后端架构
+pub mod vec102_irgen; // IR全族GLSL生成
+pub mod vec103_cfstruct; // 结构化控制流重建
+pub mod vec104_verext; // GLSL版本与扩展管理
+pub mod vec105_quality; // GLSL生成代码质量
+pub mod vec106_diff; // GLSL后端对拍验证
+pub mod vec107_perf; // GLSL后端性能生成侧
+pub mod vec108_errfb; // GLSL错误回传处理
+pub mod vec109_suite; // GLSL后端一致性套件
+pub mod vec110_limits; // GLSL已知限制清单
+pub mod vec111_incremental; // GLSL增量重编译
+pub mod vec112_extpoint; // GLSL后端可扩展点
+pub mod vec113_unittest; // GLSL后端单元测试
+pub mod vec114_tuning; // GLSL生成器性能调优
+pub mod vec115_fmtopt; // GLSL输出格式选项
+pub mod vec116_consist; // 软渲解释器一致性维护
+pub mod vec117_fuzz; // GLSL后端fuzz
+pub mod vec118_docs; // GLSL后端文档
+pub mod vec119_ledger; // GLSL性能质量总账
+pub mod vec120_glclose; // GLSL组收口
+pub mod vec121_hlarch; // HLSL后端架构
+pub mod vec122_hltype; // IR到HLSL类型映射
+pub mod vec123_hldecl; // HLSL资源声明生成
+pub mod vec124_hlalloc; // HLSLRegister分配器
+pub mod vec125_hlgen; // HLSL指令族生成
+pub mod vec126_hlcflow; // HLSL结构化控制流
+pub mod vec127_hlsvsem; // HLSL系统值语义映射
+pub mod vec128_hlverify; // HLSL编译验证通路
+pub mod vec129_hldiff; // HLSL后端对拍验证
+pub mod vec130_hlqual; // HLSL生成质量
+pub mod vec131_hlerr; // HLSL错误回传
+pub mod vec132_sm6eval; // SM6现代路径评估
+pub mod vec133_hlsuite; // HLSL一致性套件
+pub mod vec134_hllimits; // HLSL已知限制清单
+pub mod vec135_hlincr; // HLSL增量重编译
+pub mod vec136_hlfuzz; // HLSL fuzz
+pub mod vec137_hldocs; // HLSL后端文档
+pub mod vec138_hlledger; // HLSL性能质量总账
+pub mod vec139_hlproto; // Windows域协作协议
+pub mod vec140_hlclose; // HLSL组收口
+pub mod vec141_wgarch; // WGSL后端架构近直通
+pub mod vec142_wgtype; // WGSL类型映射
+pub mod vec143_wgdecl; // WGSL资源声明生成
+pub mod vec144_wggen; // WGSL指令族生成
+pub mod vec145_wgchk; // WGSL强校验适应
+pub mod vec146_wgcflow; // WGSL控制流生成
+pub mod vec147_wgspace; // WGSL地址空间语义
+pub mod vec148_wgdiff; // WGSL后端对拍验证
+pub mod vec149_webgpu; // WebGPU远景评估
+pub mod vec150_wgqual; // WGSL生成质量一次通过率
+pub mod vec151_wgerrfb; // WGSL错误回传
+pub mod vec152_wgsuite; // WGSL一致性套件
+pub mod vec153_wglimit; // WGSL限制清单
+pub mod vec154_wgincr; // WGSL增量重编译
+pub mod vec155_wgfuzz; // WGSL fuzz双前端差分
+pub mod vec156_wgdocs; // WGSL后端文档五件
+pub mod vec157_tribackend; // 三后端统一对拍框架
+pub mod vec158_tridiff; // 三后端差异表
+pub mod vec159_pluginreg; // 后端即插件注册框架
+pub mod vec160_wgclose; // WGSL组收口
+pub mod vec161_spvarch; // SPIR-V后端架构
+pub mod vec162_spvmod; // SPIR-V模块骨架
+pub mod vec163_spvtype; // SPIR-V类型与常量
+pub mod vec164_spvdecor; // SPIR-V变量与装饰
+pub mod vec165_spvinst; // SPIR-V指令族生成
+pub mod vec166_spvcf; // SPIR-V结构化控制流
+pub mod vec167_spvval; // SPIR-V验证器对接
+pub mod vec168_spvrefl; // SPIR-V反射信息
+pub mod vec169_spvdiff; // SPIR-V对拍验证
+pub mod vec170_spvopt; // SPIR-V优化器对接
+pub mod vec171_spvver; // SPIR-V版本与扩展策略
+pub mod vec172_spvsuite; // SPIR-V一致性套件
+pub mod vec173_spvlimit; // SPIR-V限制清单
+pub mod vec174_spvdbg; // SPIR-V调试信息
+pub mod vec175_spvfuzz; // SPIR-V fuzz双通道
+pub mod vec176_spvdocs; // SPIR-V后端文档
+pub mod vec177_spvroad; // SPIR-V Vulkan驱动远景
+pub mod vec178_quadjudge; // 四后端总对拍
+pub mod vec179_backendpick; // 后端选择器
+pub mod vec180_groupclose; // SPIR-V组收口
+pub mod vec181_hotsvc; // 热编译服务架构
+pub mod vec182_incrpipe; // 增量编译管线级联
+pub mod vec183_budget; // 热编译延迟预算
+pub mod vec184_hotroll; // 热编译失败回滚
+pub mod vec185_editproto; // 编辑器集成协议
+pub mod vec186_hotperf; // 着色器性能热分析
+pub mod vec187_varlink; // 热编译与变体联动
+pub mod vec188_multifile; // 多文件项目热编译
+pub mod vec189_telem; // 热编译遥测
+pub mod vec190_cachetotal; // 着色器缓存全域统一
+pub mod vec191_workerpool; // 编译服务化并行池
+pub mod vec192_prioq; // 编译队列优先级
+pub mod vec193_resgov; // 编译器资源治理进程级
+pub mod vec194_errgloss; // 编译错误全局一致性词典
+pub mod vec195_caggr; // C域聚合自检双增维
+pub mod vec196_freeze; // C域接口冻结清单
+pub mod vec197_cledger; // C域三账对账
+pub mod vec198_quadaudit; // C域四联审
+pub mod vec199_cannoun; // C域完成宣告与移交包
+pub mod vec300_fclose; // 渐变组收口
+pub mod vec301_scanaa; // 扫描线抗锯齿栅格化器
+pub mod vec302_anaa; // 解析抗锯齿深化
+pub mod vec303_stencil; // GPU路径栅格化stencil-and-cover
+pub mod vec304_anaflow; // GPU路径栅格化分析式
+pub mod vec305_bigpath; // 超大路径分块栅格化
+pub mod vec306_framecache; // 路径光栅帧间缓存
+pub mod vec307_textpath; // 文本与路径统一栅格化接口
+pub mod vec308_skia; // 栅格化质量基准对拍Skia
+pub mod vec309_aelsimd; // 活跃边表SIMD优化
+pub mod vec310_rasterpar; // 栅格化多线程双模式
+pub mod vec311_nestedclip; // 嵌套裁剪与路径栅格化
+pub mod vec312_sparse; // 稀疏路径优化长细线
+pub mod vec313_rastermem; // 栅格化内存治理
+pub mod vec314_rasterfuzz; // 栅格化fuzz
+pub mod vec315_cpugpu; // 栅格化CPU/GPU一致性
+pub mod vec316_svge2e; // SVG端到端栅格化
+pub mod vec317_rasterdoc; // 栅格化文档
+pub mod vec318_rasterbench; // 栅格化基准入册
+pub mod vec319_rclose; // 栅格化组收口
+pub mod vec320_rsum; // 栅格化组阶段总结跨域影响
+pub mod vec321_bezcore; // 贝塞尔数学库核心
+pub mod vec322_arclen; // 曲线弧长精确计算
+pub mod vec323_split; // 曲线分割deCasteljau
+pub mod vec324_intersect; // 曲线求交
+pub mod vec325_nearest; // 最近点查询
+pub mod vec326_bbox; // 曲线精确包围盒
+pub mod vec327_fit; // 曲线平滑拟合
+pub mod vec328_offset; // 曲线偏移
+pub mod vec329_degree; // 曲线升降阶
+pub mod vec330_roots; // 曲线根求解
