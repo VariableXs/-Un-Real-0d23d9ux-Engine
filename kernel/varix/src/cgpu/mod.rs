@@ -811,3 +811,19 @@ pub mod vct06_stackbudget;
 pub mod vcu05_benchrunner;
 // //! CGPU-F3526 · 文档搜索（vcw06_docsearch）
 pub mod vcw06_docsearch;
+
+// --------------------------------------------------------------------------
+// WB1022 批六（CGPU-F0164~F0166 · B域跨帧/发射/执行引擎 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb164_xfdep;
+pub mod cgb165_prioemit;
+pub mod cgb166_graphexec;
+
+// ---- 实现模块补登记（2026-10-22：判据接线时发现实现兄弟模块同样未入链）----
+pub mod cga11_power_sched;
+pub mod cgp03_sampling;
+pub mod cgp04_pipeline;
+pub mod cgp05_tiers;
+pub mod cgp06_query;
+pub mod cgp07_jmerge;
+pub mod cgp09_privacy;
