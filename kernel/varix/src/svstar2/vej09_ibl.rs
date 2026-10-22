@@ -107,6 +107,10 @@
 //! 回归可复现。
 //! 零 panic（生产面）、零 `unsafe`。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -496,8 +500,8 @@ impl EnvCube {
         let maxf = (e - 1) as f32;
         let u = clampf(u, 0.0, maxf);
         let v = clampf(v, 0.0, maxf);
-        let x0 = u.floor() as u32;
-        let y0 = v.floor() as u32;
+        let x0 = u.m_floor() as u32;
+        let y0 = v.m_floor() as u32;
         let x1 = if x0 + 1 < e { x0 + 1 } else { x0 };
         let y1 = if y0 + 1 < e { y0 + 1 } else { y0 };
         let fu = u - x0 as f32;
@@ -553,8 +557,8 @@ impl EnvCube {
             return self.texel(face, self.edge / 2, self.edge / 2);
         }
         let e = self.edge;
-        let u = ((sc / ma * 0.5 + 0.5) * (e as f32 - 1.0)).round() as u32;
-        let v = ((tc / ma * 0.5 + 0.5) * (e as f32 - 1.0)).round() as u32;
+        let u = ((sc / ma * 0.5 + 0.5) * (e as f32 - 1.0)).m_round() as u32;
+        let v = ((tc / ma * 0.5 + 0.5) * (e as f32 - 1.0)).m_round() as u32;
         let u = if u < e { u } else { e - 1 };
         let v = if v < e { v } else { e - 1 };
         self.texel(face, u, v)
@@ -581,7 +585,7 @@ fn clampf(x: f32, lo: f32, hi: f32) -> f32 {
 fn normalize3(v: (f32, f32, f32)) -> (f32, f32, f32) {
     let l2 = v.0 * v.0 + v.1 * v.1 + v.2 * v.2;
     if l2 > 0.0 {
-        let l = l2.sqrt();
+        let l = l2.m_sqrt();
         (v.0 / l, v.1 / l, v.2 / l)
     } else {
         (0.0, 0.0, 1.0)
@@ -708,13 +712,13 @@ fn radical_inverse_2(i: u32) -> f32 {
 pub fn ggx_h_full(xi: (f32, f32, f32), n: (f32, f32, f32), alpha: f32) -> ((f32, f32, f32), f32) {
     let phi = 2.0 * core::f32::consts::PI * xi.0;
     let a2 = alpha * alpha;
-    let cos_theta = ((1.0 - xi.1) / (1.0 + (a2 - 1.0) * xi.1)).max(0.0).sqrt();
-    let sin_theta = (1.0 - cos_theta * cos_theta).max(0.0).sqrt();
+    let cos_theta = ((1.0 - xi.1) / (1.0 + (a2 - 1.0) * xi.1)).max(0.0).m_sqrt();
+    let sin_theta = (1.0 - cos_theta * cos_theta).max(0.0).m_sqrt();
     // 切空间基：与 `N` 正交的两个向量
     let (t, b) = basis_from(n);
     let hl = (
-        sin_theta * phi.cos(),
-        sin_theta * phi.sin(),
+        sin_theta * phi.m_cos(),
+        sin_theta * phi.m_sin(),
         cos_theta,
     );
     let h = normalize3((
@@ -1077,8 +1081,8 @@ impl BrdfLut {
         let e = self.size as f32;
         let fx = u * (e - 1.0);
         let fy = v * (e - 1.0);
-        let x0 = fx.floor() as usize;
-        let y0 = fy.floor() as usize;
+        let x0 = fx.m_floor() as usize;
+        let y0 = fy.m_floor() as usize;
         let x1 = if x0 + 1 < self.size { x0 + 1 } else { x0 };
         let y1 = if y0 + 1 < self.size { y0 + 1 } else { y0 };
         let du = fx - x0 as f32;
@@ -1151,7 +1155,7 @@ fn integrate_brdf(n_dot_v: f32, roughness: f32, dirs: &[(f32, f32, f32)]) -> (f3
     // LUT 只以 `(NdotV, roughness)` 为参量，旋转不变性保证这个
     // 约定不失一般性（把法线转到 +Z 需同时转 V，而 `NdotV` 不变）。
     let n_vec = (0.0f32, 0.0f32, 1.0f32);
-    let view = ((1.0 - v * v).max(0.0).sqrt(), 0.0f32, v);
+    let view = ((1.0 - v * v).max(0.0).m_sqrt(), 0.0f32, v);
 
     // 采样方向表由调用方**传入**（只依赖步数，与 `(NdotV, roughness)`
     // 无关）——见 `BrdfLut::build` 头注：若在纹素循环内重建，
@@ -1305,7 +1309,7 @@ impl IblSampler {
         }
         let r = clampf(roughness, 0.0, 1.0);
         let lod = r * ((MIP_LEVELS - 1) as f32);
-        let i0 = lod.floor() as usize;
+        let i0 = lod.m_floor() as usize;
         let i1 = if i0 + 1 < MIP_LEVELS { i0 + 1 } else { i0 };
         let f = lod - i0 as f32;
         let a = self.sample_mip(i0, n, v)?;

@@ -101,6 +101,10 @@
 //
 // `vec!` 宏走**全限定路径** `alloc::vec![..]` 调用，故不引入裸 `use alloc::vec;`
 // （引入后会因未使用而告警）。
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -559,7 +563,7 @@ impl GeoSample {
     /// 速度模长（屏幕空间像素距离）。
     pub fn speed(&self) -> f32 {
         let (r, g) = (self.velocity.r, self.velocity.g);
-        finite_or((r * r + g * g).sqrt())
+        finite_or((r * r + g * g).m_sqrt())
     }
 }
 
@@ -972,9 +976,9 @@ fn neighborhood_moments(f: &Frame, x: u32, y: u32) -> Option<(Rgb, Rgb)> {
         (sum2.b / n - mean.b * mean.b).max(0.0),
     );
     let sd = Rgb::new(
-        varr.r.sqrt(),
-        varr.g.sqrt(),
-        varr.b.sqrt(),
+        varr.r.m_sqrt(),
+        varr.g.m_sqrt(),
+        varr.b.m_sqrt(),
     );
     Some((mean, sd))
 }
@@ -1294,7 +1298,7 @@ pub fn converge_frames(step: f32) -> u32 {
     if s <= 0.0 {
         return 0;
     }
-    let n = (1.0 / s).ceil();
+    let n = (1.0 / s).m_ceil();
     if !(n.is_finite()) || n < 1.0 {
         1
     } else {
@@ -1355,7 +1359,7 @@ pub fn cost_ms_scaled(pixels: u64) -> f32 {
 pub fn fmt_f32(v: f32) -> String {
     let neg = v < 0.0;
     let a = finite_or(v).abs();
-    let scaled = (a * 10000.0).round();
+    let scaled = (a * 10000.0).m_round();
     let mut iv = scaled as u64;
     let ip = iv / 10000;
     let fp = iv % 10000;
@@ -1469,7 +1473,7 @@ pub fn inter_frame_delta(prev: &Frame, next: &Frame) -> Option<f32> {
         acc += d0 * d0 + d1 * d1 + d2 * d2;
     }
     let n = (prev.px.len() as f64).max(1.0);
-    Some(finite_or((acc / n / 3.0).sqrt() as f32))
+    Some(finite_or((acc / n / 3.0).m_sqrt() as f32))
 }
 
 // ===========================================================================

@@ -15,6 +15,7 @@
 //! 诊断码段：0xD300（0xD301~0xD308 闭集；全域 grep 确认 0xD3~0xD7 段空闲独占）。
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，整数算术，确定性。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

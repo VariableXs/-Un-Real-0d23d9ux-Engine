@@ -20,6 +20,10 @@
 //!
 //! 时间注入式（当日分钟 0-1439），宿主测试确定复现。无外部依赖。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use crate::svstar::vbase;
@@ -114,7 +118,7 @@ impl TempCurve {
                 let span = (b.minute - a.minute).max(1);
                 let t = (m - a.minute) as f64 / span as f64;
                 let k = a.kelvin as f64 + (b.kelvin as f64 - a.kelvin as f64) * t;
-                return k.round() as u32;
+                return k.m_round() as u32;
             }
         }
         last.kelvin
@@ -324,7 +328,7 @@ impl NightLight {
         let base = self.curve.kelvin_at(now_min % 1440);
         let pct = self.strength.pct();
         let shift = (KELVIN_MAX - base) as f64 * pct as f64 / 100.0;
-        (KELVIN_MAX as f64 - shift).round() as u32
+        (KELVIN_MAX as f64 - shift).m_round() as u32
     }
 
     /// 伽马表产出（每通道独立）：目标色温 → 8bit RGB 通道分量
@@ -551,7 +555,7 @@ pub fn sun_times_min(day_of_year: u32, lat_deg: i32, lon_deg: i32, tz_offset_h: 
     let sunset_utc = 720.0 - 4.0 * (lon_deg as f64 - ha) - eqtime;
     let to_local = |utc_min: f64| -> u64 {
         let v = utc_min + tz_offset_h as f64 * 60.0;
-        (v.rem_euclid(1440.0)) as u64
+        (v.m_rem_euclid(1440.0)) as u64
     };
     (to_local(sunrise_utc), to_local(sunset_utc))
 }

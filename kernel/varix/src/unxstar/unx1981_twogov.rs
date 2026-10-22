@@ -284,7 +284,7 @@ pub fn run_t1981_checks() -> crate::checks::CheckSet {
     );
     // 10^4 拍演练。
     let (ok, switches, detail) = drill_10k(0x1981_0001);
-    set.add(
+    set.add_dyn(
         "TG-10k-drill",
         ok,
         &format!("{} 拍 切换 {} 次 即时生效零滞后", TG_BEATS, switches),
@@ -294,7 +294,7 @@ pub fn run_t1981_checks() -> crate::checks::CheckSet {
     inj.inject_all();
     set.add("TG-inject-4/4", inj.all_caught(), "");
     // 判据总门。
-    set.add(
+    set.add_dyn(
         "UNX-F1981-J1",
         ok && inj.all_caught(),
         &format!(

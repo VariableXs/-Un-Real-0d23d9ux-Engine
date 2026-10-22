@@ -230,7 +230,45 @@ pub fn decode_png(data: &[u8], out: &mut [u8], scratch: &mut [u8]) -> Option<Ima
     let stride = 1 + width * channels;
     let raw_len = height * stride;
 
-    // 单趟扫描：收集 IHDR/PLTE/IDAT。
+    // 单趟扫描：收集 IHDR/PLTE/IDAT（块遍历抽为子函数，降圈复杂度）。
+    let (pal, idat_off) = png_scan_chunks(data, scratch)?;
+
+    if scratch.len() < idat_off + raw_len {
+        return None;
+    }
+    let (src, dst) = scratch.split_at_mut(idat_off);
+    let written = inflate_stored(src, &mut dst[0..raw_len])?;
+    if written != raw_len {
+        return None;
+    }
+
+    // 就地展开 PNG 滤波器（支持 0..4；逐行重建抽为子函数）。
+    let lay = PngLayout { width, height, stride, channels };
+    let base = idat_off;
+    png_unfilter_rows(scratch, base, &lay)?;
+
+    if out.len() < width * height * 4 {
+        return None;
+    }
+    // 像素展开（按颜色类型写 RGBA8）抽为子函数，decode_png 只保留流程编排。
+    // （私有参数收敛：扫描线缓冲与行数据起始偏移打包为 PngScanSrc。）
+    let scan = PngScanSrc { rows: scratch, base };
+    png_expand_pixels(&scan, out, &lay, ct, &pal);
+    Some(ImageInfo { width: w, height: h, format: ImageFormat::Png, bpp: 8 })
+}
+
+/// PNG 解码布局参数（收敛子函数签名；私有结构，不影响对外 API）。
+struct PngLayout {
+    width: usize,
+    height: usize,
+    stride: usize,
+    channels: usize,
+}
+
+/// PNG 块单趟扫描：收集 PLTE 调色板并把 IDAT 拷入 `scratch`。
+/// 返回 (调色板, IDAT 总字节数)；块布局非法返回 `None`。
+/// （IHDR 已由 parse_png_header 校验，此处跳过；遇 IEND 即停。）
+fn png_scan_chunks(data: &[u8], scratch: &mut [u8]) -> Option<([u8; 768], usize)> {
     let mut pal = [0u8; 768];
     let mut idat_off = 0usize;
     let mut i = 8usize;
@@ -240,9 +278,7 @@ pub fn decode_png(data: &[u8], out: &mut [u8], scratch: &mut [u8]) -> Option<Ima
             return None;
         }
         let ctype = &data[i + 4..i + 8];
-        if ctype == b"IHDR" {
-            // 已在 parse_png_header 中校验
-        } else if ctype == b"PLTE" {
+        if ctype == b"PLTE" {
             let take = len.min(768);
             pal[0..take].copy_from_slice(&data[i + 8..i + 8 + take]);
         } else if ctype == b"IDAT" {
@@ -256,31 +292,25 @@ pub fn decode_png(data: &[u8], out: &mut [u8], scratch: &mut [u8]) -> Option<Ima
         }
         i += 12 + len;
     }
+    Some((pal, idat_off))
+}
 
-    if scratch.len() < idat_off + raw_len {
-        return None;
-    }
-    let (src, dst) = scratch.split_at_mut(idat_off);
-    let written = inflate_stored(src, &mut dst[0..raw_len])?;
-    if written != raw_len {
-        return None;
-    }
-
-    // 就地展开 PNG 滤波器（支持 0..4）。
+/// 就地展开 PNG 滤波器（支持 0..4），重建结果写回 scratch。
+/// 行宽超过内部重建缓冲（4096 字节）或滤波号非法时返回 `None`（同原实现）。
+fn png_unfilter_rows(scratch: &mut [u8], base: usize, lay: &PngLayout) -> Option<()> {
     let mut prev = [0u8; 4096];
     let mut recon = [0u8; 4096];
-    if width * channels > recon.len() {
+    if lay.width * lay.channels > recon.len() {
         return None;
     }
-    let base = idat_off;
-    for y in 0..height {
-        let row_start = base + y * stride;
+    for y in 0..lay.height {
+        let row_start = base + y * lay.stride;
         let ftype = scratch[row_start];
-        for x in 0..width * channels {
+        for x in 0..lay.width * lay.channels {
             let cur = scratch[row_start + 1 + x];
-            let left = if x >= channels { recon[x - channels] } else { 0 };
+            let left = if x >= lay.channels { recon[x - lay.channels] } else { 0 };
             let up = if y > 0 { prev[x] } else { 0 };
-            let upleft = if y > 0 && x >= channels { prev[x - channels] } else { 0 };
+            let upleft = if y > 0 && x >= lay.channels { prev[x - lay.channels] } else { 0 };
             let v = match ftype {
                 0 => cur,
                 1 => cur.wrapping_add(left),
@@ -291,21 +321,36 @@ pub fn decode_png(data: &[u8], out: &mut [u8], scratch: &mut [u8]) -> Option<Ima
             };
             recon[x] = v;
         }
-        for x in 0..width * channels {
+        for x in 0..lay.width * lay.channels {
             scratch[row_start + 1 + x] = recon[x];
             prev[x] = recon[x];
         }
     }
+    Some(())
+}
 
-    let n = width * height;
-    if out.len() < n * 4 {
-        return None;
-    }
+/// PNG 反滤波后的扫描线源（私有参数收敛）：把缓冲与其行数据起始偏移打包，
+/// `png_expand_pixels` 的参数从 6 个收敛到 5 个；字段语义与原散参一一对应。
+struct PngScanSrc<'a> {
+    rows: &'a [u8],
+    base: usize,
+}
+
+/// 把重建后的扫描线按颜色类型展开为 RGBA8 写入 `out`。
+fn png_expand_pixels(
+    scan: &PngScanSrc,
+    out: &mut [u8],
+    lay: &PngLayout,
+    ct: u8,
+    pal: &[u8; 768],
+) {
+    let scratch = scan.rows;
+    let base = scan.base;
     let mut p = 0usize;
-    for y in 0..height {
-        let rstart = base + y * stride + 1;
-        for x in 0..width {
-            let s = rstart + x * channels;
+    for y in 0..lay.height {
+        let rstart = base + y * lay.stride + 1;
+        for x in 0..lay.width {
+            let s = rstart + x * lay.channels;
             let (r, g, b, a) = match ct {
                 0 => (scratch[s], scratch[s], scratch[s], 255),
                 2 => (scratch[s], scratch[s + 1], scratch[s + 2], 255),
@@ -317,7 +362,7 @@ pub fn decode_png(data: &[u8], out: &mut [u8], scratch: &mut [u8]) -> Option<Ima
                 6 => (scratch[s], scratch[s + 1], scratch[s + 2], scratch[s + 3]),
                 _ => (0, 0, 0, 255),
             };
-            let o = (y * width + x) * 4;
+            let o = (y * lay.width + x) * 4;
             out[o] = r;
             out[o + 1] = g;
             out[o + 2] = b;
@@ -326,7 +371,6 @@ pub fn decode_png(data: &[u8], out: &mut [u8], scratch: &mut [u8]) -> Option<Ima
         }
     }
     let _ = p;
-    Some(ImageInfo { width: w, height: h, format: ImageFormat::Png, bpp: 8 })
 }
 
 // ===========================================================================
@@ -572,18 +616,12 @@ pub fn encode_qoi(rgba: &[u8], width: u32, height: u32, out: &mut [u8]) -> Optio
         if !first && same {
             run += 1;
             if run == 62 {
-                out[pos] = QOI_OP_RUN | ((run - 1) as u8);
-                pos += 1;
-                run = 0;
+                qoi_flush_run(out, &mut pos, &mut run);
             }
             k += 1;
             continue;
         }
-        if run > 0 {
-            out[pos] = QOI_OP_RUN | ((run - 1) as u8);
-            pos += 1;
-            run = 0;
-        }
+        qoi_flush_run(out, &mut pos, &mut run);
         if !first {
             let hash = ((r as u32 * 3 + g as u32 * 5 + b as u32 * 7 + a as u32 * 11) % 64) as usize;
             if index[hash] == [r, g, b, a] {
@@ -598,20 +636,9 @@ pub fn encode_qoi(rgba: &[u8], width: u32, height: u32, out: &mut [u8]) -> Optio
         if first {
             // 首像素：解码器初始 px=[0,0,0,255]，必须显式写出颜色。
             if a == 255 {
-                out[pos] = QOI_OP_RGB;
-                pos += 1;
-                out[pos] = r;
-                out[pos + 1] = g;
-                out[pos + 2] = b;
-                pos += 3;
+                qoi_put_rgb(out, &mut pos, [r, g, b]);
             } else {
-                out[pos] = QOI_OP_RGBA;
-                pos += 1;
-                out[pos] = r;
-                out[pos + 1] = g;
-                out[pos + 2] = b;
-                out[pos + 3] = a;
-                pos += 4;
+                qoi_put_rgba(out, &mut pos, [r, g, b, a]);
             }
             px_prev = [r, g, b, a];
             first = false;
@@ -622,48 +649,84 @@ pub fn encode_qoi(rgba: &[u8], width: u32, height: u32, out: &mut [u8]) -> Optio
             let dr = r as i16 - px_prev[0] as i16;
             let dg = g as i16 - px_prev[1] as i16;
             let db = b as i16 - px_prev[2] as i16;
-            if dr >= -2 && dr <= 1 && dg >= -2 && dg <= 1 && db >= -2 && db <= 1 {
-                out[pos] = QOI_OP_DIFF
-                    | (((dr + 2) as u8) << 4)
-                    | (((dg + 2) as u8) << 2)
-                    | ((db + 2) as u8);
-                pos += 1;
-            } else {
-                let dr_dg = dr - dg;
-                let db_dg = db - dg;
-                if dg >= -32 && dg <= 31 && dr_dg >= -8 && dr_dg <= 7 && db_dg >= -8 && db_dg <= 7 {
-                    out[pos] = QOI_OP_LUMA | ((dg + 32) as u8);
-                    pos += 1;
-                    out[pos] = (((dr_dg + 8) as u8) << 4) | ((db_dg + 8) as u8);
-                    pos += 1;
-                } else {
-                    out[pos] = QOI_OP_RGB;
-                    pos += 1;
-                    out[pos] = r;
-                    out[pos + 1] = g;
-                    out[pos + 2] = b;
-                    pos += 3;
-                }
-            }
+            qoi_put_diff(out, &mut pos, [r, g, b], [dr, dg, db]);
         } else {
-            out[pos] = QOI_OP_RGBA;
-            pos += 1;
-            out[pos] = r;
-            out[pos + 1] = g;
-            out[pos + 2] = b;
-            out[pos + 3] = a;
-            pos += 4;
+            qoi_put_rgba(out, &mut pos, [r, g, b, a]);
         }
         px_prev = [r, g, b, a];
         k += 1;
     }
-    if run > 0 {
-        out[pos] = QOI_OP_RUN | ((run - 1) as u8);
-        pos += 1;
-    }
+    qoi_flush_run(out, &mut pos, &mut run);
     out[pos..pos + 8].copy_from_slice(&[0, 0, 0, 0, 0, 0, 0, 1]);
     pos += 8;
     Some(pos)
+}
+
+/// 冲刷累计游程：`run > 0` 时写一个 QOI_OP_RUN（偏移量为 run-1）并清零。
+fn qoi_flush_run(out: &mut [u8], pos: &mut usize, run: &mut u32) {
+    if *run > 0 {
+        out[*pos] = QOI_OP_RUN | ((*run - 1) as u8);
+        *pos += 1;
+        *run = 0;
+    }
+}
+
+/// 写 QOI_OP_RGB（alpha 与前一像素相同，不带 alpha 字段）。
+fn qoi_put_rgb(out: &mut [u8], pos: &mut usize, rgb: [u8; 3]) {
+    out[*pos] = QOI_OP_RGB;
+    *pos += 1;
+    out[*pos] = rgb[0];
+    out[*pos + 1] = rgb[1];
+    out[*pos + 2] = rgb[2];
+    *pos += 3;
+}
+
+/// 写 QOI_OP_RGBA（携带完整 alpha）。
+/// （私有参数收敛：四通道打包为定长数组，6 参 → 3 参。）
+fn qoi_put_rgba(out: &mut [u8], pos: &mut usize, rgba: [u8; 4]) {
+    out[*pos] = QOI_OP_RGBA;
+    *pos += 1;
+    out[*pos] = rgba[0];
+    out[*pos + 1] = rgba[1];
+    out[*pos + 2] = rgba[2];
+    out[*pos + 3] = rgba[3];
+    *pos += 4;
+}
+
+/// alpha 不变时的差分编码：QOI_OP_DIFF → QOI_OP_LUMA → 兜底 QOI_OP_RGB。
+/// （私有参数收敛：rgb 三通道与差分三分量各打包为定长数组，8 参 → 4 参。）
+fn qoi_put_diff(out: &mut [u8], pos: &mut usize, rgb: [u8; 3], diff: [i16; 3]) {
+    let r = rgb[0];
+    let g = rgb[1];
+    let b = rgb[2];
+    let dr = diff[0];
+    let dg = diff[1];
+    let db = diff[2];
+    if dr >= -2 && dr <= 1 && dg >= -2 && dg <= 1 && db >= -2 && db <= 1 {
+        out[*pos] = QOI_OP_DIFF
+            | (((dr + 2) as u8) << 4)
+            | (((dg + 2) as u8) << 2)
+            | ((db + 2) as u8);
+        *pos += 1;
+    } else {
+        let dr_dg = dr - dg;
+        let db_dg = db - dg;
+        if dg >= -32 && dg <= 31 && dr_dg >= -8 && dr_dg <= 7 && db_dg >= -8 && db_dg <= 7 {
+            out[*pos] = QOI_OP_LUMA | ((dg + 32) as u8);
+            *pos += 1;
+            out[*pos] = (((dr_dg + 8) as u8) << 4) | ((db_dg + 8) as u8);
+            *pos += 1;
+        } else {
+            qoi_put_rgb(out, pos, rgb);
+        }
+    }
+}
+
+/// QOI 解码的逐像素状态（私有参数收敛）：把当前像素与游程打包，
+/// `qoi_read_op` 的参数从 6 个收敛到 5 个；px 初值 [0,0,0,255] 与解码器约定一致。
+struct QoiOpState {
+    px: [u8; 4],
+    run: u32,
 }
 
 /// QOI 解码为 RGBA8。
@@ -678,74 +741,98 @@ pub fn decode_qoi(data: &[u8], out: &mut [u8]) -> Option<ImageInfo> {
         return None;
     }
     let mut index = [[0u8; 4]; 64];
-    let mut px = [0u8, 0u8, 0u8, 255u8];
-    let mut run = 0u32;
+    let mut st = QoiOpState { px: [0u8, 0u8, 0u8, 255u8], run: 0u32 };
     let mut pos = 14usize;
     let mut written = 0usize;
     while written < npx {
-        if run > 0 {
-            run -= 1;
+        if st.run > 0 {
+            st.run -= 1;
         } else {
             if pos >= data.len() {
                 return None;
             }
             let b = data[pos];
             pos += 1;
-            if b == QOI_OP_RGB {
-                if pos + 3 > data.len() {
-                    return None;
-                }
-                px[0] = data[pos];
-                px[1] = data[pos + 1];
-                px[2] = data[pos + 2];
-                pos += 3;
-            } else if b == QOI_OP_RGBA {
-                if pos + 4 > data.len() {
-                    return None;
-                }
-                px[0] = data[pos];
-                px[1] = data[pos + 1];
-                px[2] = data[pos + 2];
-                px[3] = data[pos + 3];
-                pos += 4;
-            } else {
-                let tag = b & QOI_MASK_2;
-                if tag == QOI_OP_INDEX {
-                    px = index[(b & 0x3F) as usize];
-                } else if tag == QOI_OP_DIFF {
-                    let dr = ((b >> 4) & 3) as i8 as i16 - 2;
-                    let dg = ((b >> 2) & 3) as i8 as i16 - 2;
-                    let db = (b & 3) as i8 as i16 - 2;
-                    px[0] = (px[0] as i16 + dr) as u8;
-                    px[1] = (px[1] as i16 + dg) as u8;
-                    px[2] = (px[2] as i16 + db) as u8;
-                } else if tag == QOI_OP_LUMA {
-                    if pos >= data.len() {
-                        return None;
-                    }
-                    let b2 = data[pos];
-                    pos += 1;
-                    let dg = (b & 0x3F) as i8 as i16 - 32;
-                    let dr = (b2 >> 4) as i8 as i16 - 8 + dg;
-                    let db = (b2 & 0xF) as i8 as i16 - 8 + dg;
-                    px[0] = (px[0] as i16 + dr) as u8;
-                    px[1] = (px[1] as i16 + dg) as u8;
-                    px[2] = (px[2] as i16 + db) as u8;
-                } else if tag == QOI_OP_RUN {
-                    run = (b & 0x3F) as u32;
-                }
+            if !qoi_read_op(data, &mut pos, b, &mut st, &index) {
+                return None;
             }
-            index[((px[0] as u32 * 3 + px[1] as u32 * 5 + px[2] as u32 * 7 + px[3] as u32 * 11)
-                % 64) as usize] = px;
+            index[((st.px[0] as u32 * 3 + st.px[1] as u32 * 5 + st.px[2] as u32 * 7
+                + st.px[3] as u32 * 11) % 64) as usize] = st.px;
         }
         let o = written * 4;
-        out[o] = px[0];
-        out[o + 1] = px[1];
-        out[o + 2] = px[2];
-        out[o + 3] = px[3];
+        out[o] = st.px[0];
+        out[o + 1] = st.px[1];
+        out[o + 2] = st.px[2];
+        out[o + 3] = st.px[3];
         written += 1;
     }
     Some(ImageInfo { width, height, format: ImageFormat::Qoi, bpp: 8 })
+}
+
+/// 解一个 QOI 操作码并更新像素/游程状态。
+/// 返回 `false` 表示流越界（调用方按解码失败处理，不 panic）；
+/// 未知操作码与 RUN 序号保持原实现行为：跳过解析、照常写像素。
+/// （私有参数收敛：px/run 两个逐像素状态量打包为 [`QoiOpState`]。）
+fn qoi_read_op(
+    data: &[u8],
+    pos: &mut usize,
+    b: u8,
+    st: &mut QoiOpState,
+    index: &[[u8; 4]; 64],
+) -> bool {
+    if b == QOI_OP_RGB {
+        if *pos + 3 > data.len() {
+            return false;
+        }
+        st.px[0] = data[*pos];
+        st.px[1] = data[*pos + 1];
+        st.px[2] = data[*pos + 2];
+        *pos += 3;
+        return true;
+    }
+    if b == QOI_OP_RGBA {
+        if *pos + 4 > data.len() {
+            return false;
+        }
+        st.px[0] = data[*pos];
+        st.px[1] = data[*pos + 1];
+        st.px[2] = data[*pos + 2];
+        st.px[3] = data[*pos + 3];
+        *pos += 4;
+        return true;
+    }
+    let tag = b & QOI_MASK_2;
+    if tag == QOI_OP_INDEX {
+        st.px = index[(b & 0x3F) as usize];
+        return true;
+    }
+    if tag == QOI_OP_DIFF {
+        let dr = ((b >> 4) & 3) as i8 as i16 - 2;
+        let dg = ((b >> 2) & 3) as i8 as i16 - 2;
+        let db = (b & 3) as i8 as i16 - 2;
+        st.px[0] = (st.px[0] as i16 + dr) as u8;
+        st.px[1] = (st.px[1] as i16 + dg) as u8;
+        st.px[2] = (st.px[2] as i16 + db) as u8;
+        return true;
+    }
+    if tag == QOI_OP_LUMA {
+        if *pos >= data.len() {
+            return false;
+        }
+        let b2 = data[*pos];
+        *pos += 1;
+        let dg = (b & 0x3F) as i8 as i16 - 32;
+        let dr = (b2 >> 4) as i8 as i16 - 8 + dg;
+        let db = (b2 & 0xF) as i8 as i16 - 8 + dg;
+        st.px[0] = (st.px[0] as i16 + dr) as u8;
+        st.px[1] = (st.px[1] as i16 + dg) as u8;
+        st.px[2] = (st.px[2] as i16 + db) as u8;
+        return true;
+    }
+    if tag == QOI_OP_RUN {
+        st.run = (b & 0x3F) as u32;
+    }
+    true
 }
 
 // ===========================================================================
@@ -891,7 +978,7 @@ impl DecodeCache {
     }
 
     /// 查询命中；命中则刷新 LRU，返回尺寸。
-    pub fn get(&mut self, fp: &[u64; 16]) -> Option<(u32, u32)> {
+    pub fn get(&mut self, fp: &[u64; 16]) -> Option<(u32, u32)> { // 命中判据：槽位指纹 e.fp == *fp 全等
         for i in 0..self.count {
             if let Some(e) = self.entries[i] {
                 if &e.fp == fp {
@@ -1231,24 +1318,16 @@ pub fn decode_budget_ok(width: u32, height: u32, bit_depth: u8, max_bytes: usize
 
 /// 模糊探针：对任意输入尝试各解码器，返回已尝试的解码器数量（永不 panic）。
 pub fn fuzz_probe(data: &[u8], out: &mut [u8], scratch: &mut [u8]) -> u8 {
+    // 原实现 if/else 两臂同为 attempts += 1，归并为直增；解码器调用与副作用不变。
     let mut attempts = 0u8;
     let _ = sniff_format(data);
     attempts += 1;
-    if decode_png(data, out, scratch).is_some() {
-        attempts += 1;
-    } else {
-        attempts += 1;
-    }
-    if decode_bmp(data, out).is_some() {
-        attempts += 1;
-    } else {
-        attempts += 1;
-    }
-    if decode_qoi(data, out).is_some() {
-        attempts += 1;
-    } else {
-        attempts += 1;
-    }
+    let _ = decode_png(data, out, scratch);
+    attempts += 1;
+    let _ = decode_bmp(data, out);
+    attempts += 1;
+    let _ = decode_qoi(data, out);
+    attempts += 1;
     attempts
 }
 
@@ -1354,10 +1433,38 @@ pub fn image_selfcheck_closeout() -> u16 {
 // ===========================================================================
 
 /// 域自检：构建全部不变量，返回 `CheckSet`。
+///
+/// 原为 280+ 行超长函数，按 A126~A150 各节单一职责拆为子函数；
+/// 各节自建缓冲、只向 `set` 写结果，`set.add` 调用顺序与原实现一致。
 pub fn run_image_checks() -> CheckSet {
     let mut set = CheckSet::new("aurora-image");
+    checks_a126_png(&mut set);
+    checks_a127_129_headers(&mut set);
+    checks_a130_bmp_qoi(&mut set);
+    checks_a131_scale(&mut set);
+    checks_a132_color(&mut set);
+    checks_a133_cache(&mut set);
+    checks_a134_progressive(&mut set);
+    checks_a135_thumbnail(&mut set);
+    checks_a136_exif(&mut set);
+    checks_a137_geometry(&mut set);
+    checks_a138_alpha(&mut set);
+    checks_a139_budget(&mut set);
+    checks_a140_fuzz(&mut set);
+    checks_a141_color_mgmt(&mut set);
+    checks_a142_memory(&mut set);
+    checks_a143_closeout(&mut set);
+    checks_a145_perf_budget(&mut set);
+    checks_a146_observability(&mut set);
+    checks_a147_fuzz_harness(&mut set);
+    checks_a148_doc(&mut set);
+    checks_a149_degrade(&mut set);
+    checks_a150_domain_verify(&mut set);
+    set
+}
 
-    // ---- A126 PNG / CRC / inflate ----
+/// A126：PNG 嗅探/解码/像素/CRC/inflate/Adler 自检。
+fn checks_a126_png(set: &mut CheckSet) {
     let mut png_buf = [0u8; 256];
     let raw = [
         0, 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255, 255,
@@ -1392,35 +1499,46 @@ pub fn run_image_checks() -> CheckSet {
         "zlib",
     );
     set.add("A126 adler32", adler32(&[0xAA, 0xBB]) != 0, "adler");
+}
 
-    // ---- A127 JPEG ----
+/// A127~A129：JPEG/WebP/AVIF 头部解析自检。
+fn checks_a127_129_headers(set: &mut CheckSet) {
     set.add(
         "A127 jpeg dims",
         parse_jpeg_info(&TEST_JPEG).map(|i| i.width == 3 && i.height == 2).unwrap_or(false),
         "sof",
     );
     set.add("A127 jpeg reject", parse_jpeg_info(b"garbage") == None, "bad");
-
-    // ---- A128 WebP ----
     set.add(
         "A128 webp dims",
         parse_webp_info(&TEST_WEBP).map(|i| i.width == 3 && i.height == 2).unwrap_or(false),
         "vp8l",
     );
     set.add("A128 webp reject", parse_webp_info(b"xxxx") == None, "bad");
-
-    // ---- A129 AVIF ----
     set.add(
         "A129 avif dims",
         parse_avif_info(&TEST_AVIF).map(|i| i.width == 3 && i.height == 2).unwrap_or(false),
         "ispe",
     );
     set.add("A129 avif reject", parse_avif_info(b"nope") == None, "bad");
+}
 
-    // ---- A130 BMP / QOI roundtrip ----
+/// A130：BMP/QOI roundtrip 自检。
+///
+/// 原实现此处是裸 `unwrap`（固定合法输入上编码必成功）；按主工单 §5.9
+/// 改为可恢复错误路径：编码失败时显性记一条失败检查再以空流继续，
+/// 不 panic、不静默吞错（后续 roundtrip 检查必然失败留痕）。
+fn checks_a130_bmp_qoi(set: &mut CheckSet) {
     let img = [255u8, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255];
     let mut bmp = [0u8; 256];
-    let bn = encode_bmp(2, 2, &img, &mut bmp).unwrap();
+    let bn = match encode_bmp(2, 2, &img, &mut bmp) {
+        Some(n) => n,
+        None => {
+            // 消灭裸 unwrap：编码失败显性留痕（记失败检查），降级为空流继续。
+            set.add("A130 bmp encode", false, "encode");
+            0
+        }
+    };
     let mut bout = [0u8; 64];
     let bi = decode_bmp(&bmp[..bn], &mut bout);
     set.add(
@@ -1438,7 +1556,14 @@ pub fn run_image_checks() -> CheckSet {
         30, 200, 40, 50, 60, 100, 70, 80, 90, 50,
     ];
     let mut qout = [0u8; 256];
-    let qn = encode_qoi(&qimg, 4, 2, &mut qout).unwrap();
+    let qn = match encode_qoi(&qimg, 4, 2, &mut qout) {
+        Some(n) => n,
+        None => {
+            // 消灭裸 unwrap：同上，编码失败显性留痕，降级为空流继续。
+            set.add("A130 qoi encode", false, "encode");
+            0
+        }
+    };
     let mut qdec = [0u8; 64];
     let qi = decode_qoi(&qout[..qn], &mut qdec);
     set.add(
@@ -1446,8 +1571,10 @@ pub fn run_image_checks() -> CheckSet {
         qi.map(|i| i.width == 4 && i.height == 2).unwrap_or(false) && qdec[..32] == qimg[..32],
         "qoi",
     );
+}
 
-    // ---- A131 缩放 ----
+/// A131：最近邻/双线性缩放自检。
+fn checks_a131_scale(set: &mut CheckSet) {
     let grad = [0u8, 0, 0, 255, 255, 0, 0, 255];
     let mut dne = [0u8; 12];
     let mut dbi = [0u8; 12];
@@ -1463,8 +1590,11 @@ pub fn run_image_checks() -> CheckSet {
         dbi[0] == 0 && dbi[4] == 127 && dbi[8] == 255,
         "bilinear",
     );
+}
 
-    // ---- A132 灰度和调色板 ----
+/// A132：灰度转换与调色板展开自检。
+fn checks_a132_color(set: &mut CheckSet) {
+    let img = [255u8, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255];
     let mut gray = [0u8; 4];
     let ok_gray = rgb_to_gray(&img, &mut gray);
     set.add("A132 gray", ok_gray && gray[0] == 76 && gray[3] == 255, "luma");
@@ -1477,8 +1607,10 @@ pub fn run_image_checks() -> CheckSet {
         ok_pal && pout[0] == 255 && pout[8] == 0 && pout[9] == 0 && pout[11] == 255,
         "expand",
     );
+}
 
-    // ---- A133 缓存命中/驱逐 ----
+/// A133：缓存命中/驱逐自检。
+fn checks_a133_cache(set: &mut CheckSet) {
     let mut cache = DecodeCache::new();
     let fp1 = DecodeCache::fingerprint(&[1, 2, 3]);
     let fp2 = DecodeCache::fingerprint(&[4, 5, 6]);
@@ -1494,8 +1626,10 @@ pub fn run_image_checks() -> CheckSet {
         hit1 && hit_miss && cache.len() == CACHE_CAP && cache.evictions > 0,
         "lru",
     );
+}
 
-    // ---- A134 渐进加载 ----
+/// A134：逐行渐进加载自检。
+fn checks_a134_progressive(set: &mut CheckSet) {
     let mut pl = ProgressiveLoader::new(2);
     let mut pdst = [0u8; 16];
     let r0 = [1u8, 2, 3, 4, 5, 6, 7, 8];
@@ -1507,8 +1641,10 @@ pub fn run_image_checks() -> CheckSet {
         ok_p0 && ok_p1 && pl.state == ProgState::Complete && pdst[0] == 1 && pdst[8] == 9,
         "rows",
     );
+}
 
-    // ---- A135 缩略图 ----
+/// A135：缩略图自检。
+fn checks_a135_thumbnail(set: &mut CheckSet) {
     let big = [0u8; 4 * 4 * 4];
     let mut thumb = [0u8; 4 * 2 * 2];
     let tdim = make_thumbnail(&big, 4, 4, 2, &mut thumb);
@@ -1517,15 +1653,19 @@ pub fn run_image_checks() -> CheckSet {
         tdim == Some((2, 2)),
         "downscale",
     );
+}
 
-    // ---- A136 EXIF ----
+/// A136：EXIF 朝向自检。
+fn checks_a136_exif(set: &mut CheckSet) {
     set.add(
         "A136 exif orientation",
         parse_exif_orientation(&TEST_EXIF_JPEG) == Some(6),
         "orient",
     );
+}
 
-    // ---- A137 旋转/裁剪 ----
+/// A137：旋转/裁剪自检。
+fn checks_a137_geometry(set: &mut CheckSet) {
     let sq = [
         1u8, 0, 0, 255, 2, 0, 0, 255, 3, 0, 0, 255, 4, 0, 0, 255,
     ];
@@ -1538,8 +1678,10 @@ pub fn run_image_checks() -> CheckSet {
         ok_rot && ok_crop && rot[0] == 3 && cr[0] == 1 && cr[4] == 2,
         "geom",
     );
+}
 
-    // ---- A138 alpha ----
+/// A138：alpha 预乘/还原自检。
+fn checks_a138_alpha(set: &mut CheckSet) {
     let mut alpha = [255u8, 255, 255, 128];
     premultiply_alpha(&mut alpha);
     let pre = alpha[0];
@@ -1549,22 +1691,28 @@ pub fn run_image_checks() -> CheckSet {
         pre == 128 && alpha[0] == 255,
         "premul",
     );
+}
 
-    // ---- A139 性能预算 ----
+/// A139：解码性能预算自检。
+fn checks_a139_budget(set: &mut CheckSet) {
     set.add(
         "A139 budget",
         decode_budget_ok(100, 100, 32, 40000) && !decode_budget_ok(100, 100, 32, 100),
         "perf",
     );
+}
 
-    // ---- A140 模糊测试 ----
+/// A140：模糊探针（喂垃圾不 panic）自检。
+fn checks_a140_fuzz(set: &mut CheckSet) {
     let garbage = [0u8, 1, 2, 3, 0xFF, 0xD8, 0x00, 0x99];
     let mut fo = [0u8; 64];
     let mut fscr = [0u8; 64];
     let att = fuzz_probe(&garbage, &mut fo, &mut fscr);
     set.add("A140 fuzz", att >= 4, "no-panic");
+}
 
-    // ---- A141 色彩管理 ----
+/// A141：色彩管理（sRGB roundtrip + gamma 表）自检。
+fn checks_a141_color_mgmt(set: &mut CheckSet) {
     let mut all_rt = true;
     for v in [0u8, 1, 64, 128, 200, 255] {
         if linear_to_srgb8(srgb_to_linear8(v)) != v {
@@ -1580,18 +1728,24 @@ pub fn run_image_checks() -> CheckSet {
         all_rt && inv[fwd[128] as usize] == 128 && inv[fwd[255] as usize] == 255,
         "srgb/gamma",
     );
+}
 
-    // ---- A142 内存预算 ----
+/// A142：内存预算自检。
+fn checks_a142_memory(set: &mut CheckSet) {
     set.add(
         "A142 memory",
         memory_within_budget(64, 64, 64 * 64 * 4) && !memory_within_budget(64, 64, 1),
         "mem",
     );
+}
 
-    // ---- A143 收口计数 ----
+/// A143：收口计数自检。
+fn checks_a143_closeout(set: &mut CheckSet) {
     set.add("A143 closeout", image_selfcheck_closeout() == 25, "count");
+}
 
-    // ---- A145 性能预算结构 ----
+/// A145：性能预算结构自检。
+fn checks_a145_perf_budget(set: &mut CheckSet) {
     let pb = ImagePerfBudget::new();
     set.add(
         "A145 perf budget",
@@ -1599,8 +1753,10 @@ pub fn run_image_checks() -> CheckSet {
             && pb.decode_ok(100),
         "budget",
     );
+}
 
-    // ---- A146 可观测 ----
+/// A146：可观测计数器自检。
+fn checks_a146_observability(set: &mut CheckSet) {
     let mut stats = ImageStats::new();
     stats.record_decode(true);
     stats.record_decode(false);
@@ -1614,15 +1770,27 @@ pub fn run_image_checks() -> CheckSet {
         sn > 0 && stext.contains("image") && stats.total() == 2,
         "stats",
     );
+}
 
-    // ---- A147 模糊测试工具 ----
+/// A147：模糊测试工具自检。
+fn checks_a147_fuzz_harness(set: &mut CheckSet) {
+    let garbage = [0u8, 1, 2, 3, 0xFF, 0xD8, 0x00, 0x99];
+    let mut fo = [0u8; 64];
+    let mut fscr = [0u8; 64];
     let safe = image_fuzz_harness(&garbage, &mut fo, &mut fscr);
     set.add("A147 fuzz harness", safe, "harness");
+}
 
-    // ---- A148 文档 ----
+/// A148：文档串自检。
+fn checks_a148_doc(set: &mut CheckSet) {
     set.add("A148 doc", image_doc().contains("AURORA-1000"), "doc");
+}
 
-    // ---- A149 降级链 ----
+/// A149：降级链自检。
+fn checks_a149_degrade(set: &mut CheckSet) {
+    let garbage = [0u8, 1, 2, 3, 0xFF, 0xD8, 0x00, 0x99];
+    let mut fo = [0u8; 64];
+    let mut fscr = [0u8; 64];
     let mut ph = [0u8; 16];
     placeholder_rgba(&mut ph, 7, 8, 9, 255);
     let degraded = decode_best_effort(&garbage, &mut fo, &mut fscr);
@@ -1631,11 +1799,11 @@ pub fn run_image_checks() -> CheckSet {
         degraded.is_none() && ph[0] == 7 && ph[3] == 255,
         "fallback",
     );
+}
 
-    // ---- A150 域自检收口 ----
+/// A150：域自检收口。
+fn checks_a150_domain_verify(set: &mut CheckSet) {
     set.add("A150 domain verify", { let (p, f) = set.tally(); f == 0 && p >= 25 && !set.truncated() }, "verify");
-
-    set
 }
 
 // ===========================================================================
@@ -1795,34 +1963,28 @@ pub fn domain_closeout() -> bool {
 // 测试辅助：构造最小合法 PNG（RGBA，滤波器 0）
 // ===========================================================================
 
+/// 写一个 PNG chunk（len + type + payload + CRC32），返回下一个写位置。
+/// CRC 覆盖 type+payload，与原内联写法逐字节一致。
+fn make_png_chunk(buf: &mut [u8], p: usize, ctype: &[u8; 4], payload: &[u8]) -> usize {
+    buf[p..p + 4].copy_from_slice(&(payload.len() as u32).to_be_bytes());
+    buf[p + 4..p + 8].copy_from_slice(ctype);
+    buf[p + 8..p + 8 + payload.len()].copy_from_slice(payload);
+    let crc = crc32(&buf[p + 4..p + 8 + payload.len()]);
+    buf[p + 8 + payload.len()..p + 12 + payload.len()].copy_from_slice(&crc.to_be_bytes());
+    p + 12 + payload.len()
+}
+
 /// 把 8 位 PNG（IHDR + IDAT(zlib stored) + IEND）写入 `buf`，返回写入长度。
 fn make_png(buf: &mut [u8], w: u32, h: u32, ct: u8, raw: &[u8]) -> usize {
     buf[0..8].copy_from_slice(&PNG_SIGNATURE);
-    let mut p = 8usize;
-    // IHDR
-    let ihdr_len = 13u32;
-    buf[p..p + 4].copy_from_slice(&ihdr_len.to_be_bytes());
-    p += 4;
-    buf[p..p + 4].copy_from_slice(b"IHDR");
-    p += 4;
-    buf[p..p + 4].copy_from_slice(&w.to_be_bytes());
-    p += 4;
-    buf[p..p + 4].copy_from_slice(&h.to_be_bytes());
-    p += 4;
-    buf[p] = 8;
-    p += 1;
-    buf[p] = ct;
-    p += 1;
-    buf[p] = 0;
-    p += 1;
-    buf[p] = 0;
-    p += 1;
-    buf[p] = 0;
-    p += 1;
-    let crc = crc32(&buf[p - 17..p]);
-    buf[p..p + 4].copy_from_slice(&crc.to_be_bytes());
-    p += 4;
-    // IDAT：zlib stored
+    // IHDR：13 字节载荷 = 宽(4) + 高(4) + 位深(1) + 颜色类型(1) + 压缩/滤波/隔行(3×0)
+    let mut ihdr = [0u8; 13];
+    ihdr[0..4].copy_from_slice(&w.to_be_bytes());
+    ihdr[4..8].copy_from_slice(&h.to_be_bytes());
+    ihdr[8] = 8;
+    ihdr[9] = ct;
+    let mut p = make_png_chunk(buf, 8, b"IHDR", &ihdr);
+    // IDAT：zlib stored（BFINAL=1, BTYPE=00 + LEN/NLEN + raw + Adler32）
     let mut z = [0u8; 1024];
     let mut zp = 0usize;
     z[zp] = 0x78;
@@ -1841,24 +2003,9 @@ fn make_png(buf: &mut [u8], w: u32, h: u32, ct: u8, raw: &[u8]) -> usize {
     let ad = adler32(raw);
     z[zp..zp + 4].copy_from_slice(&ad.to_be_bytes());
     zp += 4;
-    let idat_len = zp as u32;
-    buf[p..p + 4].copy_from_slice(&idat_len.to_be_bytes());
-    p += 4;
-    buf[p..p + 4].copy_from_slice(b"IDAT");
-    p += 4;
-    buf[p..p + zp].copy_from_slice(&z[0..zp]);
-    p += zp;
-    let crc2 = crc32(&buf[p - 4 - zp..p]);
-    buf[p..p + 4].copy_from_slice(&crc2.to_be_bytes());
-    p += 4;
-    // IEND
-    buf[p..p + 4].copy_from_slice(&0u32.to_be_bytes());
-    p += 4;
-    buf[p..p + 4].copy_from_slice(b"IEND");
-    p += 4;
-    buf[p..p + 4].copy_from_slice(&crc32(b"IEND").to_be_bytes());
-    p += 4;
-    p
+    p = make_png_chunk(buf, p, b"IDAT", &z[0..zp]);
+    // IEND：空载荷
+    make_png_chunk(buf, p, b"IEND", &[])
 }
 
 // 最小 JPEG（SOF0，宽 3 高 2）。
@@ -2121,9 +2268,11 @@ mod tests {
         let fp1 = DecodeCache::fingerprint(&[1, 2, 3]);
         let fp2 = DecodeCache::fingerprint(&[4, 5, 6]);
         c.insert(fp1, 10, 10);
-        assert_eq!(c.get(&fp1), Some((10, 10)));
+        let hit = c.get(&fp1);
+        assert_eq!(hit, Some((10, 10)));
         assert_eq!(c.hits, 1);
-        assert_eq!(c.get(&fp2), None);
+        let miss_fp2 = c.get(&fp2);
+        assert_eq!(miss_fp2, None);
         assert_eq!(c.misses, 1);
         // 填满并触发驱逐
         for k in 0..CACHE_CAP + 3 {
@@ -2132,7 +2281,8 @@ mod tests {
         assert_eq!(c.len(), CACHE_CAP);
         assert!(c.evictions > 0);
         // 最早插入的 fp1 应已被驱逐
-        assert_eq!(c.get(&fp1), None);
+        let miss_fp1 = c.get(&fp1);
+        assert_eq!(miss_fp1, None);
     }
 
     #[test]

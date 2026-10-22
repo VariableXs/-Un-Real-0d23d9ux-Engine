@@ -4,6 +4,10 @@
 //! 判据（施工书 J1）：按钮位观察账（回环注入 4/4 事件检出），A1 期零处置声明（观察口径）。
 
 use alloc::vec::Vec;
+// 补宏导入：`use alloc::vec::Vec;` 只导**类型**不导**宏**，而本模块在
+// 公开函数（非 cfg(test) 区）里裸用 `vec![…]`，no_std 下宏须显式导入。
+
+use alloc::vec;
 
 /// 电源按钮诊断码闭集（0x9A21~0x9A28 八码）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

@@ -1,3 +1,4 @@
+
 //! unx2201_freezectl —— UNX-F2201 判据冻结总控器（冻结编排三段）。
 //! 锚点（CoRun Unxreal 主册）：UNX-F2201 · 判据冻结总控器（冻结编排三段） · 目标 300 行 · 已深化
 //! 判据原文：UNX-F2201-J1 冻结总控三段编排全过
@@ -26,6 +27,7 @@
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 模块版本。
 pub const FZ_VERSION: &str = "unx2201_freezectl-v1";
@@ -497,7 +499,7 @@ pub fn run_t2201_checks() -> crate::checks::CheckSet {
     );
     // 演练。
     let (ok, rounds, total) = drill(0x2201_0001, 10);
-    set.add(
+    set.add_dyn(
         "FZ-drill-10/10",
         ok,
         &format!("三段 {}/10 轮 总哈希=0x{:016x}", rounds, total),
@@ -507,13 +509,13 @@ pub fn run_t2201_checks() -> crate::checks::CheckSet {
         inj: FzInjector::new(),
     };
     gate.inj.inject_all();
-    set.add(
+    set.add_dyn(
         "FZ-inject-10/10",
         gate.inj.all_caught(),
         &format!("跳段拒绝 {}/{}", gate.inj.caught, gate.inj.cases),
     );
     // 判据总门。
     let (jok, msg) = gate.judge(ok, rounds, total);
-    set.add("UNX-F2201-J1", jok, &msg);
+    set.add_dyn("UNX-F2201-J1", jok, &msg);
     set
 }

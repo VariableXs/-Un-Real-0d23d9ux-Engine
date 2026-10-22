@@ -22,6 +22,10 @@
 //! 模），查询先验标签再取数——空窗跳档后旧数据不可能冒充新数据（环历史
 //! 查询的诚实性根基）。零堆：全定长，无 alloc。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -452,9 +456,9 @@ fn pearson_x1000(xs: &[i64], ys: &[i64]) -> i64 {
     if sxx == 0 || syy == 0 {
         return 0;
     }
-    let denom = (sxx as f64 * syy as f64).sqrt();
+    let denom = (sxx as f64 * syy as f64).m_sqrt();
     let r = sxy as f64 / denom;
-    (r * 1000.0).round() as i64
+    (r * 1000.0).m_round() as i64
 }
 
 // ---------------------------------------------------------------------------

@@ -44,6 +44,10 @@
 //!
 //! 零墙钟、零 IO、零外部依赖、零全局可变状态；逻辑 tick 注入，回归可复现。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 extern crate alloc;
 
 use alloc::format;
@@ -810,7 +814,7 @@ pub fn scale_times(
         } else {
             scaled
         };
-        out.push(clamped.round() as u32);
+        out.push(clamped.m_round() as u32);
     }
     if !strictly_increasing(&out) {
         notes.push(

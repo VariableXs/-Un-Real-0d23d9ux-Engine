@@ -1468,7 +1468,9 @@ mod tests {
         let topo = build_graph(g).unwrap();
         assert_eq!(topo.len(), 3);
         // 依赖顺序：a 在 b 前，b 在 c 前
-        let pos = |id: &str| topo.iter().position(|&x| x == id).unwrap();
+        // topo 装的是节点下标（linear 按 ["a","b","c"] 顺序建 0/1/2），
+        // 依赖序即下标的出现序：a(0) 在 b(1) 前、b(1) 在 c(2) 前。
+        let pos = |idx: usize| topo.iter().position(|&x| x == idx).unwrap();
         assert!(pos(0) < pos(1));
         assert!(pos(1) < pos(2));
     }
@@ -1513,7 +1515,7 @@ mod tests {
 
     #[test]
     fn 沙箱拒绝上溯与绝对路径() {
-        let s = Sandbox::new("/assets/theme");
+        let mut s = Sandbox::new("/assets/theme");
         s.grant(Capability::FileRead).unwrap();
         assert_eq!(s.check(Capability::FileRead, "a/b.txt"), SandboxVerdict::Allow);
         let d1 = s.check(Capability::FileRead, "../etc/passwd");

@@ -10,6 +10,10 @@
 //! 三项合模块：同一条「性能-视觉降级」链——合成器余量与电池面共用迟滞
 //! 器（hbase），分级联动一处审计。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use super::hbase::{Clock, Hysteresis};
@@ -1538,7 +1542,7 @@ impl LoadGenerator {
             LoadShape::Steady(v) => v.clamp(0, 100),
             LoadShape::Sine { period_ms, amplitude, base } => {
                 let phase = (t_ms % period_ms) * 360 / period_ms.max(1);
-                let v = base as i64 + (amplitude as f64 * (phase as f64).to_radians().sin()) as i64;
+                let v = base as i64 + (amplitude as f64 * (phase as f64).to_radians().m_sin()) as i64;
                 v.clamp(0, 100) as u64
             }
             LoadShape::Burst { base, spike, spike_width_ms, interval_ms } => {

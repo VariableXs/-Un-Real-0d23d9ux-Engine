@@ -111,6 +111,10 @@
 //! [`DiagBag`](crate::svstar2::vem02_track::DiagBag)/[`DiagCode`](crate::svstar2::vem02_track::DiagCode) 家族
 //! 的**分通道纪律**（错误拒绝 / 告警放行两条独立通道）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::svstar2::vem02_track::{DiagBag, TrackClass};
 
 use alloc::format;
@@ -446,7 +450,7 @@ pub fn normalize3(v: [f32; 3]) -> [f32; 3] {
     if !(len_sq.is_finite()) || len_sq < NORM_EPSILON * NORM_EPSILON {
         return v;
     }
-    let len = len_sq.sqrt();
+    let len = len_sq.m_sqrt();
     if !len.is_finite() || len < NORM_EPSILON {
         return v;
     }
@@ -459,7 +463,7 @@ pub fn normalize_quat(q: [f32; 4]) -> [f32; 4] {
     if !len_sq.is_finite() || len_sq < NORM_EPSILON * NORM_EPSILON {
         return [0.0, 0.0, 0.0, 1.0];
     }
-    let len = len_sq.sqrt();
+    let len = len_sq.m_sqrt();
     if !len.is_finite() || len < NORM_EPSILON {
         return [0.0, 0.0, 0.0, 1.0];
     }
@@ -631,8 +635,8 @@ pub fn slerp_quat(q0: [f32; 4], q1: [f32; 4], u: f32) -> [f32; 4] {
     // 钳到 [-1,1]：浮点误差可能让 dot 略超 1，使 acos 域外 → NaN。
     let dot_c = clamp(dot, -1.0, 1.0, 1.0);
 
-    let theta = dot_c.acos();
-    let sin_theta = theta.sin();
+    let theta = dot_c.m_acos();
+    let sin_theta = theta.m_sin();
     if !(sin_theta.is_finite()) || sin_theta < SLERP_SIN_EPSILON {
         // 短弧：线性兜底并归一化（slerp 在 θ→0 时与 lerp 等价）。
         let mut l = [
@@ -644,8 +648,8 @@ pub fn slerp_quat(q0: [f32; 4], q1: [f32; 4], u: f32) -> [f32; 4] {
         l = normalize_quat(l);
         return l;
     }
-    let w0 = ((1.0 - u) * theta).sin() / sin_theta;
-    let w1 = (u * theta).sin() / sin_theta;
+    let w0 = ((1.0 - u) * theta).m_sin() / sin_theta;
+    let w1 = (u * theta).m_sin() / sin_theta;
     normalize_quat([
         a[0] * w0 + b[0] * w1,
         a[1] * w0 + b[1] * w1,

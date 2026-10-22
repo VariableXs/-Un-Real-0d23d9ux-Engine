@@ -13,6 +13,10 @@
 //! 直通（不处理——零开销路径）；帧预算常量（滤镜一次采样走 GPU——
 //! CPU 侧零热路径）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 /// 默认压暗（30%——判据定值，滑杆百分比）。
@@ -39,7 +43,7 @@ pub fn filter_pixel(r: u8, g: u8, b: u8, dim_pct: u32, desat_pct: u32) -> (u8, u
     let mix = |c: u8| -> u8 {
         let v = luma + (c as f64 - luma) * s; // 降饱和。
         let v = v * d; // 压暗。
-        v.round().clamp(0.0, 255.0) as u8
+        v.m_round().clamp(0.0, 255.0) as u8
     };
     (mix(r), mix(g), mix(b))
 }

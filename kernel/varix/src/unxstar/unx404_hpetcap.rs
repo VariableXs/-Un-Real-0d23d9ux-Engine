@@ -660,6 +660,8 @@ pub fn drill_green() -> (bool, String) {
     tbl[36] = 0x01; // hw_seq
     tbl[40] = 0x64; // min_clock_tick 低字节（100）
     tbl[43] = 3; // 定时器数
+    // 事件块基址（字节 28-35，对照闭集要求非零）：HPET 规范基址 + 0x100 事件块。
+    tbl[28..36].copy_from_slice(&0xFED0_0100u64.to_le_bytes());
     // 校验和位（字节 9）：使整表累计 ≡ 0 mod 256。
     let mut acc: u32 = 0;
     for b in &tbl {

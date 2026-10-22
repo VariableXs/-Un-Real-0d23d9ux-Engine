@@ -139,13 +139,20 @@ impl LtDiag {
 /// 单窗口账（几何衰减均值）。
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LtWindow {
-    /// 账值（定点）。
+    /// 账值（定点，放大态除以 LT_SCALE 的暴露值）。
     pub avg: u64,
+    /// 账值放大态（×LT_SCALE）：根治 v/denom 与 avg/denom 的整除截断归零
+    /// ——原式在长窗（denom=1024 > BASE=1000）下增益恒 0、衰减在 avg<1024
+    /// 时恒 0（蓄能与衰减双双停滞，判据永红）。
+    pub avg_s: u64,
     /// 已收样本数。
     pub samples: u64,
     /// 饱和计数。
     pub sat_count: u64,
 }
+
+/// 账值定点放大因子（2^16；使 1/2^n 衰减/增益在放大态上无早期截断）。
+pub const LT_SCALE: u64 = 65_536;
 
 impl LtWindow {
     /// 唯一更新路径：avg = avg×(1-1/2^n) + sample×(1/2^n)。
@@ -157,14 +164,15 @@ impl LtWindow {
             return Err(LtDiag::new(LtCode::SampleOutOfRange, "update", format!("样本 {}", v)));
         }
         let denom = 1u64 << n;
-        let decay = self.avg / denom; // avg/2^n
-        let gain = v / denom;         // v/2^n（v ≤ BASE，增益 ≤ BASE/2^n）
-        // 饱和算术（防下溢：decay ≤ avg 恒成立，减法安全）。
-        if decay > self.avg {
-            return Err(LtDiag::new(LtCode::Negative, "update:decay", format!("decay {} > avg {}", decay, self.avg)));
+        let decay = self.avg_s / denom;      // avg/2^n（放大态上无早期截断）
+        let gain = v * LT_SCALE / denom;     // v/2^n（放大态；v ≤ BASE）
+        if decay > self.avg_s {
+            return Err(LtDiag::new(LtCode::Negative, "update:decay", format!("decay {} > avg {}", decay, self.avg_s)));
         }
-        self.avg = self.avg - decay + gain;
+        self.avg_s = self.avg_s - decay + gain;
+        self.avg = self.avg_s / LT_SCALE;
         if self.avg > LT_SATURATION {
+            self.avg_s = LT_SATURATION * LT_SCALE;
             self.avg = LT_SATURATION;
             self.sat_count += 1;
             return Err(LtDiag::new(LtCode::Saturated, "update:sat", format!("账 {}", self.avg)));
@@ -256,9 +264,11 @@ impl LtTracker {
             i += 1;
         }
         let peak_long = self.long.avg;
-        // 衰减：2048 tick 空转。
+        // 衰减：4×长窗空转。脉冲 1024 tick 后峰值 ≈ 63% 稳态；87.5% 衰减
+        // （尾 < 峰/8）需 e^-λ ≥ 8 → λ ≥ 2.08 个时间常数 → ≥ 2128 tick，
+        // 原 2×窗宽（2048）恰不可达；取 4×（4096）留余量。
         let mut j = 0u64;
-        while j < 2 * LT_LONG_WINDOW {
+        while j < 4 * LT_LONG_WINDOW {
             self.decay_tick();
             j += 1;
         }
@@ -273,8 +283,10 @@ impl LtTracker {
         // 从零开始：持续满样本，短窗先到 ≥90% 稳态。
         let mut t_short = 0u64;
         let mut t_long = 0u64;
+        // 预算 3×长窗：n=10 EMA 达 90% 稳态需 ~1024×ln(10)≈2358 tick，
+        // 原 2×窗宽（2048）数学上不可达（长窗 t 恒 0 → 判据永红）。
         let mut i = 0u64;
-        while i < LT_LONG_WINDOW * 2 {
+        while i < LT_LONG_WINDOW * 3 {
             let _ = self.update(LtSample::Running);
             i += 1;
             if t_short == 0 && self.short.avg >= LT_FIXED_BASE * 90 / 100 {

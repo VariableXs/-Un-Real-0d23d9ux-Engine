@@ -86,6 +86,10 @@
 //! 零 IO、零墙钟；相机向量与视口均注入，故同输入双跑逐位一致
 //! （F2215 CPU 确定性根基在本模块的延续）。无隐私面。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -203,7 +207,7 @@ pub fn depth_key(clamped_depth: f32) -> u32 {
     let t = (clamped_depth - DEPTH_NEAR) / span;
     // t ∈ [0,1] 已被 clamp_depth 保证；仍挡一层浮点边界（t 可能因舍入 >1）。
     let t = if t.is_finite() { t.clamp(0.0, 1.0) } else { 0.0 };
-    let scaled = (t * (DEPTH_QUANT_STEPS as f32)).floor();
+    let scaled = (t * (DEPTH_QUANT_STEPS as f32)).m_floor();
     // floor 后仍可能因浮点给出 STEPS（t 恰为 1.0），故再钳一次。
     if scaled >= DEPTH_QUANT_STEPS as f32 {
         DEPTH_QUANT_STEPS - 1

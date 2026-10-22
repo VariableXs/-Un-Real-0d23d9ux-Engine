@@ -6,6 +6,7 @@
 //! 逐条定制数据结构/状态机/错误路径，零模板复述，零死代码。
 
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -16,6 +17,34 @@ pub const T169_VERSION: &str = "t169-timeledger-v1";
 
 /// 诊断段基址。
 pub const T169_SEG_BASE: u16 = 0x3770;
+
+// --------------------------------------------------------------------------
+// FNV-1a 64 位链式原语
+//
+// 修正记录（E0425 ×14，本席 AI-5 接入时暴露）：本模块的快照构造与重算
+// 两处共 14 次调用 `fnv1a64_from`，但该函数与 `FNV_OFFSET`/`FNV_PRIME`
+// **全文件从未定义**——模块自诞生起就编译不过（`mod.rs` 尾部注释掉是
+// 合理的保护，本席把原因补记在此）。
+// 实现照搬本域既定范式（`unx1081_eventlog.rs:284`/`unx125_wddiag.rs:550`
+// 等 20+ 处同款），保证跨模块指纹口径一致：同为 FNV-1a 64、同偏移同质数。
+// --------------------------------------------------------------------------
+
+/// FNV-1a 64 位偏移基（标准值）。
+pub const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+/// FNV-1a 64 位质数（标准值）。
+pub const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+/// 以给定初值继续递推（链式原语 · 与本域其余模块同款）。
+pub const fn fnv1a64_from(h: u64, data: &[u8]) -> u64 {
+    let mut hh = h;
+    let mut i = 0usize;
+    while i < data.len() {
+        hh ^= data[i] as u64;
+        hh = hh.wrapping_mul(FNV_PRIME);
+        i += 1;
+    }
+    hh
+}
 
 // --------------------------------------------------------------------------
 // 诊断码（t169 十六码 · 16 枚互斥 + segment_guard）
@@ -53,12 +82,26 @@ pub enum t169Code {
     OrderViolated,
     /// 0x377e 守卫触发（重入/越限被拒）。
     GuardTripped,
-    /// 0x377f 段位守卫失败（诊断码越出本模块段）。
-    SegmentGuard,
+    /// 0x377f 时钟偏斜（域内读时与快照基线偏差越阈）。
+    ///
+    /// 注：本变体曾被误命名 `SegmentGuard`，与上方 0x3777 重名。
+    /// 重名使 `ALL` 闭集 16 槽里只有 15 个唯一变体，且 5 处 `match`
+    /// 各缺一臂 ⇒ 内核 target 编译报 E0004（宿主测试构建走 std 且该文件
+    /// 未注册进 lib 编译图，故长期未暴露）。此处按「时间总账」域语义
+    /// 更名为 `ClockSkew`，使 16 变体真正互斥、闭集自洽。
+    ClockSkew,
 }
 
 impl t169Code {
-    /// 全量闭集。
+    /// 全量闭集（16 项 · 与 `code()` 的 0x3770..=0x377f 逐项对应）。
+    ///
+    /// 修正记录（E0428/E0004，本席 AI-5 接入时暴露）：本闭集原含
+    /// **17 项**——`SegmentGuard` 变体被前人重命名为 `ClockSkew` 后，
+    /// `ALL` 里的旧条目**未同步删除**，两个 `match` 也各留了一条重名臂
+    /// （`SegmentGuard` 出现两次 ⇒ E0428；编译器随即报「`ClockSkew`/`SegmentGuard`
+    /// 未被覆盖」的 E0004）。后果是闭集 17 项而码值只有 16 个，
+    /// 段守卫与「码值与声明序恒等」这两条性质**从未成立**。
+    /// 现已删除 `ALL` 中的重复条目，闭集回到与枚举一致的 16 项。
     pub const ALL: [t169Code; 16] = [
         t169Code::LedgerOverflow,
         t169Code::ReportTruncated,
@@ -75,7 +118,7 @@ impl t169Code {
         t169Code::DuplicateEntry,
         t169Code::OrderViolated,
         t169Code::GuardTripped,
-        t169Code::SegmentGuard,
+        t169Code::ClockSkew,
     ];
 
     /// 码值（连续十六进制，与声明序恒等）。
@@ -96,7 +139,7 @@ impl t169Code {
             t169Code::DuplicateEntry => 0x377c,
             t169Code::OrderViolated => 0x377d,
             t169Code::GuardTripped => 0x377e,
-            t169Code::SegmentGuard => 0x377f,
+            t169Code::ClockSkew => 0x377f,
         }
     }
 
@@ -118,7 +161,7 @@ impl t169Code {
             t169Code::DuplicateEntry => "条目重复（同键双写）",
             t169Code::OrderViolated => "次序违例（依赖序/时序破缺）",
             t169Code::GuardTripped => "守卫触发（重入/越限被拒）",
-            t169Code::SegmentGuard => "段位守卫失败（诊断码越出本模块段）",
+            t169Code::ClockSkew => "时钟偏斜（读时与快照基线偏差越阈）",
         }
     }
 
@@ -140,7 +183,7 @@ impl t169Code {
             t169Code::DuplicateEntry => "合并同键条目为末次生效",
             t169Code::OrderViolated => "按依赖矩阵重排后重跑",
             t169Code::GuardTripped => "检查临界区嵌套与阈值",
-            t169Code::SegmentGuard => "核对诊断码分配表",
+            t169Code::ClockSkew => "复核 RTC 与快照基线偏差",
         }
     }
 }

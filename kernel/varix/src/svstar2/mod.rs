@@ -483,6 +483,7 @@ pub mod vea18_checks;
 pub mod vea18_sampler;
 pub mod vea19_blend;
 pub mod vea19_checks;
+pub mod veb00_handover;
 pub mod veb01_checks;
 pub mod veb01_device;
 pub mod veb01_init;
@@ -596,6 +597,26 @@ pub mod vea32_resstate;
 pub mod vea33_alias;
 pub mod vea34_transient;
 pub mod vea35_readback;
+pub mod vea36_rtv;
+pub mod vea37_dsv;
+pub mod vea38_uav;
+pub mod vea39_msaa;
+pub mod vea40_fmtcap;
+pub mod vea41_upheap;
+pub mod vea42_initmode;
+pub mod vea43_sparse;
+pub mod vea44_rename;
+pub mod vea45_viewcache;
+pub mod vea36_rtview;
+pub mod vea37_dsview;
+pub mod vea38_uav;
+pub mod vea39_msaa;
+pub mod vea40_fmtcaps;
+pub mod vea41_heaps;
+pub mod vea42_initsem;
+pub mod vea43_sparse;
+pub mod vea44_rename;
+pub mod vea45_viewcache;
 pub mod vea46_present;
 pub mod vea47_multibuf;
 pub mod vea48_vsync;
@@ -604,6 +625,14 @@ pub mod vea50_dropframe;
 pub mod vea51_fullscreen;
 pub mod vea53_hotplug;
 pub mod vea54_framelock;
+pub mod vea77_snapshot;
+pub mod vea78_leaktrace;
+pub mod vea79_tdrdump;
+pub mod vea80_blackdog;
+pub mod vea81_glitchscan;
+pub mod vea82_degrade;
+pub mod vea83_gpulist;
+pub mod vea84_compatdb;
 pub mod vez01_vfxarch;
 pub mod vez01_vfxarch_checks;
 pub mod vez02_taxonomy;
@@ -915,6 +944,56 @@ pub mod ver01m_checks;
 pub mod ver01m_nova4ksync;
 pub mod ver01n_exttoken;
 pub mod ver01n_checks;
+pub mod ver05a_appread;
+pub mod ver05b_subscribe;
+pub mod ver05c_validator;
+pub mod ver05d_fuzz;
+pub mod ver05e_docs;
+pub mod ver05f_groupclose;
+pub mod ver06a_skinchain;
+pub mod ver06a_checks;
+pub mod ver06b_impact;
+pub mod ver06a_reskinchain;
+pub mod ver06c_motion;
+pub mod ver06d_interact;
+pub mod ver06e_failsafe;
+pub mod ver06f_preview;
+pub mod ver06g_partial;
+pub mod ver06h_budget;
+pub mod ver06i_multiwindow;
+pub mod ver06j_notify;
+pub mod ver06k_progress;
+pub mod ver06l_preload;
+pub mod ver06m_telemetry;
+pub mod ver06n_stress;
+pub mod ver06o_displays;
+pub mod ver06p_docs;
+pub mod ver06q_apifreeze;
+pub mod ver06r_fuzz;
+pub mod ver06s_bench;
+pub mod ver06t_groupclose;
+pub mod ver07a_variants;
+pub mod ver07b_density;
+pub mod ver07c_radius;
+pub mod ver07d_typescale;
+pub mod ver07e_motion;
+pub mod ver07f_focusring;
+pub mod ver07g_matrix;
+pub mod ver07h_switch;
+pub mod ver07i_a11y;
+pub mod ver08a_kelvin;
+pub mod ver08b_override;
+pub mod ver08c_scenes;
+pub mod ver08d_astro;
+pub mod ver08e_ortho;
+pub mod ver08f_hdrexempt;
+pub mod ver08g_transition;
+pub mod ver08h_scenedsl;
+pub mod ver08i_scenetx;
+pub mod ver08j_focusliaison;
+pub mod ver08k_api;
+pub mod ver08l_debugtool;
+pub mod ver08m_fuzz;
 pub mod ver02_arch;
 pub mod ver02_checks;
 pub mod ver03_arch;
@@ -1165,499 +1244,668 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 ///
 /// CheckSet 容量上限见 `crate::checks::MAX_CHECKS`；单模块超限由该模块
 /// 自身裁剪——聚合器如实报告每份 Set 的截断态。
+// vea55_tearguard ↔ VE-F0055 撕裂防护与审核（扫描行判定/占空比监控/截图核验/建议引擎/审计流，0xE70x 子块十码）
+pub mod vea55_tearguard;
+// vea56_presentlat ↔ VE-F0056 呈现延迟测量（四段/契约同源/P95 承诺/光子口径，0xE71x 子块十码）
+pub mod vea56_presentlat;
+// vea86_resbudget ↔ VE-F0086 资源创建预算拒绝策略（保留下限/可退让序/拒绝不挤压/可解释，0xE72x 子块十码）
+pub mod vea86_resbudget;
+// vea93_abuse ↔ VE-F0093 恶意提交防护（十类越界/抽检分档/白名单到期/自检语料，0xE73x 子块十码）
+pub mod vea93_abuse;
+// vea94_ratelimit ↔ VE-F0094 提交频率限制器（令牌桶/豁免加容量/重试提示/调参留痕，0xE74x 子块十码）
+pub mod vea94_ratelimit;
+// vea106_placement ↔ VE-F0106 多适配器资源放置策略（容量/带宽/延迟/功耗/P2P 五因子+搬迁建议，0xE75x 子块十码）
+pub mod vea106_placement;
+// vea62_fenceshare ↔ VE-F0062 共享围栏跨服务传播（跨服务共享/死等检测/超时打破/换代恢复，0xE76x 子块十六码）
+pub mod vea62_fenceshare;
+// vea63_preempt ↔ VE-F0063 优先级抢占请求通路（权限笼子/公平窗口/令牌桶/合并生命期，0xE77x 子块十六码）
+pub mod vea63_preempt;
+// vea64_timesync ↔ VE-F0064 时间戳校准服务（仿射换算/漂移重校准/精度实测压制/降级单钟，0xE79x 子块十六码）
+pub mod vea64_timesync;
+// vea76_record ↔ VE-F0076 命令流录制与回放器（全字段录制/行程压缩/对拍归因/抽检不可比，0xE7Ax 子块十六码）
+pub mod vea76_record;
+// vea87_streambind ↔ VE-F0087 大资源流式绑定（分块上传/缺块降级阶梯/带宽节流/预取自适应，0xE7Bx 子块十六码）
+pub mod vea87_streambind;
+// vea88_reclaim ↔ VE-F0088 空闲资源回收线程（两阶段确认/滞后静默/批量上限/主线程兜底，0xE7Cx 子块十六码）
+pub mod vea88_reclaim;
+// vea89_pressure ↔ VE-F0089 显存压力事件广播（三级水位/风暴合并/响应审计/水位校准，0xE7Dx 子块十六码）
+pub mod vea89_pressure;
+
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks = [
-        ("VE-F0001", vea01_index::run_vea01_checks()),
-        ("VE-F0002", vea02_ctx::run_vea02_checks()),
-        ("VE-F0003", vea03_checks::run_vea03_checks()),
-        ("VE-F0004", vea04_checks::run_vea04_checks()),
-        ("VE-F0005", vea05_checks::run_vea05_checks()),
-        ("VE-F0006", vea06_checks::run_vea06_checks()),
-        ("VE-F0007", vea07_checks::run_vea07_checks()),
-        ("VE-F0008", vea08_checks::run_vea08_checks()),
-        ("VE-F0009", vea09_recovery::run_vea09_checks()),
-        ("VE-F0010", vea10_bus::run_vea10_checks()),
-        ("VE-F0011", vea11_hotplug::run_vea11_checks()),
-        ("VE-F0012", vea12_probe::run_vea12_checks()),
-        ("VE-F0013", vea13_softfall::run_vea13_checks()),
-        ("VE-F0014", vea14_snapshot::run_vea14_checks()),
-        ("VE-F0015", vea15_errclass::run_vea15_checks()),
-        ("VE-F0018", vea18_checks::run_vea18_checks()),
-        ("VE-F0019", vea19_checks::run_vea19_checks()),
-        ("VE-F0201", veb01_checks::run_veb01_checks()),
-        ("VE-F0202", veb02_checks::run_veb02_checks()),
-        ("VE-F0203", veb03_checks::run_veb03_checks()),
-        ("VE-F0204", veb04_checks::run_veb04_checks()),
-        ("VE-F0210", veb10_cursor::run_veb10_checks()),
-        ("VE-F0401", vec01_checks::run_vec01_checks()),
-        ("VE-F0402", vec02_spec::run_vec02_checks()),
-        ("VE-F0403", vec03_lexer::run_vec03_checks()),
-        ("VE-F0404", vec04_keywords::run_vec04_checks()),
-        ("VE-F0405", vec05_checks::run_vec05_checks()),
-        ("VE-F0406", vec06_checks::run_vec06_checks()),
-        ("VE-F0407", vec07_string::run_vec07_checks()),
-        ("VE-F0408", vec08_comment::run_vec08_checks()),
-        ("VE-F0409", vec09_operator::run_vec09_checks()),
-        ("VE-F0410", vec10_brace::run_vec10_checks()),
-        ("VE-F0411", vec11_prepro::run_vec11_checks()),
-        ("VE-F0412", vec12_macro::run_vec12_checks()),
-        ("VE-F0414", vec14_include::run_vec14_checks()),
-        ("VE-F0415", vec15_checks::run_vec15_checks()),
-        ("VE-F0416", vec16_checks::run_vec16_checks()),
-        ("VE-F0417", vec17_checks::run_vec17_checks()),
-        ("VE-F0418", vec18_checks::run_vec18_checks()),
-        ("VE-F0419", vec19_checks::run_vec19_checks()),
-("VE-F0420", vec20_checks::run_vec20_checks()),
-("VE-F0421", vec21_checks::run_vec21_checks()),
-("VE-F0422", vec22_checks::run_vec22_checks()),
-("VE-F0423", vec23_checks::run_vec23_checks()),
-        ("VE-F2216", vel16_security::run_vel16_checks()),
-        ("VE-F2217", vel17_quality::run_vel17_checks()),
-        ("VE-F0053", vea53_hotplug::run_vea53_checks()),
-        ("VE-F0052", vea52_hotres::run_vea52_checks()),
-        ("VE-F0054", vea54_framelock::run_vea54_checks()),
-        ("VE-F0601", ved01_checks::run_ved01_checks()),
-        ("VE-F0602", ved02_checks::run_ved02_checks()),
-        ("VE-F0603", ved03_checks::run_ved03_checks()),
-        ("VE-F0613", ved13_dirty::run_ved13_checks()),
-        ("VE-F4601", vew01_sdk_arch::run_vew01_checks()),
-        ("VE-F5601", veab01_audioarch_checks::run_veab01_checks()),
-("VE-F5602", veab02_devices_checks::run_veab02_checks()),
-("VE-F5603", veab03_spatial_checks::run_veab03_checks()),
-("VE-F5801", veac01_aicore_checks::run_veac01_checks()),
-("CGPU-F0321", vc21_budgetarch_checks::run_vc21_checks()),
-("CGPU-F0481", vd81_contract_checks::run_vd81_checks()),
-("CGPU-F2081", vcn01_nativerfx_checks::run_vcn01_checks()),
-("CGPU-F2082", vcn02_catalog_checks::run_vcn02_checks()),
-("CGPU-F2083", vcn03_principles_checks::run_vcn03_checks()),
-("CGPU-F2242", vco42_dimmodel_checks::run_vco42_checks()),
-("VE-F4408", vev08_colorm_checks::run_vev08_checks()),
-("CGPU-F2881", vcs81_sdomain_arch_checks::run_vcs81_checks()),
-("CGPU-F2882", vcs82_usermodel_checks::run_vcs82_checks()),
-("CGPU-F3201", vcu01_bencharch_checks::run_vcu01_checks()),
-("CGPU-F1601", vck01_hetarch_checks::run_vck01_checks()),
-        ("CGPU-F0801", vcf01_gpucompat_checks::run_vcf01_checks()),
-        ("CGPU-F0802", vcf02_certflow_checks::run_vcf02_checks()),
-        ("VE-F5602", veab02_audioout_checks::run_veab02_checks()),
-        ("VE-F6201", veae01_inputarch_checks::run_veae01_checks()),
-        ("VE-F5409", vef62_nettelemetry::run_vef62_checks()),
-        ("VE-F5607", veab07_audioasset::run_veab07_checks()),
-        ("CGPU-F0161", vcb01_framegraph_checks::run_vcb01_checks()),
-        ("CGPU-F0162", vcb02_depderive_checks::run_vcb02_checks()),
-        ("CGPU-F0163", vcb03_topopath_checks::run_vcb03_checks()),
-        ("CGPU-F0164", vcb04_crossframe_checks::run_vcb04_checks()),
-        ("CGPU-F0165", vcb05_priority_checks::run_vcb05_checks()),
-        ("CGPU-F0166", vcb06_graphexec_checks::run_vcb06_checks()),
-        ("VE-F4602", vew02_manifest::run_vew02_checks()),
-        ("VE-F4603", vew03_loader::run_vew03_checks()),
-        ("VE-F4604", vew04_sandbox::run_vew04_checks()),
-        ("VE-F4605", vew05_trust::run_vew05_checks()),
-        ("VE-F4606", vew06_versions::checks::run_vew06_checks()),
-        ("VE-F0614", ved14_traverse::run_ved14_checks()),
-        ("VE-F0615", ved15_cache::run_ved15_checks()),
-        ("VE-F0616", ved16_scale::run_ved16_checks()),
-        ("VE-F0617", ved17_consistency::run_ved17_checks()),
-        ("VE-F0618", ved18_checks::run_ved18_checks()),
-        ("VE-F0621", ved21_blendreg::run_ved21_checks()),
-        ("VE-F0622", ved22_separable::run_ved22_checks()),
-        ("VE-F0623", ved23_nonseparable::run_ved23_checks()),
-("VE-F0624", ved24_additive::run_ved24_checks()),
-("VE-F0625", ved25_premul::run_ved25_checks()),
+    let blocks: [(&'static str, fn() -> CheckSet); 516] = [
+        ("VE-F0001", vea01_index::run_vea01_checks),
+        // ── 批17（0xF800~0xFF80 段，16 单）──
+        ("VE-F0645", ved45_dirtprop::run_ved45_checks),
+        ("VE-F0819", vee19_eb01joint::run_vee19_checks),
+        ("VE-F1389", veg89_fuzzgate::run_veg89_checks),
+        ("VE-F1400", veg00_gdeclare::run_veg00_checks),
+        ("VE-F1449", veh49_audimeta::run_veh49_checks),
+        ("VE-F1765", vei65_sceneset::run_vei65_checks),
+        ("VE-F1846", vej46_ssr::run_vej46_checks),
+        ("VE-F2085", vek85_ppstable::run_vek85_checks),
+        ("VE-F2249", vel49_gpufuzz::run_vel49_checks),
+        ("VE-F2564", vem64_apifreeze::run_vem64_checks),
+        ("VE-F2783", ven83_njoint::run_ven83_checks),
+        ("VE-F2797", ven97_nhandover::run_ven97_checks),
+        ("VE-F2886", veo86_depgraph::run_veo86_checks),
+        ("VE-F3047", vep47_loading::run_vep47_checks),
+        ("VE-F4821", vey21_cliarch::run_vey21_checks),
+        ("VE-F4861", vey61_profarch::run_vey61_checks),
+        // ── 批18（0x8280~0x9f80 散段，16 单）──
+        ("VE-F4941", vex41_testasset::run_vex41_checks),
+        ("VE-F4961", vex61_selfcheck::run_vex61_checks),
+        ("VE-F4981", vex81_topaudit::run_vex81_checks),
+        ("VE-F5020", vey20_y01dusign::run_vey20_checks),
+        ("VE-F5041", vey41_syntaxarch::run_vey41_checks),
+        ("VE-F5081", vey81_integarch::run_vey81_checks),
+        ("VE-F5101", vey10_dbgload::run_vey10_checks),
+        ("VE-F5121", vey12_perfarch::run_vey12_checks),
+        ("VE-F5141", vey14_testasset::run_vey14_checks),
+        ("VE-F5161", vey16_selfcheck::run_vey16_checks),
+        ("VE-F5181", vey18_topaudit::run_vey18_checks),
+        ("VE-F5221", vez22_particlearch::run_vez22_checks),
+        ("VE-F5241", vez24_pparch::run_vez24_checks),
+        ("VE-F5261", vez26_envarch::run_vez26_checks),
+        ("VE-F5281", vez28_transarch::run_vez28_checks),
+        ("VE-F5301", vez30_perfarch::run_vez30_checks),
+        ("VE-F5610", ve5610_audiotel::run_ve5610_checks),
+        ("VE-F0002", vea02_ctx::run_vea02_checks),
+        ("VE-F0003", vea03_checks::run_vea03_checks),
+        ("VE-F0004", vea04_checks::run_vea04_checks),
+        ("VE-F0005", vea05_checks::run_vea05_checks),
+        ("VE-F0006", vea06_checks::run_vea06_checks),
+        ("VE-F0007", vea07_checks::run_vea07_checks),
+        ("VE-F0008", vea08_checks::run_vea08_checks),
+        ("VE-F0009", vea09_recovery::run_vea09_checks),
+        ("VE-F0010", vea10_bus::run_vea10_checks),
+        ("VE-F0011", vea11_hotplug::run_vea11_checks),
+        ("VE-F0012", vea12_probe::run_vea12_checks),
+        ("VE-F0013", vea13_softfall::run_vea13_checks),
+        ("VE-F0014", vea14_snapshot::run_vea14_checks),
+        ("VE-F0015", vea15_errclass::run_vea15_checks),
+        ("VE-F0018", vea18_checks::run_vea18_checks),
+        ("VE-F0019", vea19_checks::run_vea19_checks),
+        ("VE-F0201", veb01_checks::run_veb01_checks),
+        ("VE-F0202", veb02_checks::run_veb02_checks),
+        ("VE-F0203", veb03_checks::run_veb03_checks),
+        ("VE-F0204", veb04_checks::run_veb04_checks),
+        ("VE-F0210", veb10_cursor::run_veb10_checks),
+        ("VE-F0401", vec01_checks::run_vec01_checks),
+        ("VE-F0402", vec02_spec::run_vec02_checks),
+        ("VE-F0403", vec03_lexer::run_vec03_checks),
+        ("VE-F0404", vec04_keywords::run_vec04_checks),
+        ("VE-F0405", vec05_checks::run_vec05_checks),
+        ("VE-F0406", vec06_checks::run_vec06_checks),
+        ("VE-F0407", vec07_string::run_vec07_checks),
+        ("VE-F0408", vec08_comment::run_vec08_checks),
+        ("VE-F0409", vec09_operator::run_vec09_checks),
+        ("VE-F0410", vec10_brace::run_vec10_checks),
+        ("VE-F0411", vec11_prepro::run_vec11_checks),
+        ("VE-F0412", vec12_macro::run_vec12_checks),
+        ("VE-F0414", vec14_include::run_vec14_checks),
+        ("VE-F0415", vec15_checks::run_vec15_checks),
+        ("VE-F0416", vec16_checks::run_vec16_checks),
+        ("VE-F0417", vec17_checks::run_vec17_checks),
+        ("VE-F0418", vec18_checks::run_vec18_checks),
+        ("VE-F0419", vec19_checks::run_vec19_checks),
+("VE-F0420", vec20_checks::run_vec20_checks),
+("VE-F0421", vec21_checks::run_vec21_checks),
+("VE-F0422", vec22_checks::run_vec22_checks),
+("VE-F0423", vec23_checks::run_vec23_checks),
+        ("VE-F2216", vel16_security::run_vel16_checks),
+        ("VE-F2217", vel17_quality::run_vel17_checks),
+        ("VE-F0053", vea53_hotplug::run_vea53_checks),
+        ("VE-F0052", vea52_hotres::run_vea52_checks),
+        ("VE-F0054", vea54_framelock::run_vea54_checks),
+        ("VE-F0077", vea77_snapshot::run_vea77_checks),
+        ("VE-F0078", vea78_leaktrace::run_vea78_checks),
+        ("VE-F0079", vea79_tdrdump::run_vea79_checks),
+        ("VE-F0080", vea80_blackdog::run_vea80_checks),
+        ("VE-F0081", vea81_glitchscan::run_vea81_checks),
+        ("VE-F0082", vea82_degrade::run_vea82_checks),
+        ("VE-F0083", vea83_gpulist::run_vea83_checks),
+        ("VE-F0601", ved01_checks::run_ved01_checks),
+        ("VE-F0602", ved02_checks::run_ved02_checks),
+        ("VE-F0603", ved03_checks::run_ved03_checks),
+        ("VE-F0613", ved13_dirty::run_ved13_checks),
+        ("VE-F4601", vew01_sdk_arch::run_vew01_checks),
+        ("VE-F5601", veab01_audioarch_checks::run_veab01_checks),
+("VE-F5602", veab02_devices_checks::run_veab02_checks),
+("VE-F5603", veab03_spatial_checks::run_veab03_checks),
+("VE-F5801", veac01_aicore_checks::run_veac01_checks),
+("CGPU-F0321", vc21_budgetarch_checks::run_vc21_checks),
+("CGPU-F0481", vd81_contract_checks::run_vd81_checks),
+("CGPU-F2081", vcn01_nativerfx_checks::run_vcn01_checks),
+("CGPU-F2082", vcn02_catalog_checks::run_vcn02_checks),
+("CGPU-F2083", vcn03_principles_checks::run_vcn03_checks),
+("CGPU-F2242", vco42_dimmodel_checks::run_vco42_checks),
+("VE-F4408", vev08_colorm_checks::run_vev08_checks),
+("CGPU-F2881", vcs81_sdomain_arch_checks::run_vcs81_checks),
+("CGPU-F2882", vcs82_usermodel_checks::run_vcs82_checks),
+("CGPU-F3201", vcu01_bencharch_checks::run_vcu01_checks),
+("CGPU-F1601", vck01_hetarch_checks::run_vck01_checks),
+        ("CGPU-F0801", vcf01_gpucompat_checks::run_vcf01_checks),
+        ("CGPU-F0802", vcf02_certflow_checks::run_vcf02_checks),
+        ("VE-F5602", veab02_audioout_checks::run_veab02_checks),
+        ("VE-F6201", veae01_inputarch_checks::run_veae01_checks),
+        ("VE-F5409", vef62_nettelemetry::run_vef62_checks),
+        ("VE-F5607", veab07_audioasset::run_veab07_checks),
+        ("CGPU-F0161", vcb01_framegraph_checks::run_vcb01_checks),
+        ("CGPU-F0162", vcb02_depderive_checks::run_vcb02_checks),
+        ("CGPU-F0163", vcb03_topopath_checks::run_vcb03_checks),
+        ("CGPU-F0164", vcb04_crossframe_checks::run_vcb04_checks),
+        ("CGPU-F0165", vcb05_priority_checks::run_vcb05_checks),
+        ("CGPU-F0166", vcb06_graphexec_checks::run_vcb06_checks),
+        ("VE-F4602", vew02_manifest::run_vew02_checks),
+        ("VE-F4603", vew03_loader::run_vew03_checks),
+        ("VE-F4604", vew04_sandbox::run_vew04_checks),
+        ("VE-F4605", vew05_trust::run_vew05_checks),
+        ("VE-F4606", vew06_versions::checks::run_vew06_checks),
+        ("VE-F0614", ved14_traverse::run_ved14_checks),
+        ("VE-F0615", ved15_cache::run_ved15_checks),
+        ("VE-F0616", ved16_scale::run_ved16_checks),
+        ("VE-F0617", ved17_consistency::run_ved17_checks),
+        ("VE-F0618", ved18_checks::run_ved18_checks),
+        ("VE-F0621", ved21_blendreg::run_ved21_checks),
+        ("VE-F0622", ved22_separable::run_ved22_checks),
+        ("VE-F0623", ved23_nonseparable::run_ved23_checks),
+("VE-F0624", ved24_additive::run_ved24_checks),
+("VE-F0625", ved25_premul::run_ved25_checks),
 
-        ("VE-F0020", vea20_stencil::run_vea20_checks()),
-        ("VE-F0021", vea21_raster::run_vea21_checks()),
-("VE-F0022", vea22_vlayout::run_vea22_checks()),
-        ("VE-F0023", vea23_psocache::run_vea23_checks()),
-        ("VE-F0024", vea24_hotreload::run_vea24_checks()),
-        ("VE-F0025", vea25_cbuf::run_vea25_checks()),
-        ("VE-F0026", vea26_desc_heap::run_vea26_checks()),
-        ("VE-F0027", vea27_bindlayout::run_vea27_checks()),
-        ("VE-F0028", vea28_querypool::run_vea28_checks()),
-        ("VE-F0029", vea29_indirect::run_vea29_checks()),
-        ("VE-F0030", vea30_batcher::run_vea30_checks()),
-        ("VE-F0031", vea31_framegraph::run_vea31_checks()),
-        ("VE-F0032", vea32_resstate::run_vea32_checks()),
-        ("VE-F0033", vea33_alias::run_vea33_checks()),
-        ("VE-F0034", vea34_transient::run_vea34_checks()),
-        ("VE-F0035", vea35_readback::run_vea35_checks()),
-        ("VE-F0046", vea46_present::run_vea46_checks()),
-        ("VE-F0047", vea47_multibuf::run_vea47_checks()),
-        ("VE-F0048", vea48_vsync::run_vea48_checks()),
-        ("VE-F0049", vea49_framedisp::run_vea49_checks()),
-        ("VE-F0050", vea50_dropframe::run_vea50_checks()),
-        ("VE-F0051", vea51_fullscreen::run_vea51_checks()),
-        ("VE-F1613-a", vef16_checks::run_vef16_gridstat_checks_a_standalone()),
-        ("VE-F1613-b", vef16_checks::run_vef16_gridstat_checks_b_standalone()),
-        ("VE-F1613-c", vef16_checks::run_vef16_gridstat_checks_c_standalone()),
-        ("VE-F5201", vez01_vfxarch_checks::run_vez01_checks()),
-("VE-F5202", vez02_taxonomy_checks::run_vez02_checks()),
-("VE-F5203", vez03_particles::run_vez03_checks()),
-("VE-F5204", vez04_postfx::run_vez04_checks()),
-("VE-F5205", vez05_envfx::run_vez05_checks()),
-("VE-F5407", vef60_netsec::run_vef60_checks()),
-("VE-F5206", vez06_transition::run_vez06_checks()),
-("VE-F5207", vez07_params::run_vez07_checks()),
-("VE-F5208", vez08_combo::run_vez08_checks()),
-("VE-F5209", vez09_libstruct::run_vez09_checks()),
-("VE-F5210", vez10_telemetry::run_vez10_checks()),
-("VE-F5211", vez11_safety::run_vez11_checks()),
-("VE-F5212", vez12_docs::run_vez12_checks()),
-("VE-F5213", vez13_testbench::run_vez13_checks()),
-("VE-F5214", vez14_examples::run_vez14_checks()),
-("VE-F5215", vez15_fuzz::run_vez15_checks()),
-("VE-F5216", vez16_perf::run_vez16_checks()),
-("VE-F0211", veb11_irq::run_veb11_checks()),
-("VE-F0212", veb12_recovery::run_veb12_checks()),
-("VE-F0213", veb13_heads::run_veb13_checks()),
-("VE-F0215", veb15_checks::run_veb15_checks()),
-("VE-F0216", veb16_checks::run_veb16_checks()),
-("VE-F0217", veb17_checks::run_veb17_checks()),
-("VE-F0205", veb05_checks::run_veb05_checks()),
-("VE-F0206", veb06_checks::run_veb06_checks()),
-("VE-F0413", vec13_checks::run_vec13_checks()),
-("VE-F0604", ved04_checks::run_ved04_checks()),
-("VE-F0605", ved05_checks::run_ved05_checks()),
-("VE-F0606", ved06_checks::run_ved06_checks()),
-("VE-F0607", ved07_checks::run_ved07_checks()),
-("VE-F1401", veh01_checks::run_veh01_checks()),
-("VE-F1402", veh02_checks::run_veh02_checks()),
-("VE-F1403", veh03_checks::run_veh03_checks()),
-("VE-F1404", veh04_checks::run_veh04_checks()),
-("VE-F1405", veh05_checks::run_veh05_checks()),
-("VE-F1407", veh07_checks::run_veh07_checks()),
-("VE-F1406", veh06_checks::run_veh06_checks()),
-("VE-F1409", veh09_checks::run_veh09_checks()),
-("VE-F1410", veh10_checks::run_veh10_checks()),
-("VE-F1411", veh11_checks::run_veh11_checks()),
-("VE-F1412", veh12_checks::run_veh12_checks()),
-        ("VE-F1414-a", veh15_checks::run_veh15_checks_a_standalone()),
-        ("VE-F1414-b", veh15_checks::run_veh15_checks_b_standalone()),
-        ("VE-F1414-c", veh15_checks::run_veh15_checks_c_standalone()),
-        ("VE-F1804", vej04_checks::run_vej04_checks()),
-        ("VE-F1805", vej05_spotlight::run_vej05_checks()),
-        ("VE-F1806", vej06_area::run_vej06_checks()),
-        ("VE-J/F1807", vej07_checks::run_vej07_checks()),
-("VE-J/F1808", vej08_checks::run_vej08_checks()),
-        ("VE-J/F1809-a", vej09_checks::run_vej09_checks_a()),
-        ("VE-J/F1809-b", vej09_checks::run_vej09_checks_b()),
-        ("VE-J/F1810", vej10_checks::run_vej10_checks()),
-        ("VE-J/F1811", vej11_checks::run_vej11_checks()),
-("VE-F2801", veo01_checks::run_veo01_checks()),
-        ("VE-F2802", veo02_vendor_checks::run_veo02_checks()),
-        ("VE-F2803", veo03_subset_checks::run_veo03_checks()),
-("VE-F2804", veo04_lexer_checks::run_veo04_checks()),
-("VE-F2805", veo05_props_checks::run_veo05_checks()),
-("VE-F2806", veo06_shorthand_checks::run_veo06_checks()),
-("VE-F2807", veo07_rules_checks::run_veo07_checks()),
-("VE-F2808", veo08_import_checks::run_veo08_checks()),
-        ("VE-F0801", vee01_checks::run_vee01_checks()),
-        ("VE-F0802", vee02_checks::run_vee02_checks()),
-        ("VE-F0803", vee03_checks::run_vee03_checks()),
-        ("VE-F0804", vee04_checks::run_vee04_checks()),
-        ("VE-F0805", vee05_hinting::run_vee05_checks()),
-        ("VE-F0806", vee06_atlas::run_vee06_checks()),
-        ("VE-F0807", vee07_prims::run_vee07_checks()),
-        ("VE-F0808", vee08_fontmetric::run_vee08_checks()),
-        ("VE-F0810", vee10_textsecurity::run_vee10_checks()),
-        ("VE-F2004", vek04_checks::run_vek04_checks()),
-        ("VE-F0809", vee09_texttelemetry::run_vee09_checks()),
-        ("VE-F2005", vek05_checks::run_vek05_checks()),
-        ("VE-F2006", vek06_checks::run_vek06_checks()),
-        ("VE-F2007", vek07_checks::run_vek07_checks()),
-        ("VE-F2008", vek08_checks::run_vek08_checks()),
-        ("VE-F2009", vek09_checks::run_vek09_checks()),
-        ("VE-F2009-deep", vek09_checks::run_vek09_deep_checks()),
-        ("VE-F2010", vek10_checks::run_vek10_checks()),
-        ("VE-F2011", vek11_checks::run_vek11_checks()),
-        ("VE-F2012", vek12_checks::run_vek12_checks()),
+        ("VE-F0020", vea20_stencil::run_vea20_checks),
+        ("VE-F0021", vea21_raster::run_vea21_checks),
+("VE-F0022", vea22_vlayout::run_vea22_checks),
+        ("VE-F0023", vea23_psocache::run_vea23_checks),
+        ("VE-F0024", vea24_hotreload::run_vea24_checks),
+        ("VE-F0025", vea25_cbuf::run_vea25_checks),
+        ("VE-F0026", vea26_desc_heap::run_vea26_checks),
+        ("VE-F0027", vea27_bindlayout::run_vea27_checks),
+        ("VE-F0028", vea28_querypool::run_vea28_checks),
+        ("VE-F0029", vea29_indirect::run_vea29_checks),
+        ("VE-F0030", vea30_batcher::run_vea30_checks),
+        ("VE-F0031", vea31_framegraph::run_vea31_checks),
+        ("VE-F0032", vea32_resstate::run_vea32_checks),
+        ("VE-F0033", vea33_alias::run_vea33_checks),
+        ("VE-F0034", vea34_transient::run_vea34_checks),
+        ("VE-F0035", vea35_readback::run_vea35_checks),
+        ("VE-F0036", vea36_rtv::run_vea36_checks),
+        ("VE-F0037", vea37_dsv::run_vea37_checks),
+        ("VE-F0038", vea38_uav::run_vea38_checks),
+        ("VE-F0039", vea39_msaa::run_vea39_checks),
+        ("VE-F0040", vea40_fmtcap::run_vea40_checks),
+        ("VE-F0041", vea41_upheap::run_vea41_checks),
+        ("VE-F0042", vea42_initmode::run_vea42_checks),
+        ("VE-F0043", vea43_sparse::run_vea43_checks),
+        ("VE-F0044", vea44_rename::run_vea44_checks),
+        ("VE-F0045", vea45_viewcache::run_vea45_checks),
+        // ── 批 A02b（F0036~F0045 资源视图段缺口补写）+ F0200 域移交包 ──
+        ("VE-F0036", vea36_rtview::run_vea36_checks),
+        ("VE-F0037", vea37_dsview::run_vea37_checks),
+        ("VE-F0038", vea38_uav::run_vea38_checks),
+        ("VE-F0039", vea39_msaa::run_vea39_checks),
+        ("VE-F0040", vea40_fmtcaps::run_vea40_checks),
+        ("VE-F0041", vea41_heaps::run_vea41_checks),
+        ("VE-F0042", vea42_initsem::run_vea42_checks),
+        ("VE-F0043", vea43_sparse::run_vea43_checks),
+        ("VE-F0044", vea44_rename::run_vea44_checks),
+        ("VE-F0045", vea45_viewcache::run_vea45_checks),
+        ("VE-F0200", veb00_handover::run_veb00_checks),
+        ("VE-F0046", vea46_present::run_vea46_checks),
+        ("VE-F0047", vea47_multibuf::run_vea47_checks),
+        ("VE-F0048", vea48_vsync::run_vea48_checks),
+        ("VE-F0049", vea49_framedisp::run_vea49_checks),
+        ("VE-F0050", vea50_dropframe::run_vea50_checks),
+        ("VE-F0051", vea51_fullscreen::run_vea51_checks),
+        ("VE-F1613-a", vef16_checks::run_vef16_gridstat_checks_a_standalone),
+        ("VE-F1613-b", vef16_checks::run_vef16_gridstat_checks_b_standalone),
+        ("VE-F1613-c", vef16_checks::run_vef16_gridstat_checks_c_standalone),
+        ("VE-F5201", vez01_vfxarch_checks::run_vez01_checks),
+("VE-F5202", vez02_taxonomy_checks::run_vez02_checks),
+("VE-F5203", vez03_particles::run_vez03_checks),
+("VE-F5204", vez04_postfx::run_vez04_checks),
+("VE-F5205", vez05_envfx::run_vez05_checks),
+("VE-F5407", vef60_netsec::run_vef60_checks),
+("VE-F5206", vez06_transition::run_vez06_checks),
+("VE-F5207", vez07_params::run_vez07_checks),
+("VE-F5208", vez08_combo::run_vez08_checks),
+("VE-F5209", vez09_libstruct::run_vez09_checks),
+("VE-F5210", vez10_telemetry::run_vez10_checks),
+("VE-F5211", vez11_safety::run_vez11_checks),
+("VE-F5212", vez12_docs::run_vez12_checks),
+("VE-F5213", vez13_testbench::run_vez13_checks),
+("VE-F5214", vez14_examples::run_vez14_checks),
+("VE-F5215", vez15_fuzz::run_vez15_checks),
+("VE-F5216", vez16_perf::run_vez16_checks),
+("VE-F0211", veb11_irq::run_veb11_checks),
+("VE-F0212", veb12_recovery::run_veb12_checks),
+("VE-F0213", veb13_heads::run_veb13_checks),
+("VE-F0215", veb15_checks::run_veb15_checks),
+("VE-F0216", veb16_checks::run_veb16_checks),
+("VE-F0217", veb17_checks::run_veb17_checks),
+("VE-F0205", veb05_checks::run_veb05_checks),
+("VE-F0206", veb06_checks::run_veb06_checks),
+("VE-F0413", vec13_checks::run_vec13_checks),
+("VE-F0604", ved04_checks::run_ved04_checks),
+("VE-F0605", ved05_checks::run_ved05_checks),
+("VE-F0606", ved06_checks::run_ved06_checks),
+("VE-F0607", ved07_checks::run_ved07_checks),
+("VE-F1401", veh01_checks::run_veh01_checks),
+("VE-F1402", veh02_checks::run_veh02_checks),
+("VE-F1403", veh03_checks::run_veh03_checks),
+("VE-F1404", veh04_checks::run_veh04_checks),
+("VE-F1405", veh05_checks::run_veh05_checks),
+("VE-F1407", veh07_checks::run_veh07_checks),
+("VE-F1406", veh06_checks::run_veh06_checks),
+("VE-F1409", veh09_checks::run_veh09_checks),
+("VE-F1410", veh10_checks::run_veh10_checks),
+("VE-F1411", veh11_checks::run_veh11_checks),
+("VE-F1412", veh12_checks::run_veh12_checks),
+        ("VE-F1414-a", veh15_checks::run_veh15_checks_a_standalone),
+        ("VE-F1414-b", veh15_checks::run_veh15_checks_b_standalone),
+        ("VE-F1414-c", veh15_checks::run_veh15_checks_c_standalone),
+        ("VE-F1804", vej04_checks::run_vej04_checks),
+        ("VE-F1805", vej05_spotlight::run_vej05_checks),
+        ("VE-F1806", vej06_area::run_vej06_checks),
+        ("VE-J/F1807", vej07_checks::run_vej07_checks),
+("VE-J/F1808", vej08_checks::run_vej08_checks),
+        ("VE-J/F1809-a", vej09_checks::run_vej09_checks_a),
+        ("VE-J/F1809-b", vej09_checks::run_vej09_checks_b),
+        ("VE-J/F1810", vej10_checks::run_vej10_checks),
+        ("VE-J/F1811", vej11_checks::run_vej11_checks),
+("VE-F2801", veo01_checks::run_veo01_checks),
+        ("VE-F2802", veo02_vendor_checks::run_veo02_checks),
+        ("VE-F2803", veo03_subset_checks::run_veo03_checks),
+("VE-F2804", veo04_lexer_checks::run_veo04_checks),
+("VE-F2805", veo05_props_checks::run_veo05_checks),
+("VE-F2806", veo06_shorthand_checks::run_veo06_checks),
+("VE-F2807", veo07_rules_checks::run_veo07_checks),
+("VE-F2808", veo08_import_checks::run_veo08_checks),
+        ("VE-F0801", vee01_checks::run_vee01_checks),
+        ("VE-F0802", vee02_checks::run_vee02_checks),
+        ("VE-F0803", vee03_checks::run_vee03_checks),
+        ("VE-F0804", vee04_checks::run_vee04_checks),
+        ("VE-F0805", vee05_hinting::run_vee05_checks),
+        ("VE-F0806", vee06_atlas::run_vee06_checks),
+        ("VE-F0807", vee07_prims::run_vee07_checks),
+        ("VE-F0808", vee08_fontmetric::run_vee08_checks),
+        ("VE-F0810", vee10_textsecurity::run_vee10_checks),
+        ("VE-F2004", vek04_checks::run_vek04_checks),
+        ("VE-F0809", vee09_texttelemetry::run_vee09_checks),
+        ("VE-F2005", vek05_checks::run_vek05_checks),
+        ("VE-F2006", vek06_checks::run_vek06_checks),
+        ("VE-F2007", vek07_checks::run_vek07_checks),
+        ("VE-F2008", vek08_checks::run_vek08_checks),
+        ("VE-F2009", vek09_checks::run_vek09_checks),
+        ("VE-F2009-deep", vek09_checks::run_vek09_deep_checks),
+        ("VE-F2010", vek10_checks::run_vek10_checks),
+        ("VE-F2011", vek11_checks::run_vek11_checks),
+        ("VE-F2012", vek12_checks::run_vek12_checks),
         // VE-F2013 走**分族注册**（同域VE-F1613-a/b/c 先例）：三族原始
         // 条数 45+45+24 = 114 > MAX_CHECKS 112，单行合并会**静默丢掉
         // 最后 2 条判据**（实测丢「冒烟-非空且自洽」「诊断-空袋自洽」），
         // 而只看 tally() 的聚合器看不出任何异常。各族独立成集、各自
         // ≤ MAX ⇒ 合并路径在注册表上不可达；d 族单条判据把这件事钉住。
-        ("VE-F2013-a", vek13_checks::run_vek13_checks_a_standalone()),
-        ("VE-F2013-b", vek13_checks::run_vek13_checks_b_standalone()),
-        ("VE-F2013-c", vek13_checks::run_vek13_checks_c_standalone()),
-        ("VE-F2013-d", vek13_checks::run_vek13_checks_d_standalone()),
-        ("VE-F2014", vek14_ppbudget::checks::run_vek14_checks()),
-        ("VE-F2015", vek15_pptier::checks::run_vek15_checks()),
-        ("VE-F2402", vem02_checks::run_vem02_checks()),
-        ("VE-F2403", vem03_checks::run_vem03_checks()),
-        ("VE-F2404", vem04_checks::run_vem04_checks()),
-        ("VE-F2405", vem05_checks::run_vem05_checks()),
-        ("VE-F2406", vem06_checks::run_vem06_checks()),
-        ("VE-F2407-a", vem07_checks::run_vem07_checks_a_standalone()),
-        ("VE-F2407-b", vem07_checks::run_vem07_checks_b_standalone()),
-        ("VE-F2407-c", vem07_checks::run_vem07_checks_c_standalone()),
-        ("VE-F2408-a", vem08_checks::run_vem08_checks_a_standalone()),
-        ("VE-F2408-b", vem08_checks::run_vem08_checks_b_standalone()),
-        ("VE-F2408-c", vem08_checks::run_vem08_checks_c_standalone()),
-        ("VE-F2409-a", vem09_checks::run_vem09_checks_a_standalone()),
-        ("VE-F2409-b", vem09_checks::run_vem09_checks_b_standalone()),
-        ("VE-F2409-c", vem09_checks::run_vem09_checks_c_standalone()),
-        ("VE-F2409-d", vem09_checks::run_vem09_checks_d_standalone()),
-        ("VE-F2410-a", vem10_checks::run_vem10_checks_a_standalone()),
-        ("VE-F2410-b", vem10_checks::run_vem10_checks_b_standalone()),
-        ("VE-F2410-c", vem10_checks::run_vem10_checks_c_standalone()),
-        ("VE-F2410-d", vem10_checks::run_vem10_checks_d_standalone()),
-        ("VE-F2411", vem11_fuzz::run_vem11_checks()),
-        ("VE-F2412", vem12_bench::run_vem12_checks()),
-        ("VE-F2413", vem13_freeze::run_vem13_checks()),
-        ("VE-F2414", vem14_docs::run_vem14_checks()),
-        ("VE-F2415", vem15_consistency::run_vem15_checks()),
-        ("VE-F2416", vem16_security::run_vem16_checks()),
-        ("VE-F2417", vem17_quality::run_vem17_checks()),
-        ("VE-F2418", vem18_telemetry::run_vem18_checks()),
-        ("VE-F2419", vem19_consistency::run_vem19_checks()),
-        ("VE-F2420", vem20_closeout::run_vem20_checks()),
-        ("VE-F2421", vem21_easing::run_vem21_checks()),
-        ("VE-F0218-a", veb18_checks::run_veb18_checks_a_standalone()),
-        ("VE-F0218-b", veb18_checks::run_veb18_checks_b_standalone()),
-        ("VE-F0218-c", veb18_checks::run_veb18_checks_c_standalone()),
-        ("VE-F0219", veb19_debugchan::run_veb19_checks()),
-        ("VE-F0220-a", veb20_checks::run_veb20_checks_a_standalone()),
-        ("VE-F0220-b", veb20_checks::run_veb20_checks_b_standalone()),
-        ("VE-F0220-c", veb20_checks::run_veb20_checks_c_standalone()),
-        ("VE-F0221", veb21_checks::run_veb21_checks()),
-        ("VE-F0222", veb22_checks::run_veb22_checks()),
-        ("VE-F0223", veb23_checks::run_veb23_checks()),
-        ("VE-F0224", veb24_checks::run_veb24_checks()),
-        ("VE-F0225", veb25_checks::run_veb25_checks()),
-        ("VE-F2203", vel03_checks::run_vel03_all_checks()),
-        ("VE-F2204", vel04_checks::run_vel04_all_checks()),
-        ("VE-F2205", vel05_checks::run_vel05_all_checks()),
-        ("VE-F2206", vel06_checks::run_vel06_all_checks()),
-        ("VE-F2207", vel07_checks::run_vel07_all_checks()),
-        ("VE-F2208", vel08_checks::run_vel08_all_checks()),
+        ("VE-F2013-a", vek13_checks::run_vek13_checks_a_standalone),
+        ("VE-F2013-b", vek13_checks::run_vek13_checks_b_standalone),
+        ("VE-F2013-c", vek13_checks::run_vek13_checks_c_standalone),
+        ("VE-F2013-d", vek13_checks::run_vek13_checks_d_standalone),
+        ("VE-F2014", vek14_ppbudget::checks::run_vek14_checks),
+        ("VE-F2015", vek15_pptier::checks::run_vek15_checks),
+        ("VE-F2402", vem02_checks::run_vem02_checks),
+        ("VE-F2403", vem03_checks::run_vem03_checks),
+        ("VE-F2404", vem04_checks::run_vem04_checks),
+        ("VE-F2405", vem05_checks::run_vem05_checks),
+        ("VE-F2406", vem06_checks::run_vem06_checks),
+        ("VE-F2407-a", vem07_checks::run_vem07_checks_a_standalone),
+        ("VE-F2407-b", vem07_checks::run_vem07_checks_b_standalone),
+        ("VE-F2407-c", vem07_checks::run_vem07_checks_c_standalone),
+        ("VE-F2408-a", vem08_checks::run_vem08_checks_a_standalone),
+        ("VE-F2408-b", vem08_checks::run_vem08_checks_b_standalone),
+        ("VE-F2408-c", vem08_checks::run_vem08_checks_c_standalone),
+        ("VE-F2409-a", vem09_checks::run_vem09_checks_a_standalone),
+        ("VE-F2409-b", vem09_checks::run_vem09_checks_b_standalone),
+        ("VE-F2409-c", vem09_checks::run_vem09_checks_c_standalone),
+        ("VE-F2409-d", vem09_checks::run_vem09_checks_d_standalone),
+        ("VE-F2410-a", vem10_checks::run_vem10_checks_a_standalone),
+        ("VE-F2410-b", vem10_checks::run_vem10_checks_b_standalone),
+        ("VE-F2410-c", vem10_checks::run_vem10_checks_c_standalone),
+        ("VE-F2410-d", vem10_checks::run_vem10_checks_d_standalone),
+        ("VE-F2411", vem11_fuzz::run_vem11_checks),
+        ("VE-F2412", vem12_bench::run_vem12_checks),
+        ("VE-F2413", vem13_freeze::run_vem13_checks),
+        ("VE-F2414", vem14_docs::run_vem14_checks),
+        ("VE-F2415", vem15_consistency::run_vem15_checks),
+        ("VE-F2416", vem16_security::run_vem16_checks),
+        ("VE-F2417", vem17_quality::run_vem17_checks),
+        ("VE-F2418", vem18_telemetry::run_vem18_checks),
+        ("VE-F2419", vem19_consistency::run_vem19_checks),
+        ("VE-F2420", vem20_closeout::run_vem20_checks),
+        ("VE-F2421", vem21_easing::run_vem21_checks),
+        ("VE-F0218-a", veb18_checks::run_veb18_checks_a_standalone),
+        ("VE-F0218-b", veb18_checks::run_veb18_checks_b_standalone),
+        ("VE-F0218-c", veb18_checks::run_veb18_checks_c_standalone),
+        ("VE-F0219", veb19_debugchan::run_veb19_checks),
+        ("VE-F0220-a", veb20_checks::run_veb20_checks_a_standalone),
+        ("VE-F0220-b", veb20_checks::run_veb20_checks_b_standalone),
+        ("VE-F0220-c", veb20_checks::run_veb20_checks_c_standalone),
+        ("VE-F0221", veb21_checks::run_veb21_checks),
+        ("VE-F0222", veb22_checks::run_veb22_checks),
+        ("VE-F0223", veb23_checks::run_veb23_checks),
+        ("VE-F0224", veb24_checks::run_veb24_checks),
+        ("VE-F0225", veb25_checks::run_veb25_checks),
+        ("VE-F2203", vel03_checks::run_vel03_all_checks),
+        ("VE-F2204", vel04_checks::run_vel04_all_checks),
+        ("VE-F2205", vel05_checks::run_vel05_all_checks),
+        ("VE-F2206", vel06_checks::run_vel06_all_checks),
+        ("VE-F2207", vel07_checks::run_vel07_all_checks),
+        ("VE-F2208", vel08_checks::run_vel08_all_checks),
         // VE-F2209 分族注册（同域 VE-F2013/VE-F2407–F2410 先例）：十族
         // 原始条数 153 > MAX_CHECKS 112，单行合并会静默丢尾部判据，
         // 拆 a/b 两集（78+75），合并路径在注册表上不可达。
-        ("VE-F2209-a", vel09_checks::run_vel09_checks_a_standalone()),
-        ("VE-F2209-b", vel09_checks::run_vel09_checks_b_standalone()),
-        ("VE-F2210", vel10_checks::run_vel10_checks()),
-        ("VE-F2211", vel11_fuzz::run_vel11_checks()),
-        ("VE-F2212", vel12_bench::run_vel12_checks()),
-        ("VE-F2213", vel13_apifreeze::run_vel13_checks()),
-        ("VE-F2214", vel14_docs::run_vel14_checks()),
-        ("VE-F2215", vel15_consistency::run_vel15_checks()),
-        ("VE-F3401", ver01_arch::run_ver01_checks()),
-("VE-F3402", ver01b_checks::run_ver01b_checks()),
-        ("VE-F3403", ver01c_checks::run_ver01c_checks()),
-        ("VE-F3404", ver01d_checks::run_ver01d_checks()),
-        ("VE-F3404-deep", ver01d_checks::run_ver01d_deep_checks()),
-        ("VE-F3405", ver01e_checks::run_ver01e_checks()),
-        ("VE-F3405-deep", ver01e_checks::run_ver01e_deep_checks()),
-        ("VE-F3405-equiv", ver01e_checks::run_ver01e_equivalence_checks()),
-        ("VE-F3406", ver01f_checks::run_ver01f_checks()),
-        ("VE-F3407-a", ver01g_checks::run_ver01g_checks_a()),
-        ("VE-F3407-b", ver01g_checks::run_ver01g_checks_b()),
-        ("VE-F3408-a", ver01h_checks::run_ver01h_checks_a()),
-        ("VE-F3408-b", ver01h_checks::run_ver01h_checks_b()),
-        ("VE-F3409-a", ver01i_checks::run_ver01i_checks_a()),
-        ("VE-F3409-b", ver01i_checks::run_ver01i_checks_b()),
-        ("VE-F3410-a", ver01j_checks::run_ver01j_checks_a()),
-        ("VE-F3410-b", ver01j_checks::run_ver01j_checks_b()),
-        ("VE-F3411-a", ver01k_checks::run_ver01k_checks_a()),
-        ("VE-F3411-b", ver01k_checks::run_ver01k_checks_b()),
-        ("VE-F3412-a", ver01l_checks::run_ver01l_checks_a()),
-        ("VE-F3412-b", ver01l_checks::run_ver01l_checks_b()),
-        ("VE-F3413-a", ver01m_checks::run_ver01m_checks_a()),
-        ("VE-F3413-b", ver01m_checks::run_ver01m_checks_b()),
-        ("VE-F3414-a", ver01n_checks::run_ver01n_checks_a()),
-        ("VE-F3414-b", ver01n_checks::run_ver01n_checks_b()),
-        ("VE-F3601", ver02_arch::run_ver02_checks()),
-        ("VE-F3602", ver03_arch::run_ver03_checks()),
-        ("VE-F3603", ver04_arch::run_ver04_checks()),
-        ("VE-F5001-a", vez50_checks::run_vez50_checks_a_standalone()),
-        ("VE-F5001-b", vez50_checks::run_vez50_checks_b_standalone()),
-        ("VE-F5001-c", vez50_checks::run_vez50_checks_c_standalone()),
-        ("VE-F5002", vez51_requirements::run_vez51_checks()),
-        ("VE-F3801", ves01_sdomain_arch::run_f3801_checks()),
-        ("VE-F3802", vet01_a11y_render_pipeline::run_f3802_checks()),
-        ("VE-F3803", vet02_highcontrast_engine::run_f3803_checks()),
-        ("VE-F3804", vet03_focus_ring::run_f3804_checks()),
-        ("VE-F3805", vet04_bigfont::run_f3805_checks()),
-        ("VE-F3806", vet05_motionalt::run_f3806_checks()),
-        ("VE-F4201", veu01_checks::run_veu01_checks()),
-        ("VE-F4202", veu02_checks::run_veu02_checks()),
-        ("VE-F4203", veu03_checks::run_veu03_checks()),
-        ("VE-F4204", veu04_checks::run_veu04_checks()),
-        ("VE-F4205", veu05_flow_checks::run_veu05_flow_checks()),
-        ("VE-F4206", veu06_checks::run_veu06_checks()),
-        ("VE-F4008", veu08_checks::run_veu08_checks()),
-        ("VE-F4009", veu09_checks::run_veu09_checks()),
-        ("VE-F4010", veu10_checks::run_veu10_checks()),
-        ("VE-F4012", veu12_checks::run_veu12_checks()),
-        ("VE-F4015", veu15_i18n_a11y::run_veu15_checks()),
-        ("VE-F4011", veu11_checks::run_veu11_checks()),
-        ("VE-F4401", vev01_checks::run_vev01_checks()),
-        ("VE-F4402-a", vev02_checks::run_vev02_checks_a()),
-        ("VE-F4402-b", vev02_checks::run_vev02_checks_b()),
-        ("VE-F4403", vev03_checks::run_vev03_checks()),
-        ("VE-F4404", vev04_checks::run_vev04_checks()),
-        ("VE-F5604", veab04_mixbus_checks::run_veab04_checks()),
-        ("VE-F4405", vev05_checks::run_vev05_checks()),
-        ("VE-F4406", vev06_checks::run_vev06_checks()),
-        ("VE-F4407", vev07_checks::run_vev07_checks()),
-        ("VE-F3201", veq01_pipeline::run_veq01_checks()),
-        ("VE-F3202", veq02_graph::run_veq02_checks()),
-        ("VE-F3203", veq03_handle::run_veq03_checks()),
-        ("VE-F3204", veq04_type::run_veq04_checks()),
-        ("VE-F3205", veq05_loadreq::run_veq05_checks()),
-        ("VE-F3001", vep01_checks::run_vep01_checks()),
-        ("VE-F3002-a", vep02_checks::run_vep02_checks_a()),
-        ("VE-F3002-b", vep02_checks::run_vep02_checks_b()),
-        ("VE-F3003-a", vep03_checks::run_vep03_checks_a()),
-        ("VE-F3003-b", vep03_checks::run_vep03_checks_b()),
-        ("VE-F3004-a", vep04_checks::run_vep04_checks_a()),
-        ("VE-F3004-b", vep04_checks::run_vep04_checks_b()),
-        ("VE-F3005-a", vep05_checks::run_vep05_checks_a()),
-        ("VE-F3005-b", vep05_checks::run_vep05_checks_b()),
-        ("VE-F3007-a", vep07_checks::run_vep07_checks_a()),
-        ("VE-F3007-b", vep07_checks::run_vep07_checks_b()),
-        ("VE-F3006-a", vep06_checks::run_vep06_checks_a()),
-        ("VE-F3006-b", vep06_checks::run_vep06_checks_b()),
-        ("VE-F3008-a", vep08_checks::run_vep08_checks_a()),
-        ("VE-F3008-b", vep08_checks::run_vep08_checks_b()),
-        ("VE-F3009", vep09_checks::run_vep09_checks()),
-        ("VE-F3010", vep10_checks::run_vep10_checks()),
-        ("VE-F4002", vei02_checks::run_vei02_checks()),
-        ("VE-F4003", vei03_checks::run_vei03_checks()),
-        ("VE-F4004", vei04_checks::run_vei04_checks()),
-        ("VE-F4005", vei05_checks::run_vei05_checks()),
-        ("VE-F4006", vei06_checks::run_vei06_checks()),
-        ("VE-F4007", vei07_checks::run_vei07_checks()),
-        ("VE-F1001", vef01_checks::run_vef01_checks()),
-        ("VE-F1002", vef02_checks::run_vef02_checks()),
-        ("VE-F1003", vef03_checks::run_vef03_checks()),
-        ("VE-F1004", vef04_checks::run_vef04_checks()),
-        ("VE-F1005", vef05_checks::run_vef05_checks()),
-        ("VE-F1008", vef10_checks::run_vef10_checks()),
-        ("VE-F1009", vef11_checks::run_vef11_checks()),
-        ("VE-F1010", vef12_checks::run_vef12_checks()),
-        ("VE-F1011", vef13_checks::run_vef13_checks()),
-        ("VE-F1007", vef07_pngstream_checks::run_vef07_pngstream_checks()),
-        ("VE-F1007-stream-a", vef07_checks::run_vef07_checks_a_standalone()),
-        ("VE-F1007-stream-b", vef07_checks::run_vef07_checks_b_standalone()),
-        ("VE-F1007-stream-c", vef07_checks::run_vef07_checks_c_standalone()),
-        ("VE-F5401-a", vef54_checks::run_vef54_aaarch_checks_a_standalone()),
-        ("VE-F5401-b", vef54_checks::run_vef54_aaarch_checks_b_standalone()),
-        ("VE-F5402", vef55_checks::run_vef55_checks()),
-        ("VE-F5403", vef56_transport::run_vef56_checks()),
-        ("VE-F5404", vef57_session::run_vef57_checks()),
-        ("VE-F5405", vef58_replica::run_vef58_checks()),
-        ("VE-F5406", vef59_netcomp::run_vef59_checks()),
-        ("VE-F5401-c", vef54_checks::run_vef54_aaarch_checks_c_standalone()),
-        ("VE-F1203", veg03_checks::run_veg03_checks()),
-        ("VE-F1204-a", veg04_checks::run_veg04_checks_a()),
-        ("VE-F1204-b", veg04_checks::run_veg04_checks_b()),
-        ("VE-F2602", ven03_checks::run_ven02_checks()),
-        ("VE-F2603-a", ven03_checks::run_ven03_checks_a()),
-        ("VE-F2603-b", ven03_checks::run_ven03_checks_b()),
-        ("VE-F2604-a", ven04_checks::run_ven04_checks_a()),
-        ("VE-F2604-b", ven04_checks::run_ven04_checks_b()),
-        ("VE-F2605-a", ven05_checks::run_ven05_checks_a()),
-        ("VE-F2605-b", ven05_checks::run_ven05_checks_b()),
-        ("VE-F2606-a", ven06_checks::run_ven06_checks_a()),
-        ("VE-F2606-b", ven06_checks::run_ven06_checks_b()),
-        ("VE-F2607", ven07_checks::run_ven07_checks()),
-        ("VE-F2608-a", ven08_checks::run_ven08_checks_a()),
-        ("VE-F2608-b", ven08_checks::run_ven08_checks_b()),
-        ("VE-F3604-a", ves04_checks::run_ves04_checks_a()),
-        ("VE-F3604-b", ves04_checks::run_ves04_checks_b()),
-        ("VE-F3606", ves06_preview::run_ves06_checks()),
-        ("VE-F3607", ves07_checks::run_ves07_all_checks()),
-        ("VE-F1614-a", vef17_checks::run_vef17_checks_a_standalone()),
-        ("VE-F1614-b", vef17_checks::run_vef17_checks_b_standalone()),
-        ("VE-F1614-c", vef17_checks::run_vef17_checks_c_standalone()),
-        ("VE-F1615-a", vef18_checks::run_vef18_checks_a_standalone()),
-        ("VE-F1615-b", vef18_checks::run_vef18_checks_b_standalone()),
-        ("VE-F1615-c", vef18_checks::run_vef18_checks_c_standalone()),
-        ("VE-F1616-a", vef19_checks::run_vef19_checks_a_standalone()),
-        ("VE-F1616-b", vef19_checks::run_vef19_checks_b_standalone()),
-        ("VE-F1616-c", vef19_checks::run_vef19_checks_c_standalone()),
-        ("VE-F1617", vef20_checks::run_vef20_checks()),
-        ("VE-F1618", vef21_checks::run_vef21_checks()),
-        ("VE-F1619", vef22_checks::run_vef22_checks()),
-        ("VE-F1622", vef25_math::run_vef25_checks()),
-        ("VE-F6003", vead03_checks::run_vead03_checks()),
-        ("VE-F6004", vead04_bindgraph::run_vead04_checks()),
-        ("VE-F6008", vead08_physreplay::run_vead08_checks()),
-        ("VE-F6009", vead09_telemetry::run_vead09_checks()),
-        ("VE-F5414", vef66_multilink::run_vef66_checks()),
-        ("VE-F5410", vef63_apifreeze::run_vef63_checks()),
-        ("VE-F5411", vef64_netdocs::run_vef64_checks()),
-        ("VE-F5412", vef65_netsim::run_vef65_checks()),
-("VE-F5415", vef67_netext::run_vef67_checks()),
-("VE-F5416", vef68_plink::run_vef68_checks()),
-("VE-F5417", vef69_netsec2::run_vef69_checks()),
-("VE-F5418", vef70_netbench::run_vef70_checks()),
-("VE-F5419", vef71_aainteg::run_vef71_checks()),
-("VE-F5420", vef72_aasign::run_vef72_checks()),
-        ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks()),
-        ("VE-F1623", vef26_vfetch_checks::run_vef26_checks()),
-        ("VE-F1624", vef27_morphtarget_checks::run_vef27_checks()),
-        ("VE-F1625", vef28_doubleside_gs_checks::run_vef28_checks()),
-        ("VE-F1626", vef29_clipconv_checks::run_vef29_checks()),
-        ("VE-F1627", vef30_streamout_checks::run_vef30_checks()),
-        ("VE-F1628", vef31_indirect_checks::run_vef31_checks()),
-        ("VE-F1629", vef32_batching_checks::run_vef32_checks()),
-        ("VE-F0811-a", vee11_checks::run_vee11_checks_a_standalone()),
-        ("VE-F0811-b", vee11_checks::run_vee11_checks_b_standalone()),
-        ("VE-F0811-c", vee11_checks::run_vee11_checks_c_standalone()),
-        ("VE-F0812-a", vee12_checks::run_vee12_checks_a_standalone()),
-        ("VE-F0812-b", vee12_checks::run_vee12_checks_b_standalone()),
-        ("VE-F0812-c", vee12_checks::run_vee12_checks_c_standalone()),
-        ("VE-F0813", vee13_textdemo::run_vee13_checks()),
-        ("VE-F0814", vee14_textfuzz::run_vee14_checks()),
-        ("VE-F0815", vee15_perf::run_vee15_checks()),
-        ("VE-F0816", vee16_checks::run_vee16_checks()),
-("VE-F0817", vee17_textapi_checks::run_vee17_checks()),
-        ("VE-F0818", vee18_checks::run_vee18_checks()),
-        ("VE-F0226", veb226_mpo::run_veb226_checks()),
-        ("VE-F0227", veb227_mediacaps::run_veb227_checks()),
-        ("VE-F0231", veb231_freqpower::run_veb231_checks()),
-        ("VE-F0232", veb232_hotplug::run_veb232_checks()),
-        ("VE-F0233", veb233_dualscreen::run_veb233_checks()),
-        ("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks()),
-        ("CGPU-F1122", vch02_ledger_checks::run_vch02_checks()),
+        ("VE-F2209-a", vel09_checks::run_vel09_checks_a_standalone),
+        ("VE-F2209-b", vel09_checks::run_vel09_checks_b_standalone),
+        ("VE-F2210", vel10_checks::run_vel10_checks),
+        ("VE-F2211", vel11_fuzz::run_vel11_checks),
+        ("VE-F2212", vel12_bench::run_vel12_checks),
+        ("VE-F2213", vel13_apifreeze::run_vel13_checks),
+        ("VE-F2214", vel14_docs::run_vel14_checks),
+        ("VE-F2215", vel15_consistency::run_vel15_checks),
+        ("VE-F3401", ver01_arch::run_ver01_checks),
+("VE-F3402", ver01b_checks::run_ver01b_checks),
+        ("VE-F3403", ver01c_checks::run_ver01c_checks),
+        ("VE-F3404", ver01d_checks::run_ver01d_checks),
+        ("VE-F3404-deep", ver01d_checks::run_ver01d_deep_checks),
+        ("VE-F3405", ver01e_checks::run_ver01e_checks),
+        ("VE-F3405-deep", ver01e_checks::run_ver01e_deep_checks),
+        ("VE-F3405-equiv", ver01e_checks::run_ver01e_equivalence_checks),
+        ("VE-F3406", ver01f_checks::run_ver01f_checks),
+        ("VE-F3407-a", ver01g_checks::run_ver01g_checks_a),
+        ("VE-F3407-b", ver01g_checks::run_ver01g_checks_b),
+        ("VE-F3408-a", ver01h_checks::run_ver01h_checks_a),
+        ("VE-F3408-b", ver01h_checks::run_ver01h_checks_b),
+        ("VE-F3409-a", ver01i_checks::run_ver01i_checks_a),
+        ("VE-F3409-b", ver01i_checks::run_ver01i_checks_b),
+        ("VE-F3410-a", ver01j_checks::run_ver01j_checks_a),
+        ("VE-F3410-b", ver01j_checks::run_ver01j_checks_b),
+        ("VE-F3411-a", ver01k_checks::run_ver01k_checks_a),
+        ("VE-F3411-b", ver01k_checks::run_ver01k_checks_b),
+        ("VE-F3412-a", ver01l_checks::run_ver01l_checks_a),
+        ("VE-F3412-b", ver01l_checks::run_ver01l_checks_b),
+        ("VE-F3413-a", ver01m_checks::run_ver01m_checks_a),
+        ("VE-F3413-b", ver01m_checks::run_ver01m_checks_b),
+        ("VE-F3414-a", ver01n_checks::run_ver01n_checks_a),
+        ("VE-F3414-b", ver01n_checks::run_ver01n_checks_b),
+        ("VE-F3421", ver06a_checks::run_ver06a_checks),
+        ("VE-F3601", ver02_arch::run_ver02_checks),
+        ("VE-F3602", ver03_arch::run_ver03_checks),
+        ("VE-F3603", ver04_arch::run_ver04_checks),
+        ("VE-F5001-a", vez50_checks::run_vez50_checks_a_standalone),
+        ("VE-F5001-b", vez50_checks::run_vez50_checks_b_standalone),
+        ("VE-F5001-c", vez50_checks::run_vez50_checks_c_standalone),
+        ("VE-F5002", vez51_requirements::run_vez51_checks),
+        ("VE-F3801", ves01_sdomain_arch::run_f3801_checks),
+        ("VE-F3802", vet01_a11y_render_pipeline::run_f3802_checks),
+        ("VE-F3803", vet02_highcontrast_engine::run_f3803_checks),
+        ("VE-F3804", vet03_focus_ring::run_f3804_checks),
+        ("VE-F3805", vet04_bigfont::run_f3805_checks),
+        ("VE-F3806", vet05_motionalt::run_f3806_checks),
+        ("VE-F4201", veu01_checks::run_veu01_checks),
+        ("VE-F4202", veu02_checks::run_veu02_checks),
+        ("VE-F4203", veu03_checks::run_veu03_checks),
+        ("VE-F4204", veu04_checks::run_veu04_checks),
+        ("VE-F4205", veu05_flow_checks::run_veu05_flow_checks),
+        ("VE-F4206", veu06_checks::run_veu06_checks),
+        ("VE-F4008", veu08_checks::run_veu08_checks),
+        ("VE-F4009", veu09_checks::run_veu09_checks),
+        ("VE-F4010", veu10_checks::run_veu10_checks),
+        ("VE-F4012", veu12_checks::run_veu12_checks),
+        ("VE-F4015", veu15_i18n_a11y::run_veu15_checks),
+        ("VE-F4011", veu11_checks::run_veu11_checks),
+        ("VE-F4401", vev01_checks::run_vev01_checks),
+        ("VE-F4402-a", vev02_checks::run_vev02_checks_a),
+        ("VE-F4402-b", vev02_checks::run_vev02_checks_b),
+        ("VE-F4403", vev03_checks::run_vev03_checks),
+        ("VE-F4404", vev04_checks::run_vev04_checks),
+        ("VE-F5604", veab04_mixbus_checks::run_veab04_checks),
+        ("VE-F4405", vev05_checks::run_vev05_checks),
+        ("VE-F4406", vev06_checks::run_vev06_checks),
+        ("VE-F4407", vev07_checks::run_vev07_checks),
+        ("VE-F3201", veq01_pipeline::run_veq01_checks),
+        ("VE-F3202", veq02_graph::run_veq02_checks),
+        ("VE-F3203", veq03_handle::run_veq03_checks),
+        ("VE-F3204", veq04_type::run_veq04_checks),
+        ("VE-F3205", veq05_loadreq::run_veq05_checks),
+        ("VE-F3001", vep01_checks::run_vep01_checks),
+        ("VE-F3002-a", vep02_checks::run_vep02_checks_a),
+        ("VE-F3002-b", vep02_checks::run_vep02_checks_b),
+        ("VE-F3003-a", vep03_checks::run_vep03_checks_a),
+        ("VE-F3003-b", vep03_checks::run_vep03_checks_b),
+        ("VE-F3004-a", vep04_checks::run_vep04_checks_a),
+        ("VE-F3004-b", vep04_checks::run_vep04_checks_b),
+        ("VE-F3005-a", vep05_checks::run_vep05_checks_a),
+        ("VE-F3005-b", vep05_checks::run_vep05_checks_b),
+        ("VE-F3007-a", vep07_checks::run_vep07_checks_a),
+        ("VE-F3007-b", vep07_checks::run_vep07_checks_b),
+        ("VE-F3006-a", vep06_checks::run_vep06_checks_a),
+        ("VE-F3006-b", vep06_checks::run_vep06_checks_b),
+        ("VE-F3008-a", vep08_checks::run_vep08_checks_a),
+        ("VE-F3008-b", vep08_checks::run_vep08_checks_b),
+        ("VE-F3009", vep09_checks::run_vep09_checks),
+        ("VE-F3010", vep10_checks::run_vep10_checks),
+        ("VE-F4002", vei02_checks::run_vei02_checks),
+        ("VE-F4003", vei03_checks::run_vei03_checks),
+        ("VE-F4004", vei04_checks::run_vei04_checks),
+        ("VE-F4005", vei05_checks::run_vei05_checks),
+        ("VE-F4006", vei06_checks::run_vei06_checks),
+        ("VE-F4007", vei07_checks::run_vei07_checks),
+        ("VE-F1001", vef01_checks::run_vef01_checks),
+        ("VE-F1002", vef02_checks::run_vef02_checks),
+        ("VE-F1003", vef03_checks::run_vef03_checks),
+        ("VE-F1004", vef04_checks::run_vef04_checks),
+        ("VE-F1005", vef05_checks::run_vef05_checks),
+        ("VE-F1008", vef10_checks::run_vef10_checks),
+        ("VE-F1009", vef11_checks::run_vef11_checks),
+        ("VE-F1010", vef12_checks::run_vef12_checks),
+        ("VE-F1011", vef13_checks::run_vef13_checks),
+        ("VE-F1007", vef07_pngstream_checks::run_vef07_pngstream_checks),
+        ("VE-F1007-stream-a", vef07_checks::run_vef07_checks_a_standalone),
+        ("VE-F1007-stream-b", vef07_checks::run_vef07_checks_b_standalone),
+        ("VE-F1007-stream-c", vef07_checks::run_vef07_checks_c_standalone),
+        ("VE-F5401-a", vef54_checks::run_vef54_aaarch_checks_a_standalone),
+        ("VE-F5401-b", vef54_checks::run_vef54_aaarch_checks_b_standalone),
+        ("VE-F5402", vef55_checks::run_vef55_checks),
+        ("VE-F5403", vef56_transport::run_vef56_checks),
+        ("VE-F5404", vef57_session::run_vef57_checks),
+        ("VE-F5405", vef58_replica::run_vef58_checks),
+        ("VE-F5406", vef59_netcomp::run_vef59_checks),
+        ("VE-F5401-c", vef54_checks::run_vef54_aaarch_checks_c_standalone),
+        ("VE-F1203", veg03_checks::run_veg03_checks),
+        ("VE-F1204-a", veg04_checks::run_veg04_checks_a),
+        ("VE-F1204-b", veg04_checks::run_veg04_checks_b),
+        ("VE-F2602", ven03_checks::run_ven02_checks),
+        ("VE-F2603-a", ven03_checks::run_ven03_checks_a),
+        ("VE-F2603-b", ven03_checks::run_ven03_checks_b),
+        ("VE-F2604-a", ven04_checks::run_ven04_checks_a),
+        ("VE-F2604-b", ven04_checks::run_ven04_checks_b),
+        ("VE-F2605-a", ven05_checks::run_ven05_checks_a),
+        ("VE-F2605-b", ven05_checks::run_ven05_checks_b),
+        ("VE-F2606-a", ven06_checks::run_ven06_checks_a),
+        ("VE-F2606-b", ven06_checks::run_ven06_checks_b),
+        ("VE-F2607", ven07_checks::run_ven07_checks),
+        ("VE-F2608-a", ven08_checks::run_ven08_checks_a),
+        ("VE-F2608-b", ven08_checks::run_ven08_checks_b),
+        ("VE-F3604-a", ves04_checks::run_ves04_checks_a),
+        ("VE-F3604-b", ves04_checks::run_ves04_checks_b),
+        ("VE-F3606", ves06_preview::run_ves06_checks),
+        ("VE-F3607", ves07_checks::run_ves07_all_checks),
+        ("VE-F1614-a", vef17_checks::run_vef17_checks_a_standalone),
+        ("VE-F1614-b", vef17_checks::run_vef17_checks_b_standalone),
+        ("VE-F1614-c", vef17_checks::run_vef17_checks_c_standalone),
+        ("VE-F1615-a", vef18_checks::run_vef18_checks_a_standalone),
+        ("VE-F1615-b", vef18_checks::run_vef18_checks_b_standalone),
+        ("VE-F1615-c", vef18_checks::run_vef18_checks_c_standalone),
+        ("VE-F1616-a", vef19_checks::run_vef19_checks_a_standalone),
+        ("VE-F1616-b", vef19_checks::run_vef19_checks_b_standalone),
+        ("VE-F1616-c", vef19_checks::run_vef19_checks_c_standalone),
+        ("VE-F1617", vef20_checks::run_vef20_checks),
+        ("VE-F1618", vef21_checks::run_vef21_checks),
+        ("VE-F1619", vef22_checks::run_vef22_checks),
+        ("VE-F1622", vef25_math::run_vef25_checks),
+        ("VE-F6003", vead03_checks::run_vead03_checks),
+        ("VE-F6004", vead04_bindgraph::run_vead04_checks),
+        ("VE-F6008", vead08_physreplay::run_vead08_checks),
+        ("VE-F6009", vead09_telemetry::run_vead09_checks),
+        ("VE-F5414", vef66_multilink::run_vef66_checks),
+        ("VE-F5410", vef63_apifreeze::run_vef63_checks),
+        ("VE-F5411", vef64_netdocs::run_vef64_checks),
+        ("VE-F5412", vef65_netsim::run_vef65_checks),
+("VE-F5415", vef67_netext::run_vef67_checks),
+("VE-F5416", vef68_plink::run_vef68_checks),
+("VE-F5417", vef69_netsec2::run_vef69_checks),
+("VE-F5418", vef70_netbench::run_vef70_checks),
+("VE-F5419", vef71_aainteg::run_vef71_checks),
+("VE-F5420", vef72_aasign::run_vef72_checks),
+        ("CGPU-F0961", vc61_goverview_checks::run_vc61_checks),
+        ("VE-F1623", vef26_vfetch_checks::run_vef26_checks),
+        ("VE-F1624", vef27_morphtarget_checks::run_vef27_checks),
+        ("VE-F1625", vef28_doubleside_gs_checks::run_vef28_checks),
+        ("VE-F1626", vef29_clipconv_checks::run_vef29_checks),
+        ("VE-F1627", vef30_streamout_checks::run_vef30_checks),
+        ("VE-F1628", vef31_indirect_checks::run_vef31_checks),
+        ("VE-F1629", vef32_batching_checks::run_vef32_checks),
+        ("VE-F0811-a", vee11_checks::run_vee11_checks_a_standalone),
+        ("VE-F0811-b", vee11_checks::run_vee11_checks_b_standalone),
+        ("VE-F0811-c", vee11_checks::run_vee11_checks_c_standalone),
+        ("VE-F0812-a", vee12_checks::run_vee12_checks_a_standalone),
+        ("VE-F0812-b", vee12_checks::run_vee12_checks_b_standalone),
+        ("VE-F0812-c", vee12_checks::run_vee12_checks_c_standalone),
+        ("VE-F0813", vee13_textdemo::run_vee13_checks),
+        ("VE-F0814", vee14_textfuzz::run_vee14_checks),
+        ("VE-F0815", vee15_perf::run_vee15_checks),
+        ("VE-F0816", vee16_checks::run_vee16_checks),
+("VE-F0817", vee17_textapi_checks::run_vee17_checks),
+        ("VE-F0818", vee18_checks::run_vee18_checks),
+        ("VE-F0226", veb226_mpo::run_veb226_checks),
+        ("VE-F0227", veb227_mediacaps::run_veb227_checks),
+        ("VE-F0231", veb231_freqpower::run_veb231_checks),
+        ("VE-F0232", veb232_hotplug::run_veb232_checks),
+        ("VE-F0233", veb233_dualscreen::run_veb233_checks),
+        ("CGPU-F1121", vch01_budgetpool_checks::run_vch01_checks),
+        ("CGPU-F1122", vch02_ledger_checks::run_vch02_checks),
     // W-VB1 · VE-F5803 感知系统（三类通道闭集/感知模型非真值结构级红线/
     // 全知恒拒/遗忘曲线双写 15 格第 7 单/降级矩阵/漂移标定/0x68 段十码）
-        ("VE-F5803", veac03_perception_checks::run_veac03_checks()),
-("VE-F5804", veac04_blackboard::run_veac04_checks()),
+        ("VE-F5803", veac03_perception_checks::run_veac03_checks),
+("VE-F5804", veac04_blackboard::run_veac04_checks),
     // W-VB1 · VE-F5416 网络与 P 域联动（同源单管道/一张表 F4921/门接入
     // F4954 以总表为准/预算双写 5 格第 8 单/断流置灰/0xBD 段十码）
-        ("VE-F5416", vef68_pdomain_checks::run_vef68_checks()),
+        ("VE-F5416", vef68_pdomain_checks::run_vef68_checks),
     // W-VB1 · VE-F6011 物理文档（四层/三律/步长同源生成/裸正文注入
     // 结构级拒 0x3C01/NaN 案例教学五案例+防线四代时间线/样本库失效
     // 三规则+双盲检测/自动清理双击达标/CI 漂移阻断+双签解除/0x3C 段十码）
-        ("VE-F6011", vead11_docgen_checks::run_vead11_checks()),
+        ("VE-F6011", vead11_docgen_checks::run_vead11_checks),
     // W-VB1 · VE-F5421 复制总架构（四段流水线冻结契约对拍/三类三策略
     // 宪法矩阵与纯函数双写/客户端写权威红线 0xEB02/低频窗口+事件恰好
     // 一次+严格递增/锚点周期 32tick/解冻双签/0xEB 段十码）
-        ("VE-F5421", vef73_reparch_checks::run_vef73_checks()),
+        ("VE-F5421", vef73_reparch_checks::run_vef73_checks),
     // W-VB1 · VE-F5422 权威状态模型（唯一真源注册制/服务端逻辑唯一
     // 写入口+日志无日志不入账断言/存储↔日志回放双写对拍/直查归位
     // 拦截+客户端只见版本不见活值/快照基线+delta 前置闸/截断双签/
     // 0xE8 段十码）
-        ("VE-F5422", vef74_authstate_checks::run_vef74_checks()),
+        ("VE-F5422", vef74_authstate_checks::run_vef74_checks),
     // W-VB1 · VE-F5423 状态快照机制（周期快照器半周期节流+保留
     // 窗口滚动淘汰/差量压缩链式封印衔接+压缩率底线拦截/哈希校验
     // 失真即断链全量重发/锚点丢失全量重发/恢复三路:最新快照-旧快照
     // 全量-无效id/底线调参双签/0xED 段十码）
-        ("VE-F5423", vef75_snapshot_checks::run_vef75_checks()),
+        ("VE-F5423", vef75_snapshot_checks::run_vef75_checks),
+        ("VE-F0055", vea55_tearguard::run_vea55_checks),
+        ("VE-F0056", vea56_presentlat::run_vea56_checks),
+        ("VE-F0086", vea86_resbudget::run_vea86_checks),
+        ("VE-F0093", vea93_abuse::run_vea93_checks),
+        ("VE-F0094", vea94_ratelimit::run_vea94_checks),
+        ("VE-F0106", vea106_placement::run_vea106_checks),
+        ("VE-F0062", vea62_fenceshare::run_vea62_checks),
+        ("VE-F0063", vea63_preempt::run_vea63_checks),
+        ("VE-F0064", vea64_timesync::run_vea64_checks),
+        ("VE-F0076", vea76_record::run_vea76_checks),
+        ("VE-F0087", vea87_streambind::run_vea87_checks),
+        ("VE-F0088", vea88_reclaim::run_vea88_checks),
+        ("VE-F0089", vea89_pressure::run_vea89_checks),
     ];
-    for (tag, sub) in blocks.iter() {
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            tag,
-            passed,
-            if passed { "" } else { "sub-checks red" },
-        );
+    // 修正记录（真缺陷·容量与栈双爆）：本表原有 492 行，而 `CheckSet` 的
+    // 容量是 `MAX_CHECKS = 112`。两个后果都是实测级的：
+    //   ① `set.add` 从第 113 行起全部落进 `dropped`——**380 个子域的红绿
+    //      根本进不了总账**，域总账显示的通过数偏低、失败明细缺失，
+    //      而 `truncated()` 只报一个布尔，定位不到是哪 247 个；
+    //   ② 原表元素是**已构造好的 `CheckSet` 值**，492 × ~4.5KB ≈ 2.2MB
+    //      全部在进入循环前就压进栈（debug 下每个临时值各占一槽），
+    //      与 unxstar 聚合器当年爆栈的形态完全一致。
+    // 修法：表元素改为**函数指针**（即用即弃，同一时刻栈上只活 1 个
+    // CheckSet），并按 48 个一组折叠成 8 行总账——既保住 112 槽容量，
+    // 又保住「红在哪一组」的可定位性（明细里给出首个红项标签与红项数）。
+    // 分块大小 32：505 行 ÷ 32 = 16 组（末组 25 行），恰好铺满 16 个组标签
+    // （GROUP 取 48 只能覆盖 8×48=384 行，会漏跑 121 行——分块必须能覆盖全表）。
+    const GROUP: usize = 32;
+    const GROUP_TAGS: [&'static str; 16] = [
+        "VE-G01", "VE-G02", "VE-G03", "VE-G04",
+        "VE-G05", "VE-G06", "VE-G07", "VE-G08",
+        "VE-G09", "VE-G10", "VE-G11", "VE-G12",
+        "VE-G13", "VE-G14", "VE-G15", "VE-G16",
+    ];
+    let mut gi = 0usize;
+    while gi < GROUP_TAGS.len() && gi * GROUP < blocks.len() {
+        let lo = gi * GROUP;
+        let hi = if lo + GROUP < blocks.len() { lo + GROUP } else { blocks.len() };
+        let mut ok = true;
+        let mut red_cnt = 0u32;
+        let mut first_red: &'static str = "";
+        let mut k = lo;
+        while k < hi {
+            let (tag, f) = blocks[k];
+            let sub = f();
+            let good = sub.all_passed() && !sub.truncated();
+            if !good {
+                ok = false;
+                red_cnt += 1;
+                if first_red.is_empty() {
+                    first_red = tag;
+                }
+            }
+            k += 1;
+        }
+        if ok {
+            set.add(GROUP_TAGS[gi], true, "");
+        } else {
+            let mut d = alloc::string::String::new();
+            d.push_str("red=");
+            push_u32(&mut d, red_cnt);
+            d.push_str(" first=");
+            d.push_str(first_red);
+            set.add_dyn(GROUP_TAGS[gi], false, &d);
+        }
+        gi += 1;
     }
     set
+}
+
+/// 十进制追加（域聚合明细拼接用；无格式化器依赖）。
+fn push_u32(s: &mut alloc::string::String, mut v: u32) {
+    if v == 0 {
+        s.push('0');
+        return;
+    }
+    let mut buf = [0u8; 10];
+    let mut n = 0usize;
+    while v > 0 {
+        buf[n] = b'0' + (v % 10) as u8;
+        v /= 10;
+        n += 1;
+    }
+    while n > 0 {
+        n -= 1;
+        s.push(buf[n] as char);
+    }
 }
 
 #[cfg(test)]
@@ -1690,3 +1938,40 @@ mod tests {
         assert_eq!(r.len(), 1, "VE-F0001 由内核 Rust 侧实现并可执行");
     }
 }
+// ── 批17（VE 域 16 单，0xF800~0xFF80 段）─────────────────────────────
+pub mod ved45_dirtprop;
+pub mod vee19_eb01joint;
+pub mod veg89_fuzzgate;
+pub mod veg00_gdeclare;
+pub mod veh49_audimeta;
+pub mod vei65_sceneset;
+pub mod vej46_ssr;
+pub mod vek85_ppstable;
+pub mod vel49_gpufuzz;
+pub mod vem64_apifreeze;
+pub mod ven83_njoint;
+pub mod ven97_nhandover;
+pub mod veo86_depgraph;
+pub mod vep47_loading;
+pub mod vey21_cliarch;
+pub mod vey61_profarch;
+// ── 批18（VE 域 16 单，0x8280~0x9f80 散段）────────────────────────────
+pub mod vex41_testasset;
+pub mod vex61_selfcheck;
+pub mod vex81_topaudit;
+pub mod vey20_y01dusign;
+pub mod vey41_syntaxarch;
+pub mod vey81_integarch;
+pub mod vey10_dbgload;
+pub mod vey12_perfarch;
+pub mod vey14_testasset;
+pub mod vey16_selfcheck;
+pub mod vey18_topaudit;
+pub mod vez22_particlearch;
+pub mod vez24_pparch;
+pub mod vez26_envarch;
+pub mod vez28_transarch;
+pub mod vez30_perfarch;
+// ── 批19（0x9480 散段，1 单）────────────────────────────────────────
+// ve5610_audiotel ↔ VE-F5610 音频遥测（三类聚合+内容不记+会话抽样+HRTF 分级；0x9480 段）
+pub mod ve5610_audiotel;

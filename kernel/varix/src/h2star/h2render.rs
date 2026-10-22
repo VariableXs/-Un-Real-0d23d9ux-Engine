@@ -16,6 +16,10 @@
 //!
 //! 时间纪律：无时钟；淡出/呼吸由调用方按帧喂 t。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use crate::h2star::h2curve::{self, Curve};
@@ -98,7 +102,7 @@ pub fn blur_taps(radius: u32) -> u64 {
     if radius == 0 {
         return 0;
     }
-    let octaves = ((radius as f32).log2().ceil() as u64).max(1);
+    let octaves = ((radius as f32).m_log2().m_ceil() as u64).max(1);
     3 * 2 * octaves
 }
 
@@ -223,7 +227,7 @@ pub fn glow_rect(target: Rect, t_ms: u32) -> Rect {
     };
     let t = phase as f32 / half as f32;
     let e = h2curve::sample(t, Curve::Standard) as f32;
-    let grow = (GLOW_AMP_PX as f32 * e).round() as i32;
+    let grow = (GLOW_AMP_PX as f32 * e).m_round() as i32;
     let inset = crate::h2star::h2geo::SNAP_GAP_PX as i32 / 2 + grow;
     Rect::new(
         target.x - inset,

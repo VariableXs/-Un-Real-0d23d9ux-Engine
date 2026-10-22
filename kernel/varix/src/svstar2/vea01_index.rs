@@ -6,6 +6,10 @@
 //! 设计底线（异常零静默）：探测是图形栈第一步，
 //! 这里任何失败都必须显性化——要么降级并告知，要么返回 Err，绝不静默吞掉。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::svstar2::vea01_probe::{AdapterClass, AdapterProbeInput, AdapterProbeResult};
 use crate::svstar2::vea01_arbitrate::{
     ArbitrationDecision, assert_v01_alignment, arbitrate, probe_and_arbitrate,
@@ -181,7 +185,7 @@ pub fn a11y_describe(adapters: &[AdapterProbeResult], decision: &ArbitrationDeci
                 kind,
                 a.bus.label(),
                 a.slot,
-                (a.trust_score * 100.0).round() as i32,
+                (a.trust_score * 100.0).m_round() as i32,
                 deg
             )
         })

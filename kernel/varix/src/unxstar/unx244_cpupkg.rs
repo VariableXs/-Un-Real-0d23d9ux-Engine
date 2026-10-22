@@ -1,3 +1,4 @@
+
 //! unx244_cpupkg —— UNX-F0244 早传第三步：CPU 面特征包。
 //! 锚点（CoRun Unxreal 主册 L1665）：UNX-F0244 · 早传第三步：CPU 面特征包 · 目标 260 行 · 已深化
 //! 判据原文：UNX-F0244-J1 特征位表摘要/微码修订/拓扑预备入 Manifest，与 F0185/F0187 对账一致
@@ -11,6 +12,7 @@
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 模块版本。
 pub const CP_VERSION: &str = "unx244_cpupkg-v1";
@@ -431,7 +433,7 @@ pub fn run_t244_checks() -> crate::checks::CheckSet {
     // 三场注入。
     g.inj.inject_all(&mut g.man, &pkg, &mirrors);
     let (ok, msg) = g.judge();
-    set.add("UNX-F0244-J1", ok && enrolled, &msg);
+    set.add_dyn("UNX-F0244-J1", ok && enrolled, &msg);
     set.add("CP-manifest-complete", g.man.all_complete(), "");
     set.add("CP-hash-replay", g.man.hash_replay(), "");
     set.add("CP-pair-agree", g.pairer.all_agree(), "");

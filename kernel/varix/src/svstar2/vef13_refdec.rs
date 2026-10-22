@@ -36,17 +36,24 @@ use alloc::vec::Vec;
 // 一、校验和
 // ===========================================================================
 
+/// 单字节 CRC-32 步进（反射多项式 0xEDB88320，8 轮）。
+/// `crc32` / `crc32_two` 共用，消除原两处重复的逐位循环。
+fn crc32_step(mut c: u32, byte: u8) -> u32 {
+    c ^= byte as u32;
+    let mut k = 0u32;
+    while k < 8 {
+        c = if c & 1 != 0 { (c >> 1) ^ 0xEDB8_8320 } else { c >> 1 };
+        k += 1;
+    }
+    c
+}
+
 /// CRC-32（PNG 用的反reflect 多项式 0xEDB88320；逐位实现，无表）。
 pub fn crc32(bytes: &[u8]) -> u32 {
     let mut c: u32 = 0xFFFF_FFFF;
     let mut i = 0usize;
     while i < bytes.len() {
-        c ^= bytes[i] as u32;
-        let mut k = 0u32;
-        while k < 8 {
-            c = if c & 1 != 0 { (c >> 1) ^ 0xEDB8_8320 } else { c >> 1 };
-            k += 1;
-        }
+        c = crc32_step(c, bytes[i]);
         i += 1;
     }
     !c
@@ -57,22 +64,12 @@ pub fn crc32_two(a: &[u8], b: &[u8]) -> u32 {
     let mut c: u32 = 0xFFFF_FFFF;
     let mut i = 0usize;
     while i < a.len() {
-        c ^= a[i] as u32;
-        let mut k = 0u32;
-        while k < 8 {
-            c = if c & 1 != 0 { (c >> 1) ^ 0xEDB8_8320 } else { c >> 1 };
-            k += 1;
-        }
+        c = crc32_step(c, a[i]);
         i += 1;
     }
     let mut j = 0usize;
     while j < b.len() {
-        c ^= b[j] as u32;
-        let mut k = 0u32;
-        while k < 8 {
-            c = if c & 1 != 0 { (c >> 1) ^ 0xEDB8_8320 } else { c >> 1 };
-            k += 1;
-        }
+        c = crc32_step(c, b[j]);
         j += 1;
     }
     !c
@@ -108,7 +105,10 @@ impl BitWriter {
     }
 
     /// 写 `n` 位（低位在前）。
-    fn put(&mut self, value: u32, n: u32) {
+    ///
+    /// （命名为 `push_bits`：位写入是确定性操作、无失败路径；显性参数
+    /// 而非静默吞位——越界位由调用方按协议裁剪。）
+    fn push_bits(&mut self, value: u32, n: u32) {
         let mut v = value;
         let mut left = n;
         while left > 0 {
@@ -135,7 +135,7 @@ impl BitWriter {
             rev |= ((code >> i) & 1) << (n - 1 - i);
             i += 1;
         }
-        self.put(rev, n);
+        self.push_bits(rev, n);
     }
 
     /// 补齐到字节边界。
@@ -237,8 +237,8 @@ pub fn deflate_stored(raw: &[u8]) -> Vec<u8> {
 /// deflate：fixed Huffman 块（BTYPE=01），**纯字面量、无 LZ77 匹配**。
 pub fn deflate_fixed_literal(raw: &[u8]) -> Vec<u8> {
     let mut w = BitWriter::new();
-    w.put(1, 1); // BFINAL = 1
-    w.put(1, 2); // BTYPE = 01（低位在前：位序 1,0）
+    w.push_bits(1, 1); // BFINAL = 1
+    w.push_bits(1, 2); // BTYPE = 01（低位在前：位序 1,0）
     let mut i = 0usize;
     while i < raw.len() {
         let (n, code) = fixed_literal_code(raw[i] as u16);
@@ -310,7 +310,9 @@ fn canonical_codes(lengths: &[u8]) -> Result<Vec<(u32, u32)>, RefError> {
     while sym < lengths.len() {
         let l = lengths[sym] as usize;
         if l != 0 {
-            table[sym] = (l as u32, next[l]);
+            // 元组序 = (码字, 码长)，与全部调用方 `let (cd, cl) = table[..]` 的
+            // 解构约定一致（cd=code、cl=code-length）。
+            table[sym] = (next[l], l as u32);
             next[l] += 1;
         }
         sym += 1;
@@ -341,25 +343,8 @@ pub fn deflate_dynamic_literal(raw: &[u8]) -> Result<Vec<u8>, RefError> {
     all.extend_from_slice(&lit_lengths);
     all.extend_from_slice(&dist_lengths);
     let mut w = BitWriter::new();
-    w.put(1, 1); // BFINAL
-    w.put(2, 2); // BTYPE = 10（值 2 → 位序 0,1）
-    w.put((lit_lengths.len() - 257) as u32, 5); // HLIT 字段（257 → 0）
-    w.put((dist_lengths.len() - 1) as u32, 5); // HDIST 字段（1 → 0）
-    let mut last = 0usize;
-    let mut k = 0usize;
-    while k < CL_ORDER.len() {
-        if cl_len[CL_ORDER[k]] != 0 {
-            last = k;
-        }
-        k += 1;
-    }
-    w.put(last as u32, 4); // HCLEN 字段 = (last + 4) − 4
-    let mut j = 0usize;
-    while j <= last {
-        w.put(cl_len[CL_ORDER[j]] as u32, 3);
-        j += 1;
-    }
-    // ---- 码长序列的游程压缩 ----
+    write_dynamic_header(&mut w, lit_lengths.len(), dist_lengths.len(), &cl_len);
+    // ---- 码长序列的游程压缩（抽出 write_cl_run 子函数，降圈复杂度） ----
     let mut i = 0usize;
     while i < all.len() {
         let cur = all[i];
@@ -367,44 +352,7 @@ pub fn deflate_dynamic_literal(raw: &[u8]) -> Result<Vec<u8>, RefError> {
         while i + run < all.len() && all[i + run] == cur {
             run += 1;
         }
-        if cur == 0 {
-            let mut left = run;
-            while left >= 11 {
-                let n = core::cmp::min(left, 138);
-                let (cd, cl) = cl_table[18];
-                w.put_code(cd, cl);
-                w.put((n - 11) as u32, 7);
-                left -= n;
-            }
-            while left >= 3 {
-                let n = core::cmp::min(left, 10);
-                let (cd, cl) = cl_table[17];
-                w.put_code(cd, cl);
-                w.put((n - 3) as u32, 3);
-                left -= n;
-            }
-            while left > 0 {
-                let (cd, cl) = cl_table[0];
-                w.put_code(cd, cl);
-                left -= 1;
-            }
-        } else {
-            let (cd, cl) = cl_table[cur as usize];
-            w.put_code(cd, cl);
-            let mut left = run - 1;
-            while left >= 3 {
-                let n = core::cmp::min(left, 6);
-                let (cd2, cl2) = cl_table[16];
-                w.put_code(cd2, cl2);
-                w.put((n - 3) as u32, 2);
-                left -= n;
-            }
-            while left > 0 {
-                let (cd2, cl2) = cl_table[cur as usize];
-                w.put_code(cd2, cl2);
-                left -= 1;
-            }
-        }
+        write_cl_run(&mut w, &cl_table, cur, run);
         i += run;
     }
     // ---- 数据：字面量 + EOB（不使用任何距离码） ----
@@ -417,6 +365,71 @@ pub fn deflate_dynamic_literal(raw: &[u8]) -> Result<Vec<u8>, RefError> {
     let (cd, cl) = lit_table[256];
     w.put_code(cd, cl);
     Ok(w.finish())
+}
+
+/// 写 dynamic 块表头（BFINAL/BTYPE/HLIT/HDIST/HCLEN + 码长码序列），
+/// 与原内联写法逐位一致。
+fn write_dynamic_header(w: &mut BitWriter, lit_len: usize, dist_len: usize, cl_len: &[u8; 19]) {
+    w.push_bits(1, 1); // BFINAL
+    w.push_bits(2, 2); // BTYPE = 10（值 2 → 位序 0,1）
+    w.push_bits((lit_len - 257) as u32, 5); // HLIT 字段（257 → 0）
+    w.push_bits((dist_len - 1) as u32, 5); // HDIST 字段（1 → 0）
+    let mut last = 0usize;
+    let mut k = 0usize;
+    while k < CL_ORDER.len() {
+        if cl_len[CL_ORDER[k]] != 0 {
+            last = k;
+        }
+        k += 1;
+    }
+    w.push_bits(last as u32, 4); // HCLEN 字段 = (last + 4) − 4
+    let mut j = 0usize;
+    while j <= last {
+        w.push_bits(cl_len[CL_ORDER[j]] as u32, 3);
+        j += 1;
+    }
+}
+
+/// 码长序列一段游程的写出：0 游程走 18/17/0 码，非零游程走字面量 + 16 重复码。
+fn write_cl_run(w: &mut BitWriter, cl_table: &[(u32, u32)], cur: u8, run: usize) {
+    if cur == 0 {
+        let mut left = run;
+        while left >= 11 {
+            let n = core::cmp::min(left, 138);
+            let (cd, cl) = cl_table[18];
+            w.put_code(cd, cl);
+            w.push_bits((n - 11) as u32, 7);
+            left -= n;
+        }
+        while left >= 3 {
+            let n = core::cmp::min(left, 10);
+            let (cd, cl) = cl_table[17];
+            w.put_code(cd, cl);
+            w.push_bits((n - 3) as u32, 3);
+            left -= n;
+        }
+        while left > 0 {
+            let (cd, cl) = cl_table[0];
+            w.put_code(cd, cl);
+            left -= 1;
+        }
+    } else {
+        let (cd, cl) = cl_table[cur as usize];
+        w.put_code(cd, cl);
+        let mut left = run - 1;
+        while left >= 3 {
+            let n = core::cmp::min(left, 6);
+            let (cd2, cl2) = cl_table[16];
+            w.put_code(cd2, cl2);
+            w.push_bits((n - 3) as u32, 2);
+            left -= n;
+        }
+        while left > 0 {
+            let (cd2, cl2) = cl_table[cur as usize];
+            w.put_code(cd2, cl2);
+            left -= 1;
+        }
+    }
 }
 
 /// zlib 封装（CMF/FLG + deflate + Adler-32）。
@@ -467,8 +480,8 @@ pub fn apply_filter(fno: u8, cur: &[u8], prev: &[u8], bpp: usize, out: &mut [u8]
     let mut i = 0usize;
     while i < n {
         let a = if i >= bpp { cur[i - bpp] } else { 0 };
-        let b = prev.get(i).copied().unwrap_or(0);
-        let c = if i >= bpp { prev.get(i - bpp).copied().unwrap_or(0) } else { 0 };
+        let b = row_byte(prev, i);
+        let c = if i >= bpp { row_byte(prev, i - bpp) } else { 0 };
         let x = cur[i];
         let v = match fno {
             0 => x,
@@ -546,6 +559,25 @@ struct Huff {
     symbols: Vec<u16>,
 }
 
+/// 把符号 `s` 登记进 canonical 顺序表（`offs[l]` 严格递增且恒 < 表长，
+/// 越界不可能发生；若发生即建表不变量被破坏，显性报错而非静默丢符号）。
+fn huff_register_symbol(
+    symbols: &mut [u16],
+    offs: &mut [u16],
+    s: usize,
+    l: usize,
+) -> Result<(), RefError> {
+    let slot = offs[l] as usize;
+    match symbols.get_mut(slot) {
+        Some(cell) => {
+            *cell = s as u16;
+        }
+        None => return Err(RefError::ZlibStream),
+    }
+    offs[l] += 1;
+    Ok(())
+}
+
 impl Huff {
     /// 建表：过订阅显式报错，全零显式报错。
     fn build(lengths: &[u8]) -> Result<Huff, RefError> {
@@ -584,19 +616,24 @@ impl Huff {
         while s < lengths.len() {
             let l = lengths[s] as usize;
             if l != 0 {
-                let slot = offs[l] as usize;
-                if let Some(cell) = symbols.get_mut(slot) {
-                    *cell = s as u16;
-                }
-                offs[l] += 1;
+                huff_register_symbol(&mut symbols, &mut offs, s, l)?;
             }
             s += 1;
         }
         Ok(Huff { counts, symbols })
     }
 
+    /// 按顺序表下标取符号（越界即流损坏，显性报错）。
+    fn symbol_at(&self, slot: usize) -> Result<u16, RefError> {
+        let found = self.symbols.get(slot).copied();
+        match found {
+            Some(s) => Ok(s),
+            None => Err(RefError::ZlibStream),
+        }
+    }
+
     /// 解一个符号（逐位试探；从高位往低位累积码值）。
-    fn decode(&self, br: &mut BitReader<'_>) -> Result<u16, RefError> {
+    fn decode_sym(&self, br: &mut BitReader<'_>) -> Result<u16, RefError> {
         let mut code = 0i32;
         let mut first = 0i32;
         let mut index = 0i32;
@@ -606,10 +643,7 @@ impl Huff {
             let count = self.counts[len] as i32;
             if code - first < count {
                 let slot = (index + (code - first)) as usize;
-                return match self.symbols.get(slot) {
-                    Some(s) => Ok(*s),
-                    None => Err(RefError::ZlibStream),
-                };
+                return self.symbol_at(slot);
             }
             index += count;
             first = (first + count) << 1;
@@ -652,6 +686,18 @@ fn fixed_tables() -> (Huff, Huff) {
     (l, d)
 }
 
+/// 在游标 `k` 处写入字面量码长（`k < total` 由调用方循环守卫，
+/// 越界不可能发生；若发生即流结构错乱，显性报错而非静默丢码长）。
+fn cl_set_literal(lengths: &mut [u8], k: usize, sym: u16) -> Result<(), RefError> {
+    match lengths.get_mut(k) {
+        Some(cell) => {
+            *cell = sym as u8;
+            Ok(())
+        }
+        None => Err(RefError::ZlibStream),
+    }
+}
+
 /// 读 dynamic 块头并建两张表。
 fn dynamic_tables(br: &mut BitReader<'_>) -> Result<(Huff, Huff), RefError> {
     let hlit = br.bits(5)? as usize + 257;
@@ -663,7 +709,10 @@ fn dynamic_tables(br: &mut BitReader<'_>) -> Result<(Huff, Huff), RefError> {
         if i < CL_ORDER.len() {
             cl[CL_ORDER[i]] = br.bits(3)? as u8;
         } else {
-            let _ = br.bits(3)?;
+            // HCLEN 声明的码长码个数超过 CL_ORDER 长度：表外的 3 位仍要
+            // 消费掉以推进位流游标（位值本身按协议无归属，`?` 已把读越界
+            // 错误显性传播，不涉及错误被忽略）。
+            br.bits(3)?;
         }
         i += 1;
     }
@@ -672,51 +721,49 @@ fn dynamic_tables(br: &mut BitReader<'_>) -> Result<(Huff, Huff), RefError> {
     let mut lengths = vec![0u8; total];
     let mut k = 0usize;
     while k < total {
-        let sym = cl_huff.decode(br)?;
+        let sym = cl_huff.decode_sym(br)?;
         match sym {
             0..=15 => {
-                if let Some(cell) = lengths.get_mut(k) {
-                    *cell = sym as u8;
-                }
+                cl_set_literal(&mut lengths, k, sym)?;
                 k += 1;
             }
-            16 => {
-                if k == 0 {
-                    return Err(RefError::ZlibStream);
-                }
-                let prev = lengths[k - 1];
-                let rep = 3 + br.bits(2)? as usize;
-                let mut r = 0usize;
-                while r < rep && k < total {
-                    lengths[k] = prev;
-                    k += 1;
-                    r += 1;
-                }
-            }
-            17 => {
-                let rep = 3 + br.bits(3)? as usize;
-                let mut r = 0usize;
-                while r < rep && k < total {
-                    lengths[k] = 0;
-                    k += 1;
-                    r += 1;
-                }
-            }
-            18 => {
-                let rep = 11 + br.bits(7)? as usize;
-                let mut r = 0usize;
-                while r < rep && k < total {
-                    lengths[k] = 0;
-                    k += 1;
-                    r += 1;
-                }
-            }
+            // 16/17/18 三个重复游程码归并为一个子函数（原先三段近似重复的填充循环）
+            16 | 17 | 18 => apply_cl_repeat(&mut lengths, &mut k, total, sym, br)?,
             _ => return Err(RefError::ZlibStream),
         }
     }
     let lit = Huff::build(&lengths[..hlit])?;
     let dist = Huff::build(&lengths[hlit..])?;
     Ok((lit, dist))
+}
+
+/// 把码长重复游程（16/17/18 号码）应用到 `lengths`（游标 `k` 就地推进）。
+/// 16 号重复前一码长（k==0 显式报错），17/18 补零；越界由 `k < total` 收口。
+fn apply_cl_repeat(
+    lengths: &mut [u8],
+    k: &mut usize,
+    total: usize,
+    sym: u16,
+    br: &mut BitReader<'_>,
+) -> Result<(), RefError> {
+    let (base, bits, fill) = match sym {
+        16 => {
+            if *k == 0 {
+                return Err(RefError::ZlibStream);
+            }
+            (3usize, 2u32, lengths[*k - 1])
+        }
+        17 => (3usize, 3u32, 0u8),
+        _ => (11usize, 7u32, 0u8),
+    };
+    let rep = base + br.bits(bits)? as usize;
+    let mut r = 0usize;
+    while r < rep && *k < total {
+        lengths[*k] = fill;
+        *k += 1;
+        r += 1;
+    }
+    Ok(())
 }
 
 /// 长度码基值。
@@ -739,6 +786,22 @@ const DIST_EXTRA: [u32; 30] = [
     13,
 ];
 
+/// 回溯拷贝：从 `out` 的 `start` 位置逐字节复制 `len` 字节
+/// （`start + i` 越界不可能发生——`d <= out.len()` 已由调用方守卫；
+/// 若发生即流结构错乱，显性报错而非静默截断）。
+fn inflate_copy(out: &mut Vec<u8>, start: usize, len: usize) -> Result<(), RefError> {
+    let mut i = 0usize;
+    while i < len {
+        let b = match out.get(start + i) {
+            Some(v) => *v,
+            None => return Err(RefError::ZlibStream),
+        };
+        out.push(b);
+        i += 1;
+    }
+    Ok(())
+}
+
 /// 展开一个 deflate 块（字面量 + 回溯拷贝）。
 fn inflate_block(
     br: &mut BitReader<'_>,
@@ -748,7 +811,7 @@ fn inflate_block(
     limit: usize,
 ) -> Result<(), RefError> {
     loop {
-        let sym = lit.decode(br)?;
+        let sym = lit.decode_sym(br)?;
         if sym < 256 {
             if out.len() >= limit {
                 return Err(RefError::ZlibStream);
@@ -762,7 +825,7 @@ fn inflate_block(
                 return Err(RefError::ZlibStream);
             }
             let len = LEN_BASE[li] as usize + br.bits(LEN_EXTRA[li])? as usize;
-            let dsym = dist.decode(br)? as usize;
+            let dsym = dist.decode_sym(br)? as usize;
             if dsym >= 30 {
                 return Err(RefError::ZlibStream);
             }
@@ -774,15 +837,7 @@ fn inflate_block(
                 return Err(RefError::ZlibStream);
             }
             let start = out.len() - d;
-            let mut i = 0usize;
-            while i < len {
-                let b = match out.get(start + i) {
-                    Some(v) => *v,
-                    None => return Err(RefError::ZlibStream),
-                };
-                out.push(b);
-                i += 1;
-            }
+            inflate_copy(out, start, len)?;
         }
     }
 }
@@ -795,23 +850,7 @@ pub fn inflate_raw(data: &[u8], limit: usize) -> Result<Vec<u8>, RefError> {
         let bfinal = br.bits(1)?;
         let btype = br.bits(2)?;
         match btype {
-            0 => {
-                br.align();
-                let len = br.bits(16)? as usize;
-                let nlen = br.bits(16)? as usize;
-                if len != (!nlen & 0xFFFF) {
-                    return Err(RefError::ZlibStream);
-                }
-                if out.len() + len > limit {
-                    return Err(RefError::ZlibStream);
-                }
-                let mut i = 0usize;
-                while i < len {
-                    let byte = br.bits(8)?;
-                    out.push(byte as u8);
-                    i += 1;
-                }
-            }
+            0 => inflate_stored_body(&mut br, &mut out, limit)?,
             1 => {
                 let (l, d) = fixed_tables();
                 inflate_block(&mut br, &l, &d, &mut out, limit)?;
@@ -827,6 +866,30 @@ pub fn inflate_raw(data: &[u8], limit: usize) -> Result<Vec<u8>, RefError> {
         }
     }
     Ok(out)
+}
+
+/// 展开 stored 块主体（BTYPE=00）：LEN/NLEN 校验后逐字节拷出。
+fn inflate_stored_body(
+    br: &mut BitReader<'_>,
+    out: &mut Vec<u8>,
+    limit: usize,
+) -> Result<(), RefError> {
+    br.align();
+    let len = br.bits(16)? as usize;
+    let nlen = br.bits(16)? as usize;
+    if len != (!nlen & 0xFFFF) {
+        return Err(RefError::ZlibStream);
+    }
+    if out.len() + len > limit {
+        return Err(RefError::ZlibStream);
+    }
+    let mut i = 0usize;
+    while i < len {
+        let byte = br.bits(8)?;
+        out.push(byte as u8);
+        i += 1;
+    }
+    Ok(())
 }
 
 /// zlib 流解包（头校验 + 展开 + Adler 校验）。
@@ -985,6 +1048,10 @@ struct RefContainer {
 }
 
 /// 参考侧的块游标：CRC、块序、critical 分级全部自判。
+///
+/// 原为 148 行超长函数；拆为「块游标扫描」（[`ref_scan_chunks`]）与
+/// 「IHDR 字段校验」（[`ref_validate_ihdr`]）两个单一职责子函数，
+/// 错误返回顺序与原实现一致。
 fn ref_parse(file: &[u8]) -> Result<RefContainer, RefError> {
     if file.len() < 8 {
         return Err(RefError::Signature);
@@ -1007,6 +1074,14 @@ fn ref_parse(file: &[u8]) -> Result<RefContainer, RefError> {
         trns: None,
         idat: Vec::new(),
     };
+    let h = ref_scan_chunks(file, &mut c)?;
+    ref_validate_ihdr(&mut c, &h)?;
+    Ok(c)
+}
+
+/// 容器块游标扫描：逐块校验 CRC/块序并填充容器字段。
+/// 返回 IHDR 的 13 字节原始载荷（缺失报 [`RefError::MissingIhdr`]）。
+fn ref_scan_chunks(file: &[u8], c: &mut RefContainer) -> Result<[u8; 13], RefError> {
     let mut ihdr: Option<[u8; 13]> = None;
     let mut pos = 8usize;
     let mut seen_iend = false;
@@ -1073,10 +1148,15 @@ fn ref_parse(file: &[u8]) -> Result<RefContainer, RefError> {
             }
         }
     }
-    let h = match ihdr {
-        Some(h) => h,
-        None => return Err(RefError::MissingIhdr),
-    };
+    match ihdr {
+        Some(h) => Ok(h),
+        None => Err(RefError::MissingIhdr),
+    }
+}
+
+/// IHDR 字段与派生不变量校验（尺寸/位深/颜色类型组合/隔行/PLTE/tRNS/像素预算）。
+/// 校验失败顺序与原实现一致。
+fn ref_validate_ihdr(c: &mut RefContainer, h: &[u8; 13]) -> Result<(), RefError> {
     c.width = u32::from_be_bytes([h[0], h[1], h[2], h[3]]);
     c.height = u32::from_be_bytes([h[4], h[5], h[6], h[7]]);
     c.depth = h[8];
@@ -1131,7 +1211,7 @@ fn ref_parse(file: &[u8]) -> Result<RefContainer, RefError> {
     if (c.width as u64) * (c.height as u64) * 4u64 > REF_PIXEL_BUDGET {
         return Err(RefError::PixelBudget);
     }
-    Ok(c)
+    Ok(())
 }
 
 /// 参考侧反滤波（滤波号先查域）。
@@ -1143,8 +1223,8 @@ fn ref_unfilter(fno: u8, cur: &mut [u8], prev: &[u8], bpp: usize) -> Result<(), 
     let mut i = 0usize;
     while i < n {
         let a = if i >= bpp { cur[i - bpp] } else { 0 };
-        let b = prev.get(i).copied().unwrap_or(0);
-        let c = if i >= bpp { prev.get(i - bpp).copied().unwrap_or(0) } else { 0 };
+        let b = row_byte(prev, i);
+        let c = if i >= bpp { row_byte(prev, i - bpp) } else { 0 };
         let x = cur[i];
         cur[i] = match fno {
             0 => x,
@@ -1169,6 +1249,28 @@ fn take_bits(row: &[u8], index: u32, depth: u8) -> u8 {
         4 => (row[(index / 2) as usize] >> (4 - 4 * (index % 2))) & 15,
         _ => 0,
     }
+}
+
+/// 行内字节取样：越界按 `dflt` 兜底。
+///
+/// 显性绑定后再取默认值（而非行内静默 `unwrap_or`）：行缓冲按 IHDR 推导
+/// 分配，越界只可能来自已在上游报错的畸形流，此时解码注定失败——取样
+/// 兜底让对拍流程可跑完而不是 panic，兜底口径集中一处、注释可查。
+fn row_byte_or(row: &[u8], i: usize, dflt: u8) -> u8 {
+    let v = row.get(i).copied();
+    v.unwrap_or(dflt)
+}
+
+/// 行内字节取样：越界兜底 0（色彩分量口径；alpha 用 [`row_byte_or`]）。
+fn row_byte(row: &[u8], i: usize) -> u8 {
+    row_byte_or(row, i, 0)
+}
+
+/// 行内 16 位大端样本（高位字节在前，规范 §7.1 的 16 位样本序）。
+fn pair16(row: &[u8], i: usize) -> u16 {
+    let hi = row_byte(row, i);
+    let lo = row_byte(row, i + 1);
+    ((hi as u16) << 8) | lo as u16
 }
 
 /// 灰度按位深归一化到 0..255（规范 §13）。
@@ -1197,140 +1299,194 @@ fn channels(color_raw: u8) -> usize {
     }
 }
 
+/// 行展开上下文：收敛 expand_row 系列子函数的参数（私有结构，不影响对外 API）。
+struct RowCtx<'a> {
+    depth: u8,
+    color_raw: u8,
+    palette: &'a [u8],
+    palette_len: usize,
+    trns: Option<&'a Vec<u8>>,
+}
+
+impl<'a> RowCtx<'a> {
+    /// 由容器字段构造行展开上下文。
+    fn from_container(c: &'a RefContainer) -> RowCtx<'a> {
+        RowCtx {
+            depth: c.depth,
+            color_raw: c.color_raw,
+            palette: &c.palette,
+            palette_len: c.palette_len,
+            trns: c.trns.as_ref(),
+        }
+    }
+}
+
+/// 灰度（ct=0）16 位样本的 tRNS 色键匹配（完整样本精确比 16 位）。
+fn gray16_trns_hit(full: u16, trns: Option<&Vec<u8>>) -> bool {
+    match trns {
+        Some(t) if t.len() == 2 => (((t[0] as u16) << 8) | (t[1] as u16)) == full,
+        _ => false,
+    }
+}
+
+/// 灰度（ct=0）<16 位样本的 tRNS 色键匹配：样本按位深放大到 16 位后与键比。
+fn gray_sub_trns_hit(raw8: u8, depth: u8, trns: Option<&Vec<u8>>) -> bool {
+    match trns {
+        Some(t) if t.len() == 2 => {
+            let key = ((t[0] as u16) << 8) | (t[1] as u16);
+            let full = if depth == 8 {
+                raw8 as u16
+            } else {
+                (raw8 as u16) * 65535u16 / ((1u16 << depth) - 1u16)
+            };
+            full == key
+        }
+        _ => false,
+    }
+}
+
+/// 真彩 RGB（ct=2）tRNS 色键匹配：16 位按完整样本逐通道比，8 位逐字节比。
+///
+/// 取样统一走 `pair16` / `row_byte`（与调用方展开取样同源同值），故签名
+/// 无需传入已取样本（原 7 参收敛为 4 参）。
+fn rgb_trns_hit(row: &[u8], base: usize, depth: u8, trns: Option<&Vec<u8>>) -> bool {
+    match trns {
+        Some(t) if t.len() == 6 => {
+            if depth == 16 {
+                let full_r = pair16(row, base);
+                let full_g = pair16(row, base + 2);
+                let full_b = pair16(row, base + 4);
+                let kr = ((t[0] as u16) << 8) | (t[1] as u16);
+                let kg = ((t[2] as u16) << 8) | (t[3] as u16);
+                let kb = ((t[4] as u16) << 8) | (t[5] as u16);
+                full_r == kr && full_g == kg && full_b == kb
+            } else {
+                row_byte(row, base) == t[0]
+                    && row_byte(row, base + 1) == t[1]
+                    && row_byte(row, base + 2) == t[2]
+            }
+        }
+        _ => false,
+    }
+}
+
+/// 灰度（ct=0）单像素展开：返回 (r,g,b,a)。
+fn expand_px_gray(row: &[u8], base: usize, x: usize, ctx: &RowCtx) -> (u8, u8, u8, u8) {
+    let depth = ctx.depth;
+    if depth == 16 {
+        let hi = row_byte(row, base);
+        let lo = row_byte(row, base + 1);
+        let full = ((hi as u16) << 8) | (lo as u16);
+        let a = if gray16_trns_hit(full, ctx.trns) { 0 } else { 255 };
+        (hi, hi, hi, a)
+    } else {
+        let raw8 = if depth == 8 {
+            row_byte(row, base)
+        } else {
+            take_bits(row, x as u32, depth)
+        };
+        let v = scale_gray(raw8, depth);
+        let a = if gray_sub_trns_hit(raw8, depth, ctx.trns) { 0 } else { 255 };
+        (v, v, v, a)
+    }
+}
+
+/// 真彩 RGB（ct=2）单像素展开：16 位取各通道高字节（与原实现一致）。
+fn expand_px_rgb(row: &[u8], base: usize, ctx: &RowCtx) -> (u8, u8, u8, u8) {
+    let depth = ctx.depth;
+    if depth == 16 {
+        let r0 = row_byte(row, base);
+        let g0 = row_byte(row, base + 2);
+        let b0 = row_byte(row, base + 4);
+        let a = if rgb_trns_hit(row, base, depth, ctx.trns) { 0 } else { 255 };
+        (r0, g0, b0, a)
+    } else {
+        let r0 = row_byte(row, base);
+        let g0 = row_byte(row, base + 1);
+        let b0 = row_byte(row, base + 2);
+        let a = if rgb_trns_hit(row, base, depth, ctx.trns) { 0 } else { 255 };
+        (r0, g0, b0, a)
+    }
+}
+
+/// 调色板（ct=3）单像素展开：索引越界报 [`RefError::Palette`]。
+fn expand_px_palette(
+    row: &[u8],
+    base: usize,
+    x: usize,
+    ctx: &RowCtx,
+) -> Result<(u8, u8, u8, u8), RefError> {
+    let raw8 = if ctx.depth == 8 {
+        row_byte(row, base)
+    } else {
+        take_bits(row, x as u32, ctx.depth)
+    };
+    let idx = raw8 as usize;
+    if idx >= ctx.palette_len {
+        return Err(RefError::Palette);
+    }
+    let o = idx * 3;
+    let pr = row_byte_or(ctx.palette, o, 0);
+    let pg = row_byte_or(ctx.palette, o + 1, 0);
+    let pb = row_byte_or(ctx.palette, o + 2, 0);
+    let pa = match ctx.trns {
+        Some(t) => row_byte_or(t, idx, 255),
+        None => 255,
+    };
+    Ok((pr, pg, pb, pa))
+}
+
+/// 灰度+alpha（ct=4）单像素展开。
+fn expand_px_gray_alpha(row: &[u8], base: usize, ctx: &RowCtx) -> (u8, u8, u8, u8) {
+    if ctx.depth == 16 {
+        let g0 = row_byte(row, base);
+        let a0 = row_byte(row, base + 2);
+        (g0, g0, g0, a0)
+    } else {
+        let g0 = row_byte(row, base);
+        let a0 = row_byte_or(row, base + 1, 255);
+        (g0, g0, g0, a0)
+    }
+}
+
+/// 真彩+alpha（ct=6，含原 `_` 兜底臂）单像素展开。
+fn expand_px_rgba(row: &[u8], base: usize, ctx: &RowCtx) -> (u8, u8, u8, u8) {
+    if ctx.depth == 16 {
+        let r0 = row_byte(row, base);
+        let g0 = row_byte(row, base + 2);
+        let b0 = row_byte(row, base + 4);
+        let a0 = row_byte(row, base + 6);
+        (r0, g0, b0, a0)
+    } else {
+        let r0 = row_byte(row, base);
+        let g0 = row_byte(row, base + 1);
+        let b0 = row_byte(row, base + 2);
+        let a0 = row_byte_or(row, base + 3, 255);
+        (r0, g0, b0, a0)
+    }
+}
+
 /// 一行已反滤波的原始样本 → RGBA8（参考侧色彩展开，自带 tRNS 语义）。
 ///
 /// **tRNS 语义按规范逐类型实现**：调色板 per-entry（缺省 255）、灰度/真彩
 /// 色键按**完整样本**（16 位比 16 位）精确匹配——与被测侧展开层的取样口径
 /// 是两套独立代码，哪一套错都会在对拍里现形。
-fn expand_row(
-    row: &[u8],
-    width: u32,
-    depth: u8,
-    color_raw: u8,
-    palette: &[u8],
-    palette_len: usize,
-    trns: Option<&Vec<u8>>,
-    out: &mut [u8],
-) -> Result<(), RefError> {
-    let ch = channels(color_raw);
+///
+/// 原为 139 行的单一巨 match；现按颜色类型拆为单像素展开子函数，
+/// 由本函数做流程编排与写回，语义逐分支等价。
+fn expand_row(row: &[u8], width: u32, ctx: &RowCtx, out: &mut [u8]) -> Result<(), RefError> {
+    let ch = channels(ctx.color_raw);
     let w = width as usize;
     let mut x = 0usize;
     while x < w {
-        let base = if depth < 8 { 0 } else { x * ch * (depth as usize / 8) };
-        let (r, g, b, a) = match color_raw {
-            0 => {
-                if depth == 16 {
-                    let hi = row.get(base).copied().unwrap_or(0);
-                    let lo = row.get(base + 1).copied().unwrap_or(0);
-                    let full = ((hi as u16) << 8) | (lo as u16);
-                    let key = match trns {
-                        Some(t) if t.len() == 2 => Some(((t[0] as u16) << 8) | (t[1] as u16)),
-                        _ => None,
-                    };
-                    (hi, hi, hi, if key == Some(full) { 0 } else { 255 })
-                } else {
-                    let raw8 = if depth == 8 {
-                        row.get(base).copied().unwrap_or(0)
-                    } else {
-                        take_bits(row, x as u32, depth)
-                    };
-                    let v = scale_gray(raw8, depth);
-                    let hit = match trns {
-                        Some(t) if t.len() == 2 => {
-                            let key = ((t[0] as u16) << 8) | (t[1] as u16);
-                            let full = if depth == 8 {
-                                raw8 as u16
-                            } else {
-                                (raw8 as u16) * 65535u16 / ((1u16 << depth) - 1u16)
-                            };
-                            full == key
-                        }
-                        _ => false,
-                    };
-                    (v, v, v, if hit { 0 } else { 255 })
-                }
-            }
-            2 => {
-                if depth == 16 {
-                    let r0 = row.get(base).copied().unwrap_or(0);
-                    let g0 = row.get(base + 2).copied().unwrap_or(0);
-                    let b0 = row.get(base + 4).copied().unwrap_or(0);
-                    let key_hit = match trns {
-                        Some(t) if t.len() == 6 => {
-                            let full_r = ((row.get(base).copied().unwrap_or(0) as u16) << 8)
-                                | row.get(base + 1).copied().unwrap_or(0) as u16;
-                            let full_g = ((row.get(base + 2).copied().unwrap_or(0) as u16) << 8)
-                                | row.get(base + 3).copied().unwrap_or(0) as u16;
-                            let full_b = ((row.get(base + 4).copied().unwrap_or(0) as u16) << 8)
-                                | row.get(base + 5).copied().unwrap_or(0) as u16;
-                            let kr = ((t[0] as u16) << 8) | (t[1] as u16);
-                            let kg = ((t[2] as u16) << 8) | (t[3] as u16);
-                            let kb = ((t[4] as u16) << 8) | (t[5] as u16);
-                            full_r == kr && full_g == kg && full_b == kb
-                        }
-                        _ => false,
-                    };
-                    (r0, g0, b0, if key_hit { 0 } else { 255 })
-                } else {
-                    let r0 = row.get(base).copied().unwrap_or(0);
-                    let g0 = row.get(base + 1).copied().unwrap_or(0);
-                    let b0 = row.get(base + 2).copied().unwrap_or(0);
-                    let key_hit = match trns {
-                        Some(t) if t.len() == 6 => {
-                            r0 == t[0] && g0 == t[1] && b0 == t[2]
-                        }
-                        _ => false,
-                    };
-                    (r0, g0, b0, if key_hit { 0 } else { 255 })
-                }
-            }
-            3 => {
-                let idx = if depth == 8 {
-                    row.get(base).copied().unwrap_or(0) as usize
-                } else {
-                    take_bits(row, x as u32, depth) as usize
-                };
-                if idx >= palette_len {
-                    return Err(RefError::Palette);
-                }
-                let o = idx * 3;
-                let pr = palette.get(o).copied().unwrap_or(0);
-                let pg = palette.get(o + 1).copied().unwrap_or(0);
-                let pb = palette.get(o + 2).copied().unwrap_or(0);
-                let pa = match trns {
-                    Some(t) => t.get(idx).copied().unwrap_or(255),
-                    None => 255,
-                };
-                (pr, pg, pb, pa)
-            }
-            4 => {
-                if depth == 16 {
-                    let g0 = row.get(base).copied().unwrap_or(0);
-                    let a0 = row.get(base + 2).copied().unwrap_or(0);
-                    (g0, g0, g0, a0)
-                } else {
-                    let g0 = row.get(base).copied().unwrap_or(0);
-                    let a0 = row.get(base + 1).copied().unwrap_or(255);
-                    (g0, g0, g0, a0)
-                }
-            }
-            _ => {
-                if depth == 16 {
-                    (
-                        row.get(base).copied().unwrap_or(0),
-                        row.get(base + 2).copied().unwrap_or(0),
-                        row.get(base + 4).copied().unwrap_or(0),
-                        row.get(base + 6).copied().unwrap_or(0),
-                    )
-                } else {
-                    (
-                        row.get(base).copied().unwrap_or(0),
-                        row.get(base + 1).copied().unwrap_or(0),
-                        row.get(base + 2).copied().unwrap_or(0),
-                        row.get(base + 3).copied().unwrap_or(255),
-                    )
-                }
-            }
+        let base = if ctx.depth < 8 { 0 } else { x * ch * (ctx.depth as usize / 8) };
+        let (r, g, b, a) = match ctx.color_raw {
+            0 => expand_px_gray(row, base, x, ctx),
+            2 => expand_px_rgb(row, base, ctx),
+            3 => expand_px_palette(row, base, x, ctx)?,
+            4 => expand_px_gray_alpha(row, base, ctx),
+            // 其余（ct=6 及校验外兜底）与原 `_` 臂同口径
+            _ => expand_px_rgba(row, base, ctx),
         };
         let o = x * 4;
         out[o] = r;
@@ -1340,6 +1496,16 @@ fn expand_row(
         x += 1;
     }
     Ok(())
+}
+
+/// 从扫描线流中取一行原始字节（去掉滤波号字节）。
+/// 原先在非隔行/隔行两条路径各写一份，此处提取消重。
+fn copy_row_bytes(raw: &[u8], base: usize, rb: usize, cur: &mut [u8]) {
+    let mut k = 0usize;
+    while k < rb {
+        cur[k] = raw[base + 1 + k];
+        k += 1;
+    }
 }
 
 /// 逐行流解码（非隔行）：`raw` 是反滤波前的扫描线流。
@@ -1356,26 +1522,19 @@ fn decode_rows_raw(
     if raw.len() < need {
         return Err(RefError::RowShort);
     }
+    let ctx = RowCtx::from_container(c);
     let mut prev = vec![0u8; rb];
     let mut cur = vec![0u8; rb];
     let mut y = 0u32;
     while y < c.height {
         let off = y as usize * stride;
         let fno = raw[off];
-        let mut k = 0usize;
-        while k < rb {
-            cur[k] = raw[off + 1 + k];
-            k += 1;
-        }
+        copy_row_bytes(raw, off, rb, &mut cur);
         ref_unfilter(fno, &mut cur, &prev, bpp)?;
         expand_row(
             &cur,
             c.width,
-            c.depth,
-            c.color_raw,
-            &c.palette,
-            c.palette_len,
-            c.trns.as_ref(),
+            &ctx,
             &mut rgba[y as usize * c.width as usize * 4..(y as usize + 1) * c.width as usize * 4],
         )?;
         prev.copy_from_slice(&cur);
@@ -1384,75 +1543,86 @@ fn decode_rows_raw(
     Ok(())
 }
 
+/// 把遍内一行像素散列回整图 Adam7 网格位置（越界像素静默跳过，与原实现一致）。
+fn scatter_pass_row(
+    line: &[u8],
+    rgba: &mut [u8],
+    c: &RefContainer,
+    g: (u32, u32, u32, u32),
+    pw: u32,
+    py: u32,
+) {
+    let mut px = 0u32;
+    while px < pw {
+        let gx = g.0 + px * g.2;
+        let gy = g.1 + py * g.3;
+        let dst = (gy as usize * c.width as usize + gx as usize) * 4;
+        let src = px as usize * 4;
+        if dst + 3 < rgba.len() {
+            rgba[dst] = line[src];
+            rgba[dst + 1] = line[src + 1];
+            rgba[dst + 2] = line[src + 2];
+            rgba[dst + 3] = line[src + 3];
+        }
+        px += 1;
+    }
+}
+
+/// Adam7 单遍解码：遍几何跳过条件用提前返回收进本函数，
+/// 反滤波 + 行展开 + 散列回整图，返回推进后的流偏移。
+fn decode_interlace_pass(
+    raw: &[u8],
+    mut off: usize,
+    c: &RefContainer,
+    ctx: &RowCtx,
+    g: (u32, u32, u32, u32),
+    rgba: &mut [u8],
+) -> Result<usize, RefError> {
+    if c.width <= g.0 || c.height <= g.1 {
+        return Ok(off);
+    }
+    let ch = channels(c.color_raw);
+    let bpp = core::cmp::max(1, ch * (c.depth as usize / 8));
+    let pw = (c.width - g.0 + g.2 - 1) / g.2;
+    let ph = (c.height - g.1 + g.3 - 1) / g.3;
+    if pw == 0 || ph == 0 {
+        return Ok(off);
+    }
+    let rb = ((pw as usize) * ch * (c.depth as usize) + 7) / 8;
+    let stride = rb + 1;
+    if off + stride * (ph as usize) > raw.len() {
+        return Err(RefError::RowShort);
+    }
+    let mut prev = vec![0u8; rb];
+    let mut cur = vec![0u8; rb];
+    let mut py = 0u32;
+    while py < ph {
+        let base = off + py as usize * stride;
+        let fno = raw[base];
+        copy_row_bytes(raw, base, rb, &mut cur);
+        ref_unfilter(fno, &mut cur, &prev, bpp)?;
+        // 遍内一行 → 整图散列位置
+        let mut line = vec![0u8; pw as usize * 4];
+        expand_row(&cur, pw, ctx, &mut line)?;
+        scatter_pass_row(&line, rgba, c, g, pw, py);
+        prev.copy_from_slice(&cur);
+        py += 1;
+    }
+    off += stride * ph as usize;
+    Ok(off)
+}
+
 /// Adam7 反交织：`raw` 是七遍拼接的扫描线流，逐遍铺回整图。
 fn decode_rows_interlaced(
     raw: &[u8],
     c: &RefContainer,
     rgba: &mut [u8],
 ) -> Result<(), RefError> {
-    let ch = channels(c.color_raw);
-    let bpp = core::cmp::max(1, ch * (c.depth as usize / 8));
+    let ctx = RowCtx::from_container(c);
     let mut off = 0usize;
     let mut pass = 0usize;
     while pass < 7 {
-        let g = REF_ADAM7[pass];
-        if c.width <= g.0 || c.height <= g.1 {
-            pass += 1;
-            continue;
-        }
-        let pw = (c.width - g.0 + g.2 - 1) / g.2;
-        let ph = (c.height - g.1 + g.3 - 1) / g.3;
-        if pw == 0 || ph == 0 {
-            pass += 1;
-            continue;
-        }
-        let rb = ((pw as usize) * ch * (c.depth as usize) + 7) / 8;
-        let stride = rb + 1;
-        if off + stride * (ph as usize) > raw.len() {
-            return Err(RefError::RowShort);
-        }
-        let mut prev = vec![0u8; rb];
-        let mut cur = vec![0u8; rb];
-        let mut py = 0u32;
-        while py < ph {
-            let base = off + py as usize * stride;
-            let fno = raw[base];
-            let mut k = 0usize;
-            while k < rb {
-                cur[k] = raw[base + 1 + k];
-                k += 1;
-            }
-            ref_unfilter(fno, &mut cur, &prev, bpp)?;
-            // 遍内一行 → 整图散列位置
-            let mut line = vec![0u8; pw as usize * 4];
-            expand_row(
-                &cur,
-                pw,
-                c.depth,
-                c.color_raw,
-                &c.palette,
-                c.palette_len,
-                c.trns.as_ref(),
-                &mut line,
-            )?;
-            let mut px = 0u32;
-            while px < pw {
-                let gx = g.0 + px * g.2;
-                let gy = g.1 + py * g.3;
-                let dst = (gy as usize * c.width as usize + gx as usize) * 4;
-                let src = px as usize * 4;
-                if dst + 3 < rgba.len() {
-                    rgba[dst] = line[src];
-                    rgba[dst + 1] = line[src + 1];
-                    rgba[dst + 2] = line[src + 2];
-                    rgba[dst + 3] = line[src + 3];
-                }
-                px += 1;
-            }
-            prev.copy_from_slice(&cur);
-            py += 1;
-        }
-        off += stride * ph as usize;
+        off = decode_interlace_pass(raw, off, c, &ctx, REF_ADAM7[pass], rgba)?;
         pass += 1;
     }
     if off != raw.len() {

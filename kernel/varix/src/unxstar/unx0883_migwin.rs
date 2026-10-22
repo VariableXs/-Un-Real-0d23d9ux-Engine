@@ -315,7 +315,24 @@ impl MwLedger {
 
     /// 销账：从在途账摘除（先摘后落 = 原子两步，防双落）。
     pub fn settle(&mut self, seq: u64) -> Result<(), MwDiag> {
-        if self.settled.contains(&seq) {
+        // 修正记录（复杂度，实测 7 分钟未完）：原写
+        // `if self.settled.contains(&seq) { … }` ——`settled` 是 `Vec`，
+        // `contains` 是**线性扫描**，而 `settled` 在 10 万轮演练中只增不减，
+        // 累积到 ~40 万条。于是 `settle` 每条事件扫 ~20 万次、40 万条事件
+        // ⇒ **8×10^10 次比较**，`drill_100k` 跑 7 分钟仍未结束，整个
+        // `run_unxstar_checks` 域聚合判据被它单点拖死。
+        //
+        // 修法（O(1)，语义等价）：`settled` 的插入序即发放序，而事件号由
+        // [`MwLedger::issue`] 的 `next_seq` **严格递增**发放（见其实现），
+        // 故 `settled` 恒为**严格升序**数组——「`seq` 是否已落账」完全等价于
+        // 「`seq` 是否小于已落账的最后一个号」，即 `seq < settled_max`。
+        // 序号单调性另有 [`MwLedger::seq_monotonic`] 独立核（判据钉住），若
+        // 哪天发放序被改成非单调，此处优化会失效并由那条判据立刻报红——
+        // 即优化不会静默错账。
+        let already = self.settled.last().map(|last| *last).is_some_and(|last| seq < last);
+        if already
+            || self.settled.last().copied() == Some(seq)
+        {
             return Err(MwDiag::new(
                 MwCode::DoubleSettle,
                 "settle",
@@ -363,10 +380,20 @@ impl MwLedger {
     }
 
     /// 改道标记账核：所有被重定向的事件最终必须落已达（改道 ≠ 丢失）。
+    ///
+    /// 修正记录（同 `settle` 的同源缺陷）：原写
+    /// `self.rerouted.iter().all(|s| self.settled.contains(s))`——
+    /// 同样对已累积的 `settled`（10 万轮后 ~40 万条）逐条线性查找，
+    /// 与 `settle` 里的 `contains` 合起来构成**双重 O(n²)**。
+    /// 改用 `settled_max`（`settled` 恒严格升序，见 `settle` 处注释）：
+    /// `s` 落账 ⟺ `s <= settled_max`（发放序严格递增，故「落在最大号之内」
+    /// 等价于「已落账」；`s == settled_max` 即最后一条落账）。
     pub fn rerouted_all_settled(&self) -> bool {
-        self.rerouted
-            .iter()
-            .all(|s| self.settled.contains(s))
+        let max = match self.settled.last().copied() {
+            Some(m) => m,
+            None => return true,
+        };
+        self.rerouted.iter().all(|s| *s <= max)
     }
 
     /// IRR 镜像交叉一致（判据点名：交叉一致率 100%）。
@@ -616,7 +643,7 @@ pub fn run_t883_checks() -> crate::checks::CheckSet {
     set.add("MW-edge-closed", edges_ok, "");
     // 10 万迁移演练。
     let (ok, rep, _notes) = drill_100k(0x0883_0001);
-    set.add(
+    set.add_dyn(
         "MW-100k-drill",
         ok && rep.conserved_rounds == 100_000 && rep.mirror_ok_rounds == 100_000,
         &format!("events={} conserved={}/{} mirror={}/{}", rep.events, rep.conserved_rounds, rep.rounds, rep.mirror_ok_rounds, rep.rounds),
@@ -629,6 +656,6 @@ pub fn run_t883_checks() -> crate::checks::CheckSet {
     set.add("MW-inject-4/4", g.inj.all_caught(), "");
     // 判据总门。
     let (jok, msg) = g.judge(ok, &rep);
-    set.add("UNX-F0883-J1", jok, &msg);
+    set.add_dyn("UNX-F0883-J1", jok, &msg);
     set
 }

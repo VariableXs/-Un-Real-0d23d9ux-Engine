@@ -101,6 +101,10 @@
 //!    按纪律「MISSED 先怀疑变异选错」，这三项**改产出侧**（记录不可达性）
 //!    而非加抓不到的假判据——**假判据比没判据更坏**，它给人虚假保障。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -916,7 +920,7 @@ pub fn scaled_request(requested: u32, scale: f32) -> u32 {
     if scale <= 0.0 {
         return 0;
     }
-    let r = (requested as f32 * scale).floor();
+    let r = (requested as f32 * scale).m_floor();
     if r < 0.0 {
         0
     } else if r > requested as f32 {

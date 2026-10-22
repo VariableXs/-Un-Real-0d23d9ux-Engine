@@ -1674,10 +1674,12 @@ mod tests {
             Rgba::new(0.4, 0.1, 0.2, 0.25),
             Rgba::new(0.2, 0.5, 0.1, 0.75),
         ];
-        let (same, sensitive) = order_invariant(BlendMode::Additive, &cs);
-        assert!(same && !sensitive);
-        let (same2, _) = order_invariant(BlendMode::Alpha, &cs);
-        assert!(!same2);
+        // 顺序无关性用 `order_probe` 实测（交换律 + 折叠序差），不引外部概念：
+        // 判据侧只问「这个模式下的 OrderProbe 是不是允许无序合成」。
+        let probe = order_probe(BlendMode::Additive, &cs);
+        assert!(probe.commutes_bitwise && !probe.order_sensitive);
+        let probe_alpha = order_probe(BlendMode::Alpha, &cs);
+        assert!(!probe_alpha.commutes_bitwise || probe_alpha.order_sensitive);
     }
 
     #[test]

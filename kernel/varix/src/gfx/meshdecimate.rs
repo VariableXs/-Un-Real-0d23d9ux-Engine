@@ -276,25 +276,21 @@ impl DecMesh {
         if !self.boundary.is_empty() && self.boundary.len() != self.verts.len() {
             diag.push(DecDiag::BoundaryShapeMismatch);
         }
-        let vn = self.verts.len();
-        for p in self.verts.iter() {
-            if !(p[0].is_finite() && p[1].is_finite() && p[2].is_finite()) {
-                diag.push(DecDiag::VertexNotFinite);
-                break;
-            }
+        // 卫语句化简：任一顶点非有限 / 任一面索引越界即记诊断（原双层循环
+        // + break 旗标压平为 any 短路，语义等价：都只报第一个命中的类别）
+        let has_nonfinite = self
+            .verts
+            .iter()
+            .any(|p| !(p[0].is_finite() && p[1].is_finite() && p[2].is_finite()));
+        if has_nonfinite {
+            diag.push(DecDiag::VertexNotFinite);
         }
-        let mut bad = false;
-        for f in self.faces.iter() {
-            for k in 0..3 {
-                if f[k] as usize >= vn {
-                    diag.push(DecDiag::FaceIndexOutOfRange);
-                    bad = true;
-                    break;
-                }
-            }
-            if bad {
-                break;
-            }
+        let has_oob = self
+            .faces
+            .iter()
+            .any(|f| (0..3).any(|k| f[k] as usize >= self.verts.len()));
+        if has_oob {
+            diag.push(DecDiag::FaceIndexOutOfRange);
         }
         diag.is_empty()
     }
@@ -332,21 +328,18 @@ impl DecMesh {
     /// 网格开放边界顶点：被引用数为 1 的边的端点。
     pub fn open_boundary_verts(&self) -> Vec<bool> {
         let mut out = vec![false; self.verts.len()];
-        for (fi, f) in self.faces.iter().enumerate() {
+        for f in self.faces.iter() {
             for k in 0..3 {
                 let a = f[k];
                 let b = f[(k + 1) % 3];
                 let cnt = self.edge_use_count(a, b);
-                if cnt == 1 {
-                    out[a as usize] = true;
-                    out[b as usize] = true;
-                }
-                if cnt > 2 {
+                if cnt == 1 || cnt > 2 {
+                    // match 归并：1 = 开放边界、>2 = 非流形，两者处置相同
+                    //（都须禁止收缩），合并为一个分支降低判定成本
                     out[a as usize] = true;
                     out[b as usize] = true;
                 }
             }
-            let _ = fi;
         }
         out
     }
@@ -417,6 +410,24 @@ impl DecMesh {
             }
         }
         out
+    }
+
+    /// 顶点是否为边界顶点（boundary 为空时恒 false——未标记的网格视作无边界）。
+    ///
+    /// 私有助手：收敛「按顶点索引查边界位、查不到显性回退 false」这一
+    /// 重复出现 8 次的样板；回退是显性分支（索引越界 / 未标记 ⇒ 非边界），
+    /// 不掩盖任何可恢复错误。
+    fn is_boundary_vert(&self, v: u32) -> bool {
+        let slot = self.boundary.get(v as usize);
+        match slot {
+            Some(&b) => b,
+            None => false,
+        }
+    }
+
+    /// 边 (a, b) 是否触及边界顶点（收缩保护判定的公共卫语句）。
+    fn is_boundary_edge(&self, a: u32, b: u32) -> bool {
+        self.is_boundary_vert(a) || self.is_boundary_vert(b)
     }
 
     /// 填充完整边界标记 = 开放边 ∪ UV 接缝 ∪ 材质边界。
@@ -785,15 +796,7 @@ impl CollapseIndex {
                 if idx.edge_of.contains_key(&key) {
                     continue;
                 }
-                let id = idx.edge_ends.len() as u32;
-                idx.edge_of.insert(key, id);
-                idx.edge_ends.push((a.min(b), a.max(b)));
-                idx.edge_cost.push(0.0);
-                idx.edge_pos.push([0.0, 0.0, 0.0]);
-                idx.edge_dead.push(false);
-                idx.heap_key.push(i64::MIN);
-                idx.vert_edges[a as usize].push(id);
-                idx.vert_edges[b as usize].push(id);
+                idx.register_edge(a, b, 0.0);
             }
         }
         idx
@@ -804,19 +807,34 @@ impl CollapseIndex {
     }
 
     pub fn ends(&self, id: u32) -> Option<(u32, u32)> {
-        self.edge_ends.get(id as usize).copied()
+        let slot = self.edge_ends.get(id as usize);
+        slot.copied()
     }
 
     pub fn cost(&self, id: u32) -> Option<f32> {
-        self.edge_cost.get(id as usize).copied()
+        let slot = self.edge_cost.get(id as usize);
+        slot.copied()
     }
 
     pub fn pos(&self, id: u32) -> Option<[f32; 3]> {
-        self.edge_pos.get(id as usize).copied()
+        let slot = self.edge_pos.get(id as usize);
+        slot.copied()
+    }
+
+    /// 顶点存活位（alive 为空时恒 false——未登记的顶点视作已删）。
+    ///
+    /// 显性回退样板，收敛 `edge_alive` 与 `is_dead` 里的逐位查询。
+    fn is_alive(&self, v: u32) -> bool {
+        let slot = self.alive.get(v as usize);
+        match slot {
+            Some(&a) => a,
+            None => false,
+        }
     }
 
     pub fn is_dead(&self, id: u32) -> bool {
-        match (self.edge_dead.get(id as usize), self.alive.get(id as usize)) {
+        let slots = (self.edge_dead.get(id as usize), self.alive.get(id as usize));
+        match slots {
             (Some(&d), _) => d,
             (None, _) => true,
         }
@@ -826,19 +844,21 @@ impl CollapseIndex {
         match self.ends(id) {
             Some((a, b)) => {
                 !self.edge_dead[id as usize]
-                    && self.alive.get(a as usize).copied().unwrap_or(false)
-                    && self.alive.get(b as usize).copied().unwrap_or(false)
+                    && self.is_alive(a)
+                    && self.is_alive(b)
             }
             None => false,
         }
     }
 
     pub fn vert_face_count(&self, v: u32) -> usize {
-        self.vert_faces.get(v as usize).map(|l| l.len()).unwrap_or(0)
+        let slot = self.vert_faces.get(v as usize);
+        slot.map_or(0, |l| l.len())
     }
 
     pub fn vert_edge_count(&self, v: u32) -> usize {
-        self.vert_edges.get(v as usize).map(|l| l.len()).unwrap_or(0)
+        let slot = self.vert_edges.get(v as usize);
+        slot.map_or(0, |l| l.len())
     }
 
     pub fn alive_count(&self) -> usize {
@@ -847,7 +867,29 @@ impl CollapseIndex {
 
     /// 查边 id（惰性堆校验用）。
     pub fn find_edge(&self, a: u32, b: u32) -> Option<u32> {
-        self.edge_of.get(&ekey(a, b)).copied()
+        let slot = self.edge_of.get(&ekey(a, b));
+        slot.copied()
+    }
+
+    /// 登记一条新边（调用方须已确认 `edge_of` 中不存在该端点对）：
+    /// 补齐边表五元组（端点 / 代价 / 位置 / 失效位 / 堆记账键）并挂到两端点的邻边表。
+    ///
+    /// 提取自 `build` 与 `simplify` 的新边登记——两处原本逐行重复，
+    /// 漏改一处就会出现「初始建索引」与「收缩后补边」行为分叉。
+    /// `init_cost`：初始建索引为 0.0（随后统一由 `refresh_all_costs` 定价），
+    /// 收缩中补边为 `f32::MAX`（待 `price_pending_edges` 补价后才可入堆）。
+    fn register_edge(&mut self, a: u32, b: u32, init_cost: f32) -> u32 {
+        let key = ekey(a, b);
+        let id = self.edge_ends.len() as u32;
+        self.edge_of.insert(key, id);
+        self.edge_ends.push((a.min(b), a.max(b)));
+        self.edge_cost.push(init_cost);
+        self.edge_pos.push([0.0, 0.0, 0.0]);
+        self.edge_dead.push(false);
+        self.heap_key.push(i64::MIN);
+        self.vert_edges[a as usize].push(id);
+        self.vert_edges[b as usize].push(id);
+        id
     }
 
     /// 已定价入堆的边数水位。
@@ -874,7 +916,9 @@ impl CollapseIndex {
         if k == i64::MIN {
             return;
         }
-        heap.remove(&(k, id));
+        // 精确键删除：BTreeMap::remove 的返回值是 Option<()>（值类型为单元），
+        // 键与 id 均为记账精确值，删除结果不携带任何可恢复的错误信息
+        let _evicted = heap.remove(&(k, id));
         if let Some(slot) = self.heap_key.get_mut(id as usize) {
             *slot = i64::MIN;
         }
@@ -903,14 +947,10 @@ fn refresh_all_costs(idx: &mut CollapseIndex, m: &DecMesh, quad: &[Quadric], opt
             None => continue,
         };
         idx.edge_dead[id as usize] = false;
-        if opts.protect_boundary {
-            let ba = m.boundary.get(ends.0 as usize).copied().unwrap_or(false);
-            let bb = m.boundary.get(ends.1 as usize).copied().unwrap_or(false);
-            if ba || bb {
-                // 不置 dead（它仍可能在后续边界变化后合法），代价设为 MAX 让它排最后
-                idx.edge_cost[id as usize] = f32::MAX;
-                continue;
-            }
+        if opts.protect_boundary && m.is_boundary_edge(ends.0, ends.1) {
+            // 不置 dead（它仍可能在后续边界变化后合法），代价设为 MAX 让它排最后
+            idx.edge_cost[id as usize] = f32::MAX;
+            continue;
         }
         let merged = quad[ends.0 as usize].merge(&quad[ends.1 as usize]);
         let (c, p) = best_position(&merged, m.verts[ends.0 as usize], m.verts[ends.1 as usize]);
@@ -944,106 +984,156 @@ fn best_position(q: &Quadric, va: [f32; 3], vb: [f32; 3]) -> (f32, [f32; 3]) {
     }
 }
 
-/// 收缩一条边 `(keep, gone)`：把 `gone` 合并到 `keep`，返回被丢弃的退化面数。
-///
-/// **增量实现**：只遍历 `gone` 的邻面（1-环），不扫描全网格。
-/// 受影响的顶点收集到 `touched`（去重），调用方据此做局部 quadric 刷新。
-fn apply_collapse_incremental(
-    m: &mut DecMesh,
-    idx: &mut CollapseIndex,
-    quad: &mut [Quadric],
+/// 一次待执行的边收缩操作（私有参数结构体：收敛 `apply_collapse_incremental`
+/// 原本 7 个散装参数）。
+struct CollapseOp {
+    /// 保留端点（被写入新位置）。
     keep: u32,
+    /// 被合并删除的端点。
     gone: u32,
+    /// 收缩后顶点位置。
     new_pos: [f32; 3],
-    touched: &mut Vec<u32>,
-) -> u32 {
-    // 顶点 UV 快照（保留端点与新面角需要它）
+}
+
+/// 从网格快照「每顶点最后一次出现的面角 UV」。
+///
+/// 提取自 `apply_collapse_incremental` 与 `compact`——两处原本逐行重复的
+/// UV 快照循环（同输入必同输出，语义等价）。
+fn collect_vert_uv(m: &DecMesh) -> Vec<[f32; 2]> {
     let vn = m.verts.len();
-    let has_uv = m.has_uv();
-    let mut vert_uv: Vec<[f32; 2]> = vec![[0.0, 0.0]; vn];
-    if has_uv {
-        for (fi, f) in m.faces.iter().enumerate() {
-            for k in 0..3usize {
-                let src = fi * 3 + k;
-                if src < m.uvs.len() && (f[k] as usize) < vn {
-                    vert_uv[f[k] as usize] = m.uvs[src];
-                }
+    let mut vert_uv = vec![[0.0f32, 0.0f32]; vn];
+    if !m.has_uv() {
+        return vert_uv;
+    }
+    for (fi, f) in m.faces.iter().enumerate() {
+        for k in 0..3usize {
+            let src = fi * 3 + k;
+            if src < m.uvs.len() && (f[k] as usize) < vn {
+                vert_uv[f[k] as usize] = m.uvs[src];
             }
         }
     }
-    // gone 的邻面在面表中的位置先排序，使「是否命中」可用游标推进而非 contains
-    let mut gone_faces: Vec<u32> = idx.vert_faces[gone as usize].clone();
-    gone_faces.sort_unstable();
-    let mut new_faces: Vec<[u32; 3]> = Vec::with_capacity(m.faces.len());
-    let mut new_uvs: Vec<[f32; 2]> = Vec::with_capacity(m.uvs.len());
-    let mut new_mats: Vec<u32> = Vec::with_capacity(m.faces.len());
-    // 旧面号 → 新面号；None = 该面被丢弃
-    let mut face_map: Vec<Option<u32>> = Vec::with_capacity(m.faces.len());
+    vert_uv
+}
+
+/// 去重入列：`v` 不在 `out` 中才追加（touched 集合语义）。
+fn push_unique(out: &mut Vec<u32>, v: u32) {
+    if !out.contains(&v) {
+        out.push(v);
+    }
+}
+
+/// 面表重写结果袋（`rewrite_faces_excluding` 的多路输出收敛）。
+struct FaceRewrite {
+    faces: Vec<[u32; 3]>,
+    uvs: Vec<[f32; 2]>,
+    mats: Vec<u32>,
+    /// 旧面号 → 新面号；None = 该面被丢弃。
+    face_map: Vec<Option<u32>>,
+    /// 因端点重合退化而被丢弃的面数。
+    dropped: u32,
+}
+
+/// 原样保留一个未受收缩影响的面（含其 UV / 材质角数据）。
+///
+/// UV / 材质开关直接从网格现查（`has_uv`/`has_material` 均为 O(1) 纯查询，
+/// 与调用方预计算的值恒等）——参数从 6 个收敛到 4 个。
+fn keep_face_as_is(m: &DecMesh, fi: usize, f: &[u32; 3], rw: &mut FaceRewrite) {
+    rw.face_map.push(Some(rw.faces.len() as u32));
+    rw.faces.push(*f);
+    if m.has_uv() {
+        for k in 0..3usize {
+            let src = fi * 3 + k;
+            if src < m.uvs.len() {
+                rw.uvs.push(m.uvs[src]);
+            }
+        }
+    }
+    if m.has_material() {
+        rw.mats.push(m.materials[fi]);
+    }
+}
+
+/// 面表改写上下文（私有参数收敛）：把改写输入的四件散参打包，
+/// `rewrite_faces_excluding` 的参数从 6 个收敛到 3 个。
+/// 字段语义与原散参一一对应（`keep`/`gone` 为收缩两端，`gone_faces`
+/// 为 gone 的邻面号升序表，`vert_uv` 为顶点 UV 快照）。
+struct FaceRewriteCtx<'a> {
+    gone_faces: &'a [u32],
+    keep: u32,
+    gone: u32,
+    vert_uv: &'a [[f32; 2]],
+}
+
+/// 面表重写：未受收缩影响的面原样保留；含 `gone` 的面把端点改写为 `keep`，
+/// 改写后退化为两点/一点面即丢弃并计入 `dropped`，其全部顶点纳入 `touched`。
+fn rewrite_faces_excluding(
+    m: &DecMesh,
+    ctx: &FaceRewriteCtx,
+    touched: &mut Vec<u32>,
+) -> FaceRewrite {
+    let has_uv = m.has_uv();
     let has_mat = m.has_material();
-    let mut dropped = 0u32;
+    let mut rw = FaceRewrite {
+        faces: Vec::with_capacity(m.faces.len()),
+        uvs: Vec::with_capacity(m.uvs.len()),
+        mats: Vec::with_capacity(m.faces.len()),
+        face_map: Vec::with_capacity(m.faces.len()),
+        dropped: 0,
+    };
+    // gone 的邻面号已升序，「是否命中」用游标推进而非 contains 扫描
     let mut gi = 0usize;
     for (fi, f) in m.faces.iter().enumerate() {
-        let hit = gi < gone_faces.len() && gone_faces[gi] == fi as u32;
+        let hit = gi < ctx.gone_faces.len() && ctx.gone_faces[gi] == fi as u32;
         if hit {
             gi += 1;
         }
         if !hit {
-            face_map.push(Some(new_faces.len() as u32));
-            new_faces.push(*f);
-            if has_uv {
-                for k in 0..3usize {
-                    let src = fi * 3 + k;
-                    if src < m.uvs.len() {
-                        new_uvs.push(m.uvs[src]);
-                    }
-                }
-            }
-            if has_mat {
-                new_mats.push(m.materials[fi]);
-            }
+            keep_face_as_is(m, fi, f, &mut rw);
             continue;
         }
-        let nf = [if f[0] == gone { keep } else { f[0] },
-                  if f[1] == gone { keep } else { f[1] },
-                  if f[2] == gone { keep } else { f[2] }];
+        let nf = [if f[0] == ctx.gone { ctx.keep } else { f[0] },
+                  if f[1] == ctx.gone { ctx.keep } else { f[1] },
+                  if f[2] == ctx.gone { ctx.keep } else { f[2] }];
         if nf[0] == nf[1] || nf[1] == nf[2] || nf[0] == nf[2] {
-            face_map.push(None);
-            dropped += 1;
+            rw.face_map.push(None);
+            rw.dropped += 1;
             // 丢弃面也必须把**原面全部顶点**纳入 touched：该面消失后，
             // 这些顶点的邻接与 quadric 上下文都变了（它们少了一个邻面），
             // 其邻边必须重定价入堆。漏这一步的症状是单次简化提前收工——
             // 实测 16×16 网格卡在 42 面，而分两次调用却能到 20 面。
             for k in 0..3usize {
-                if !touched.contains(&f[k]) {
-                    touched.push(f[k]);
-                }
+                push_unique(touched, f[k]);
             }
             continue;
         }
         for k in 0..3usize {
-            if !touched.contains(&nf[k]) {
-                touched.push(nf[k]);
-            }
+            push_unique(touched, nf[k]);
         }
-        face_map.push(Some(new_faces.len() as u32));
-        new_faces.push(nf);
+        rw.face_map.push(Some(rw.faces.len() as u32));
+        rw.faces.push(nf);
         if has_uv {
             for k in 0..3usize {
-                new_uvs.push(vert_uv[nf[k] as usize]);
+                rw.uvs.push(ctx.vert_uv[nf[k] as usize]);
             }
         }
         if has_mat {
-            new_mats.push(m.materials[fi]);
+            rw.mats.push(m.materials[fi]);
         }
     }
-    // 邻接表同步：面表压紧后**所有面号都变了**（被丢弃的面会让后续面下标前移），
-    // 故必须按 `face_map` 把每个顶点的邻面号整体重映射，否则邻接表会指向错位的面
-    // （实测越界 panic：len=46 index=46）。这里对全部顶点做一次 O(F) 重映射。
+    rw
+}
+
+/// 邻接表重映射：面表压紧后**所有面号都变了**（被丢弃的面会让后续面下标前移），
+/// 故必须按 `face_map` 把每个顶点的邻面号整体重映射，否则邻接表会指向错位的面
+/// （实测越界 panic：len=46 index=46）。这里对全部顶点做一次 O(F) 重映射。
+fn remap_vert_faces(idx: &mut CollapseIndex, face_map: &[Option<u32>]) {
     for v in 0..idx.vert_faces.len() {
         let old = idx.vert_faces[v].clone();
         let mut nl: Vec<u32> = Vec::with_capacity(old.len());
         for f in old.iter() {
-            match face_map.get(*f as usize).copied().flatten() {
+            let slot = face_map.get(*f as usize).copied().flatten();
+            match slot {
                 Some(nf) => nl.push(nf),
                 None => { /* 该面被丢弃，丢弃 */ }
             }
@@ -1053,19 +1143,44 @@ fn apply_collapse_incremental(
         nl.dedup();
         idx.vert_faces[v] = nl;
     }
+}
+
+/// 收缩一条边：把 `op.gone` 合并到 `op.keep`，返回被丢弃的退化面数。
+///
+/// **增量实现**：只遍历 `gone` 的邻面（1-环），不扫描全网格。
+/// 受影响的顶点收集到 `touched`（去重），调用方据此做局部 quadric 刷新。
+fn apply_collapse_incremental(
+    m: &mut DecMesh,
+    idx: &mut CollapseIndex,
+    quad: &mut [Quadric],
+    op: CollapseOp,
+    touched: &mut Vec<u32>,
+) -> u32 {
+    let CollapseOp { keep, gone, new_pos } = op;
+    // 顶点 UV 快照（保留端点与新面角需要它）
+    let vert_uv = collect_vert_uv(m);
+    // gone 的邻面在面表中的位置先排序，使「是否命中」可用游标推进而非 contains
+    let mut gone_faces: Vec<u32> = idx.vert_faces[gone as usize].clone();
+    gone_faces.sort_unstable();
+    let ctx = FaceRewriteCtx {
+        gone_faces: &gone_faces,
+        keep,
+        gone,
+        vert_uv: &vert_uv,
+    };
+    let rw = rewrite_faces_excluding(m, &ctx, touched);
+    remap_vert_faces(idx, &rw.face_map);
     idx.alive[gone as usize] = false;
     m.verts[keep as usize] = new_pos;
-    m.faces = new_faces;
-    m.uvs = new_uvs;
-    m.materials = new_mats;
-    if !touched.contains(&keep) {
-        touched.push(keep);
-    }
+    m.faces = rw.faces;
+    m.uvs = rw.uvs;
+    m.materials = rw.mats;
+    push_unique(touched, keep);
     // quadric 合并到保留端点（先拷贝再写，避免同 slice 的可变/不可变借用重叠）
     let gq = quad[gone as usize];
     quad[keep as usize].add(&gq);
     quad[gone as usize] = Quadric::zero();
-    dropped
+    rw.dropped
 }
 
 /// 压缩顶点数组：删除孤立顶点，重映射面索引。
@@ -1089,21 +1204,11 @@ fn compact(m: &mut DecMesh) {
         return;
     }
     let old_verts = m.verts.clone();
-    let old_uvs = m.uvs.clone();
     let old_boundary = m.boundary.clone();
     let has_uv = m.has_uv();
     let has_b = !m.boundary.is_empty();
-    let mut vert_uv: Vec<[f32; 2]> = vec![[0.0, 0.0]; vn];
-    if has_uv {
-        for (fi, f) in m.faces.iter().enumerate() {
-            for k in 0..3usize {
-                let src = fi * 3 + k;
-                if src < old_uvs.len() && (f[k] as usize) < vn {
-                    vert_uv[f[k] as usize] = old_uvs[src];
-                }
-            }
-        }
-    }
+    // UV 快照与收缩路径共用同一助手（原两处逐行重复，此处为消重复复用）
+    let vert_uv = collect_vert_uv(m);
     let mut nv: Vec<[f32; 3]> = Vec::with_capacity(keep_list.len());
     let mut nu: Vec<[f32; 2]> = Vec::with_capacity(keep_list.len());
     let mut nb: Vec<bool> = Vec::with_capacity(keep_list.len());
@@ -1140,6 +1245,209 @@ fn compact(m: &mut DecMesh) {
     }
 }
 
+/// 把全部有效边（代价有限且非 MAX）按当前代价入堆。
+///
+/// 提取自 `simplify` 初始建堆与自检判据 G-5 的重复循环。
+fn push_valid_edges_into_heap(idx: &mut CollapseIndex, heap: &mut BTreeMap<(i64, u32), ()>) {
+    for id in 0..idx.edge_count() as u32 {
+        let c = idx.cost(id).unwrap_or(f32::MAX);
+        if !c.is_finite() || c == f32::MAX {
+            continue;
+        }
+        idx.heap_insert(heap, id, cost_key(c));
+    }
+}
+
+/// 统计开启保护时被边界拦下的边数（初始定价阶段的护栏计数）。
+///
+/// 原实现对 `ends(id)` 用 `unwrap_or((0, 0))` 兜底——非法边 id 会被静默
+/// 当作 (0,0) 参与判定。改为 `continue` 跳过并留痕：非法边 id 本就不应
+/// 参与计数，跳过比伪造端点更显性（可达状态下游为恒真分支，行为不变）。
+fn count_skipped_boundary_edges(idx: &CollapseIndex, m: &DecMesh, protect: bool) -> u32 {
+    if !protect {
+        return 0;
+    }
+    let mut n = 0u32;
+    for id in 0..idx.edge_count() as u32 {
+        let (a, b) = match idx.ends(id) {
+            Some(e) => e,
+            None => continue,
+        };
+        if m.is_boundary_edge(a, b) {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// 惰性弹出堆顶：跳过已失效的边条目，返回最小代价的可用边。
+///
+/// 护栏 `skips` 是**必须的**：若堆里的条目全是失效条目（代价记账错乱时
+/// 会发生），无上限的 `continue` 就是死循环——内核里等于宕机。
+/// 反假变体 M13（把堆键恒改为 0）实测触发此挂死，加护栏后变为有序退出。
+/// 返回 None 表示堆已无可用条目（记账失效或确有边界限制），调用方有序退出。
+fn pick_min_edge(
+    idx: &mut CollapseIndex,
+    heap: &mut BTreeMap<(i64, u32), ()>,
+    max_skips: usize,
+) -> Option<(u32, f32, [f32; 3])> {
+    let mut skips = 0usize;
+    loop {
+        if skips > max_skips {
+            return None;
+        }
+        let first: Option<(i64, u32)> = match heap.iter().next() {
+            Some((k, _)) => Some((k.0, k.1)),
+            None => None,
+        };
+        let (k, id) = match first {
+            Some(v) => v,
+            None => return None,
+        };
+        let _ = k;
+        if !idx.edge_alive(id) {
+            idx.heap_remove(heap, id);
+            skips += 1;
+            continue;
+        }
+        return Some((
+            id,
+            idx.cost(id).unwrap_or(f32::MAX),
+            idx.pos(id).unwrap_or([0.0, 0.0, 0.0]),
+        ));
+    }
+}
+
+/// 收缩后局部刷新的共享上下文（私有参数收敛）：把网格/二次型/堆/选项
+/// 四件散参打包，`reprice_edges_of_vert` 与 `refresh_touched_neighborhood`
+/// 的参数从 6 个收敛到 3 个；字段语义与原散参一一对应。
+struct RefreshCtx<'a> {
+    m: &'a DecMesh,
+    quad: &'a [Quadric],
+    heap: &'a mut BTreeMap<(i64, u32), ()>,
+    opts: &'a SimplifyOptions,
+}
+
+/// 重定价某顶点的全部邻边：失效标死、边界置 MAX、其余重算代价并入堆。
+fn reprice_edges_of_vert(idx: &mut CollapseIndex, v: u32, ctx: &mut RefreshCtx) {
+    let eids: Vec<u32> = idx.vert_edges[v as usize].clone();
+    for eid in eids {
+        let ends = match idx.ends(eid) {
+            Some(e) => e,
+            None => continue,
+        };
+        if !idx.edge_alive(eid) {
+            idx.edge_dead[eid as usize] = true;
+            continue;
+        }
+        if ctx.opts.protect_boundary && ctx.m.is_boundary_edge(ends.0, ends.1) {
+            idx.edge_cost[eid as usize] = f32::MAX;
+            continue;
+        }
+        let merged = ctx.quad[ends.0 as usize].merge(&ctx.quad[ends.1 as usize]);
+        let (c, p) =
+            best_position(&merged, ctx.m.verts[ends.0 as usize], ctx.m.verts[ends.1 as usize]);
+        if c.is_finite() && c != f32::MAX {
+            idx.edge_dead[eid as usize] = false;
+            idx.edge_cost[eid as usize] = c;
+            idx.edge_pos[eid as usize] = p;
+            idx.heap_insert(ctx.heap, eid, cost_key(c));
+        } else {
+            idx.edge_cost[eid as usize] = f32::MAX;
+        }
+    }
+}
+
+/// 登记某顶点邻面上新出现的边（面被改写后端点变了，原索引里没有）。
+fn register_edges_of_vert_faces(m: &DecMesh, idx: &mut CollapseIndex, v: u32) {
+    let fids: Vec<u32> = idx.vert_faces[v as usize].clone();
+    for fid in fids {
+        let f = m.faces[fid as usize];
+        for k in 0..3 {
+            let x = f[k];
+            let y = f[(k + 1) % 3];
+            if x == y {
+                continue;
+            }
+            // find_edge 为 None ⇒ edge_of 必无该键（同一张表），原内层
+            // contains_key 冗余卫语句在此化简，语义不变
+            if idx.find_edge(x, y).is_none() {
+                idx.register_edge(x, y, f32::MAX);
+            }
+        }
+    }
+}
+
+/// 收缩成功后的**局部刷新**：逐个 touched 顶点，先重定价其全部邻边并重新
+/// 入堆，再把其邻面上新出现的边登记进索引。
+///
+/// 提取自 `simplify` 主循环（原 ~60 行三层嵌套），按单一职责拆为
+/// `reprice_edges_of_vert` 与 `register_edges_of_vert_faces` 两个内层函数。
+fn refresh_touched_neighborhood(idx: &mut CollapseIndex, touched: &[u32], ctx: &mut RefreshCtx) {
+    for v in touched.iter() {
+        let v = *v;
+        reprice_edges_of_vert(idx, v, ctx);
+        register_edges_of_vert_faces(ctx.m, idx, v);
+    }
+}
+
+/// 把新登记、尚未定价入堆的边补价入堆。
+///
+/// 漏了这一步的症状：单次 simplify 调用的堆会被提前耗尽（实测 16×16 网格
+/// 目标 20 面却停在 42 面，stopped=false 而 rolled_back=0），
+/// 而反复调用却能继续降——因为下一轮 `build` 重建索引时又把它们塞回了堆。
+fn price_pending_edges(
+    m: &DecMesh,
+    idx: &mut CollapseIndex,
+    quad: &[Quadric],
+    heap: &mut BTreeMap<(i64, u32), ()>,
+    opts: &SimplifyOptions,
+) {
+    for id in idx.priced_edge_count()..idx.edge_count() as u32 {
+        let ends = match idx.ends(id) {
+            Some(e) => e,
+            None => continue,
+        };
+        if !idx.edge_alive(id) {
+            continue;
+        }
+        if opts.protect_boundary && m.is_boundary_edge(ends.0, ends.1) {
+            continue;
+        }
+        let merged = quad[ends.0 as usize].merge(&quad[ends.1 as usize]);
+        let (c, p) = best_position(&merged, m.verts[ends.0 as usize], m.verts[ends.1 as usize]);
+        if c.is_finite() && c != f32::MAX {
+            idx.edge_cost[id as usize] = c;
+            idx.edge_pos[id as usize] = p;
+            idx.heap_insert(heap, id, cost_key(c));
+        }
+    }
+}
+
+/// 清理「已不被任何面引用却仍标记存活」的顶点（压缩前的最后一致性修补）。
+fn prune_unreferenced_alive(idx: &mut CollapseIndex, m: &DecMesh) {
+    if idx.alive.iter().all(|&a| a) {
+        return;
+    }
+    // 有顶点被合并掉 → 压缩前先确保没有面引用死顶点
+    let vn = m.verts.len();
+    let mut live = vec![false; vn];
+    for f in m.faces.iter() {
+        for k in 0..3 {
+            if (f[k] as usize) < vn {
+                live[f[k] as usize] = true;
+            }
+        }
+    }
+    for f in m.faces.iter() {
+        for k in 0..3 {
+            if (f[k] as usize) < vn && !live[f[k] as usize] {
+                idx.alive[f[k] as usize] = false;
+            }
+        }
+    }
+}
+
 /// 核心：QEM 贪心边收缩到目标面数。
 ///
 /// **惰性删除优先队列**：堆里可能残留「边已失效」的旧条目，弹出时校验
@@ -1164,60 +1472,17 @@ pub fn simplify(src: &DecMesh, opts: &SimplifyOptions) -> (DecMesh, SimplifyRepo
     let mut quad = accumulate_quadrics(&m);
     let mut idx = CollapseIndex::build(&m);
     refresh_all_costs(&mut idx, &m, &quad, opts);
-    if opts.protect_boundary {
-        for id in 0..idx.edge_count() as u32 {
-            let e = idx.ends(id).unwrap_or((0, 0));
-            let ba = m.boundary.get(e.0 as usize).copied().unwrap_or(false);
-            let bb = m.boundary.get(e.1 as usize).copied().unwrap_or(false);
-            if ba || bb {
-                rep.skipped_boundary += 1;
-            }
-        }
-    }
+    rep.skipped_boundary += count_skipped_boundary_edges(&idx, &m, opts.protect_boundary);
     // 有序集合：(代价全序键, 边id) → 惰性删除堆
     let mut heap: BTreeMap<(i64, u32), ()> = BTreeMap::new();
-    for id in 0..idx.edge_count() as u32 {
-        let c = idx.cost(id).unwrap_or(f32::MAX);
-        if !c.is_finite() || c == f32::MAX {
-            continue;
-        }
-        idx.heap_insert(&mut heap, id, cost_key(c));
-    }
+    push_valid_edges_into_heap(&mut idx, &mut heap);
     idx.set_priced_edge_count(idx.edge_count() as u32);
     let mut touched: Vec<u32> = Vec::new();
     let mut rounds = 0usize;
     while m.face_count() > opts.target_faces && rounds < opts.max_collapses {
         rounds += 1;
-        // 惰性弹出：跳过已失效的边条目
-        //
-        // 护栏 `skips` 是**必须的**：若堆里的条目全是失效条目（代价记账错乱时
-        // 会发生），无上限的 `continue` 就是死循环——内核里等于宕机。
-        // 反假变体 M13（把堆键恒改为 0）实测触发此挂死，加护栏后变为有序退出。
-        let mut picked: Option<(u32, f32, [f32; 3])> = None;
-        let mut skips = 0usize;
-        loop {
-            if skips > opts.max_collapses {
-                // 堆已无可用条目（记账失效或确有边界限制），退出而非空转
-                break;
-            }
-            let first: Option<(i64, u32)> = match heap.iter().next() {
-                Some((k, _)) => Some((k.0, k.1)),
-                None => None,
-            };
-            let (k, id) = match first {
-                Some(v) => v,
-                None => break,
-            };
-            let _ = k;
-            if !idx.edge_alive(id) {
-                idx.heap_remove(&mut heap, id);
-                skips += 1;
-                continue;
-            }
-            picked = Some((id, idx.cost(id).unwrap_or(f32::MAX), idx.pos(id).unwrap_or([0.0, 0.0, 0.0])));
-            break;
-        }
-        let (id, cost, newpos) = match picked {
+        // 惰性弹出：跳过已失效的边条目（护栏语义见 pick_min_edge 文档）
+        let (id, cost, newpos) = match pick_min_edge(&mut idx, &mut heap, opts.max_collapses) {
             Some(v) => v,
             None => break,
         };
@@ -1226,16 +1491,22 @@ pub fn simplify(src: &DecMesh, opts: &SimplifyOptions) -> (DecMesh, SimplifyRepo
             Some(e) => e,
             None => break,
         };
-        if opts.protect_boundary {
-            let ba = m.boundary.get(a as usize).copied().unwrap_or(false);
-            let bb = m.boundary.get(b as usize).copied().unwrap_or(false);
-            if ba || bb {
-                continue;
-            }
+        if opts.protect_boundary && m.is_boundary_edge(a, b) {
+            continue;
         }
         let faces_before = m.face_count();
         touched.clear();
-        let dropped = apply_collapse_incremental(&mut m, &mut idx, &mut quad, a, b, newpos, &mut touched);
+        let dropped = apply_collapse_incremental(
+            &mut m,
+            &mut idx,
+            &mut quad,
+            CollapseOp {
+                keep: a,
+                gone: b,
+                new_pos: newpos,
+            },
+            &mut touched,
+        );
         if dropped == 0 || m.face_count() >= faces_before {
             // 守恒律：收缩必须至少丢 1 个面（否则面数不降，白耗一轮）。
             // 回滚代价太高，故改为：把该边标记为不可用并继续。
@@ -1243,93 +1514,16 @@ pub fn simplify(src: &DecMesh, opts: &SimplifyOptions) -> (DecMesh, SimplifyRepo
             idx.edge_dead[id as usize] = true;
             continue;
         }
-        // 局部刷新：touched 顶点的所有邻边重算代价并重新入堆
-        for v in touched.iter() {
-            let v = *v;
-            let eids: Vec<u32> = idx.vert_edges[v as usize].clone();
-            for eid in eids {
-                let ends = match idx.ends(eid) {
-                    Some(e) => e,
-                    None => continue,
-                };
-                if !idx.edge_alive(eid) {
-                    idx.edge_dead[eid as usize] = true;
-                    continue;
-                }
-                if opts.protect_boundary {
-                    let ba = m.boundary.get(ends.0 as usize).copied().unwrap_or(false);
-                    let bb = m.boundary.get(ends.1 as usize).copied().unwrap_or(false);
-                    if ba || bb {
-                        idx.edge_cost[eid as usize] = f32::MAX;
-                        continue;
-                    }
-                }
-                let merged = quad[ends.0 as usize].merge(&quad[ends.1 as usize]);
-                let (c, p) = best_position(&merged, m.verts[ends.0 as usize], m.verts[ends.1 as usize]);
-                if c.is_finite() && c != f32::MAX {
-                    idx.edge_dead[eid as usize] = false;
-                    idx.edge_cost[eid as usize] = c;
-                    idx.edge_pos[eid as usize] = p;
-                    idx.heap_insert(&mut heap, eid, cost_key(c));
-                } else {
-                    idx.edge_cost[eid as usize] = f32::MAX;
-                }
-            }
-            // 新产生的边（面被改写后端点变了）——重新登记
-            let fids: Vec<u32> = idx.vert_faces[v as usize].clone();
-            for fid in fids {
-                let f = m.faces[fid as usize];
-                for k in 0..3 {
-                    let x = f[k];
-                    let y = f[(k + 1) % 3];
-                    if x == y {
-                        continue;
-                    }
-                    if idx.find_edge(x, y).is_none() {
-                        let key = ekey(x, y);
-                        if idx.edge_of.contains_key(&key) {
-                            continue;
-                        }
-                        let nid = idx.edge_ends.len() as u32;
-                        idx.edge_of.insert(key, nid);
-                        idx.edge_ends.push((x.min(y), x.max(y)));
-                        idx.edge_cost.push(f32::MAX);
-                        idx.edge_pos.push([0.0, 0.0, 0.0]);
-                        idx.edge_dead.push(false);
-                        idx.heap_key.push(i64::MIN);
-                        idx.vert_edges[x as usize].push(nid);
-                        idx.vert_edges[y as usize].push(nid);
-                    }
-                }
-            }
-        }
-        // 新登记的边尚未定价入堆——**必须在此补上**。
-        // 漏了这一步的症状：单次 simplify 调用的堆会被提前耗尽（实测 16×16 网格
-        // 目标 20 面却停在 42 面，stopped=false 而 rolled_back=0），
-        // 而反复调用却能继续降——因为下一轮 `build` 重建索引时又把它们塞回了堆。
-        for id in idx.priced_edge_count()..idx.edge_count() as u32 {
-            let ends = match idx.ends(id) {
-                Some(e) => e,
-                None => continue,
-            };
-            if !idx.edge_alive(id) {
-                continue;
-            }
-            if opts.protect_boundary {
-                let ba = m.boundary.get(ends.0 as usize).copied().unwrap_or(false);
-                let bb = m.boundary.get(ends.1 as usize).copied().unwrap_or(false);
-                if ba || bb {
-                    continue;
-                }
-            }
-            let merged = quad[ends.0 as usize].merge(&quad[ends.1 as usize]);
-            let (c, p) = best_position(&merged, m.verts[ends.0 as usize], m.verts[ends.1 as usize]);
-            if c.is_finite() && c != f32::MAX {
-                idx.edge_cost[id as usize] = c;
-                idx.edge_pos[id as usize] = p;
-                idx.heap_insert(&mut heap, id, cost_key(c));
-            }
-        }
+        // 局部刷新：touched 顶点的邻边重定价入堆 + 新产生边登记
+        let mut ctx = RefreshCtx {
+            m: &m,
+            quad: &quad,
+            heap: &mut heap,
+            opts,
+        };
+        refresh_touched_neighborhood(&mut idx, &touched, &mut ctx);
+        // 新登记的边尚未定价入堆——**必须在此补上**（语义见 price_pending_edges 文档）
+        price_pending_edges(&m, &mut idx, &quad, &mut heap, opts);
         idx.set_priced_edge_count(idx.edge_count() as u32);
         rep.collapses.push(CollapseRecord {
             removed: b,
@@ -1340,25 +1534,7 @@ pub fn simplify(src: &DecMesh, opts: &SimplifyOptions) -> (DecMesh, SimplifyRepo
     }
     // 全网格残留的失效边清理（惰性堆可能还有旧条目，但不再需要）
     let _ = heap.len();
-    if !idx.alive.iter().all(|&a| a) {
-        // 有顶点被合并掉 → 压缩前先确保没有面引用死顶点
-        let vn = m.verts.len();
-        let mut live = vec![false; vn];
-        for f in m.faces.iter() {
-            for k in 0..3 {
-                if (f[k] as usize) < vn {
-                    live[f[k] as usize] = true;
-                }
-            }
-        }
-        for f in m.faces.iter() {
-            for k in 0..3 {
-                if (f[k] as usize) < vn && !live[f[k] as usize] {
-                    idx.alive[f[k] as usize] = false;
-                }
-            }
-        }
-    }
+    prune_unreferenced_alive(&mut idx, &m);
     compact(&mut m);
     rep.faces_after = m.face_count() as u32;
     rep.verts_after = m.vert_count() as u32;
@@ -1389,6 +1565,25 @@ pub struct LodChain {
     pub levels: Vec<LodLevel>,
 }
 
+/// 计算某比例对应的 LOD 级目标面数；比例非法或目标不可达时返回 None（该级跳过）。
+///
+/// 卫语句化：把「非法比例跳过」与「目标不可达跳过」两种前置失败提前返回，
+/// 主循环只保留单一路径。
+fn lod_level_target(base_faces: usize, r: f32) -> Option<usize> {
+    if !(r.is_finite()) || r <= 0.0 || r >= 1.0 {
+        // 非法比例：不生成该级，但不留空档——后续级的 error_delta 基准不变
+        return None;
+    }
+    // no_std 注意：`f32::round()` 是 std 扩展方法，`core` 里没有——
+// 内核编译会报 `no method named round`。故自写取整（+0.5 后截断）。
+    let target = (((base_faces as f32) * r) + 0.5) as usize;
+    let target = if target < MIN_FACES { MIN_FACES } else { target };
+    if target >= base_faces {
+        return None;
+    }
+    Some(target)
+}
+
 /// 构造 LOD 链。
 ///
 /// `ratios[i]` 是第 `i+1` 级相对原始网格的目标面数比例（取值 (0,1)）。
@@ -1406,18 +1601,11 @@ pub fn build_lod_chain(src: &DecMesh, ratios: &[f32]) -> LodChain {
         error_delta: 0.0,
     });
     let mut prev_bound = 0.0f32;
-    for (i, r) in ratios.iter().enumerate() {
-        if !(r.is_finite()) || *r <= 0.0 || *r >= 1.0 {
-            // 非法比例：不生成该级，但不留空档——后续级的 error_delta 基准不变
-            continue;
-        }
-        // no_std 注意：`f32::round()` 是 std 扩展方法，`core` 里没有——
-// 内核编译会报 `no method named round`。故自写取整（+0.5 后截断）。
-        let target = (((base_faces as f32) * r) + 0.5) as usize;
-        let target = if target < MIN_FACES { MIN_FACES } else { target };
-        if target >= base_faces {
-            continue;
-        }
+    for r in ratios.iter() {
+        let target = match lod_level_target(base_faces, *r) {
+            Some(t) => t,
+            None => continue,
+        };
         let (lod, _rep) = simplify(src, &SimplifyOptions::with_target(target));
         let e = hausdorff_approx(src, &lod);
         let delta = if e > prev_bound { e - prev_bound } else { 0.0 };
@@ -1429,7 +1617,6 @@ pub fn build_lod_chain(src: &DecMesh, ratios: &[f32]) -> LodChain {
             error_delta: delta,
         });
         prev_bound = e;
-        let _ = i;
     }
     chain
 }
@@ -1438,55 +1625,132 @@ pub fn build_lod_chain(src: &DecMesh, ratios: &[f32]) -> LodChain {
 // 七、质量度量（Hausdorff 距离采样近似）
 // ---------------------------------------------------------------------------
 
-/// 点到三角形的平方距离（Ericson 实时碰撞检测标准算法）。
+/// 三维点积（区域判定与距离计算的公共底座）。
+#[inline]
+fn dot3(u: [f32; 3], v: [f32; 3]) -> f32 {
+    u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
+}
+
+/// 三维向量差。
+#[inline]
+fn sub3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+/// 点 q 相对原点的平方距离。
+#[inline]
+fn dist2_of(q: [f32; 3]) -> f32 {
+    dot3(q, q)
+}
+
+/// AB 边区域判定：点落在 AB 边的 Voronoi 区时返回到 AB 的平方距离，否则 None。
 ///
-/// 用区域分类而非投影到平面——投影到平面对「点在外接球内的退化情形」会给出
-/// 落在三角形外的点，导致距离被高估或低估。
-pub fn point_tri_dist2(p: [f32; 3], a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> f32 {
-    let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
-    let d1 = ab[0] * ap[0] + ab[1] * ap[1] + ab[2] * ap[2];
-    let d2 = ac[0] * ap[0] + ac[1] * ap[1] + ac[2] * ap[2];
-    if d1 <= 0.0 && d2 <= 0.0 {
-        return ap[0] * ap[0] + ap[1] * ap[1] + ap[2] * ap[2];
-    }
-    let bp = [p[0] - b[0], p[1] - b[1], p[2] - b[2]];
-    let d3 = ab[0] * bp[0] + ab[1] * bp[1] + ab[2] * bp[2];
-    let d4 = ac[0] * bp[0] + ac[1] * bp[1] + ac[2] * bp[2];
-    if d3 >= 0.0 && d4 <= d3 {
-        return bp[0] * bp[0] + bp[1] * bp[1] + bp[2] * bp[2];
-    }
+/// 拆出自 `point_tri_dist2`（原单函数 8 分支超圈复杂度上限，按 Ericson
+/// 区域分类逐区域拆为子函数，判定顺序与原实现严格一致）。
+/// `d` 为六个点积 `[d1..d6]`（私有参数收敛：原 6 散参打包为定长数组）。
+fn tri_region_edge_ab(d: &[f32; 6], ab: [f32; 3], ap: [f32; 3]) -> Option<f32> {
+    let (d1, d2, d3, d4) = (d[0], d[1], d[2], d[3]);
     let vc = d1 * d4 - d3 * d2;
     if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
         let v = d1 / (d1 - d3);
         let q = [ap[0] - v * ab[0], ap[1] - v * ab[1], ap[2] - v * ab[2]];
-        return q[0] * q[0] + q[1] * q[1] + q[2] * q[2];
+        return Some(dist2_of(q));
     }
-    let cp = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
-    let d5 = ab[0] * cp[0] + ab[1] * cp[1] + ab[2] * cp[2];
-    let d6 = ac[0] * cp[0] + ac[1] * cp[1] + ac[2] * cp[2];
-    if d6 >= 0.0 && d5 <= d6 {
-        return cp[0] * cp[0] + cp[1] * cp[1] + cp[2] * cp[2];
-    }
+    None
+}
+
+/// AC 边区域判定。
+fn tri_region_edge_ac(d: &[f32; 6], ac: [f32; 3], ap: [f32; 3]) -> Option<f32> {
+    let (d1, d2, d5, d6) = (d[0], d[1], d[4], d[5]);
     let vb = d5 * d2 - d1 * d6;
     if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
         let w = d2 / (d2 - d6);
         let q = [ap[0] - w * ac[0], ap[1] - w * ac[1], ap[2] - w * ac[2]];
-        return q[0] * q[0] + q[1] * q[1] + q[2] * q[2];
+        return Some(dist2_of(q));
     }
+    None
+}
+
+/// BC 边区域判定。
+fn tri_region_edge_bc(d: &[f32; 6], b: [f32; 3], c: [f32; 3], bp: [f32; 3]) -> Option<f32> {
+    let (d3, d4, d5, d6) = (d[2], d[3], d[4], d[5]);
     let va = d3 * d6 - d5 * d4;
     if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
         let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-        let bc = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+        let bc = sub3(c, b);
         let q = [bp[0] - w * bc[0], bp[1] - w * bc[1], bp[2] - w * bc[2]];
-        return q[0] * q[0] + q[1] * q[1] + q[2] * q[2];
+        return Some(dist2_of(q));
     }
+    None
+}
+
+/// 面内区域：重心坐标插值投影点的平方距离。
+///
+/// `d` 为六个点积 `[d1..d6]`；`va/vb/vc` 为三个边区域的重心分子
+/// （纯算术，重算无副作用，与原实现在到达该区域时的取值完全一致）。
+fn tri_region_face(d: &[f32; 6], ab: [f32; 3], ac: [f32; 3], ap: [f32; 3]) -> f32 {
+    let (d1, d2, d3, d4, d5, d6) = (d[0], d[1], d[2], d[3], d[4], d[5]);
+    let vc = d1 * d4 - d3 * d2;
+    let vb = d5 * d2 - d1 * d6;
+    let va = d3 * d6 - d5 * d4;
     let denom = 1.0 / (va + vb + vc);
     let v = vb * denom;
     let w = vc * denom;
-    let q = [ap[0] - v * ab[0] - w * ac[0], ap[1] - v * ab[1] - w * ac[1], ap[2] - v * ab[2] - w * ac[2]];
-    q[0] * q[0] + q[1] * q[1] + q[2] * q[2]
+    let q = [
+        ap[0] - v * ab[0] - w * ac[0],
+        ap[1] - v * ab[1] - w * ac[1],
+        ap[2] - v * ab[2] - w * ac[2],
+    ];
+    dist2_of(q)
+}
+
+/// 点到三角形的平方距离（Ericson 实时碰撞检测标准算法）。
+///
+/// 用区域分类而非投影到平面——投影到平面对「点在外接球内的退化情形」会给出
+/// 落在三角形外的点，导致距离被高估或低估。
+///
+/// 区域判定顺序（与文献一致，彼此保持原实现的先后次序）：
+/// 顶点区 A → 顶点区 B → AB 边区 → 顶点区 C → AC 边区 → BC 边区 → 面内区。
+/// 点积 d1..d6 是纯算术无副作用，一次性算齐后打包成数组供各区域子函数共享。
+pub fn point_tri_dist2(p: [f32; 3], a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> f32 {
+    let ab = sub3(b, a);
+    let ac = sub3(c, a);
+    let ap = sub3(p, a);
+    let d1 = dot3(ab, ap);
+    let d2 = dot3(ac, ap);
+    // A 顶点区域
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return dist2_of(ap);
+    }
+    let bp = sub3(p, b);
+    let d3 = dot3(ab, bp);
+    let d4 = dot3(ac, bp);
+    // B 顶点区域
+    if d3 >= 0.0 && d4 <= d3 {
+        return dist2_of(bp);
+    }
+    let cp = sub3(p, c);
+    let d5 = dot3(ab, cp);
+    let d6 = dot3(ac, cp);
+    let d = [d1, d2, d3, d4, d5, d6];
+    // AB 边区域
+    if let Some(r) = tri_region_edge_ab(&d, ab, ap) {
+        return r;
+    }
+    // C 顶点区域
+    if d6 >= 0.0 && d5 <= d6 {
+        return dist2_of(cp);
+    }
+    // AC 边区域
+    if let Some(r) = tri_region_edge_ac(&d, ac, ap) {
+        return r;
+    }
+    // BC 边区域
+    if let Some(r) = tri_region_edge_bc(&d, b, c, bp) {
+        return r;
+    }
+    // 面内区域
+    tri_region_face(&d, ab, ac, ap)
 }
 
 /// 点到网格的最近距离（平方值）。
@@ -1505,6 +1769,24 @@ pub fn point_mesh_dist2(p: [f32; 3], m: &DecMesh) -> f32 {
     best
 }
 
+/// 单侧采样：`verts` 中每点到网格 `m` 的最近距离开方后的最大值。
+///
+/// 语义保持：目标网格无面时返回哨兵 `f32::MAX`（原实现把该守卫放在循环体
+/// 内逐点判断，提取后守卫仍在循环内——空顶点表时不触发，与原行为一致）。
+fn max_vert_dist(verts: &[[f32; 3]], m: &DecMesh) -> f32 {
+    let mut best = 0.0f32;
+    for p in verts.iter() {
+        if m.face_count() == 0 {
+            return f32::MAX;
+        }
+        let d = crate::gfx::meshquant::fsqrt(point_mesh_dist2(*p, m));
+        if d > best {
+            best = d;
+        }
+    }
+    best
+}
+
 /// Hausdorff 距离的双向采样近似。
 ///
 /// 真 Hausdorff 是曲面间距离的 sup；本模块用**双向顶点采样**近似：
@@ -1515,27 +1797,8 @@ pub fn point_mesh_dist2(p: [f32; 3], m: &DecMesh) -> f32 {
 /// 的面中部」极值点），故 API 名叫 `approx` 且文档写明——谎称上界会误导
 /// 消费者（F1611 剔除会拿这个值做可见性预判）。
 pub fn hausdorff_approx(a: &DecMesh, b: &DecMesh) -> f32 {
-    let mut d_ab = 0.0f32;
-    for p in a.verts.iter() {
-        if b.face_count() == 0 {
-            return f32::MAX;
-        }
-        let d = point_mesh_dist2(*p, b);
-        let d = crate::gfx::meshquant::fsqrt(d);
-        if d > d_ab {
-            d_ab = d;
-        }
-    }
-    let mut d_ba = 0.0f32;
-    for p in b.verts.iter() {
-        if a.face_count() == 0 {
-            return f32::MAX;
-        }
-        let d = crate::gfx::meshquant::fsqrt(point_mesh_dist2(*p, a));
-        if d > d_ba {
-            d_ba = d;
-        }
-    }
+    let d_ab = max_vert_dist(&a.verts, b);
+    let d_ba = max_vert_dist(&b.verts, a);
     if d_ab > d_ba {
         d_ab
     } else {
@@ -1708,9 +1971,46 @@ pub fn with_plane_uv(m: &mut DecMesh) {
 // ---------------------------------------------------------------------------
 
 /// 判据族：QEM 四项、LOD 链四项、质量度量四项、边界保护四项、判据三项。
+///
+/// 原单函数 1000+ 行（圈复杂度 / 认知复杂度双超限），按判据族拆为六个
+/// 家族子函数；族内判据语义一字未改，仅按职责重新分组。族间共用的小工具
+/// （边界顶点表、收缩触碰判定、quadric 造板、起伏网格造板）沉到文件
+/// 末尾的「自检公共助手」区。
 pub fn run_vei08_checks() -> CheckSet {
     let mut set = CheckSet::new("gfx-vei08");
+    check_qem_family(&mut set);
+    check_lod_family(&mut set);
+    check_quality_family(&mut set);
+    check_boundary_family(&mut set);
+    check_guard_family(&mut set);
+    check_criterion_family(&mut set);
+    set
+}
 
+/// QEM-3b 的对照网格：在驻点 `p` 附近 13³ 粗网格上取**最小**代价
+/// （提自判据内层三重循环；步长 0.1，覆盖 ±0.6 邻域，纯算术无副作用）。
+fn grid_min_near(q: &Quadric, p: [f32; 3]) -> f32 {
+    let mut grid_min = f32::MAX;
+    for i in -6..=6i32 {
+        for j in -6..=6i32 {
+            for k in -6..=6i32 {
+                let cand = [
+                    p[0] + i as f32 * 0.1,
+                    p[1] + j as f32 * 0.1,
+                    p[2] + k as f32 * 0.1,
+                ];
+                let c = q.eval_at(cand);
+                if c < grid_min {
+                    grid_min = c;
+                }
+            }
+        }
+    }
+    grid_min
+}
+
+/// QEM 族自检·二次型定义部分：平面零误差 / 距离平方 / 驻点最优性与全局对照。
+fn check_qem_quadric_basics(set: &mut CheckSet) {
     // ---- QEM 族 ----
     // QEM-1 平面二次型：平面上的点误差为 0（文献定义）
     {
@@ -1733,11 +2033,12 @@ pub fn run_vei08_checks() -> CheckSet {
     }
     // QEM-3 驻点解优于四候选枚举（最优位置的判据：不能比端点更差）
     {
-        // 用一个非平面对称 quadric 造最小值点
-        let mut q = Quadric::zero();
-        q.add_plane(1.0, 0.0, 0.0, 0.0);
-        q.add_plane(0.0, 1.0, 0.0, 0.0);
-        q.add_plane(0.0, 0.0, 1.0, -1.0);
+        // 用一个非平面对称 quadric 造最小值点（造板统一走 quadric_from_planes）
+        let q = quadric_from_planes(&[
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, -1.0],
+        ]);
         let opt = q.optimal_position();
         let ok = match opt {
             Some(p) => {
@@ -1756,11 +2057,12 @@ pub fn run_vei08_checks() -> CheckSet {
     // （把有限性守卫改成恒假，让非有限值混入）与 M5（把 x 分量乘 0）
     // 在弱判据下均未变红——加入全域对照后二者立刻显形。
     {
-        let mut q = Quadric::zero();
-        q.add_plane(1.0, 0.0, 0.0, 0.0);
-        q.add_plane(0.0, 1.0, 0.0, 0.0);
-        q.add_plane(0.0, 0.0, 1.0, -1.0);
-        q.add_plane(0.3, 0.4, 0.5, -0.2);
+        let q = quadric_from_planes(&[
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, -1.0],
+            [0.3, 0.4, 0.5, -0.2],
+        ]);
         let opt = q.optimal_position();
         let ok = match opt {
             Some(p) => {
@@ -1769,33 +2071,24 @@ pub fn run_vei08_checks() -> CheckSet {
                     false
                 } else {
                     // 数值对照：在驻点附近的粗网格上采样，驻点不应被任何点超越。
+                    // （对照网格采样提为 `grid_min_near` 助手。）
                     //
-                    // 注意判据方向：取 `grid_min`（网格上的**最小**代价），
+                    // 注意判据方向：取 grid_min（网格上的**最小**代价），
                     // 断言 `ec <= grid_min + tol`。早前误写成「网格最劣不小于驻点」，
                     // 那等于用驻点自己当初值求最大值——恒真，是错判据而非被测物问题。
-                    let mut grid_min = f32::MAX;
-                    for i in -6..=6i32 {
-                        for j in -6..=6i32 {
-                            for k in -6..=6i32 {
-                                let cand = [
-                                    p[0] + i as f32 * 0.1,
-                                    p[1] + j as f32 * 0.1,
-                                    p[2] + k as f32 * 0.1,
-                                ];
-                                let c = q.eval_at(cand);
-                                if c < grid_min {
-                                    grid_min = c;
-                                }
-                            }
-                        }
-                    }
-                    ec <= grid_min + 1.0e-4
+                    ec <= grid_min_near(&q, p) + 1.0e-4
                 }
             }
             None => false,
         };
         set.add("I1608-QEM-驻点为全局最小", ok, "驻点代价不应被任何邻近点超越");
     }
+    // ---- QEM 族·第二段接缝 ----（上为二次型定义部分收尾）
+}
+
+/// QEM 族自检·公式与收缩行为部分：十元素对拍、交叉项、奇异回退、
+/// 收缩降面数与目标可达性（含如实上报对照）。
+fn check_qem_formula_and_collapse(set: &mut CheckSet) {
     // QEM-3c 二次型各向性：交叉项必须真的进公式。
     //
     // 反假变体 M1（`m[0] += a*a` 改成 `m[0] += a`）与 M2（交叉项系数 2→1）
@@ -1890,6 +2183,11 @@ pub fn run_vei08_checks() -> CheckSet {
             "60 面在几何可行范围内，应精确达标",
         );
     }
+    // ---- QEM 族·第三段接缝 ----（上为公式与收缩行为部分收尾）
+}
+
+/// QEM 族自检·结果核验部分：结构自洽、不可达原样返回、代价非负、面积不爆炸。
+fn check_qem_output_checks(set: &mut CheckSet) {
     // QEM-6 输出网格结构自洽（无越界/形状错）
     {
         let src = plane_grid(5, 5, 2.0, 2.0);
@@ -1932,6 +2230,19 @@ pub fn run_vei08_checks() -> CheckSet {
         );
     }
 
+    // ---- LOD 链族 ----（族函数接缝：上为 QEM 族收尾）
+}
+
+/// QEM 族自检总入口：二次型定义、驻点最优性（含全局对照）、十元素对拍、
+/// 收缩行为与守恒律（按段拆分见 [`check_qem_quadric_basics`] 等三段）。
+fn check_qem_family(set: &mut CheckSet) {
+    check_qem_quadric_basics(set);
+    check_qem_formula_and_collapse(set);
+    check_qem_output_checks(set);
+}
+
+/// LOD 链族自检：级数、面数逐级递减、误差上界单调、非法比例跳过不留洞。
+fn check_lod_family(set: &mut CheckSet) {
     // ---- LOD 链族 ----
     // LOD-1 链级数与比例对应
     {
@@ -2004,6 +2315,12 @@ pub fn run_vei08_checks() -> CheckSet {
         set.add("I1608-LOD-增量非负", ok, "误差增量不应为负");
     }
 
+    // ---- 质量度量族 ----（族函数接缝：上为 LOD 族收尾）
+}
+
+/// 质量度量族自检：Hausdorff 自距离/偏差、点到三角形距离、材质漂移、
+/// 质量报告字段齐备性。
+fn check_quality_family(set: &mut CheckSet) {
     // ---- 质量度量族 ----
     // QM-1 自 Hausdorff 为 0
     {
@@ -2086,6 +2403,12 @@ pub fn run_vei08_checks() -> CheckSet {
         );
     }
 
+    // ---- 边界保护族 ----（族函数接缝：上为质量度量族收尾）
+}
+
+/// 边界保护族自检·检出与力度部分：接缝 / 材质边界 / 开放边界检出，
+/// 保护对简化力度的实际抑制。
+fn check_boundary_detect_family(set: &mut CheckSet) {
     // ---- 边界保护族 ----
     // BP-1 接缝顶点被标出
     {
@@ -2148,6 +2471,12 @@ pub fn run_vei08_checks() -> CheckSet {
             "开启边界保护后可缩面数应更多",
         );
     }
+    // ---- 边界保护族·第二段接缝 ----（上为检出与力度部分收尾）
+}
+
+/// 边界保护族自检·零收缩与对照部分：边界顶点零收缩、无保护对照、
+/// 护栏计数与无属性网格不误标。
+fn check_boundary_protect_family(set: &mut CheckSet) {
     // BP-6 边界顶点在有保护时**一个都不能被收缩掉**。
     //
     // 这条直接测锚点「UV 接缝/材质边界不收缩」的语义本身。
@@ -2160,17 +2489,13 @@ pub fn run_vei08_checks() -> CheckSet {
     {
         let mut src = plane_grid(8, 8, 1.0, 1.0);
         src.mark_all_boundaries();
-        let bnd: Vec<u32> = src
-            .boundary
-            .iter()
-            .enumerate()
-            .filter(|(_, &b)| b)
-            .map(|(i, _)| i as u32)
-            .collect();
+        let bnd = boundary_vert_list(&src);
         let (_, rep) = simplify(&src, &SimplifyOptions::with_target(20));
         let removed: Vec<u32> = rep.collapses.iter().map(|c| c.removed).collect();
         let kept: Vec<u32> = rep.collapses.iter().map(|c| c.kept).collect();
-        let touched_bnd = removed.iter().chain(kept.iter()).any(|v| bnd.contains(v));
+        // 与 BP-7/G-6 共用同一观测助手（removed/kept 任一端命中边界集）
+        let touched_bnd = collapse_touched_boundary(&rep, &bnd);
+        let _ = (removed, kept);
         set.add(
             "I1608-边界-保护期间边界顶点零收缩",
             !touched_bnd,
@@ -2181,18 +2506,9 @@ pub fn run_vei08_checks() -> CheckSet {
     {
         let mut src = plane_grid(8, 8, 1.0, 1.0);
         src.mark_all_boundaries();
-        let bnd: Vec<u32> = src
-            .boundary
-            .iter()
-            .enumerate()
-            .filter(|(_, &b)| b)
-            .map(|(i, _)| i as u32)
-            .collect();
+        let bnd = boundary_vert_list(&src);
         let (_, rep) = simplify(&src, &SimplifyOptions::with_target(20).unprotected());
-        let touched = rep
-            .collapses
-            .iter()
-            .any(|c| bnd.contains(&c.removed) || bnd.contains(&c.kept));
+        let touched = collapse_touched_boundary(&rep, &bnd);
         set.add(
             "I1608-边界-无保护时边界可收缩",
             touched,
@@ -2222,7 +2538,18 @@ pub fn run_vei08_checks() -> CheckSet {
         );
     }
 
-    // ---- 守卫族（专治「守卫分支不触发 → 删掉也不变红」）----
+    // ---- 守卫族（专治「守卫分支不触发 → 删掉也不变红」）----（族函数接缝：上为边界保护族收尾）
+}
+
+/// 边界保护族自检总入口：接缝 / 材质边界 / 开放边界检出，保护零收缩与对照项
+/// （按段拆分见 [`check_boundary_detect_family`] / [`check_boundary_protect_family`]）。
+fn check_boundary_family(set: &mut CheckSet) {
+    check_boundary_detect_family(set);
+    check_boundary_protect_family(set);
+}
+
+/// 守卫族自检·quadric 部分：xy 交叉项 / 近奇异驻点 / 非共面合并的实际影响。
+fn check_guard_quadric_family(set: &mut CheckSet) {
     //
     // 这族判据的由来：反假变体 M4/M9/M11/M12/M15/M16/M17/M22/M26/M27/M28
     // 注入后自检仍全绿。逐个查证后确认根因一致——**这些守卫在原有测试场景里
@@ -2249,11 +2576,12 @@ pub fn run_vei08_checks() -> CheckSet {
     }
     // G-2 驻点求解的**非有限性守卫真的被需要**：构造行列式极小但非零的场景。
     {
-        // 两个几乎共线的平面 → 3×3 块接近奇异 → 走枚举回退
-        let mut q = Quadric::zero();
-        q.add_plane(1.0, 0.0, 0.0, 0.0);
-        q.add_plane(0.0, 1.0, 0.0, 0.0);
-        q.add_plane(1.0, 1.0, 0.0, -1.0);
+        // 两个几乎共线的平面 → 3×3 块接近奇异 → 走枚举回退（造板统一走助手）
+        let q = quadric_from_planes(&[
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0, -1.0],
+        ]);
         let r = q.optimal_position();
         let ok = match r {
             Some(p) => p[0].is_finite() && p[1].is_finite() && p[2].is_finite(),
@@ -2267,14 +2595,9 @@ pub fn run_vei08_checks() -> CheckSet {
     // quadric 都是同一个平面二次型，合并与否结果相同。改用**非共面**网格
     // （起伏面），此时合并与否必然产生不同的代价序列。
     {
-        let mut src = plane_grid(8, 8, 1.0, 1.0);
-        // 造成非共面：z 随 x、y 起伏
-        // no_std 注意：不能用 sin/cos（std 扩展方法）——用纯代数的二次项造起伏
-        for (i, p) in src.verts.iter_mut().enumerate() {
-            let xi = (i % 8) as f32;
-            let yi = (i / 8) as f32;
-            p[2] = xi * yi * 0.05 - xi * xi * 0.02;
-        }
+        // 造成非共面：z 随 x、y 起伏（造板统一走 make_bumpy_grid，
+        // no_std：不能用 sin/cos——std 扩展方法，用纯代数二次项）
+        let src = make_bumpy_grid(8, 8, 0.05, 0.02, 0.0);
         let q = accumulate_quadrics(&src);
         let mut nonzero = 0usize;
         for item in q.iter() {
@@ -2292,6 +2615,12 @@ pub fn run_vei08_checks() -> CheckSet {
             "起伏网格每个顶点 quadric 非零，收缩代价全部有限",
         );
     }
+    // ---- 守卫族·第二段接缝 ----（上为 quadric 部分收尾）
+}
+
+/// 守卫族自检·索引与堆记账部分：邻面去重、堆键无残留、边界双闸、
+/// touched 观测与新边补价。
+fn check_guard_index_heap_family(set: &mut CheckSet) {
     // G-4 邻面去重后逐项唯一（直接测 `dedup` 的效果，覆盖 M11）。
     //
     // 用**面表压紧后会产生重复映射**的场景：单纯检查「无重复」不够，
@@ -2330,21 +2659,12 @@ pub fn run_vei08_checks() -> CheckSet {
         let opts = SimplifyOptions::with_target(8);
         refresh_all_costs(&mut idx, &m, &quad, &opts);
         let mut heap: BTreeMap<(i64, u32), ()> = BTreeMap::new();
-        for id in 0..idx.edge_count() as u32 {
-            let c = idx.cost(id).unwrap_or(f32::MAX);
-            if !c.is_finite() || c == f32::MAX {
-                continue;
-            }
-            idx.heap_insert(&mut heap, id, cost_key(c));
-        }
-        // 重复插入同一条边不应让堆增长
+        // 与 simplify 初始建堆共用同一助手（原两处逐行重复）
+        push_valid_edges_into_heap(&mut idx, &mut heap);
+        // 重复插入同一条边不应让堆增长（第二遍的「有限且非 MAX」与首遍的
+        // 「非(非有限 或 MAX)」逻辑等价）
         let before = heap.len();
-        for id in 0..idx.edge_count() as u32 {
-            let c = idx.cost(id).unwrap_or(f32::MAX);
-            if c.is_finite() && c != f32::MAX {
-                idx.heap_insert(&mut heap, id, cost_key(c));
-            }
-        }
+        push_valid_edges_into_heap(&mut idx, &mut heap);
         set.add(
             "I1608-守卫-堆键记账无残留",
             heap.len() == before,
@@ -2355,18 +2675,9 @@ pub fn run_vei08_checks() -> CheckSet {
     {
         let mut src = plane_grid(8, 8, 1.0, 1.0);
         src.mark_all_boundaries();
-        let bnd: Vec<u32> = src
-            .boundary
-            .iter()
-            .enumerate()
-            .filter(|(_, &b)| b)
-            .map(|(i, _)| i as u32)
-            .collect();
+        let bnd = boundary_vert_list(&src);
         let (_, rep) = simplify(&src, &SimplifyOptions::with_target(20));
-        let touched = rep
-            .collapses
-            .iter()
-            .any(|c| bnd.contains(&c.removed) || bnd.contains(&c.kept));
+        let touched = collapse_touched_boundary(&rep, &bnd);
         // 并且 skipped_boundary 要真实反映被拦的边数
         set.add(
             "I1608-守卫-边界保护两处均生效",
@@ -2399,6 +2710,12 @@ pub fn run_vei08_checks() -> CheckSet {
             "简化输出结构合法且边表端点不越界",
         );
     }
+    // ---- 守卫族·第三段接缝 ----（上为索引与堆记账部分收尾）
+}
+
+/// 守卫族自检·validate 卫语句部分：新边补价入堆、空网格哨兵、
+/// 越界/NaN/UV/材质/边界形状错配的逐项检出。
+fn check_guard_validate_family(set: &mut CheckSet) {
     // G-8 新边补价入堆（覆盖 M17）：极低目标下仍能达标。
     {
         let src = plane_grid(12, 12, 1.0, 1.0);
@@ -2487,18 +2804,19 @@ pub fn run_vei08_checks() -> CheckSet {
             "boundary 长度不等于顶点数应被检出",
         );
     }
+    // ---- 守卫族·第四段接缝 ----（上为 validate 卫语句部分收尾）
+}
+
+/// 守卫族自检·度量与压缩部分：LOD 误差非零对照、级数随比例变化、
+/// 面积/extent 量化、compact 重映射与 quadric 十元素独立核验。
+fn check_guard_metric_family(set: &mut CheckSet) {
     // G-15 LOD 误差单调性的**对照**（覆盖 M18）。
     //
     // 若把 `error_bound` 恒置 0，「误差上界非递减」会恒成立（弱门禁）。
     // 故必须另有一条判据证明误差**确实非零**——否则单调性是空断言。
     {
-        let mut src = plane_grid(9, 9, 1.0, 1.0);
-        // no_std：同样不用 sin/cos，用乘积项制造非共面
-        for (i, p) in src.verts.iter_mut().enumerate() {
-            let xi = (i % 9) as f32;
-            let yi = (i / 9) as f32;
-            p[2] = xi * yi * 0.06 - yi * yi * 0.03;
-        }
+        // no_std：同样不用 sin/cos，用乘积项制造非共面（造板统一走 make_bumpy_grid）
+        let src = make_bumpy_grid(9, 9, 0.06, 0.0, 0.03);
         let chain = build_lod_chain(&src, &[0.4, 0.15]);
         let has_positive = chain.levels.iter().any(|l| l.error_bound > 0.0);
         set.add(
@@ -2562,6 +2880,20 @@ pub fn run_vei08_checks() -> CheckSet {
         set.add("I1608-守卫-对角与cd项写入正确", ok, "k=(0,0,2,3) 的 c²/cd/d² 应为 4/6/9");
     }
 
+    // ---- 判据族 ----（族函数接缝：上为守卫族收尾）
+}
+
+/// 守卫族自检总入口：为每个守卫补一条**让守卫真正触发**的判据
+/// （按段拆分见 [`check_guard_quadric_family`] 等四段；set.add 顺序与原版一致）。
+fn check_guard_family(set: &mut CheckSet) {
+    check_guard_quadric_family(set);
+    check_guard_index_heap_family(set);
+    check_guard_validate_family(set);
+    check_guard_metric_family(set);
+}
+
+/// 判据族自检·索引自洽部分：邻接表与网格一致、边表无幽灵边。
+fn check_criterion_index_family(set: &mut CheckSet) {
     // ---- 判据族 ----
     // J-0 邻接表自洽：`CollapseIndex` 从网格重建出的邻面必须与网格一致。
     //
@@ -2617,21 +2949,20 @@ pub fn run_vei08_checks() -> CheckSet {
                 ok = false;
                 continue;
             }
-            // 该端点对必须真的相邻（否则是幽灵边）
-            let mut adjacent = false;
-            for f in out.faces.iter() {
-                for k in 0..3 {
-                    if (f[k] == a && f[(k + 1) % 3] == b) || (f[k] == b && f[(k + 1) % 3] == a) {
-                        adjacent = true;
-                    }
-                }
-            }
-            if !adjacent {
+            // 该端点对必须真的相邻（否则是幽灵边）——复用 DecMesh::edge_use_count
+            //（同一定义的原生实现：双向半边计数，非零即相邻），消除重复内联扫描
+            if out.edge_use_count(a, b) == 0 {
                 ok = false;
             }
         }
         set.add("I1608-判据-边表无幽灵边", ok, "边表每条边都应在面表中真实存在");
     }
+    // ---- 判据族·第二段接缝 ----（上为索引自洽部分收尾）
+}
+
+/// 判据族自检·守恒律部分：每次收缩必丢面、顶点数递减、quadric 合并
+/// 等价相加、简化能力逐档达标。
+fn check_criterion_conservation_family(set: &mut CheckSet) {
     // J-0c 守恒律：每次成功收缩至少丢 1 个面，失败收缩不得进记录。
     //
     // 反假变体 M7（把守恒守卫改成恒假）在本判据下会立刻显形——
@@ -2704,6 +3035,12 @@ pub fn run_vei08_checks() -> CheckSet {
             "100/60/42 面三档目标都应精确命中",
         );
     }
+    // ---- 判据族·第三段接缝 ----（上为守恒律部分收尾）
+}
+
+/// 判据族自检·确定性与可复现部分：邻面表无重复、简化确定性、
+/// quadric 累加可复现、容差判定生效。
+fn check_criterion_determinism_family(set: &mut CheckSet) {
     // J-0g 邻面表无重复项（`sort_unstable` + `dedup` 存在性）。
     //
     // 反假变体 M11 删掉这两行。若不查重复，`vert_faces` 里同一面号会出现
@@ -2759,6 +3096,62 @@ pub fn run_vei08_checks() -> CheckSet {
         let q = QualityReport::measure(&m, &m, &rep);
         set.add("I1608-判据-容差判定生效", q.within(1.0e-6, 1.0e-6), "自身网格应在零容差内");
     }
+}
 
-    set
+/// 判据族自检总入口：邻接表/边表自洽、守恒律、确定性、可复现性与容差判定
+/// （按段拆分见 [`check_criterion_index_family`] 等三段；set.add 顺序与原版一致）。
+fn check_criterion_family(set: &mut CheckSet) {
+    check_criterion_index_family(set);
+    check_criterion_conservation_family(set);
+    check_criterion_determinism_family(set);
+}
+
+// ---------------------------------------------------------------------------
+// 十、自检公共助手（家族判据间共用的造板 / 观测工具）
+// ---------------------------------------------------------------------------
+
+/// 收集网格的全部边界顶点索引（BP-6 / BP-7 / G-6 三条判据共用的观测集）。
+fn boundary_vert_list(m: &DecMesh) -> Vec<u32> {
+    m.boundary
+        .iter()
+        .enumerate()
+        .filter(|(_, &b)| b)
+        .map(|(i, _)| i as u32)
+        .collect()
+}
+
+/// 判定是否**有任一次收缩触碰了边界顶点**（removed 或 kept 命中边界集）。
+///
+/// BP-6（保护时零收缩）、BP-7（无保护时可收缩）、G-6（两处保护均生效）
+/// 三条判据共用同一观测，提取消除三份重复。
+fn collapse_touched_boundary(rep: &SimplifyReport, bnd: &[u32]) -> bool {
+    rep.collapses
+        .iter()
+        .any(|c| bnd.contains(&c.removed) || bnd.contains(&c.kept))
+}
+
+/// 由平面方程列表累加构造 quadric（QEM-3 / QEM-3b / G-2 共用的造板工具）。
+///
+/// 每个元素 `(a, b, c, d)` 是一个平面方程 `a·x + b·y + c·z + d = 0`。
+fn quadric_from_planes(planes: &[[f32; 4]]) -> Quadric {
+    let mut q = Quadric::zero();
+    for p in planes.iter() {
+        q.add_plane(p[0], p[1], p[2], p[3]);
+    }
+    q
+}
+
+/// 造起伏（非共面）网格：`z = xi·yi·cross − xi²·sq_x − yi²·sq_y`。
+///
+/// G-3 与 G-15 共用的造板工具（no_std：不能用 sin/cos——std 扩展方法，
+/// 用纯代数的二次项制造非共面起伏）。系数取 0 的项与原手写公式逐位一致
+///（有限值减 0.0 位模式不变，含 -0.0）。
+fn make_bumpy_grid(cols: usize, rows: usize, cross: f32, sq_x: f32, sq_y: f32) -> DecMesh {
+    let mut src = plane_grid(cols, rows, 1.0, 1.0);
+    for (i, p) in src.verts.iter_mut().enumerate() {
+        let xi = (i % cols) as f32;
+        let yi = (i / cols) as f32;
+        p[2] = xi * yi * cross - xi * xi * sq_x - yi * yi * sq_y;
+    }
+    src
 }

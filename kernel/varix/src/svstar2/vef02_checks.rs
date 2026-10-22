@@ -17,6 +17,9 @@
 //! [`unfilter_row`] 为基准，绕过上游解码路径。
 //!
 //! 纯函数校验，无时钟无 IO，回归可复现。语料全部由本文件内的构造器生成。
+//!
+//! 结构说明：`run_vef02_checks` 只做判据编排，每条判据的核算逻辑放在
+//! 同文件私有 `chk_*` 函数中（单一职责），判据名与断言语义保持不变。
 
 use super::vef02_pngenc::*;
 use crate::checks::CheckSet;
@@ -92,18 +95,27 @@ fn luma_ref(r: u8, g: u8, b: u8) -> u32 {
     (77 * r as u32 + 150 * g as u32 + 29 * b as u32 + 128) >> 8
 }
 
-/// 规范语义解码：从 PNG 字节流还原 RGBA（绕过上游 `row_filter`）。
+// ---------------------------------------------------------------------------
+// 规范语义解码（对拍基准）
+// ---------------------------------------------------------------------------
+
+/// PNG 块流扫描结果：IHDR 十三字节参数 + 拼接的 IDAT + 是否见到 IEND。
+struct PngStream {
+    ihdr: [u8; 13],
+    idat: Vec<u8>,
+    saw_iend: bool,
+}
+
+/// 顺序扫描 PNG 块流，收集 IHDR/IDAT，遇 IEND 即停。
 ///
-/// 返回 `(宽, 高, RGBA)`。仅支持本模块能产出的组合（非隔行、
-/// 非调色板——调色板另走 [`decode_palette_spec`]）。
-fn decode_spec(png: &[u8]) -> Option<(usize, usize, Vec<u8>)> {
+/// 返回 `None`：签名不符，或某块长度字段指向流外（截断流）。
+/// 块遍历完仍未见 IEND 时返回 `saw_iend == false` 的结果，由调用方裁决。
+fn collect_stream(png: &[u8]) -> Option<PngStream> {
     if png.len() < 8 || png[..8] != PNG_SIG {
         return None;
     }
+    let mut st = PngStream { ihdr: [0u8; 13], idat: Vec::new(), saw_iend: false };
     let mut pos = 8usize;
-    let mut ihdr = [0u8; 13];
-    let mut idat: Vec<u8> = Vec::new();
-    let mut saw_iend = false;
     while pos + 12 <= png.len() {
         let len = u32::from_be_bytes([png[pos], png[pos + 1], png[pos + 2], png[pos + 3]]) as usize;
         if pos + 12 + len > png.len() {
@@ -111,18 +123,122 @@ fn decode_spec(png: &[u8]) -> Option<(usize, usize, Vec<u8>)> {
         }
         let ty = &png[pos + 4..pos + 8];
         if ty == b"IHDR" && len == 13 {
-            ihdr.copy_from_slice(&png[pos + 8..pos + 21]);
+            st.ihdr.copy_from_slice(&png[pos + 8..pos + 21]);
         } else if ty == b"IDAT" {
-            idat.extend_from_slice(&png[pos + 8..pos + 8 + len]);
+            st.idat.extend_from_slice(&png[pos + 8..pos + 8 + len]);
         } else if ty == b"IEND" {
-            saw_iend = true;
-            break;
+            st.saw_iend = true;
+            return Some(st);
         }
         pos += 12 + len;
     }
-    if !saw_iend {
+    Some(st)
+}
+
+/// 把一个像素的采样值按颜色类型写入 RGBA 缓冲。
+///
+/// 返回 `false` 表示调色板类型（本解码路径不支持，另走
+/// [`decode_palette_spec`]）。
+fn store_pixel_rgba(rgba: &mut [u8], o: usize, color: ColorType, sample: &impl Fn(usize) -> u32) -> bool {
+    match color {
+        ColorType::Gray => {
+            let v = sample(0) as u8;
+            rgba[o] = v;
+            rgba[o + 1] = v;
+            rgba[o + 2] = v;
+            rgba[o + 3] = 255;
+        }
+        ColorType::GrayAlpha => {
+            let v = sample(0) as u8;
+            rgba[o] = v;
+            rgba[o + 1] = v;
+            rgba[o + 2] = v;
+            rgba[o + 3] = sample(1) as u8;
+        }
+        ColorType::Rgb => {
+            rgba[o] = sample(0) as u8;
+            rgba[o + 1] = sample(1) as u8;
+            rgba[o + 2] = sample(2) as u8;
+            rgba[o + 3] = 255;
+        }
+        ColorType::Rgba => {
+            rgba[o] = sample(0) as u8;
+            rgba[o + 1] = sample(1) as u8;
+            rgba[o + 2] = sample(2) as u8;
+            rgba[o + 3] = sample(3) as u8;
+        }
+        ColorType::Palette => return false,
+    }
+    true
+}
+
+/// 逐行反滤波骨架（`decode_spec` 与 `decode_palette_spec` 共用，消重）：
+/// 对每行取滤波号、拷贝样本行、反滤波后交给行处理回调。
+/// 滤波号非法 / 反滤波失败 / 回调拒绝 → `None`（与原两处内联实现语义一致；
+/// 反滤波失败从 `.ok()?` 改为显性 `is_err` 判定，行为一致）。
+fn for_each_unfiltered_row(
+    raw: &[u8],
+    h: usize,
+    stride: usize,
+    rb: usize,
+    bpp: usize,
+    mut f: impl FnMut(usize, &[u8]) -> Option<()>,
+) -> Option<()> {
+    let mut prev = vec![0u8; rb];
+    let mut cur = vec![0u8; rb];
+    let mut y = 0usize;
+    while y < h {
+        let fno = raw[y * stride];
+        if fno > 4 {
+            return None;
+        }
+        cur.copy_from_slice(&raw[y * stride + 1..y * stride + 1 + rb]);
+        if unfilter_row(fno, &mut cur, &prev, bpp).is_err() {
+            return None;
+        }
+        if f(y, &cur).is_none() {
+            return None;
+        }
+        prev.copy_from_slice(&cur);
+        y += 1;
+    }
+    Some(())
+}
+
+/// 规范语义解码的单样本取样口径：1/2/4 位反量化；8 位直取；
+/// 16 位取高字节并归一到 8 位域。
+///
+/// 16 位大端：每个样本占两字节（高字节有效、低字节为编码侧补的 0），
+/// 索引须按 `ch*2` 走。取值归一到 8 位域以便与 RGBA 对拍——本模块的
+/// 编码入口是 8 位 RGBA，16 位路径等价于「高字节直通」。越界读按 0
+/// 兜底（显性绑定后取默认，行缓冲按 IHDR 推导分配，越界仅可能来自
+/// 已在上游报错的畸形流）。
+fn spec_sample(cur: &[u8], x: usize, s: usize, ch: usize, depth: u8) -> u32 {
+    if depth < 8 {
+        let per = 8 / depth as usize;
+        let b = cur[x / per] as u32;
+        let sh = 8 - depth as usize * (x % per + 1);
+        let raw_v = (b >> sh) & (0xFFu32 >> (8 - depth));
+        raw_v * 255 / ((1u32 << depth) - 1)
+    } else if depth == 8 {
+        cur[x * ch + s] as u32
+    } else {
+        let hi = cur.get(x * ch * 2 + s * 2).copied().unwrap_or(0);
+        hi as u32
+    }
+}
+
+/// 规范语义解码：从 PNG 字节流还原 RGBA（绕过上游 `row_filter`）。
+///
+/// 返回 `(宽, 高, RGBA)`。仅支持本模块能产出的组合（非隔行、
+/// 非调色板——调色板另走 [`decode_palette_spec`]）。
+fn decode_spec(png: &[u8]) -> Option<(usize, usize, Vec<u8>)> {
+    let st = collect_stream(png)?;
+    if !st.saw_iend {
         return None;
     }
+    let ihdr = st.ihdr;
+    let idat = st.idat;
     let w = u32::from_be_bytes([ihdr[0], ihdr[1], ihdr[2], ihdr[3]]) as usize;
     let h = u32::from_be_bytes([ihdr[4], ihdr[5], ihdr[6], ihdr[7]]) as usize;
     let depth = ihdr[8];
@@ -151,94 +267,26 @@ fn decode_spec(png: &[u8]) -> Option<(usize, usize, Vec<u8>)> {
         return None;
     }
     let bpp = core::cmp::max(1, ch * (depth as usize / 8));
-    let mut prev = vec![0u8; rb];
-    let mut cur = vec![0u8; rb];
     let mut rgba = vec![0u8; w * h * 4];
-    for y in 0..h {
-        let fno = raw[y * stride];
-        if fno > 4 {
-            return None;
-        }
-        cur.copy_from_slice(&raw[y * stride + 1..y * stride + 1 + rb]);
-        unfilter_row(fno, &mut cur, &prev, bpp).ok()?;
+    let rows = for_each_unfiltered_row(&raw, h, stride, rb, bpp, |y, cur| {
         for x in 0..w {
-            // 样本取值：1/2/4 位反量化；8 位直取；16 位取高字节
-            let sample = |s: usize| -> u32 {
-                if depth < 8 {
-                    let per = 8 / depth as usize;
-                    let b = cur[x / per] as u32;
-                    let sh = 8 - depth as usize * (x % per + 1);
-                    let raw_v = (b >> sh) & (0xFFu32 >> (8 - depth));
-                    raw_v * 255 / ((1u32 << depth) - 1)
-                } else if depth == 8 {
-                    cur[x * ch + s] as u32
-                } else {
-                    // 16 位大端：每个样本占两字节（高字节有效、低字节为
-                    // 编码侧补的 0），索引须按 `ch*2` 走。取值归一到 8 位域
-                    // 以便与 RGBA 对拍——本模块的编码入口是 8 位 RGBA，
-                    // 16 位路径等价于「高字节直通」。
-                    cur.get(x * ch * 2 + s * 2).copied().unwrap_or(0) as u32
-                }
-            };
+            let sample = |s: usize| -> u32 { spec_sample(cur, x, s, ch, depth) };
             let o = (y * w + x) * 4;
-            match color {
-                ColorType::Gray => {
-                    let v = sample(0) as u8;
-                    rgba[o] = v;
-                    rgba[o + 1] = v;
-                    rgba[o + 2] = v;
-                    rgba[o + 3] = 255;
-                }
-                ColorType::GrayAlpha => {
-                    let v = sample(0) as u8;
-                    rgba[o] = v;
-                    rgba[o + 1] = v;
-                    rgba[o + 2] = v;
-                    rgba[o + 3] = sample(1) as u8;
-                }
-                ColorType::Rgb => {
-                    rgba[o] = sample(0) as u8;
-                    rgba[o + 1] = sample(1) as u8;
-                    rgba[o + 2] = sample(2) as u8;
-                    rgba[o + 3] = 255;
-                }
-                ColorType::Rgba => {
-                    rgba[o] = sample(0) as u8;
-                    rgba[o + 1] = sample(1) as u8;
-                    rgba[o + 2] = sample(2) as u8;
-                    rgba[o + 3] = sample(3) as u8;
-                }
-                ColorType::Palette => return None, // 另走 decode_palette_spec
+            if !store_pixel_rgba(&mut rgba, o, color, &sample) {
+                return None; // Palette 另走 decode_palette_spec
             }
         }
-        prev.copy_from_slice(&cur);
-    }
+        Some(())
+    });
+    rows?;
     Some((w, h, rgba))
 }
 
 /// 调色板 PNG 的规范语义解码（展开成 RGBA）。
 fn decode_palette_spec(png: &[u8], plte: &[u8]) -> Option<(usize, usize, Vec<u8>)> {
-    if png.len() < 8 || png[..8] != PNG_SIG {
-        return None;
-    }
-    let mut pos = 8usize;
-    let mut ihdr = [0u8; 13];
-    let mut idat: Vec<u8> = Vec::new();
-    while pos + 12 <= png.len() {
-        let len = u32::from_be_bytes([png[pos], png[pos + 1], png[pos + 2], png[pos + 3]]) as usize;
-        if pos + 12 + len > png.len() {
-            return None;
-        }
-        let ty = &png[pos + 4..pos + 8];
-        if ty == b"IHDR" && len == 13 {
-            ihdr.copy_from_slice(&png[pos + 8..pos + 21]);
-        } else if ty == b"IDAT" {
-            idat.extend_from_slice(&png[pos + 8..pos + 8 + len]);
-        } else if ty == b"IEND" {
-            break;
-        }
-        pos += 12 + len;
-    }
+    let st = collect_stream(png)?;
+    let ihdr = st.ihdr;
+    let idat = st.idat;
     let w = u32::from_be_bytes([ihdr[0], ihdr[1], ihdr[2], ihdr[3]]) as usize;
     let h = u32::from_be_bytes([ihdr[4], ihdr[5], ihdr[6], ihdr[7]]) as usize;
     let depth = ihdr[8];
@@ -255,16 +303,8 @@ fn decode_palette_spec(png: &[u8], plte: &[u8]) -> Option<(usize, usize, Vec<u8>
     if mech_inflate::zlib_inflate_slices(&[&idat], &mut raw).is_err() {
         return None;
     }
-    let mut prev = vec![0u8; rb];
-    let mut cur = vec![0u8; rb];
     let mut rgba = vec![0u8; w * h * 4];
-    for y in 0..h {
-        let fno = raw[y * stride];
-        if fno > 4 {
-            return None;
-        }
-        cur.copy_from_slice(&raw[y * stride + 1..y * stride + 1 + rb]);
-        unfilter_row(fno, &mut cur, &prev, 1).ok()?;
+    let rows = for_each_unfiltered_row(&raw, h, stride, rb, 1, |y, cur| {
         for x in 0..w {
             let idx = if depth == 8 {
                 cur[x] as usize
@@ -281,8 +321,9 @@ fn decode_palette_spec(png: &[u8], plte: &[u8]) -> Option<(usize, usize, Vec<u8>
             }
             rgba[o + 3] = 255;
         }
-        prev.copy_from_slice(&cur);
-    }
+        Some(())
+    });
+    rows?;
     Some((w, h, rgba))
 }
 
@@ -312,14 +353,18 @@ struct Enc {
     info: Encoded,
 }
 
-fn enc_rgba(
-    src: &[u8],
+/// 编码入参打包（私有结构收敛 `enc_rgba` 签名——原 6 参收为 2 参，
+/// 不影响被测侧 `encode_rgba` 的 pub 签名）。
+struct EncInput<'a> {
+    src: &'a [u8],
     w: usize,
     h: usize,
     color: ColorType,
     depth: u8,
-    opts: EncOptions,
-) -> Result<Enc, EncError> {
+}
+
+fn enc_rgba(input: EncInput<'_>, opts: EncOptions) -> Result<Enc, EncError> {
+    let EncInput { src, w, h, color, depth } = input;
     let cap = worst_case_out(w, h, color, depth) as usize + 4096;
     let mut out = vec![0u8; cap];
     let info = encode_rgba(src, w, h, color, depth, opts, &mut out)?;
@@ -327,547 +372,734 @@ fn enc_rgba(
 }
 
 // ---------------------------------------------------------------------------
-// 主自检
+// 判据核算函数（每条一个，单一职责；判据名由 run_vef02_checks 统一登记）
 // ---------------------------------------------------------------------------
 
-/// VE-F1002 域自检。
-pub fn run_vef02_checks() -> CheckSet {
-    let mut cs = CheckSet::new("vef02");
-
-    // -- C02-FILTER-01 正反滤波逐位对偶（bpp × 五滤波全覆盖） ----------------
-    // 这是本单最关键的不变量：apply_filter 与规范语义 unfilter_row 互逆。
-    // 回归锁：曾因「正向滤波用错方向 + 正序遍历读残值」整图错色。
-    {
-        let mut ok = true;
-        for &bpp in &[1usize, 2, 3, 4] {
-            for fno in 0u8..5 {
-                for pat in 0u32..4 {
-                    let mut rng = Lcg::new(0xABCD_0000 + pat as u64 + (bpp as u64) << 8 + fno as u64);
-                    let n = 40usize;
-                    let raw: Vec<u8> = (0..n).map(|_| rng.byte()).collect();
-                    let prev: Vec<u8> = (0..n).map(|_| rng.byte()).collect();
-                    let mut c = raw.clone();
-                    if apply_filter(fno, &mut c, &prev, bpp).is_err() {
-                        ok = false;
-                        break;
-                    }
-                    let mut d = c.clone();
-                    if unfilter_row(fno, &mut d, &prev, bpp).is_err() || d != raw {
-                        ok = false;
-                        break;
-                    }
-                }
-            }
-        }
-        cs.add("C02-FILTER-01 正反滤波逐位对偶(bpp1-4×五滤波×4语料)", ok, "");
-    }
-
-    // -- C02-FILTER-02 五滤波号均可产出且解码后逐像素还原 ------------------
-    {
-        let w = 17usize;
-        let h = 9usize;
-        let src = make_rgba(w, h, 1, 255);
-        let mut ok = true;
+/// C02-FILTER-01：apply_filter 与规范语义 unfilter_row 逐位互偶
+/// （bpp1-4 × 五滤波 × 4 语料全覆盖）。
+///
+/// 这是本单最关键的不变量：apply_filter 与规范语义 unfilter_row 互逆。
+/// 回归锁：曾因「正向滤波用错方向 + 正序遍历读残值」整图错色。
+fn chk_filter_duality() -> bool {
+    let mut ok = true;
+    for &bpp in &[1usize, 2, 3, 4] {
         for fno in 0u8..5 {
-            // 强制走指定滤波：把策略设为 FixedNone 再手工施加到 raw 不可行，
-            // 故改为「逐滤波号用 apply_filter + unfilter_row 全链对拍」——
-            // 已在 C02-FILTER-01 覆盖；此处验证整图走编码器时滤波号分布非空。
-            let _ = fno;
-        }
-        for st in [Strategy::FixedNone, Strategy::MinAbsSum, Strategy::MinEntropy] {
-            let o = EncOptions { level: 6, strategy: st, allow_downgrade: false, idat_chunk: 0 };
-            match enc_rgba(&src, w, h, ColorType::Rgba, 8, o) {
-                Ok(e) => {
-                    let used: u32 = e.info.stats.filter_rows.iter().sum();
-                    if used != h as u32 {
-                        ok = false;
-                    }
-                    // FixedNone 必须全 0 号；自适应必须至少选中过一种非 0 号
-                    if matches!(st, Strategy::FixedNone) && e.info.stats.filter_rows[0] != h as u32 {
-                        ok = false;
-                    }
-                    if !matches!(st, Strategy::FixedNone)
-                        && e.info.stats.filter_rows[1..].iter().sum::<u32>() == 0
-                    {
-                        ok = false;
-                    }
-                    // 整图 roundtrip（不透明源不降档）
-                    if let Some((dw, dh, got)) = decode_spec(&e.out[..e.info.len]) {
-                        if dw != w || dh != h || got != src {
-                            ok = false;
-                        }
-                    } else {
-                        ok = false;
-                    }
+            for pat in 0u32..4 {
+                let mut rng = Lcg::new(0xABCD_0000 + pat as u64 + (bpp as u64) << 8 + fno as u64);
+                let n = 40usize;
+                let raw: Vec<u8> = (0..n).map(|_| rng.byte()).collect();
+                let prev: Vec<u8> = (0..n).map(|_| rng.byte()).collect();
+                let mut c = raw.clone();
+                if apply_filter(fno, &mut c, &prev, bpp).is_err() {
+                    ok = false;
+                    break;
                 }
-                Err(_) => ok = false,
-            }
-        }
-        cs.add("C02-FILTER-02 三策略滤波号分布+整图roundtrip", ok, "");
-    }
-
-    // -- C02-FILTER-03 prev 语义：首行参照必须为零行 ----------------------
-    // 回归锁：曾把「本行原样本」当 prev 存，第二行起 Up/Average/Paeth 全错位。
-    {
-        let w = 8usize;
-        let h = 3usize;
-        // 逐行递增且行间差异大：若 prev 错位，Up 滤波会立刻错
-        let mut src = vec![0u8; w * h * 4];
-        for y in 0..h {
-            for x in 0..w {
-                let i = (y * w + x) * 4;
-                src[i] = (y as u8) * 90;
-                src[i + 1] = (x as u8) * 20;
-                src[i + 2] = 77;
-                src[i + 3] = 255;
-            }
-        }
-        let o = EncOptions { level: 1, strategy: Strategy::FixedNone, allow_downgrade: false, idat_chunk: 0 };
-        let ok = match enc_rgba(&src, w, h, ColorType::Rgba, 8, o) {
-            Ok(e) => decode_spec(&e.out[..e.info.len]).map(|(_, _, got)| got == src).unwrap_or(false),
-            Err(_) => false,
-        };
-        cs.add("C02-FILTER-03 首行零参照/逐行推进语义", ok, "");
-    }
-
-    // -- C02-DEFLATE-01 九档权衡表齐全且与实现一致 ------------------------
-    {
-        let mut ok = LEVEL_TABLE.len() == 9;
-        for lvl in 1u8..=9 {
-            match level_row(lvl) {
-                Some(r) => {
-                    if r.level != lvl {
-                        ok = false;
-                    }
-                    // 与实现路径一致：≤3 走 stored，≥4 走 fixed-huffman
-                    let want = if lvl <= LEVEL_STORED_MAX { "stored" } else { "fixed-huffman" };
-                    if r.path != want {
-                        ok = false;
-                    }
+                let mut d = c.clone();
+                if unfilter_row(fno, &mut d, &prev, bpp).is_err() || d != raw {
+                    ok = false;
+                    break;
                 }
-                None => ok = false,
             }
         }
-        cs.add("C02-DEFLATE-01 九档权衡表与实现路径一致", ok, "");
     }
+    ok
+}
 
-    // -- C02-DEFLATE-02 级别越界显性拒绝（三要素齐备） --------------------
-    {
-        let w = 4usize;
-        let h = 4usize;
-        let src = make_rgba(w, h, 0, 255);
-        let mut out = vec![0u8; 4096];
-        let mut ok = true;
-        for lvl in [0u8, 10, 255] {
-            let o = EncOptions { level: lvl, ..Default::default() };
-            match encode_rgba(&src, w, h, ColorType::Rgba, 8, o, &mut out) {
-                Err(e) => {
-                    if e.kind != EncFault::BadLevel
-                        || e.human().is_empty()
-                        || e.kind.cause().is_empty()
-                        || e.kind.advice().is_empty()
-                    {
-                        ok = false;
-                    }
-                }
-                Ok(_) => ok = false,
-            }
-        }
-        cs.add("C02-DEFLATE-02 级别越界三要素拒绝", ok, "");
+/// C02-FILTER-02：三策略滤波号分布 + 整图 roundtrip。
+fn chk_filter_strategies() -> bool {
+    let w = 17usize;
+    let h = 9usize;
+    let src = make_rgba(w, h, 1, 255);
+    let mut ok = true;
+    for fno in 0u8..5 {
+        // 强制走指定滤波：把策略设为 FixedNone 再手工施加到 raw 不可行，
+        // 故改为「逐滤波号用 apply_filter + unfilter_row 全链对拍」——
+        // 已在 C02-FILTER-01 覆盖；此处验证整图走编码器时滤波号分布非空。
+        let _ = fno;
     }
-
-    // -- C02-DEFLATE-03 zlib 头尾合规（stored 与 deflate 两路） ------------
-    // CMF/FLG 固定 0x78/0x01；Adler-32 大端尾可被上游 adler32 复算。
-    {
-        let w = 32usize;
-        let h = 8usize;
-        let src = make_rgba(w, h, 2, 255);
-        let mut ok = true;
-        for lvl in [1u8, 6] {
-            let o = EncOptions { level: lvl, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-            if let Ok(e) = enc_rgba(&src, w, h, ColorType::Rgba, 8, o) {
-                for (ty, len, off) in walk_chunks(&e.out[..e.info.len]) {
-                    if &ty == b"IDAT" {
-                        let data = &e.out[off..off + len];
-                        if len < 6 || data[0] != ZLIB_CMF || data[1] != ZLIB_FLG {
-                            ok = false;
-                        }
-                        // 尾 4 字节 = Adler-32（大端）
-                        let t = len - 4;
-                        let got = u32::from_be_bytes([data[t], data[t + 1], data[t + 2], data[t + 3]]);
-                        // 独立复算：解压后校验
-                        let mut raw = vec![0u8; (row_need(w, ColorType::Rgba, 8) + 1) * h];
-                        if mech_inflate::zlib_inflate_slices(&[data], &mut raw).is_err()
-                            || mech_inflate::adler32(&raw) != got
-                        {
-                            ok = false;
-                        }
-                        break;
-                    }
-                }
-            } else {
-                ok = false;
-            }
-        }
-        cs.add("C02-DEFLATE-03 zlib 头尾与 Adler-32 合规", ok, "");
-    }
-
-    // -- C02-DEFLATE-04 高重复内容必须显著压缩 --------------------------
-    {
-        // 纯色图：deflate 后应远小于 raw；stored 路则约等于 raw
-        let w = 64usize;
-        let h = 64usize;
-        let src = make_rgba(w, h, 2, 255);
-        let o = EncOptions { level: 9, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-        match enc_rgba(&src, w, h, ColorType::Rgba, 8, o) {
+    for st in [Strategy::FixedNone, Strategy::MinAbsSum, Strategy::MinEntropy] {
+        let o = EncOptions { level: 6, strategy: st, allow_downgrade: false, idat_chunk: 0 };
+        match enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
             Ok(e) => {
-                let ratio = e.info.stats.compressed_bytes as f64 / e.info.stats.raw_bytes as f64;
-                cs.add("C02-DEFLATE-04 高重复内容 deflate 显著压缩", ratio < 0.5, "");
-            }
-            Err(_) => cs.add("C02-DEFLATE-04 高重复内容 deflate 显著压缩", false, ""),
-        }
-    }
-
-    // -- C02-CHUNK-01 块序列与IDAT 分块上限 -------------------------------
-    {
-        let w = 200usize; // 200*4+1=801 字节/行 → 单块装不下，需分块
-        let h = 40usize;
-        let src = make_rgba(w, h, 1, 255);
-        let mut ok = true;
-        let mut idat_count = 0usize;
-        for (cs_, chunk) in [(0usize, 8192usize), (1024, 1024), (100_000, 0)] {
-            let o = EncOptions { level: 1, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: chunk };
-            match enc_rgba(&src, w, h, ColorType::Rgba, 8, o) {
-                Ok(e) => {
-                    let chunks = walk_chunks(&e.out[..e.info.len]);
-                    let eff = if cs_ == 0 { 8192 } else { cs_ };
-                    let _ = eff;
-                    let n_idat = chunks.iter().filter(|(t, _, _)| t == b"IDAT").count();
-                    let n_ihdr = chunks.iter().filter(|(t, _, _)| t == b"IHDR").count();
-                    let n_iend = chunks.iter().filter(|(t, _, _)| t == b"IEND").count();
-                    if n_ihdr != 1 || n_iend != 1 || n_idat == 0 {
+                let used: u32 = e.info.stats.filter_rows.iter().sum();
+                if used != h as u32 {
+                    ok = false;
+                }
+                // FixedNone 必须全 0 号；自适应必须至少选中过一种非 0 号
+                if matches!(st, Strategy::FixedNone) && e.info.stats.filter_rows[0] != h as u32 {
+                    ok = false;
+                }
+                if !matches!(st, Strategy::FixedNone)
+                    && e.info.stats.filter_rows[1..].iter().sum::<u32>() == 0
+                {
+                    ok = false;
+                }
+                // 整图 roundtrip（不透明源不降档）
+                if let Some((dw, dh, got)) = decode_spec(&e.out[..e.info.len]) {
+                    if dw != w || dh != h || got != src {
                         ok = false;
                     }
-                    // 每个 IDAT 载荷不得超过生效分块上限
-                    let eff_chunk = if chunk == 0 || chunk > IDAT_CHUNK_MAX { IDAT_CHUNK_MAX } else { chunk };
-                    for (t, l, _) in &chunks {
-                        if t == b"IDAT" && *l > eff_chunk {
-                            ok = false;
-                        }
-                    }
-                    // 末块之外不应有「短块」（分块应尽量装满）
-                    if n_idat > 1 {
-                        idat_count = n_idat;
-                    }
-                }
-                Err(_) => ok = false,
-            }
-        }
-        cs.add("C02-CHUNK-01 块序列合法且 IDAT 载荷 ≤ 分块上限", ok, "");
-        cs.add("C02-CHUNK-02 大payload 确实触发多 IDAT 分块", idat_count > 1, "");
-    }
-
-    // -- C02-CRC-01 每块 CRC32 可复算 --------------------------------------
-    {
-        let w = 24usize;
-        let h = 6usize;
-        let src = make_rgba(w, h, 0, 255);
-        let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-        let mut ok = true;
-        let mut n = 0usize;
-        match enc_rgba(&src, w, h, ColorType::Rgba, 8, o) {
-            Ok(e) => {
-                let mut pos = 8usize;
-                while pos + 12 <= e.info.len {
-                    let len = u32::from_be_bytes([
-                        e.out[pos], e.out[pos + 1], e.out[pos + 2], e.out[pos + 3],
-                    ]) as usize;
-                    let ty = &e.out[pos + 4..pos + 8];
-                    let data = &e.out[pos + 8..pos + 8 + len];
-                    let want = mech_inflate::crc32_span(ty, data);
-                    let got = u32::from_be_bytes([
-                        e.out[pos + 8 + len],
-                        e.out[pos + 9 + len],
-                        e.out[pos + 10 + len],
-                        e.out[pos + 11 + len],
-                    ]);
-                    if want != got {
-                        ok = false;
-                    }
-                    n += 1;
-                    if ty == b"IEND" {
-                        break;
-                    }
-                    pos += 12 + len;
-                }
-                ok = ok && n >= 3;
-            }
-            Err(_) => ok = false,
-        }
-        cs.add("C02-CRC-01 每块 CRC32 与复算一致", ok, "");
-    }
-
-    // -- C02-CRC-02 写块工具独立可验 --------------------------------------
-    {
-        let mut buf = vec![0u8; 64];
-        let data: [u8; 5] = [1, 2, 3, 4, 5];
-        let ok = match write_chunk(&mut buf, 0, b"IDAT", &data) {
-            Ok(n) => {
-                n == 17
-                    && buf[..4] == 5u32.to_be_bytes()
-                    && &buf[4..8] == b"IDAT"
-                    && &buf[8..13] == &data[..]
-                    && u32::from_be_bytes([buf[13], buf[14], buf[15], buf[16]])
-                        == mech_inflate::crc32_span(b"IDAT", &data)
-            }
-            Err(_) => false,
-        };
-        cs.add("C02-CRC-02 write_chunk 布局与 CRC 独立可验", ok, "");
-    }
-
-    // -- C02-HEURISTIC-01 两策略产出不同选择（对拍的前提） ----------------
-    {
-        let w = 48usize;
-        let h = 48usize;
-        // 渐变：MinEntropy 更可能占优；纯色块：两策略可能同选
-        let src = make_rgba(w, h, 0, 255);
-        let o1 = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-        let o2 = EncOptions { level: 6, strategy: Strategy::MinEntropy, allow_downgrade: false, idat_chunk: 0 };
-        match (enc_rgba(&src, w, h, ColorType::Rgba, 8, o1), enc_rgba(&src, w, h, ColorType::Rgba, 8, o2)) {
-            (Ok(a), Ok(b)) => {
-                let differs = a.info.stats.filter_rows != b.info.stats.filter_rows;
-                // 无论是否不同，两者都必须能完整 roundtrip
-                let ra = decode_spec(&a.out[..a.info.len]).map(|(_, _, g)| g == src).unwrap_or(false);
-                let rb = decode_spec(&b.out[..b.info.len]).map(|(_, _, g)| g == src).unwrap_or(false);
-                cs.add("C02-HEURISTIC-01 两策略各自完整 roundtrip", ra && rb, "");
-                cs.add("C02-HEURISTIC-02 两策略对同一输入产生不同滤波选择", differs, "");
-            }
-            _ => {
-                cs.add("C02-HEURISTIC-01 两策略各自完整 roundtrip", false, "");
-                cs.add("C02-HEURISTIC-02 两策略对同一输入产生不同滤波选择", false, "");
-            }
-        }
-    }
-
-    // -- C02-HEURISTIC-03 场景建议表齐备且策略合法 ------------------------
-    {
-        let mut ok = true;
-        for cc in [ContentClass::Photo, ContentClass::Gradient, ContentClass::UiFlat, ContentClass::Screenshot] {
-            let (st, why) = heuristic_advice(cc);
-            if Strategy::from_wire(st.wire()).is_none() || why.is_empty() {
-                ok = false;
-            }
-        }
-        cs.add("C02-HEURISTIC-03 场景建议表四类齐备且策略可解", ok, "");
-    }
-
-    // -- C02-DOWNGRADE-01 逐像素确认不透明才降档 --------------------------
-    {
-        let w = 16usize;
-        let h = 8usize;
-        let mut ok = true;
-        // 全不透明 → 降档成 RGB
-        let opaque = make_rgba(w, h, 1, 255);
-        let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: true, idat_chunk: 0 };
-        if let Ok(e) = enc_rgba(&opaque, w, h, ColorType::Rgba, 8, o) {
-            if e.info.color != 2 || !e.info.stats.downgraded {
-                ok = false;
-            }
-        } else {
-            ok = false;
-        }
-        // 有任一非 255 alpha → 不降档（回归锁：早退检测不能只看首像素）
-        let mut semi = opaque.clone();
-        semi[(h - 1) * w * 4 + 3] = 254; // 最后一个像素半透明
-        if let Ok(e) = enc_rgba(&semi, w, h, ColorType::Rgba, 8, o) {
-            if e.info.color != 6 || e.info.stats.downgraded {
-                ok = false;
-            }
-            // 且必须逐像素还原（alpha 通道不能被降档吃掉）
-            if decode_spec(&e.out[..e.info.len]).map(|(_, _, g)| g == semi).unwrap_or(false) == false {
-                ok = false;
-            }
-        } else {
-            ok = false;
-        }
-        // 选项关闭 → 不降档
-        let o2 = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-        if let Ok(e) = enc_rgba(&opaque, w, h, ColorType::Rgba, 8, o2) {
-            if e.info.color != 6 || e.info.stats.downgraded {
-                ok = false;
-            }
-        } else {
-            ok = false;
-        }
-        cs.add("C02-DOWNGRADE-01 不透明降档/半透明不降档/选项可关", ok, "");
-    }
-
-    // -- C02-DOWNGRADE-02 降档后体积应更小 -------------------------------
-    {
-        let w = 64usize;
-        let h = 64usize;
-        let src = make_rgba(w, h, 1, 255);
-        let on = EncOptions { level: 9, strategy: Strategy::MinAbsSum, allow_downgrade: true, idat_chunk: 0 };
-        let off = EncOptions { level: 9, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-        match (enc_rgba(&src, w, h, ColorType::Rgba, 8, on), enc_rgba(&src, w, h, ColorType::Rgba, 8, off)) {
-            (Ok(a), Ok(b)) => cs.add(
-                "C02-DOWNGRADE-02 降档后体积更小(RGBA→RGB 少 1 通道)",
-                a.info.len < b.info.len,
-                "",
-            ),
-            _ => cs.add("C02-DOWNGRADE-02 降档后体积更小(RGBA→RGB 少 1 通道)", false, ""),
-        }
-    }
-
-    // -- C02-CTX-01 三缓冲长度不齐显性拒绝 -------------------------------
-    {
-        let mut ok = true;
-        let (mut a, mut b, mut c) = (vec![0u8; 8], vec![0u8; 8], vec![0u8; 8]);
-        //长度不齐 → RowBuffer
-        let mut short = vec![0u8; 4];
-        let mut ctx = EncCtx::new(&mut a, &mut short, &mut c, 1);
-        if ctx.filter_row(Strategy::MinAbsSum).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        // bpp=0 → RowBuffer
-        let mut ctx = EncCtx::new(&mut a, &mut b, &mut c, 0);
-        if ctx.filter_row(Strategy::MinAbsSum).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        // 齐整 → 通过
-        let mut ctx = EncCtx::new(&mut a, &mut b, &mut c, 1);
-        match ctx.filter_row(Strategy::MinAbsSum) {
-            Ok((f, n)) => {
-                if f > 4 || n != 8 {
+                } else {
                     ok = false;
                 }
             }
             Err(_) => ok = false,
         }
-        cs.add("C02-CTX-01 三缓冲不齐/bpp=0 显性拒绝", ok, "");
     }
+    ok
+}
 
-    // -- C02-CTX-02 滤波器作用域越界拒绝 ----------------------------------
-    {
-        let mut buf = vec![0u8; 8];
-        let ok = apply_filter(5, &mut buf, &vec![0u8; 8], 1).is_err()
-            && apply_filter(255, &mut buf, &vec![0u8; 8], 1).is_err()
-            && unfilter_row(5, &mut buf, &vec![0u8; 8], 1).is_err();
-        cs.add("C02-CTX-02 滤波号越界显性拒绝", ok, "");
+/// C02-FILTER-03：首行零参照/逐行推进语义。
+///
+/// 回归锁：曾把「本行原样本」当 prev 存，第二行起 Up/Average/Paeth 全错位。
+fn chk_filter_first_row_prev() -> bool {
+    let w = 8usize;
+    let h = 3usize;
+    // 逐行递增且行间差异大：若 prev 错位，Up 滤波会立刻错
+    let mut src = vec![0u8; w * h * 4];
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            src[i] = (y as u8) * 90;
+            src[i + 1] = (x as u8) * 20;
+            src[i + 2] = 77;
+            src[i + 3] = 255;
+        }
     }
+    let o = EncOptions { level: 1, strategy: Strategy::FixedNone, allow_downgrade: false, idat_chunk: 0 };
+    match enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+        Ok(e) => decode_spec(&e.out[..e.info.len]).map(|(_, _, got)| got == src).unwrap_or(false),
+        Err(_) => false,
+    }
+}
 
-    // -- C02-CTX-03 worst_case_out 是真实上界（多种内容都不溢出） ---------
-    {
-        let mut ok = true;
-        for (w, h, ct, d) in [
-            (1usize, 1usize, ColorType::Rgba, 8u8),
-            (64, 48, ColorType::Rgba, 8),
-            (64, 48, ColorType::Rgb, 8),
-            (64, 48, ColorType::Gray, 1),
-            (64, 48, ColorType::Gray, 16),
-            (200, 40, ColorType::Rgba, 16),
-        ] {
-            let wc = worst_case_out(w, h, ct, d) as usize;
-            for lvl in [1u8, 6, 9] {
-                let o = EncOptions { level: lvl, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-                let src = make_rgba(w, h, 1, 255);
-                let mut out = vec![0u8; wc];
-                match encode_rgba(&src, w, h, ct, d, o, &mut out) {
-                    Ok(e) => {
-                        if e.len > wc {
-                            ok = false; // 估小了：真实上界失效
-                        }
+/// C02-DEFLATE-01：九档权衡表齐全且与实现路径一致。
+fn chk_level_table() -> bool {
+    let mut ok = LEVEL_TABLE.len() == 9;
+    for lvl in 1u8..=9 {
+        match level_row(lvl) {
+            Some(r) => {
+                if r.level != lvl {
+                    ok = false;
+                }
+                // 与实现路径一致：≤3 走 stored，≥4 走 fixed-huffman
+                let want = if lvl <= LEVEL_STORED_MAX { "stored" } else { "fixed-huffman" };
+                if r.path != want {
+                    ok = false;
+                }
+            }
+            None => ok = false,
+        }
+    }
+    ok
+}
+
+/// C02-DEFLATE-02：级别越界显性拒绝（三要素齐备）。
+fn chk_level_reject() -> bool {
+    let w = 4usize;
+    let h = 4usize;
+    let src = make_rgba(w, h, 0, 255);
+    let mut out = vec![0u8; 4096];
+    let mut ok = true;
+    for lvl in [0u8, 10, 255] {
+        let o = EncOptions { level: lvl, ..Default::default() };
+        match encode_rgba(&src, w, h, ColorType::Rgba, 8, o, &mut out) {
+            Err(e) => {
+                if e.kind != EncFault::BadLevel
+                    || e.human().is_empty()
+                    || e.kind.cause().is_empty()
+                    || e.kind.advice().is_empty()
+                {
+                    ok = false;
+                }
+            }
+            Ok(_) => ok = false,
+        }
+    }
+    ok
+}
+
+/// C02-DEFLATE-03：zlib 头尾合规（stored 与 deflate 两路）。
+///
+/// CMF/FLG 固定 0x78/0x01；Adler-32 大端尾可被上游 adler32 复算。
+fn chk_zlib_head_tail() -> bool {
+    let w = 32usize;
+    let h = 8usize;
+    let src = make_rgba(w, h, 2, 255);
+    let mut ok = true;
+    for lvl in [1u8, 6] {
+        let o = EncOptions { level: lvl, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+        if let Ok(e) = enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+            for (ty, len, off) in walk_chunks(&e.out[..e.info.len]) {
+                if &ty == b"IDAT" {
+                    let data = &e.out[off..off + len];
+                    if len < 6 || data[0] != ZLIB_CMF || data[1] != ZLIB_FLG {
+                        ok = false;
                     }
-                    Err(e) => {
-                        // 只允许 Budget 类失败（512MB 上限），其余是估算错误
-                        if e.kind != EncFault::Budget && e.kind != EncFault::ShortOutput {
-                            ok = false;
-                        }
+                    // 尾 4 字节 = Adler-32（大端）
+                    let t = len - 4;
+                    let got = u32::from_be_bytes([data[t], data[t + 1], data[t + 2], data[t + 3]]);
+                    // 独立复算：解压后校验
+                    let mut raw = vec![0u8; (row_need(w, ColorType::Rgba, 8) + 1) * h];
+                    if mech_inflate::zlib_inflate_slices(&[data], &mut raw).is_err()
+                        || mech_inflate::adler32(&raw) != got
+                    {
+                        ok = false;
+                    }
+                    break;
+                }
+            }
+        } else {
+            ok = false;
+        }
+    }
+    ok
+}
+
+/// C02-DEFLATE-04：高重复内容必须显著压缩。
+///
+/// 纯色图：deflate 后应远小于 raw；stored 路则约等于 raw。
+fn chk_deflate_solid_compression(cs: &mut CheckSet) {
+    let w = 64usize;
+    let h = 64usize;
+    let src = make_rgba(w, h, 2, 255);
+    let o = EncOptions { level: 9, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+    match enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+        Ok(e) => {
+            let ratio = e.info.stats.compressed_bytes as f64 / e.info.stats.raw_bytes as f64;
+            cs.add("C02-DEFLATE-04 高重复内容 deflate 显著压缩", ratio < 0.5, "");
+        }
+        Err(_) => cs.add("C02-DEFLATE-04 高重复内容 deflate 显著压缩", false, ""),
+    }
+}
+
+/// C02-CHUNK-01/02：块序列合法、IDAT 载荷不超生效上限、大 payload 确实分块。
+fn chk_chunk_sequence_and_idat_caps(cs: &mut CheckSet) {
+    let w = 200usize; // 200*4+1=801 字节/行 → 单块装不下，需分块
+    let h = 40usize;
+    let src = make_rgba(w, h, 1, 255);
+    let mut ok = true;
+    let mut idat_count = 0usize;
+    for (cs_, chunk) in [(0usize, 8192usize), (1024, 1024), (100_000, 0)] {
+        let o = EncOptions { level: 1, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: chunk };
+        match enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+            Ok(e) => {
+                let chunks = walk_chunks(&e.out[..e.info.len]);
+                let eff = if cs_ == 0 { 8192 } else { cs_ };
+                let _ = eff;
+                let n_idat = chunks.iter().filter(|(t, _, _)| t == b"IDAT").count();
+                let n_ihdr = chunks.iter().filter(|(t, _, _)| t == b"IHDR").count();
+                let n_iend = chunks.iter().filter(|(t, _, _)| t == b"IEND").count();
+                if n_ihdr != 1 || n_iend != 1 || n_idat == 0 {
+                    ok = false;
+                }
+                // 每个 IDAT 载荷不得超过生效分块上限
+                let eff_chunk = if chunk == 0 || chunk > IDAT_CHUNK_MAX { IDAT_CHUNK_MAX } else { chunk };
+                for (t, l, _) in &chunks {
+                    if t == b"IDAT" && *l > eff_chunk {
+                        ok = false;
+                    }
+                }
+                // 末块之外不应有「短块」（分块应尽量装满）
+                if n_idat > 1 {
+                    idat_count = n_idat;
+                }
+            }
+            Err(_) => ok = false,
+        }
+    }
+    cs.add("C02-CHUNK-01 块序列合法且 IDAT 载荷 ≤ 分块上限", ok, "");
+    cs.add("C02-CHUNK-02 大payload 确实触发多 IDAT 分块", idat_count > 1, "");
+}
+
+/// C02-CRC-01：每块 CRC32 可复算。
+fn chk_crc_recompute() -> bool {
+    let w = 24usize;
+    let h = 6usize;
+    let src = make_rgba(w, h, 0, 255);
+    let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+    let mut ok = true;
+    let mut n = 0usize;
+    match enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+        Ok(e) => {
+            let mut pos = 8usize;
+            while pos + 12 <= e.info.len {
+                let len = u32::from_be_bytes([
+                    e.out[pos], e.out[pos + 1], e.out[pos + 2], e.out[pos + 3],
+                ]) as usize;
+                let ty = &e.out[pos + 4..pos + 8];
+                let data = &e.out[pos + 8..pos + 8 + len];
+                let want = mech_inflate::crc32_span(ty, data);
+                let got = u32::from_be_bytes([
+                    e.out[pos + 8 + len],
+                    e.out[pos + 9 + len],
+                    e.out[pos + 10 + len],
+                    e.out[pos + 11 + len],
+                ]);
+                if want != got {
+                    ok = false;
+                }
+                n += 1;
+                if ty == b"IEND" {
+                    break;
+                }
+                pos += 12 + len;
+            }
+            ok = ok && n >= 3;
+        }
+        Err(_) => ok = false,
+    }
+    ok
+}
+
+/// C02-CRC-02：写块工具独立可验。
+fn chk_write_chunk_layout() -> bool {
+    let mut buf = vec![0u8; 64];
+    let data: [u8; 5] = [1, 2, 3, 4, 5];
+    match write_chunk(&mut buf, 0, b"IDAT", &data) {
+        Ok(n) => {
+            n == 17
+                && buf[..4] == 5u32.to_be_bytes()
+                && &buf[4..8] == b"IDAT"
+                && &buf[8..13] == &data[..]
+                && u32::from_be_bytes([buf[13], buf[14], buf[15], buf[16]])
+                    == mech_inflate::crc32_span(b"IDAT", &data)
+        }
+        Err(_) => false,
+    }
+}
+
+/// C02-HEURISTIC-01/02：两策略各自完整 roundtrip + 对同一输入产生不同滤波选择。
+fn chk_heuristic_strategy_pair(cs: &mut CheckSet) {
+    let w = 48usize;
+    let h = 48usize;
+    // 渐变：MinEntropy 更可能占优；纯色块：两策略可能同选
+    let src = make_rgba(w, h, 0, 255);
+    let o1 = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+    let o2 = EncOptions { level: 6, strategy: Strategy::MinEntropy, allow_downgrade: false, idat_chunk: 0 };
+    match (enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o1), enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o2)) {
+        (Ok(a), Ok(b)) => {
+            let differs = a.info.stats.filter_rows != b.info.stats.filter_rows;
+            // 无论是否不同，两者都必须能完整 roundtrip
+            let ra = decode_spec(&a.out[..a.info.len]).map(|(_, _, g)| g == src).unwrap_or(false);
+            let rb = decode_spec(&b.out[..b.info.len]).map(|(_, _, g)| g == src).unwrap_or(false);
+            cs.add("C02-HEURISTIC-01 两策略各自完整 roundtrip", ra && rb, "");
+            cs.add("C02-HEURISTIC-02 两策略对同一输入产生不同滤波选择", differs, "");
+        }
+        _ => {
+            cs.add("C02-HEURISTIC-01 两策略各自完整 roundtrip", false, "");
+            cs.add("C02-HEURISTIC-02 两策略对同一输入产生不同滤波选择", false, "");
+        }
+    }
+}
+
+/// C02-HEURISTIC-03：场景建议表齐备且策略合法。
+fn chk_heuristic_advice_table() -> bool {
+    let mut ok = true;
+    for cc in [ContentClass::Photo, ContentClass::Gradient, ContentClass::UiFlat, ContentClass::Screenshot] {
+        let (st, why) = heuristic_advice(cc);
+        if Strategy::from_wire(st.wire()).is_none() || why.is_empty() {
+            ok = false;
+        }
+    }
+    ok
+}
+
+/// C02-DOWNGRADE-01：不透明降档/半透明不降档/选项可关。
+fn chk_downgrade_matrix() -> bool {
+    let w = 16usize;
+    let h = 8usize;
+    let mut ok = true;
+    // 全不透明 → 降档成 RGB
+    let opaque = make_rgba(w, h, 1, 255);
+    let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: true, idat_chunk: 0 };
+    if let Ok(e) = enc_rgba(EncInput { src: &opaque, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+        if e.info.color != 2 || !e.info.stats.downgraded {
+            ok = false;
+        }
+    } else {
+        ok = false;
+    }
+    // 有任一非 255 alpha → 不降档（回归锁：早退检测不能只看首像素）
+    let mut semi = opaque.clone();
+    semi[(h - 1) * w * 4 + 3] = 254; // 最后一个像素半透明
+    if let Ok(e) = enc_rgba(EncInput { src: &semi, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+        if e.info.color != 6 || e.info.stats.downgraded {
+            ok = false;
+        }
+        // 且必须逐像素还原（alpha 通道不能被降档吃掉）
+        if decode_spec(&e.out[..e.info.len]).map(|(_, _, g)| g == semi).unwrap_or(false) == false {
+            ok = false;
+        }
+    } else {
+        ok = false;
+    }
+    // 选项关闭 → 不降档
+    let o2 = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+    if let Ok(e) = enc_rgba(EncInput { src: &opaque, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o2) {
+        if e.info.color != 6 || e.info.stats.downgraded {
+            ok = false;
+        }
+    } else {
+        ok = false;
+    }
+    ok
+}
+
+/// C02-DOWNGRADE-02：降档后体积应更小。
+fn chk_downgrade_smaller() -> bool {
+    let w = 64usize;
+    let h = 64usize;
+    let src = make_rgba(w, h, 1, 255);
+    let on = EncOptions { level: 9, strategy: Strategy::MinAbsSum, allow_downgrade: true, idat_chunk: 0 };
+    let off = EncOptions { level: 9, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+    match (enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, on), enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, off)) {
+        (Ok(a), Ok(b)) => a.info.len < b.info.len,
+        _ => false,
+    }
+}
+
+/// C02-CTX-01：三缓冲长度不齐/bpp=0 显性拒绝，齐整则通过。
+fn chk_ctx_row_buffer_guards() -> bool {
+    let mut ok = true;
+    let (mut a, mut b, mut c) = (vec![0u8; 8], vec![0u8; 8], vec![0u8; 8]);
+    //长度不齐 → RowBuffer
+    let mut short = vec![0u8; 4];
+    let mut ctx = EncCtx::new(&mut a, &mut short, &mut c, 1);
+    if ctx.filter_row(Strategy::MinAbsSum).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    // bpp=0 → RowBuffer
+    let mut ctx = EncCtx::new(&mut a, &mut b, &mut c, 0);
+    if ctx.filter_row(Strategy::MinAbsSum).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    // 齐整 → 通过
+    let mut ctx = EncCtx::new(&mut a, &mut b, &mut c, 1);
+    match ctx.filter_row(Strategy::MinAbsSum) {
+        Ok((f, n)) => {
+            if f > 4 || n != 8 {
+                ok = false;
+            }
+        }
+        Err(_) => ok = false,
+    }
+    ok
+}
+
+/// C02-CTX-02：滤波器作用域越界拒绝。
+fn chk_filter_scope_reject() -> bool {
+    let mut buf = vec![0u8; 8];
+    apply_filter(5, &mut buf, &vec![0u8; 8], 1).is_err()
+        && apply_filter(255, &mut buf, &vec![0u8; 8], 1).is_err()
+        && unfilter_row(5, &mut buf, &vec![0u8; 8], 1).is_err()
+}
+
+/// C02-CTX-03：worst_case_out 是真实上界（多种内容都不溢出）。
+fn chk_worst_case_bound() -> bool {
+    let mut ok = true;
+    for (w, h, ct, d) in [
+        (1usize, 1usize, ColorType::Rgba, 8u8),
+        (64, 48, ColorType::Rgba, 8),
+        (64, 48, ColorType::Rgb, 8),
+        (64, 48, ColorType::Gray, 1),
+        (64, 48, ColorType::Gray, 16),
+        (200, 40, ColorType::Rgba, 16),
+    ] {
+        let wc = worst_case_out(w, h, ct, d) as usize;
+        for lvl in [1u8, 6, 9] {
+            let o = EncOptions { level: lvl, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+            let src = make_rgba(w, h, 1, 255);
+            let mut out = vec![0u8; wc];
+            match encode_rgba(&src, w, h, ct, d, o, &mut out) {
+                Ok(e) => {
+                    if e.len > wc {
+                        ok = false; // 估小了：真实上界失效
+                    }
+                }
+                Err(e) => {
+                    // 只允许 Budget 类失败（512MB 上限），其余是估算错误
+                    if e.kind != EncFault::Budget && e.kind != EncFault::ShortOutput {
+                        ok = false;
                     }
                 }
             }
         }
-        cs.add("C02-CTX-03 worst_case_out 覆盖全部路径为真实上界", ok, "");
     }
+    ok
+}
 
-    // -- C02-ERR-01 非法组合显性拒绝表 ------------------------------------
-    {
-        let mut ok = true;
-        // 逐项验证 combo_is_legal 与规范一致（15 种合法）
-        for (ct, d) in [
-            (ColorType::Gray, 1u8), (ColorType::Gray, 2), (ColorType::Gray, 4),
-            (ColorType::Gray, 8), (ColorType::Gray, 16),
-            (ColorType::Rgb, 8), (ColorType::Rgb, 16),
-            (ColorType::Palette, 1), (ColorType::Palette, 2), (ColorType::Palette, 4),
-            (ColorType::Palette, 8),
-            (ColorType::GrayAlpha, 8), (ColorType::GrayAlpha, 16),
-            (ColorType::Rgba, 8), (ColorType::Rgba, 16),
-        ] {
-            if !combo_is_legal(ct, d) {
+/// C02-ERR-01：15 合法 + 非法组合拒绝表完备。
+fn chk_combo_legality_table() -> bool {
+    let mut ok = true;
+    // 逐项验证 combo_is_legal 与规范一致（15 种合法）
+    for (ct, d) in [
+        (ColorType::Gray, 1u8), (ColorType::Gray, 2), (ColorType::Gray, 4),
+        (ColorType::Gray, 8), (ColorType::Gray, 16),
+        (ColorType::Rgb, 8), (ColorType::Rgb, 16),
+        (ColorType::Palette, 1), (ColorType::Palette, 2), (ColorType::Palette, 4),
+        (ColorType::Palette, 8),
+        (ColorType::GrayAlpha, 8), (ColorType::GrayAlpha, 16),
+        (ColorType::Rgba, 8), (ColorType::Rgba, 16),
+    ] {
+        if !combo_is_legal(ct, d) {
+            ok = false;
+        }
+    }
+    // 非法组合必须拒绝
+    for (ct, d) in [
+        (ColorType::Palette, 16u8), (ColorType::Rgb, 1), (ColorType::Rgb, 4),
+        (ColorType::Rgba, 1), (ColorType::Rgba, 4), (ColorType::GrayAlpha, 4),
+        (ColorType::Gray, 3), (ColorType::Gray, 5), (ColorType::Rgb, 2),
+    ] {
+        if combo_is_legal(ct, d) {
+            ok = false;
+        }
+    }
+    ok
+}
+
+/// C02-ERR-02：维度/位深/调色板/输入/输出五类拒绝。
+fn chk_basic_rejects() -> bool {
+    let src = make_rgba(4, 4, 0, 255);
+    let mut out = vec![0u8; 8192];
+    let mut ok = true;
+    let d = EncOptions::default();
+    // 维度
+    if encode_rgba(&src, 0, 4, ColorType::Rgba, 8, d, &mut out).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    // 位深
+    if encode_rgba(&src, 4, 4, ColorType::Rgba, 7, d, &mut out).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    // 调色板类型走 encode_rgba → 显式拒绝（不静默降级为灰度）
+    if encode_rgba(&src, 4, 4, ColorType::Palette, 8, d, &mut out).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    // 输入不足
+    if encode_rgba(&src[..8], 4, 4, ColorType::Rgba, 8, d, &mut out).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    // 输出不足
+    let mut tiny = vec![0u8; 16];
+    if encode_rgba(&src, 4, 4, ColorType::Rgba, 8, d, &mut tiny).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    ok
+}
+
+/// C02-ERR-03：调色板长度与索引越界。
+fn chk_palette_rejects() -> bool {
+    let w = 4usize;
+    let h = 4usize;
+    let idx = vec![0u8; w * h];
+    let plte: Vec<u8> = (0..12).map(|i| i as u8 * 20).collect();
+    let d = EncOptions::default();
+    let mut out = vec![0u8; 65536];
+    let mut ok = true;
+    // 调色板长度非 3 倍数
+    let bad = vec![0u8; 10];
+    if encode_palette(&idx, &bad, w, h, 8, None, d, &mut out).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    // 索引越界
+    let mut oob = idx.clone();
+    oob[5] = 200;
+    match encode_palette(&oob, &plte, w, h, 8, None, d, &mut out) {
+        Err(e) => {
+            if e.kind != EncFault::PaletteIndex {
                 ok = false;
             }
         }
-        // 非法组合必须拒绝
-        for (ct, d) in [
-            (ColorType::Palette, 16u8), (ColorType::Rgb, 1), (ColorType::Rgb, 4),
-            (ColorType::Rgba, 1), (ColorType::Rgba, 4), (ColorType::GrayAlpha, 4),
-            (ColorType::Gray, 3), (ColorType::Gray, 5), (ColorType::Rgb, 2),
-        ] {
-            if combo_is_legal(ct, d) {
-                ok = false;
+        Ok(_) => ok = false,
+    }
+    // tRNS 超长
+    let long_trns = vec![0u8; 10];
+    if encode_palette(&idx, &plte, w, h, 8, Some(&long_trns), d, &mut out).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    // 16 位调色板（规范禁止）
+    if encode_palette(&idx, &plte, w, h, 16, None, d, &mut out).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    ok
+}
+
+/// C02-ERR-04 的辅助：判据序号 → 错误类（表驱动归并分支）。
+fn fault_by_index(i: u16) -> EncFault {
+    match i {
+        0 => EncFault::Dimension,
+        1 => EncFault::BadDepth,
+        2 => EncFault::IllegalCombo,
+        3 => EncFault::Palette,
+        4 => EncFault::PaletteIndex,
+        5 => EncFault::ShortInput,
+        6 => EncFault::ShortOutput,
+        7 => EncFault::BadLevel,
+        8 => EncFault::BadStrategy,
+        9 => EncFault::Budget,
+        10 => EncFault::DeflateOverflow,
+        _ => EncFault::RowBuffer,
+    }
+}
+
+/// C02-ERR-04：错误五元组完整。
+fn chk_fault_five_tuple() -> bool {
+    let mut ok = true;
+    for i in 0..=(EncFault::DeflateOverflow as u16) {
+        let f = fault_by_index(i);
+        if f.label().is_empty() || f.cause().is_empty() || f.advice().is_empty() {
+            ok = false;
+        }
+        let e = EncError::new(f).with(7, 9);
+        if e.code() == 0 || e.human().is_empty() {
+            ok = false;
+        }
+    }
+    ok
+}
+
+/// C02-DEPTH-01 的逐像素对账：灰度类按 BT.601 亮度，其余逐通道。
+fn depth01_pixels_match(src: &[u8], got: &[u8], npix: usize, ct: ColorType, d: u8) -> bool {
+    let grayish = matches!(ct, ColorType::Gray | ColorType::GrayAlpha);
+    for i in 0..npix {
+        if grayish {
+            let want = if d < 8 {
+                let maxv = (1u32 << d) - 1;
+                (luma_ref(src[i * 4], src[i * 4 + 1], src[i * 4 + 2]) >> (8 - d)) * 255 / maxv
+            } else {
+                luma_ref(src[i * 4], src[i * 4 + 1], src[i * 4 + 2])
+            };
+            if want != got[i * 4] as u32 {
+                return false;
+            }
+            if ct == ColorType::GrayAlpha && src[i * 4 + 3] != got[i * 4 + 3] {
+                return false;
+            }
+        } else {
+            for c in 0..4 {
+                if src[i * 4 + c] != got[i * 4 + c] {
+                    return false;
+                }
             }
         }
-        cs.add("C02-ERR-01 15 合法 + 非法组合拒绝表完备", ok, "");
     }
+    true
+}
 
-    // -- C02-ERR-02 维度/位深/调色板/索引/输入/输出六类拒绝 ---------------
-    {
-        let src = make_rgba(4, 4, 0, 255);
-        let mut out = vec![0u8; 8192];
-        let mut ok = true;
-        let d = EncOptions::default();
-        // 维度
-        if encode_rgba(&src, 0, 4, ColorType::Rgba, 8, d, &mut out).map(|_| ()).is_ok() {
-            ok = false;
+/// C02-DEPTH-01：15 合法组合中 11 种直采组合的 roundtrip（不透明源）。
+fn chk_depth_roundtrip_all() -> bool {
+    let w = 13usize; // 非 8 倍数，考验位打包
+    let h = 5usize;
+    let src = make_rgba(w, h, 1, 255);
+    let mut ok = true;
+    for (ct, d) in [
+        (ColorType::Gray, 1u8), (ColorType::Gray, 2), (ColorType::Gray, 4),
+        (ColorType::Gray, 8), (ColorType::Gray, 16),
+        (ColorType::Rgb, 8), (ColorType::Rgb, 16),
+        (ColorType::GrayAlpha, 8), (ColorType::GrayAlpha, 16),
+        (ColorType::Rgba, 8), (ColorType::Rgba, 16),
+    ] {
+        let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+        match enc_rgba(EncInput { src: &src, w: w, h: h, color: ct, depth: d }, o) {
+            Ok(e) => {
+                if e.info.color != ct.wire() || e.info.depth != d {
+                    ok = false;
+                    continue;
+                }
+                match decode_spec(&e.out[..e.info.len]) {
+                    Some((dw, dh, got)) => {
+                        if dw != w || dh != h {
+                            ok = false;
+                            continue;
+                        }
+                        // 灰度类比对亮度；其余逐通道
+                        if !depth01_pixels_match(&src, &got, w * h, ct, d) {
+                            ok = false;
+                        }
+                    }
+                    None => ok = false,
+                }
+            }
+            Err(_) => ok = false,
         }
-        // 位深
-        if encode_rgba(&src, 4, 4, ColorType::Rgba, 7, d, &mut out).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        // 调色板类型走 encode_rgba → 显式拒绝（不静默降级为灰度）
-        if encode_rgba(&src, 4, 4, ColorType::Palette, 8, d, &mut out).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        // 输入不足
-        if encode_rgba(&src[..8], 4, 4, ColorType::Rgba, 8, d, &mut out).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        // 输出不足
-        let mut tiny = vec![0u8; 16];
-        if encode_rgba(&src, 4, 4, ColorType::Rgba, 8, d, &mut tiny).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        cs.add("C02-ERR-02 维度/位深/调色板/输入/输出五类拒绝", ok, "");
     }
+    ok
+}
 
-    // -- C02-ERR-03 调色板长度与索引越界 ---------------------------------
-    {
-        let w = 4usize;
-        let h = 4usize;
-        let idx = vec![0u8; w * h];
-        let plte: Vec<u8> = (0..12).map(|i| i as u8 * 20).collect();
-        let d = EncOptions::default();
+/// C02-DEPTH-02 的单位深核算：调色板一种位深的 roundtrip。
+fn palette_depth_roundtrip(d: u8, plte: &[u8], plen: usize, w: usize, h: usize) -> bool {
+    // 索引必须落在该位深的可存值域内（1 位只能0/1）——用全量语料
+    // 会触发编码器的越界拒绝（那正是 C02-ERR-05 验的事）
+    let cap = match d {
+        1 => 2usize,
+        2 => 4,
+        4 => 16,
+        _ => plen,
+    };
+    let idx: Vec<u8> = (0..w * h).map(|i| (i * 5 % cap) as u8).collect();
+    let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+    let mut out = vec![0u8; 65536];
+    match encode_palette(&idx, plte, w, h, d, None, o, &mut out) {
+        Ok(e) => {
+            if e.color != 3 || e.depth != d {
+                return false;
+            }
+            match decode_palette_spec(&out[..e.len], plte) {
+                Some((dw, dh, got)) => {
+                    if dw != w || dh != h {
+                        return false;
+                    }
+                    for i in 0..w * h {
+                        let k = idx[i] as usize;
+                        if got[i * 4] != plte[k * 3]
+                            || got[i * 4 + 1] != plte[k * 3 + 1]
+                            || got[i * 4 + 2] != plte[k * 3 + 2]
+                        {
+                            return false;
+                        }
+                    }
+                    true
+                }
+                None => false,
+            }
+        }
+        Err(_) => false,
+    }
+}
+
+/// C02-DEPTH-02：调色板 4 种位深 roundtrip。
+fn chk_palette_depths_roundtrip() -> bool {
+    let w = 11usize;
+    let h = 3usize;
+    let plen = 16usize;
+    let plte: Vec<u8> = (0..plen * 3).map(|i| ((i * 37) % 256) as u8).collect();
+    let mut ok = true;
+    for d in [1u8, 2, 4, 8] {
+        if !palette_depth_roundtrip(d, &plte, plen, w, h) {
+            ok = false;
+        }
+    }
+    ok
+}
+
+/// C02-ERR-05：低位深索引越界显性拒绝（回归锁）+ 边界内放行。
+///
+/// 1/2/4 位深只能存 0..2^d−1；越界索引若放行，`pack_indices` 的掩码
+/// 会把它静默截断成低位值——图像索引错乱且不产生任何报错。
+fn chk_low_depth_index_reject() -> bool {
+    let w = 8usize;
+    let h = 2usize;
+    let plen = 16usize;
+    let plte: Vec<u8> = vec![7u8; plen * 3];
+    let mut ok = true;
+    for (d, bad_v) in [(1u8, 5u8), (1, 255), (2, 4), (2, 200), (4, 16), (4, 250)] {
+        let mut idx = vec![0u8; w * h];
+        idx[w] = bad_v; // 第二个像素塞越界索引
         let mut out = vec![0u8; 65536];
-        let mut ok = true;
-        // 调色板长度非 3 倍数
-        let bad = vec![0u8; 10];
-        if encode_palette(&idx, &bad, w, h, 8, None, d, &mut out).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        // 索引越界
-        let mut oob = idx.clone();
-        oob[5] = 200;
-        match encode_palette(&oob, &plte, w, h, 8, None, d, &mut out) {
+        let o = EncOptions::default();
+        match encode_palette(&idx, &plte, w, h, d, None, o, &mut out) {
             Err(e) => {
                 if e.kind != EncFault::PaletteIndex {
                     ok = false;
@@ -875,410 +1107,351 @@ pub fn run_vef02_checks() -> CheckSet {
             }
             Ok(_) => ok = false,
         }
-        // tRNS 超长
-        let long_trns = vec![0u8; 10];
-        if encode_palette(&idx, &plte, w, h, 8, Some(&long_trns), d, &mut out).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        // 16 位调色板（规范禁止）
-        if encode_palette(&idx, &plte, w, h, 16, None, d, &mut out).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        cs.add("C02-ERR-03 调色板长度/索引/tRNS/16位四类拒绝", ok, "");
     }
+    // 8 位深下按调色板项数判（plen=16 → 索引 16 应拒）
+    let mut idx = vec![0u8; w * h];
+    idx[1] = 16;
+    let mut out = vec![0u8; 65536];
+    if encode_palette(&idx, &plte, w, h, 8, None, EncOptions::default(), &mut out).map(|_| ()).is_ok() {
+        ok = false;
+    }
+    // 边界内索引须放行（1 位深索引 1 合法）
+    let idx_ok = vec![1u8; w * h];
+    let mut out2 = vec![0u8; 65536];
+    if encode_palette(&idx_ok, &plte, w, h, 1, None, EncOptions::default(), &mut out2).is_err() {
+        ok = false;
+    }
+    ok
+}
+
+/// C02-DEPTH-03：极端与边界尺寸 roundtrip（1×1 / 1×N / N×1 / 宽非8倍数）。
+fn chk_boundary_sizes() -> bool {
+    let mut ok = true;
+    for (w, h) in [(1usize, 1usize), (1, 17), (17, 1), (3, 3), (255, 2), (2, 255)] {
+        let src = make_rgba(w, h, 1, 255);
+        let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+        match enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+            Ok(e) => {
+                if decode_spec(&e.out[..e.info.len]).map(|(_, _, g)| g == src).unwrap_or(false) == false {
+                    ok = false;
+                }
+            }
+            Err(_) => ok = false,
+        }
+    }
+    ok
+}
+
+/// C02-DETERM-01：同输入两次编码逐字节一致（确定性）。
+fn chk_determinism() -> bool {
+    let w = 40usize;
+    let h = 24usize;
+    let src = make_rgba(w, h, 3, 255);
+    let o = EncOptions { level: 9, strategy: Strategy::MinEntropy, allow_downgrade: true, idat_chunk: 4096 };
+    let a = enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o);
+    let b = enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o);
+    match (a, b) {
+        (Ok(x), Ok(y)) => x.out[..x.info.len] == y.out[..y.info.len],
+        _ => false,
+    }
+}
+
+/// C02-DETERM-02：逐字节变异不崩溃。
+///
+/// 返回 `true` 表示基线编码失败——按原语义立即终止后续判据（行为保持）。
+fn chk_byte_mutation_no_crash(cs: &mut CheckSet) -> bool {
+    let w = 12usize;
+    let h = 6usize;
+    let src = make_rgba(w, h, 1, 255);
+    let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: true, idat_chunk: 0 };
+    let mut base = match enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+        Ok(e) => e.out[..e.info.len].to_vec(),
+        Err(_) => {
+            cs.add("C02-DETERM-02 逐字节变异不崩溃", false, "");
+            return true;
+        }
+    };
+    // 变异编码器自己的输出（即解码器输入面）不应崩溃
+    for i in 0..base.len() {
+        for bit in 0..8 {
+            let mut m = base.clone();
+            m[i] ^= 1 << bit;
+            let _ = decode_spec(&m);
+        }
+    }
+    // 变异源像素不应崩溃（编码器输入面）
+    for i in 0..src.len() {
+        for bit in [0u32, 3, 7] {
+            let mut m = src.clone();
+            m[i] ^= 1 << bit;
+            let mut out = vec![0u8; worst_case_out(w, h, ColorType::Rgba, 8) as usize];
+            let _ = encode_rgba(&m, w, h, ColorType::Rgba, 8, o, &mut out);
+        }
+    }
+    base.clear();
+    cs.add("C02-DETERM-02 逐字节变异不崩溃", true, "");
+    false
+}
+
+/// C02-SIG-01：签名与 IHDR 七参数（压缩/滤波/隔行恒0）。
+fn chk_sig_ihdr() -> bool {
+    let w = 4usize;
+    let h = 4usize;
+    let src = make_rgba(w, h, 0, 255);
+    // 关降档，否则不透明源会被降成 RGB（color=2），断言须按实际语义写
+    let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
+    match enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o) {
+        Ok(e) => {
+            let p = &e.out[..e.info.len];
+            p[..8] == PNG_SIG
+                && walk_chunks(p).first().map(|c| &c.0[..] == b"IHDR").unwrap_or(false)
+                && p[8..12] == 13u32.to_be_bytes()
+                && &p[12..16] == b"IHDR"
+                && p[16..20] == (w as u32).to_be_bytes()
+                && p[20..24] == (h as u32).to_be_bytes()
+                && p[24] == 8// depth
+                && p[25] == 6 // color
+                && p[26] == 0 // compression
+                && p[27] == 0 // filter
+                && p[28] == 0 // interlace
+        }
+        Err(_) => false,
+    }
+}
+
+/// C02-SIG-02：隔行恒 0（Adam7 属F1003，本单显式不做）。
+fn chk_sig_interlace_zero(cs: &mut CheckSet) {
+    let w = 4usize;
+    let h = 4usize;
+    let src = make_rgba(w, h, 0, 255);
+    let mut out = vec![0u8; 65536];
+    // 原实现此处为裸 unwrap；按工单 §5.9 改为可恢复错误路径：
+    // 编码失败判红，不再 panic。
+    match encode_rgba(&src, w, h, ColorType::Rgba, 8, EncOptions::default(), &mut out) {
+        Ok(e) => cs.add("C02-SIG-02 隔行方法恒 0(隔行属 F1003)", out[28] == 0 && e.len > 29, ""),
+        Err(_) => cs.add("C02-SIG-02 隔行方法恒 0(隔行属 F1003)", false, ""),
+    }
+}
+
+/// C02-OPT-01：选项面往返（wire 编解码自洽）。
+fn chk_wire_codec_selfcheck() -> bool {
+    let mut ok = true;
+    for v in 0u8..3 {
+        match Strategy::from_wire(v) {
+            Some(s) => {
+                if s.wire() != v {
+                    ok = false;
+                }
+            }
+            None => ok = false,
+        }
+    }
+    if Strategy::from_wire(3).is_some() || Strategy::from_wire(255).is_some() {
+        ok = false;
+    }
+    // 颜色类型 wire 往返
+    for v in [0u8, 2, 3, 4, 6] {
+        match ColorType::from_wire(v) {
+            Some(c) => {
+                if c.wire() != v {
+                    ok = false;
+                }
+            }
+            None => ok = false,
+        }
+    }
+    for v in [1u8, 5, 7, 255] {
+        if ColorType::from_wire(v).is_some() {
+            ok = false;
+        }
+    }
+    ok
+}
+
+/// C02-OPT-02：默认选项值符合预期。
+fn chk_default_options() -> bool {
+    let d = EncOptions::default();
+    d.level == 6 && matches!(d.strategy, Strategy::MinAbsSum) && d.allow_downgrade
+}
+
+/// C02-ZLIB-01：stored 路径块布局合规（LEN/NLEN 互补）。
+fn chk_zlib_stored_layout() -> bool {
+    let raw: Vec<u8> = (0..300u32).map(|i| (i % 251) as u8).collect();
+    let mut out = vec![0u8; 4096];
+    match zlib_stored(&raw, &mut out) {
+        Ok(n) => {
+            let mut ok = n == 2 + 5 + raw.len() + 4 && out[0] == ZLIB_CMF && out[1] == ZLIB_FLG;
+            // LEN/NLEN
+            let l = u16::from_le_bytes([out[3], out[4]]);
+            let nl = u16::from_le_bytes([out[5], out[6]]);
+            if l as usize != raw.len() || nl != !l {
+                ok = false;
+            }
+            // 末块 BFINAL=1
+            if out[2] != 1 {
+                ok = false;
+            }
+            // 原文逐位一致
+            if &out[7..7 + raw.len()] != &raw[..] {
+                ok = false;
+            }
+            // Adler 大端
+            let ad = mech_inflate::adler32(&raw);
+            let t = n - 4;
+            if u32::from_be_bytes([out[t], out[t + 1], out[t + 2], out[t + 3]]) != ad {
+                ok = false;
+            }
+            ok
+        }
+        Err(_) => false,
+    }
+}
+
+/// C02-ZLIB-02：zlib_wrap 头尾补齐。
+fn chk_zlib_wrap() -> bool {
+    let raw: Vec<u8> = vec![7u8; 100];
+    let deflated: Vec<u8> = vec![0xAB; 40];
+    let mut out = vec![0u8; 128];
+    match zlib_wrap(&deflated, &raw, &mut out) {
+        Ok(n) => {
+            n == 2 + 40 + 4
+                && out[0] == ZLIB_CMF
+                && out[1] == ZLIB_FLG
+                && &out[2..42] == &deflated[..]
+                && u32::from_be_bytes([out[42], out[43], out[44], out[45]])
+                    == mech_inflate::adler32(&raw)
+        }
+        Err(_) => false,
+    }
+}
+
+/// C02-ZLIB-03：缓冲不足显式拒绝（不半写）。
+fn chk_zlib_short_buf() -> bool {
+    let raw: Vec<u8> = vec![1u8; 1000];
+    let mut tiny = vec![0u8; 8];
+    zlib_stored(&raw, &mut tiny).is_err() && compress_zlib(1, &raw, &mut tiny).is_err()
+}
+
+// ---------------------------------------------------------------------------
+// 主自检（判据编排：顺序即登记顺序，不得调换）
+// ---------------------------------------------------------------------------
+
+/// VE-F1002 域自检。
+pub fn run_vef02_checks() -> CheckSet {
+    let mut cs = CheckSet::new("vef02");
+
+    // -- C02-FILTER-01 正反滤波逐位对偶（bpp × 五滤波全覆盖） ----------------
+    cs.add("C02-FILTER-01 正反滤波逐位对偶(bpp1-4×五滤波×4语料)", chk_filter_duality(), "");
+
+    // -- C02-FILTER-02 五滤波号均可产出且解码后逐像素还原 ------------------
+    cs.add("C02-FILTER-02 三策略滤波号分布+整图roundtrip", chk_filter_strategies(), "");
+
+    // -- C02-FILTER-03 prev 语义：首行参照必须为零行 ----------------------
+    cs.add("C02-FILTER-03 首行零参照/逐行推进语义", chk_filter_first_row_prev(), "");
+
+    // -- C02-DEFLATE-01 九档权衡表齐全且与实现一致 ------------------------
+    cs.add("C02-DEFLATE-01 九档权衡表与实现路径一致", chk_level_table(), "");
+
+    // -- C02-DEFLATE-02 级别越界显性拒绝（三要素齐备） --------------------
+    cs.add("C02-DEFLATE-02 级别越界三要素拒绝", chk_level_reject(), "");
+
+    // -- C02-DEFLATE-03 zlib 头尾合规（stored 与 deflate 两路） ------------
+    cs.add("C02-DEFLATE-03 zlib 头尾与 Adler-32 合规", chk_zlib_head_tail(), "");
+
+    // -- C02-DEFLATE-04 高重复内容必须显著压缩 --------------------------
+    chk_deflate_solid_compression(&mut cs);
+
+    // -- C02-CHUNK-01/02 块序列与IDAT 分块上限 -------------------------------
+    chk_chunk_sequence_and_idat_caps(&mut cs);
+
+    // -- C02-CRC-01 每块 CRC32 可复算 --------------------------------------
+    cs.add("C02-CRC-01 每块 CRC32 与复算一致", chk_crc_recompute(), "");
+
+    // -- C02-CRC-02 写块工具独立可验 --------------------------------------
+    cs.add("C02-CRC-02 write_chunk 布局与 CRC 独立可验", chk_write_chunk_layout(), "");
+
+    // -- C02-HEURISTIC-01/02 两策略产出不同选择（对拍的前提） ----------------
+    chk_heuristic_strategy_pair(&mut cs);
+
+    // -- C02-HEURISTIC-03 场景建议表齐备且策略合法 ------------------------
+    cs.add("C02-HEURISTIC-03 场景建议表四类齐备且策略可解", chk_heuristic_advice_table(), "");
+
+    // -- C02-DOWNGRADE-01 逐像素确认不透明才降档 --------------------------
+    cs.add("C02-DOWNGRADE-01 不透明降档/半透明不降档/选项可关", chk_downgrade_matrix(), "");
+
+    // -- C02-DOWNGRADE-02 降档后体积应更小 -------------------------------
+    cs.add(
+        "C02-DOWNGRADE-02 降档后体积更小(RGBA→RGB 少 1 通道)",
+        chk_downgrade_smaller(),
+        "",
+    );
+
+    // -- C02-CTX-01 三缓冲长度不齐显性拒绝 -------------------------------
+    cs.add("C02-CTX-01 三缓冲不齐/bpp=0 显性拒绝", chk_ctx_row_buffer_guards(), "");
+
+    // -- C02-CTX-02 滤波器作用域越界拒绝 ----------------------------------
+    cs.add("C02-CTX-02 滤波号越界显性拒绝", chk_filter_scope_reject(), "");
+
+    // -- C02-CTX-03 worst_case_out 是真实上界（多种内容都不溢出） ---------
+    cs.add("C02-CTX-03 worst_case_out 覆盖全部路径为真实上界", chk_worst_case_bound(), "");
+
+    // -- C02-ERR-01 非法组合显性拒绝表 ------------------------------------
+    cs.add("C02-ERR-01 15 合法 + 非法组合拒绝表完备", chk_combo_legality_table(), "");
+
+    // -- C02-ERR-02 维度/位深/调色板/索引/输入/输出六类拒绝 ---------------
+    cs.add("C02-ERR-02 维度/位深/调色板/输入/输出五类拒绝", chk_basic_rejects(), "");
+
+    // -- C02-ERR-03 调色板长度与索引越界 ---------------------------------
+    cs.add("C02-ERR-03 调色板长度/索引/tRNS/16位四类拒绝", chk_palette_rejects(), "");
 
     // -- C02-ERR-04 错误五元组完整 ----------------------------------------
-    {
-        let mut ok = true;
-        for i in 0..=(EncFault::DeflateOverflow as u16) {
-            let f = match i {
-                0 => EncFault::Dimension,
-                1 => EncFault::BadDepth,
-                2 => EncFault::IllegalCombo,
-                3 => EncFault::Palette,
-                4 => EncFault::PaletteIndex,
-                5 => EncFault::ShortInput,
-                6 => EncFault::ShortOutput,
-                7 => EncFault::BadLevel,
-                8 => EncFault::BadStrategy,
-                9 => EncFault::Budget,
-                10 => EncFault::DeflateOverflow,
-                _ => EncFault::RowBuffer,
-            };
-            if f.label().is_empty() || f.cause().is_empty() || f.advice().is_empty() {
-                ok = false;
-            }
-            let e = EncError::new(f).with(7, 9);
-            if e.code() == 0 || e.human().is_empty() {
-                ok = false;
-            }
-        }
-        cs.add("C02-ERR-04 全错误类五元组齐备", ok, "");
-    }
+    cs.add("C02-ERR-04 全错误类五元组齐备", chk_fault_five_tuple(), "");
 
     // -- C02-DEPTH-01 15 合法组合 roundtrip（不透明源） --------------------
-    {
-        let w = 13usize; // 非 8 倍数，考验位打包
-        let h = 5usize;
-        let src = make_rgba(w, h, 1, 255);
-        let mut ok = true;
-        for (ct, d) in [
-            (ColorType::Gray, 1u8), (ColorType::Gray, 2), (ColorType::Gray, 4),
-            (ColorType::Gray, 8), (ColorType::Gray, 16),
-            (ColorType::Rgb, 8), (ColorType::Rgb, 16),
-            (ColorType::GrayAlpha, 8), (ColorType::GrayAlpha, 16),
-            (ColorType::Rgba, 8), (ColorType::Rgba, 16),
-        ] {
-            let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-            match enc_rgba(&src, w, h, ct, d, o) {
-                Ok(e) => {
-                    if e.info.color != ct.wire() || e.info.depth != d {
-                        ok = false;
-                        continue;
-                    }
-                    match decode_spec(&e.out[..e.info.len]) {
-                        Some((dw, dh, got)) => {
-                            if dw != w || dh != h {
-                                ok = false;
-                                continue;
-                            }
-                            // 灰度类比对亮度；其余逐通道
-                            let grayish = matches!(ct, ColorType::Gray | ColorType::GrayAlpha);
-                            for i in 0..w * h {
-                                if grayish {
-                                    let want = if d < 8 {
-                                        let maxv = (1u32 << d) - 1;
-                                        (luma_ref(src[i * 4], src[i * 4 + 1], src[i * 4 + 2]) >> (8 - d))
-                                            * 255
-                                            / maxv
-                                    } else {
-                                        luma_ref(src[i * 4], src[i * 4 + 1], src[i * 4 + 2])
-                                    };
-                                    if want != got[i * 4] as u32 {
-                                        ok = false;
-                                        break;
-                                    }
-                                    if ct == ColorType::GrayAlpha && src[i * 4 + 3] != got[i * 4 + 3] {
-                                        ok = false;
-                                        break;
-                                    }
-                                } else {
-                                    for c in 0..4 {
-                                        if src[i * 4 + c] != got[i * 4 + c] {
-                                            ok = false;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        None => ok = false,
-                    }
-                }
-                Err(_) => ok = false,
-            }
-        }
-        cs.add("C02-DEPTH-01 11 种直采组合 roundtrip 全通(调色板另计)", ok, "");
-    }
+    cs.add("C02-DEPTH-01 11 种直采组合 roundtrip 全通(调色板另计)", chk_depth_roundtrip_all(), "");
 
     // -- C02-DEPTH-02 调色板 4 种位深 roundtrip ---------------------------
-    {
-        let w = 11usize;
-        let h = 3usize;
-        let plen = 16usize;
-        let plte: Vec<u8> = (0..plen * 3).map(|i| ((i * 37) % 256) as u8).collect();
-        let mut ok = true;
-        for d in [1u8, 2, 4, 8] {
-            // 索引必须落在该位深的可存值域内（1 位只能0/1）——用全量语料
-            // 会触发编码器的越界拒绝（那正是 C02-ERR-05 验的事）
-            let cap = match d {
-                1 => 2usize,
-                2 => 4,
-                4 => 16,
-                _ => plen,
-            };
-            let idx: Vec<u8> = (0..w * h).map(|i| (i * 5 % cap) as u8).collect();
-            let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-            let mut out = vec![0u8; 65536];
-            match encode_palette(&idx, &plte, w, h, d, None, o, &mut out) {
-                Ok(e) => {
-                    if e.color != 3 || e.depth != d {
-                        ok = false;
-                        continue;
-                    }
-                    match decode_palette_spec(&out[..e.len], &plte) {
-                        Some((dw, dh, got)) => {
-                            if dw != w || dh != h {
-                                ok = false;
-                                continue;
-                            }
-                            for i in 0..w * h {
-                                let k = idx[i] as usize;
-                                if got[i * 4] != plte[k * 3]
-                                    || got[i * 4 + 1] != plte[k * 3 + 1]
-                                    || got[i * 4 + 2] != plte[k * 3 + 2]
-                                {
-                                    ok = false;
-                                    break;
-                                }
-                            }
-                        }
-                        None => ok = false,
-                    }
-                }
-                Err(_) => ok = false,
-            }
-        }
-        cs.add("C02-DEPTH-02 调色板 4 种位深 roundtrip", ok, "");
-    }
+    cs.add("C02-DEPTH-02 调色板 4 种位深 roundtrip", chk_palette_depths_roundtrip(), "");
 
     // -- C02-ERR-05 低位深索引越界显性拒绝（回归锁） ------------------------
-    // 1/2/4 位深只能存 0..2^d−1；越界索引若放行，`pack_indices` 的掩码
-    // 会把它静默截断成低位值——图像索引错乱且不产生任何报错。
-    {
-        let w = 8usize;
-        let h = 2usize;
-        let plen = 16usize;
-        let plte: Vec<u8> = vec![7u8; plen * 3];
-        let mut ok = true;
-        for (d, bad_v) in [(1u8, 5u8), (1, 255), (2, 4), (2, 200), (4, 16), (4, 250)] {
-            let mut idx = vec![0u8; w * h];
-            idx[w] = bad_v; // 第二个像素塞越界索引
-            let mut out = vec![0u8; 65536];
-            let o = EncOptions::default();
-            match encode_palette(&idx, &plte, w, h, d, None, o, &mut out) {
-                Err(e) => {
-                    if e.kind != EncFault::PaletteIndex {
-                        ok = false;
-                    }
-                }
-                Ok(_) => ok = false,
-            }
-        }
-        // 8 位深下按调色板项数判（plen=16 → 索引 16 应拒）
-        let mut idx = vec![0u8; w * h];
-        idx[1] = 16;
-        let mut out = vec![0u8; 65536];
-        if encode_palette(&idx, &plte, w, h, 8, None, EncOptions::default(), &mut out).map(|_| ()).is_ok() {
-            ok = false;
-        }
-        // 边界内索引须放行（1 位深索引 1 合法）
-        let idx_ok = vec![1u8; w * h];
-        let mut out2 = vec![0u8; 65536];
-        if encode_palette(&idx_ok, &plte, w, h, 1, None, EncOptions::default(), &mut out2).is_err() {
-            ok = false;
-        }
-        cs.add("C02-ERR-05 低位深索引越界拒绝/边界内放行", ok, "");
-    }
+    cs.add("C02-ERR-05 低位深索引越界拒绝/边界内放行", chk_low_depth_index_reject(), "");
 
     // -- C02-DEPTH-03 尺寸边界（1×1 / 1×N / N×1 / 宽非8倍数） -------------
-    {
-        let mut ok = true;
-        for (w, h) in [(1usize, 1usize), (1, 17), (17, 1), (3, 3), (255, 2), (2, 255)] {
-            let src = make_rgba(w, h, 1, 255);
-            let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-            match enc_rgba(&src, w, h, ColorType::Rgba, 8, o) {
-                Ok(e) => {
-                    if decode_spec(&e.out[..e.info.len]).map(|(_, _, g)| g == src).unwrap_or(false) == false {
-                        ok = false;
-                    }
-                }
-                Err(_) => ok = false,
-            }
-        }
-        cs.add("C02-DEPTH-03 极端与边界尺寸 roundtrip", ok, "");
-    }
+    cs.add("C02-DEPTH-03 极端与边界尺寸 roundtrip", chk_boundary_sizes(), "");
 
     // -- C02-DETERM-01 同输入同输出（确定性） -----------------------------
-    {
-        let w = 40usize;
-        let h = 24usize;
-        let src = make_rgba(w, h, 3, 255);
-        let o = EncOptions { level: 9, strategy: Strategy::MinEntropy, allow_downgrade: true, idat_chunk: 4096 };
-        let a = enc_rgba(&src, w, h, ColorType::Rgba, 8, o);
-        let b = enc_rgba(&src, w, h, ColorType::Rgba, 8, o);
-        let ok = match (a, b) {
-            (Ok(x), Ok(y)) => x.out[..x.info.len] == y.out[..y.info.len],
-            _ => false,
-        };
-        cs.add("C02-DETERM-01 同输入逐字节同输出", ok, "");
-    }
+    cs.add("C02-DETERM-01 同输入逐字节同输出", chk_determinism(), "");
 
     // -- C02-DETERM-02 逐字节变异不崩溃 ------------------------------------
-    {
-        let w = 12usize;
-        let h = 6usize;
-        let src = make_rgba(w, h, 1, 255);
-        let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: true, idat_chunk: 0 };
-        let mut base = match enc_rgba(&src, w, h, ColorType::Rgba, 8, o) {
-            Ok(e) => e.out[..e.info.len].to_vec(),
-            Err(_) => {
-                cs.add("C02-DETERM-02 逐字节变异不崩溃", false, "");
-                return finish(cs);
-            }
-        };
-        // 变异编码器自己的输出（即解码器输入面）不应崩溃
-        for i in 0..base.len() {
-            for bit in 0..8 {
-                let mut m = base.clone();
-                m[i] ^= 1 << bit;
-                let _ = decode_spec(&m);
-            }
-        }
-        // 变异源像素不应崩溃（编码器输入面）
-        for i in 0..src.len() {
-            for bit in [0u32, 3, 7] {
-                let mut m = src.clone();
-                m[i] ^= 1 << bit;
-                let mut out = vec![0u8; worst_case_out(w, h, ColorType::Rgba, 8) as usize];
-                let _ = encode_rgba(&m, w, h, ColorType::Rgba, 8, o, &mut out);
-            }
-        }
-        base.clear();
-        cs.add("C02-DETERM-02 逐字节变异不崩溃", true, "");
+    // 基线编码失败时按原语义终止后续判据。
+    if chk_byte_mutation_no_crash(&mut cs) {
+        return finish(cs);
     }
 
     // -- C02-SIG-01 签名与 IHDR 七参数（压缩/滤波/隔行恒0） --------------------
-    {
-        let w = 4usize;
-        let h = 4usize;
-        let src = make_rgba(w, h, 0, 255);
-        // 关降档，否则不透明源会被降成 RGB（color=2），断言须按实际语义写
-        let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-        let ok = match enc_rgba(&src, w, h, ColorType::Rgba, 8, o) {
-            Ok(e) => {
-                let p = &e.out[..e.info.len];
-                p[..8] == PNG_SIG
-                    && walk_chunks(p).first().map(|c| &c.0[..] == b"IHDR").unwrap_or(false)
-                    && p[8..12] == 13u32.to_be_bytes()
-                    && &p[12..16] == b"IHDR"
-                    && p[16..20] == (w as u32).to_be_bytes()
-                    && p[20..24] == (h as u32).to_be_bytes()
-                    && p[24] == 8// depth
-                    && p[25] == 6 // color
-                    && p[26] == 0 // compression
-                    && p[27] == 0 // filter
-                    && p[28] == 0 // interlace
-            }
-            Err(_) => false,
-        };
-        cs.add("C02-SIG-01 签名 + IHDR 七参数合规", ok, "");
-    }
+    cs.add("C02-SIG-01 签名 + IHDR 七参数合规", chk_sig_ihdr(), "");
 
     // -- C02-SIG-02 隔行恒 0（Adam7 属F1003，本单显式不做） --------------
-    {
-        let w = 4usize;
-        let h = 4usize;
-        let src = make_rgba(w, h, 0, 255);
-        let mut out = vec![0u8; 65536];
-        let e = encode_rgba(&src, w, h, ColorType::Rgba, 8, EncOptions::default(), &mut out).unwrap();
-        cs.add("C02-SIG-02 隔行方法恒 0(隔行属 F1003)", out[28] == 0 && e.len > 29, "");
-    }
+    chk_sig_interlace_zero(&mut cs);
 
     // -- C02-OPT-01 选项面往返（wire 编解码自洽） -------------------------
-    {
-        let mut ok = true;
-        for v in 0u8..3 {
-            match Strategy::from_wire(v) {
-                Some(s) => {
-                    if s.wire() != v {
-                        ok = false;
-                    }
-                }
-                None => ok = false,
-            }
-        }
-        if Strategy::from_wire(3).is_some() || Strategy::from_wire(255).is_some() {
-            ok = false;
-        }
-        // 颜色类型 wire 往返
-        for v in [0u8, 2, 3, 4, 6] {
-            match ColorType::from_wire(v) {
-                Some(c) => {
-                    if c.wire() != v {
-                        ok = false;
-                    }
-                }
-                None => ok = false,
-            }
-        }
-        for v in [1u8, 5, 7, 255] {
-            if ColorType::from_wire(v).is_some() {
-                ok = false;
-            }
-        }
-        cs.add("C02-OPT-01 策略/颜色类型 wire 编解码自洽", ok, "");
-    }
+    cs.add("C02-OPT-01 策略/颜色类型 wire 编解码自洽", chk_wire_codec_selfcheck(), "");
 
     // -- C02-OPT-02 默认选项值符合预期 ------------------------------------
-    {
-        let d = EncOptions::default();
-        cs.add(
-            "C02-OPT-02 默认级别 6 + MinAbsSum + 允许降档",
-            d.level == 6 && matches!(d.strategy, Strategy::MinAbsSum) && d.allow_downgrade,
-            "",
-        );
-    }
+    cs.add(
+        "C02-OPT-02 默认级别 6 + MinAbsSum + 允许降档",
+        chk_default_options(),
+        "",
+    );
 
     // -- C02-ZLIB-01 stored 路径块布局合规（LEN/NLEN 互补） -----------------
-    {
-        let raw: Vec<u8> = (0..300u32).map(|i| (i % 251) as u8).collect();
-        let mut out = vec![0u8; 4096];
-        match zlib_stored(&raw, &mut out) {
-            Ok(n) => {
-                let mut ok = n == 2 + 5 + raw.len() + 4 && out[0] == ZLIB_CMF && out[1] == ZLIB_FLG;
-                // LEN/NLEN
-                let l = u16::from_le_bytes([out[3], out[4]]);
-                let nl = u16::from_le_bytes([out[5], out[6]]);
-                if l as usize != raw.len() || nl != !l {
-                    ok = false;
-                }
-                // 末块 BFINAL=1
-                if out[2] != 1 {
-                    ok = false;
-                }
-                // 原文逐位一致
-                if &out[7..7 + raw.len()] != &raw[..] {
-                    ok = false;
-                }
-                // Adler 大端
-                let ad = mech_inflate::adler32(&raw);
-                let t = n - 4;
-                if u32::from_be_bytes([out[t], out[t + 1], out[t + 2], out[t + 3]]) != ad {
-                    ok = false;
-                }
-                cs.add("C02-ZLIB-01 stored 块 LEN/NLEN/BFINAL/Adler 合规", ok, "");
-            }
-            Err(_) => cs.add("C02-ZLIB-01 stored 块 LEN/NLEN/BFINAL/Adler 合规", false, ""),
-        }
-    }
+    cs.add("C02-ZLIB-01 stored 块 LEN/NLEN/BFINAL/Adler 合规", chk_zlib_stored_layout(), "");
 
     // -- C02-ZLIB-02 zlib_wrap 头尾补齐 -----------------------------------
-    {
-        let raw: Vec<u8> = vec![7u8; 100];
-        let deflated: Vec<u8> = vec![0xAB; 40];
-        let mut out = vec![0u8; 128];
-        match zlib_wrap(&deflated, &raw, &mut out) {
-            Ok(n) => {
-                let ok = n == 2 + 40 + 4
-                    && out[0] == ZLIB_CMF
-                    && out[1] == ZLIB_FLG
-                    && &out[2..42] == &deflated[..]
-                    && u32::from_be_bytes([out[42], out[43], out[44], out[45]])
-                        == mech_inflate::adler32(&raw);
-                cs.add("C02-ZLIB-02 zlib_wrap 补齐头与 Adler 大端尾", ok, "");
-            }
-            Err(_) => cs.add("C02-ZLIB-02 zlib_wrap 补齐头与 Adler 大端尾", false, ""),
-        }
-    }
+    cs.add("C02-ZLIB-02 zlib_wrap 补齐头与 Adler 大端尾", chk_zlib_wrap(), "");
 
     // -- C02-ZLIB-03 缓冲不足显式拒绝（不半写） ---------------------------
-    {
-        let raw: Vec<u8> = vec![1u8; 1000];
-        let mut tiny = vec![0u8; 8];
-        let ok = zlib_stored(&raw, &mut tiny).is_err() && compress_zlib(1, &raw, &mut tiny).is_err();
-        cs.add("C02-ZLIB-03 缓冲不足显式拒绝不半写", ok, "");
-    }
+    cs.add("C02-ZLIB-03 缓冲不足显式拒绝不半写", chk_zlib_short_buf(), "");
 
     finish(cs)
 }
@@ -1333,7 +1506,7 @@ mod tests {
             0, 0, 0, 250, // 像素1：黑，L=0，alpha=250
         ];
         let o = EncOptions { level: 1, strategy: Strategy::FixedNone, allow_downgrade: false, idat_chunk: 0 };
-        let e = enc_rgba(&src, w, h, ColorType::GrayAlpha, 8, o).unwrap();
+        let e = enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::GrayAlpha, depth: 8 }, o).unwrap();
         // 规范语义解码后必须逐通道还原
         let (_, _, got) = decode_spec(&e.out[..e.info.len]).expect("应可解码");
         // 亮度按 BT.601 算，不是取 R 通道（取 R 会得 255）
@@ -1348,7 +1521,7 @@ mod tests {
         // 纯蓝：R=0 G=0 B=255→ L = 29*255/256 ≈ 29。若错取 R 通道会得 0。
         let src = vec![0, 0, 255, 255, 0, 0, 255, 255];
         let o = EncOptions { level: 1, strategy: Strategy::FixedNone, allow_downgrade: false, idat_chunk: 0 };
-        let e = enc_rgba(&src, 2, 1, ColorType::Gray, 8, o).unwrap();
+        let e = enc_rgba(EncInput { src: &src, w: 2, h: 1, color: ColorType::Gray, depth: 8 }, o).unwrap();
         let (_, _, got) = decode_spec(&e.out[..e.info.len]).unwrap();
         let want = luma_ref(0, 0, 255);
         assert_eq!(got[0] as u32, want, "灰度应为 BT.601 亮度 {want}，实得 {}", got[0]);
@@ -1396,7 +1569,7 @@ mod tests {
             (ColorType::Rgba, 8), (ColorType::Rgba, 16),
         ] {
             let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-            let e = enc_rgba(&src, w, h, ct, d, o).unwrap_or_else(|e| panic!("{ct:?}/{d} 应可编码：{}", e.human()));
+            let e = enc_rgba(EncInput { src: &src, w: w, h: h, color: ct, depth: d }, o).unwrap_or_else(|e| panic!("{ct:?}/{d} 应可编码：{}", e.human()));
             let (dw, dh, got) = decode_spec(&e.out[..e.info.len]).unwrap_or_else(|| panic!("{ct:?}/{d} 应可解码"));
             assert_eq!((dw, dh), (w, h));
             for i in 0..w * h {
@@ -1426,7 +1599,7 @@ mod tests {
         src[3] = 0; // 首像素全透明
         src[(w * h - 1) * 4 + 3] = 128; // 末像素半透明
         let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: true, idat_chunk: 0 };
-        let e = enc_rgba(&src, w, h, ColorType::Rgba, 8, o).unwrap();
+        let e = enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o).unwrap();
         assert_eq!(e.info.color, 6, "含透明像素不得降档");
         let (_, _, got) = decode_spec(&e.out[..e.info.len]).unwrap();
         assert_eq!(got, src, "含透明的 RGBA 必须逐位 roundtrip");
@@ -1495,7 +1668,7 @@ fn vef02_low_depth_palette_index_rejected() {
         let src = make_rgba(w, h, 1, 255);
         for chunk in [0usize, 1024, 8192, 100_000] {
             let o = EncOptions { level: 6, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: chunk };
-            let e = enc_rgba(&src, w, h, ColorType::Rgba, 8, o).unwrap();
+            let e = enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o).unwrap();
             let eff = if chunk == 0 || chunk > IDAT_CHUNK_MAX { IDAT_CHUNK_MAX } else { chunk };
             let chunks = walk_chunks(&e.out[..e.info.len]);
             assert_eq!(chunks.iter().filter(|(t, _, _)| &t[..] == b"IHDR").count(), 1);
@@ -1565,8 +1738,8 @@ fn vef02_low_depth_palette_index_rejected() {
         let (w, h) = (33usize, 21usize);
         let src = make_rgba(w, h, 3, 255);
         let o = EncOptions { level: 9, strategy: Strategy::MinEntropy, allow_downgrade: true, idat_chunk: 2048 };
-        let a = enc_rgba(&src, w, h, ColorType::Rgba, 8, o).unwrap();
-        let b = enc_rgba(&src, w, h, ColorType::Rgba, 8, o).unwrap();
+        let a = enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o).unwrap();
+        let b = enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o).unwrap();
         assert_eq!(a.info.len, b.info.len);
         assert_eq!(&a.out[..a.info.len], &b.out[..b.info.len]);
     }
@@ -1591,7 +1764,7 @@ fn vef02_low_depth_palette_index_rejected() {
         let src = make_rgba(w, h, 2, 255);
         for lvl in 1u8..=9 {
             let o = EncOptions { level: lvl, strategy: Strategy::MinAbsSum, allow_downgrade: false, idat_chunk: 0 };
-            let e = enc_rgba(&src, w, h, ColorType::Rgba, 8, o).unwrap();
+            let e = enc_rgba(EncInput { src: &src, w: w, h: h, color: ColorType::Rgba, depth: 8 }, o).unwrap();
             let (_, _, got) = decode_spec(&e.out[..e.info.len]).unwrap_or_else(|| panic!("级别 {lvl} 的流应可解码"));
             assert_eq!(got, src, "级别 {lvl} roundtrip 不一致");
         }

@@ -32,6 +32,10 @@
 //!
 //! 逻辑 tick 注入，零墙钟；零外部依赖，只依赖 `crate::checks`（自检侧）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use alloc::format;
@@ -231,7 +235,7 @@ pub fn curve_attenuation(curve: FalloffCurve, range: f32, dist: f32) -> f32 {
         FalloffCurve::Artistic { exponent } => {
             // 窗口化艺术曲线：边界内 (1-d/range)^p，p 已在构造期验证有界。
             let t = (1.0 - dist / range).clamp(0.0, 1.0);
-            t.powf(exponent)
+            t.m_powf(exponent)
         }
     }
 }
@@ -241,7 +245,7 @@ pub fn contribution(light: &PointLight, px: (f32, f32, f32)) -> (f32, f32, f32) 
     let dx = px.0 - light.pos.0;
     let dy = px.1 - light.pos.1;
     let dz = px.2 - light.pos.2;
-    let dist = (dx * dx + dy * dy + dz * dz).sqrt();
+    let dist = (dx * dx + dy * dy + dz * dz).m_sqrt();
     let a = attenuation(light, dist);
     let k = a * light.intensity_cd;
     (light.color.r * k, light.color.g * k, light.color.b * k)

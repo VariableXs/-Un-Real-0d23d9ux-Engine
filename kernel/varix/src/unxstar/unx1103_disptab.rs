@@ -303,7 +303,7 @@ pub fn run_t1103_checks() -> crate::checks::CheckSet {
     let mut set = crate::checks::CheckSet::new("unx1103-t103");
     // 10^7 演练。
     let (ok, reg, dist) = drill_10m(0x1103_0001);
-    set.add(
+    set.add_dyn(
         "DT-10m-zeromiss",
         ok,
         &format!("registered={} correct=10^7 零失配 导出前缀={}", reg, &dist[..dist.len().min(40)]),
@@ -324,19 +324,19 @@ pub fn run_t1103_checks() -> crate::checks::CheckSet {
         let _ = t.lookup(v);
     }
     let p99 = t.p99();
-    set.add(
+    set.add_dyn(
         "DT-p99-limit",
         p99 <= DT_P99_LIMIT,
         &format!("P99={} ≤{}", p99, DT_P99_LIMIT),
     );
-    set.add(
+    set.add_dyn(
         "DT-dist-export",
         t.dist_consistent() && !t.export().is_empty(),
         &format!("导出前 48 字节：{}…", &t.export()[..t.export().len().min(48)]),
     );
     // 判据总门。
     let ok_all = ok && inj.all_caught() && p99 <= DT_P99_LIMIT && t.dist_consistent();
-    set.add(
+    set.add_dyn(
         "UNX-F1103-J1",
         ok_all,
         &format!("{}: 10^7 零失配 P99={} reg={} seg=0x{:04x}", DT_VERSION, p99, reg, DT_SEG_BASE),

@@ -82,6 +82,10 @@
 
 #![allow(clippy::needless_range_loop)]
 
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
+
 use super::vep03_token::{inject_for_theme, MotionTokenError, Theme, TokenTable};
 use super::vet01_a11y_render_pipeline as f3802;
 use crate::checks::CheckSet;
@@ -289,7 +293,7 @@ pub fn channel_luminance(c: u8) -> f32 {
         s / 12.92
     } else {
         let p = (s + 0.055) / 1.055;
-        p.powf(2.4)
+        p.m_powf(2.4)
     }
 }
 
@@ -786,7 +790,7 @@ fn push_away_from_bg(px: [u8; 3], bg: [u8; 3], amount: u8) -> [u8; 3] {
         // 前景比背景亮 → 往 255 推；比背景暗 → 往 0 推；等亮 → 往 255
         // （等亮时选亮侧，保证「推离」不变成「推向」）。
         let target = if lum_px >= lum_bg { 255i32 } else { 0i32 };
-        let delta = ((target - v).abs() as f32 * step).round() as i32;
+        let delta = ((target - v).abs() as f32 * step).m_round() as i32;
         let nv = if target > v { v + delta } else { v - delta };
         out[c] = nv.clamp(0, 255) as u8;
         c += 1;
@@ -1613,7 +1617,7 @@ pub fn run_f3803_checks() -> CheckSet {
         let expect_above: f32 = {
             let s = 11.0f32 / 255.0f32;
             let p = (s + 0.055f32) / 1.055f32;
-            p.powf(2.4)
+            p.m_powf(2.4)
         };
         let expect_below: f32 = (10.0f32 / 255.0f32) / 12.92f32;
         set.add(

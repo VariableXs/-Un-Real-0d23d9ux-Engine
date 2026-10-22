@@ -7,6 +7,10 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
+// 补宏导入：`use alloc::vec::Vec;` 只导**类型**不导**宏**，而本模块在
+// 公开函数（非 cfg(test) 区）里裸用 `vec![…]`，no_std 下宏须显式导入。
+
+use alloc::vec;
 
 /// 认证分级诊断码闭集（0x7B51~0x7B58 八码）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

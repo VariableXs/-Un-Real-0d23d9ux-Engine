@@ -450,7 +450,10 @@ pub fn run_t185_checks() -> crate::checks::CheckSet {
     // 五场注入。
     g.inj.inject_all(&mut g.sum);
     let (ok, msg) = g.judge();
-    set.add("UNX-F0185-J1", ok && consistent, &msg);
+    // 修正记录：原为 `let (ok, _msg)` + 静态串 "verdict-summary"，把 judge
+    // 算出的真实诊断文本丢掉了——判据红灯时无法定位原因。改走 `add_dyn`
+    // 把运行期明细如实带回（CheckSet 的动态明细侧表承载，不破坏 Copy 语义）。
+    set.add_dyn("UNX-F0185-J1", ok && consistent, &msg);
     set.add("CF-bits-consistent", consistent, "");
     set.add("CF-api-frozen", g.sum.api_frozen(), "");
     set.add("CF-consumers-valid", g.cons.all_valid(), "");

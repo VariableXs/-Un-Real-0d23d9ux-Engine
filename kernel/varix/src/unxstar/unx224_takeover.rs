@@ -460,7 +460,7 @@ pub fn run_t224_checks() -> crate::checks::CheckSet {
     // 五场注入。
     tk.inj.inject_all(&mut tk.reg);
     let (ok, msg) = tk.judge();
-    set.add("UNX-F0224-J1", ok, &msg);
+    set.add_dyn("UNX-F0224-J1", ok, &msg);
     set.add("TK-no-missing", tk.reg.no_missing(), "");
     set.add("TK-covered-full", tk.pairer.fully_covered(), "");
     set.add("TK-inject-5/5", tk.inj.all_caught(), "");

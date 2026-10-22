@@ -1534,6 +1534,18 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // deskstar::run_deskstar_checks 的子行展开（v2 收口补挂）。
     // ------------------------------------------------------------------
     checkup.register(crate::deskstar::run_deskstar_checks());
+    // ------------------------------------------------------------------
+    // CoRun Unxreal 册（UNX-F0001~F64000 功能全集）——单聚合注册（同 U2/
+    // J2 容量纪律：不占 domains 定长数组名额）；域内 69 子域逐项红绿在
+    // unxstar::run_unxstar_checks 的子行展开。此注册使两册判据真正进入
+    // 总 checkup 闭环（此前目录外零引用 = 编译绿但判据永不执行）。
+    // ------------------------------------------------------------------
+    checkup.register(crate::unxstar::run_unxstar_checks());
+    // ------------------------------------------------------------------
+    // CGPU 册（计算内核 F0001~F3840）——单聚合注册（同上容量纪律）；
+    // 域内 52 条逐项红绿在 cgpu::run_cgpu_checks 的子行展开。
+    // ------------------------------------------------------------------
+    checkup.register(crate::cgpu::run_cgpu_checks());
     checkup
 }
 
@@ -2113,6 +2125,85 @@ mod tests {
         let (passed, failed) = checkup.tally();
         assert!(passed > 200, "expected a substantial check set, got {}", passed);
         assert_eq!(failed, 0);
+    }
+
+    /// 临时探针：逐段跑重型聚合，定位全量对账卡点/内存爆点（诊断用，随诊撤）。
+    #[test]
+    fn probe_aggregates_progressive() {
+        let stages: [(&str, fn() -> crate::checks::CheckSet); 6] = [
+            ("jstar2", crate::jstar2::run_jstar2_checks),
+            ("istar", crate::istar::run_istar_checks),
+            ("h1star", crate::h1star::run_h1_checks),
+            ("deskstar", crate::deskstar::run_deskstar_checks),
+            ("unxstar", crate::unxstar::run_unxstar_checks),
+            ("cgpu", crate::cgpu::run_cgpu_checks),
+        ];
+        for (name, run) in stages {
+            eprintln!("[probe] enter {name}");
+            let cs = run();
+            let red = cs.red_items_text();
+            eprintln!("[probe] {name}: len={} red_text_len={}", cs.len(), red.len());
+            if red.len() > 0 {
+                eprintln!("[probe] {name} reds: {red}");
+            }
+            drop(cs);
+        }
+        // 红项明细钻取（svstar2 / unxstar 二级 / cgpu）。
+        let sv = crate::svstar2::run_svstar2_checks();
+        eprintln!("[probe] svstar2 reds: {}", sv.red_items_text());
+        drop(sv);
+        let sec = crate::unxstar::run_unxstar_secondary_checks();
+        eprintln!("[probe] secondary reds: {}", sec.red_items_text());
+        drop(sec);
+        // 红族逐个钻一层（判据名 → 定位文件）。
+        {
+            let f = crate::unxstar::unx1902_lazysave::run_unx1902_checks();
+            eprintln!("[probe] F1902 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::svstar2::vej46_ssr::run_vej46_checks();
+            eprintln!("[probe] F1846 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::svstar2::ve5610_audiotel::run_ve5610_checks();
+            eprintln!("[probe] F5610 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::svstar2::vea54_framelock::run_vea54_checks();
+            eprintln!("[probe] F0054 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::svstar2::vef62_nettelemetry::run_vef62_checks();
+            eprintln!("[probe] F5409 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::svstar2::veab07_audioasset::run_veab07_checks();
+            eprintln!("[probe] F5607 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::cgpu::cgi01_bandwidth_checks::run_cgi01_checks();
+            eprintln!("[probe] I1281 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::cgpu::cgd03_frameledger_checks::run_cgd03_checks();
+            eprintln!("[probe] F0483 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::cgpu::cgp01_adaptivearch_checks::run_cgp01_checks();
+            eprintln!("[probe] P0501 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::cgpu::cgp08_perf_checks::run_cgp08_checks();
+            eprintln!("[probe] P0208 reds: {}", f.red_items_text());
+        }
+        {
+            let f = crate::cgpu::vck05_taskgraph::run_vck05_checks();
+            eprintln!("[probe] F1605 reds: {}", f.red_items_text());
+        }
+        let wb = crate::unxstar::run_wb21_unx20();
+        eprintln!("[probe] wb21 reds: {}", wb.red_items_text());
+        drop(wb);
+        eprintln!("[probe] all stages done");
     }
 
     #[test]

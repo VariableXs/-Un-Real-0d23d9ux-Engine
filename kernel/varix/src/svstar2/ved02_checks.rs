@@ -10,6 +10,10 @@
 //!
 //! 浮点断言统一 1e-4 容差；零墙钟、零 IO，回归可复现。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use super::ved02_xform::*;
 use crate::checks::CheckSet;
 
@@ -182,7 +186,7 @@ pub fn run_ved02_checks() -> CheckSet {
     {
         let m = Mat4::rotation_x(0.9);
         let (x, y, z) = m.apply_point(0.0, 1.0, 0.0);
-        let len = (x * x + y * y + z * z).sqrt();
+        let len = (x * x + y * y + z * z).m_sqrt();
         set.add("D02-三维-旋转保长度", close(len, 1.0), "");
     }
 

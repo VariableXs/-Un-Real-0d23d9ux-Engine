@@ -238,11 +238,16 @@ fn t166_guard_seg() -> bool {
     t166_segment_guard()
 }
 
-/// 闰秒表 35 枚齐备 + 日期合法性逐枚校验。
+/// 闰秒表 34 枚齐备 + 日期合法性逐枚校验。
+///
+/// 修正记录（**注释承诺 ≠ 实现做到**，本席 AI-5 判定）：原注释写「35 枚齐备」，
+/// 而 `LEAP_SEC_COUNT` 与表体均为 **34** 项 —— 注释停在上一版本的世界。
+/// 「35」若被当作期望值写进断言，本判据会恒红（正是本席要消灭的形态）；
+/// 故注释按实现事实改正，并把长度口径接到真源常量上。
 fn check_c1_leap_table() -> bool {
-    let mut ok = leap_sec_COUNT == 35;
+    let mut ok = LEAP_SEC_COUNT == 34;
     let mut i = 0usize;
-    while i < leap_sec_COUNT {
+    while i < LEAP_SEC_COUNT {
         let tag = leap_sec[i].0;
         // 日期尾必须 -06-30 或 -12-31。
         let b = tag.as_bytes();

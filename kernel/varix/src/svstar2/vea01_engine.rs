@@ -3,6 +3,10 @@
 //! 规格工程量分解：核心逻辑约 230 行（要点判定与主流程编排）。
 //! 确定性算法、零 IO、可序列化 —— 同输入必同输出，这是"同机同果可追溯"的前提。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use super::vea01_probe::{
     AdapterClass, AdapterProbeInput, AdapterProbeResult, AdapterTopology, BusKind, CapabilityClaim,
     CapabilityTrust, Hypervisor, canon_caps_hash, fnv1a64,
@@ -48,7 +52,7 @@ fn clamp01(v: f32) -> f32 {
 }
 
 fn round2(v: f32) -> f32 {
-    (v * 100.0).round() / 100.0
+    (v * 100.0).m_round() / 100.0
 }
 
 // ---------------------------------------------------------------------------

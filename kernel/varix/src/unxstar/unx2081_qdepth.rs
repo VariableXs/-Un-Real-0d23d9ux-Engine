@@ -474,7 +474,7 @@ impl QdGate {
 pub fn run_t2081_checks() -> crate::checks::CheckSet {
     let mut set = crate::checks::CheckSet::new("unx2081-t081");
     // 冻结参数（F1762 口径对齐）。
-    set.add(
+    set.add_dyn(
         "QD-params-frozen",
         QD_CAPACITY == 4096 && QD_SUSTAIN_K == 8 && QD_THRESHOLD == QD_CAPACITY * 3 / 4,
         &format!("容量={} K={} 阈={}", QD_CAPACITY, QD_SUSTAIN_K, QD_THRESHOLD),
@@ -492,14 +492,14 @@ pub fn run_t2081_checks() -> crate::checks::CheckSet {
             base_ok = false;
         }
     }
-    set.add(
+    set.add_dyn(
         "QD-base-ledger",
         base_ok && g.ledger_ok() && g.gauge == 128,
         &format!("入 256 出 128 存 {} 峰 {}", g.gauge, g.pv.peak),
     );
     // 10/10 演练。
     let (ok, rounds, triggers) = drill_10_rounds(0x2081_0001);
-    set.add(
+    set.add_dyn(
         "QD-drill-10/10",
         ok,
         &format!("账平 {}/10 轮 触发累计={}", rounds, triggers),
@@ -509,13 +509,13 @@ pub fn run_t2081_checks() -> crate::checks::CheckSet {
         inj: QdInjector::new(),
     };
     gate.inj.inject_all();
-    set.add(
+    set.add_dyn(
         "QD-inject-10/10",
         gate.inj.all_caught(),
         &format!("倒挂检出 {}/{}", gate.inj.caught, gate.inj.cases),
     );
     // 判据总门。
     let (jok, msg) = gate.judge(ok, rounds, triggers);
-    set.add("UNX-F2081-J1", jok, &msg);
+    set.add_dyn("UNX-F2081-J1", jok, &msg);
     set
 }

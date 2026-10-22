@@ -1,3 +1,4 @@
+
 //! unx2021_cstates —— UNX-F2021 idle 状态表与基架（C0/C1/C2/C6 档登记）。
 //! 锚点（CoRun Unxreal 主册）：UNX-F2021 · idle 状态表与基架（C0/C1/C2/C6 档登记） · 目标 360 行 · 已深化
 //! 判据原文：UNX-F2021-J1 状态表断言全过（逐档登记：进入指令/退出延迟/能耗声明三列），
@@ -20,6 +21,7 @@
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 模块版本。
 pub const CS_VERSION: &str = "unx2021_cstates-v1";
@@ -591,7 +593,7 @@ pub fn run_t2021_checks() -> crate::checks::CheckSet {
     let mut set = crate::checks::CheckSet::new("unx2021-t021");
     // 标准表三列齐。
     let t = CsTable::new_standard();
-    set.add(
+    set.add_dyn(
         "CS-table-4levels",
         t.table_complete() && t.capability().is_ok(),
         &format!(
@@ -608,7 +610,7 @@ pub fn run_t2021_checks() -> crate::checks::CheckSet {
     );
     // 10/10 演练。
     let (ok, rounds) = drill_10_rounds(0x2021_0001);
-    set.add(
+    set.add_dyn(
         "CS-drill-10/10",
         ok,
         &format!("配平 {}/10 轮", rounds),
@@ -618,7 +620,7 @@ pub fn run_t2021_checks() -> crate::checks::CheckSet {
         inj: CsInjector::new(),
     };
     gate.inj.inject_all();
-    set.add(
+    set.add_dyn(
         "CS-inject-10/10",
         gate.inj.all_caught(),
         &format!(
@@ -628,6 +630,6 @@ pub fn run_t2021_checks() -> crate::checks::CheckSet {
     );
     // 判据总门。
     let (jok, msg) = gate.judge(ok, rounds);
-    set.add("UNX-F2021-J1", jok, &msg);
+    set.add_dyn("UNX-F2021-J1", jok, &msg);
     set
 }

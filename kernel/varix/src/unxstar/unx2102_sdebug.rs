@@ -513,7 +513,7 @@ pub fn run_t2102_checks() -> crate::checks::CheckSet {
     );
     // 演练。
     let (ok, rounds, rows) = drill(0x2102_0001, 10);
-    set.add(
+    set.add_dyn(
         "SD-drill-10/10",
         ok,
         &format!("一致 {}/10 轮 rows={}", rounds, rows),
@@ -523,13 +523,13 @@ pub fn run_t2102_checks() -> crate::checks::CheckSet {
         inj: SdInjector::new(),
     };
     gate.inj.inject_all();
-    set.add(
+    set.add_dyn(
         "SD-inject-8/8",
         gate.inj.all_caught(),
         &format!("{}/{}", gate.inj.caught, gate.inj.cases),
     );
     // 判据总门。
     let (jok, msg) = gate.judge(ok, rounds, rows);
-    set.add("UNX-F2102-J1", jok, &msg);
+    set.add_dyn("UNX-F2102-J1", jok, &msg);
     set
 }

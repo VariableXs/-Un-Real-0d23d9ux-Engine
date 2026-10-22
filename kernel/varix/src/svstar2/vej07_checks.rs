@@ -25,6 +25,10 @@
 //!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -410,7 +414,7 @@ pub fn run_vej07_checks() -> CheckSet {
     set.add(
         "F1807-剔除-接口形状对齐I07",
         fr.planes.len() == 6 && fr.planes.iter().all(|p| {
-            let l = (p.0 * p.0 + p.1 * p.1 + p.2 * p.2).sqrt();
+            let l = (p.0 * p.0 + p.1 * p.1 + p.2 * p.2).m_sqrt();
             (l - 1.0).abs() < 1e-5
         }),
         "",

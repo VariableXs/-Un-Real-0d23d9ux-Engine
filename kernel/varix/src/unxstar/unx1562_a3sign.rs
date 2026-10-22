@@ -430,7 +430,7 @@ pub fn run_t562_checks() -> crate::checks::CheckSet {
     // 三场注入（隔离实例 · 主门面状态不受污染）。
     g.inj.inject_all();
     let (ok, msg) = g.judge();
-    set.add("UNX-F1562-J1", ok, &msg);
+    set.add_dyn("UNX-F1562-J1", ok, &msg);
     set.add("AS-ten-green", g.ver.all_green(), "");
     set.add("AS-replay-10/10", g.rep.consistent_10(), "");
     set.add("AS-record", g.rec.readable(), "");

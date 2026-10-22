@@ -190,7 +190,7 @@ pub struct WpKeyDef {
     pub doc: &'static str,
 }
 
-/// 24 键认可集（判据点名：24 键三型分布——U32×8 / U64×8 / Bool×8）。
+/// 24 键认可集（判据点名：24 键三型分布——U32×11 / U64×5 / Bool×8）。
 pub const WP_KEYS: [WpKeyDef; WP_KEY_COUNT] = [
     WpKeyDef { name: "boot.heartbeat_ms", kind: WpKind::U32, bound: WpBound::U32Range(1, 60_000), doc: "A1 心跳间隔毫秒" },
     WpKeyDef { name: "boot.trampoline_pages", kind: WpKind::U32, bound: WpBound::U32Range(4, 1024), doc: "trampoline 预留页数" },
@@ -218,7 +218,7 @@ pub const WP_KEYS: [WpKeyDef; WP_KEY_COUNT] = [
     WpKeyDef { name: "time.legacy_route", kind: WpKind::U64, bound: WpBound::U64Range(0, 1), doc: "legacy 路由使能（0/1）" },
 ];
 
-/// 键分布断言（构建期口径，运行期复核）：U32×8 / U64×8 / Bool×8。
+/// 键分布断言（构建期口径，运行期复核）：U32×11 / U64×5 / Bool×8（与 WP_KEYS 实表同步）。
 pub fn wp_distribution() -> (usize, usize, usize) {
     let mut u32n = 0usize;
     let mut u64n = 0usize;
@@ -255,11 +255,11 @@ impl WpTable {
     pub fn build() -> Result<Self, WpDiag> {
         const NONE: Option<WpValue> = None;
         let (u32n, u64n, bn) = wp_distribution();
-        if (u32n, u64n, bn) != (8, 8, 8) {
+        if (u32n, u64n, bn) != (11, 5, 8) {
             return Err(WpDiag::new(
                 WpCode::DistributionDrift,
                 "build:dist",
-                format!("分布 {}/{} 不符冻结声明 8/8/8", u32n, u64n),
+                format!("分布 {}/{} 不符冻结声明 11/5/8", u32n, u64n),
             ));
         }
         // 键名合法性与唯一性复核。

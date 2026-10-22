@@ -471,8 +471,9 @@ pub fn drill_chain() -> (bool, String) {
     if ex.pick_target(chain, 0, &load, 42).is_err() {
         return (false, "选目标失败".to_string());
     }
-    // 段 5 签名推进（原语段）。
-    let sig5 = BeSig { seg: BeSeg::Primitive.num(), snap_fp: load.fingerprint() ^ judge.judge_fp, chain };
+    // 段 5 签名推进（原语段）。签名 snap_fp 契约 = 载荷快照指纹（advance
+    // 验签闸按此对账；混入 judge_fp 即 SigMissing——夹具原笔误，未跑通过）。
+    let sig5 = BeSig { seg: BeSeg::Primitive.num(), snap_fp: load.fingerprint(), chain };
     if ex.advance(chain, BeSeg::Primitive, &load, sig5).is_err() {
         return (false, "原语段推进失败".to_string());
     }

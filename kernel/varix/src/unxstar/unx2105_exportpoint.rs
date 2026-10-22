@@ -124,7 +124,10 @@ impl Face {
 }
 
 /// 导出记录五元：面/值/签名/单位/同窗 tick。
-#[derive(Clone, Copy, Debug)]
+///
+/// `PartialEq`：账本 `ExportPoint` 派 PartialEq 时需要整账可比较（判据
+/// `assert_eq!(ExportPoint::new(n), Err(..))` 走 Result 相等），记录元组随之。
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ExportRecord {
     /// 面。
     pub face: Face,
@@ -165,6 +168,11 @@ pub const fn unit_ok(unit: u16) -> bool {
 }
 
 /// 三面导出账 + 单点序。
+///
+/// `Debug`/`PartialEq`：判据侧 `assert_eq!(ExportPoint::new(n), Err(..))` 需要
+/// 两侧同具 Debug 与相等比较（`Result` 的 `assert_eq!` 要求两者）。
+/// 不派 `Eq`：账内 `ExportRecord` 只保证 PartialEq（含浮点域），整体不强求 Eq。
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExportPoint {
     /// 在册单点序号（构造期钉死）。
     pub seq: u64,

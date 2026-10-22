@@ -7,7 +7,9 @@
 //! disabled.
 
 pub mod engine;
+pub mod kstack;
 pub mod policy;
+pub mod switch;
 
 use core::sync::atomic::Ordering;
 
@@ -222,6 +224,11 @@ pub fn init() -> SchedDomainState {
     let _ = crate::cpu::clock::on_tick(tick_from_irq);
 
     let (passed, failed) = engine::run_scheduler_checks(&s.table);
+    // 执行层判据与策略层判据合并成同一份自检成绩：切换层若退化成「只记账」，
+    // 必须在这里现形，而不是等到真机上表现成随机跳飞。
+    let (kp, kf) = kstack::run_kstack_checks();
+    let (wp, wf) = switch::run_switch_checks();
+    let (passed, failed) = (passed + kp + wp, failed + kf + wf);
     let latency = policy::latency();
     let state = SchedDomainState {
         threads: s.table.len(),
@@ -263,16 +270,23 @@ fn tick_from_irq(_n: u64) {
         crate::ktrace!("switch {} -> {} on cpu {}", d.from, d.to, d.cpu);
         // F087 — a thread finally got the CPU after being woken.
         policy::latency().record_run();
-        let mut s = scheduler().lock();
-        let target = s.interaction.target_prio();
-        if let Some(t) = s.table.thread(d.to) {
-            let mut copy = *t;
-            if s.interaction.on_pick(&mut copy, target) {
-                if let Some(slot) = s.table.thread_mut(d.to) {
-                    *slot = copy;
+        {
+            let mut s = scheduler().lock();
+            let target = s.interaction.target_prio();
+            if let Some(t) = s.table.thread(d.to) {
+                let mut copy = *t;
+                if s.interaction.on_pick(&mut copy, target) {
+                    if let Some(slot) = s.table.thread_mut(d.to) {
+                        *slot = copy;
+                    }
                 }
             }
         }
+        // 调度器锁已在本块结束处释放——真实的寄存器切换绝不能持锁发生，
+        // 否则被切出的线程会把锁带到暂停态，目标线程一取锁就是死循环。
+        // 两个线程的现场都未登记时这里返回 NotReady，不做任何事：策略层
+        // 仍然完整运行，只是还没有硬件执行体可供切换。
+        let _ = switch::dispatch(d, cpu);
     }
 }
 
@@ -337,4 +351,91 @@ pub fn isolate_for(tid: u32, cpu: u32) -> bool {
         }
         None => false,
     }
+}
+
+// ---------------------------------------------------------------------------
+// 执行体：从「策略上可调度」到「机器上可切换」
+// ---------------------------------------------------------------------------
+
+/// 内核栈账本。所有真实线程的栈都从这里出，释放也必须回这里。
+static STACKS: crate::cpu::sync::SpinProtected<kstack::StackLedger> =
+    crate::cpu::sync::SpinProtected::new(kstack::StackLedger::new());
+
+pub fn stacks() -> &'static crate::cpu::sync::SpinProtected<kstack::StackLedger> {
+    &STACKS
+}
+
+/// 把一条已占用的线程槽与栈、现场一起退回。用于创建路径的失败回滚。
+fn rollback_thread(tid: u32) {
+    switch::frames().lock().retire(tid);
+    let physical = crate::limine::hhdm_offset().is_some();
+    let _ = STACKS.lock().release_with(tid, |p| {
+        if physical {
+            crate::mem::pmm::free_order(p, kstack::KSTACK_ORDER)
+        } else {
+            true
+        }
+    });
+}
+
+/// 创建一条**可被硬件切换**的内核线程。
+///
+/// 与 `engine::ThreadTable::spawn_on` 的区别：后者只登记调度实体，本函数
+/// 额外分配 16 KiB 连续栈、布置首帧（入口 + 收尾返回地址）、把现场登记进
+/// 现场表。三者全部成功才算创建成功，任一步失败都完整回滚——不会留下
+/// 「账上有线程、机器上没栈」的半成品。
+///
+/// 返回栈顶虚拟地址（真机）或 0（无 HHDM 的账本模式）。
+pub fn spawn_kernel_thread(
+    tid: u32,
+    prio: u8,
+    class: engine::SchedClass,
+    flags: u32,
+    cpu: u32,
+    entry: u64,
+    exit: u64,
+) -> Result<u64, kstack::StackError> {
+    if tid as usize >= engine::MAX_THREADS || cpu as usize >= crate::cpu::smp::MAX_CPUS {
+        return Err(kstack::StackError::BadTid);
+    }
+    {
+        let s = SCHED.lock();
+        if s.table.thread(tid).is_some() {
+            return Err(kstack::StackError::Duplicate);
+        }
+    }
+
+    let hhdm = crate::limine::hhdm_offset().unwrap_or(0);
+    let top = STACKS
+        .lock()
+        .alloc_with(tid, hhdm, |order| crate::mem::pmm::alloc_order(order))?;
+
+    let spec = switch::NewThreadSpec {
+        stack_top: top,
+        entry,
+        exit,
+        cr3: 0,
+        paint: hhdm != 0,
+    };
+    let frame = match switch::prepare_new_thread(&spec) {
+        Some(f) => f,
+        None => {
+            rollback_thread(tid);
+            return Err(kstack::StackError::Misaligned);
+        }
+    };
+    if !switch::frames().lock().install(tid, frame, top) {
+        rollback_thread(tid);
+        return Err(kstack::StackError::Misaligned);
+    }
+
+    let spawned = SCHED
+        .lock()
+        .table
+        .spawn_on(tid, prio, class, flags | engine::FLAG_KERNEL, cpu);
+    if !spawned {
+        rollback_thread(tid);
+        return Err(kstack::StackError::Duplicate);
+    }
+    Ok(top)
 }

@@ -302,27 +302,27 @@ pub fn run_t1482_checks() -> crate::checks::CheckSet {
     // 清单构建。
     let (a, c) = gen_batch_accounts(0x1482_0001);
     match GlList::build(&a, &c) {
-        Err(e) => set.add("GL-build", false, &format!("err 0x{:04x}", e.num())),
+        Err(e) => set.add_dyn("GL-build", false, &format!("err 0x{:04x}", e.num())),
         Ok(l) => {
             let (total, margin) = l.gate_margin();
-            set.add(
+            set.add_dyn(
                 "GL-40-batches",
                 l.rows.len() as u32 == GL_BATCHES,
                 &format!("40 批三列齐"),
             );
-            set.add(
+            set.add_dyn(
                 "GL-density-floor",
                 l.gaps.iter().all(|b| l.rows[*b as usize].density < GL_DENSITY_FLOOR)
                     && l.rows.iter().filter(|r| r.is_gap()).count() as u64 == l.gaps.len() as u64,
                 &format!("缺口 {} 批（红线 {}）", l.gaps.len(), GL_DENSITY_FLOOR),
             );
-            set.add(
+            set.add_dyn(
                 "GL-gate-margin",
                 l.gate_consistent(),
                 &format!("大关 {}：总数 {} 差额 {}", GL_DOMAIN_GATE, total, margin),
             );
             let exported = l.export();
-            set.add(
+            set.add_dyn(
                 "GL-export",
                 exported.len() == l.gaps.len(),
                 &format!("导出 {} 行", exported.len()),
@@ -333,7 +333,7 @@ pub fn run_t1482_checks() -> crate::checks::CheckSet {
             set.add("GL-inject-10/10", inj.all_caught(), "");
             // 判据总门。
             let ok = l.gate_consistent() && inj.all_caught();
-            set.add(
+            set.add_dyn(
                 "UNX-F1482-J1",
                 ok,
                 &format!(

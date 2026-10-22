@@ -20,6 +20,10 @@
 //!
 //! 时间注入式（微秒戳），宿主测试确定复现。无外部依赖。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
@@ -116,8 +120,8 @@ impl<'a> SourceFrame<'a> {
 
     /// 双线性采样：四邻插值（8x 以上像素画观察平滑）。
     pub fn sample_bilinear(&self, fx: f64, fy: f64) -> (u8, u8, u8) {
-        let x0 = fx.floor().max(0.0) as u32;
-        let y0 = fy.floor().max(0.0) as u32;
+        let x0 = fx.m_floor().max(0.0) as u32;
+        let y0 = fy.m_floor().max(0.0) as u32;
         let x1 = x0.saturating_add(1);
         let y1 = y0.saturating_add(1);
         let dx = fx - x0 as f64;
@@ -127,7 +131,7 @@ impl<'a> SourceFrame<'a> {
         let c01 = self.px(x0, y1);
         let c11 = self.px(x1, y1);
         let lerp = |a: u8, b: u8, t: f64| -> u8 {
-            (a as f64 * (1.0 - t) + b as f64 * t).round().clamp(0.0, 255.0) as u8
+            (a as f64 * (1.0 - t) + b as f64 * t).m_round().clamp(0.0, 255.0) as u8
         };
         let top = (lerp(c00.0, c10.0, dx), lerp(c00.1, c10.1, dx), lerp(c00.2, c10.2, dx));
         let bot = (lerp(c01.0, c11.0, dx), lerp(c01.1, c11.1, dx), lerp(c01.2, c11.2, dx));

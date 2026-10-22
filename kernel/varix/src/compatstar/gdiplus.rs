@@ -20,6 +20,10 @@
 //!
 //! 零堆纪律：路径顶点/位图池/对拍样本全定长，无 Vec/String/Box/format!。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
@@ -685,7 +689,7 @@ impl PathGradientGeom {
         }
         let nx = (x - self.cx) / self.rx;
         let ny = (y - self.cy) / self.ry;
-        let d = (nx * nx + ny * ny).sqrt(); // 归一化椭圆距离 0..∞
+        let d = (nx * nx + ny * ny).m_sqrt(); // 归一化椭圆距离 0..∞
         let focus = self.focus_permille.min(1000) as f32 / 1000.0;
         if focus >= 1.0 {
             return 0; // 焦点放大到全径 → 全域中心色
@@ -726,8 +730,8 @@ pub fn map_dst_to_src(
 /// 灰度 AA 覆盖率（VARIX 文本管线灰度 AA 的量化模型：1px 宽笔画的箱式滤波
 /// 覆盖 = 1 − 小数偏移；ClearType 亚像素不承诺——本函数即差异表的实现面）。
 pub fn gray_aa_coverage(stem_left_frac: f32) -> u8 {
-    let f = stem_left_frac.fract().abs();
-    ((1.0 - f) * 255.0).round().clamp(0.0, 255.0) as u8
+    let f = stem_left_frac.m_fract().abs();
+    ((1.0 - f) * 255.0).m_round().clamp(0.0, 255.0) as u8
 }
 
 #[cfg(test)]
@@ -1135,7 +1139,7 @@ pub fn run_gdiplus_deep4_checks() -> CheckSet {
 
 /// 像素吸附：`round(v - 0.5)` 吸附左边缘（Windows 同语义——半像素边界归左）。
 pub fn snap_left_half(v: f32) -> i32 {
-    (v - 0.5).round() as i32
+    (v - 0.5).m_round() as i32
 }
 
 /// 宽度吸附：吸附后宽度 ≥1（零宽线条如实升 1px——不可见线条是缺陷）。

@@ -11,6 +11,10 @@
 //!
 //! 零堆纪律：静态系数表，无 alloc。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -162,7 +166,7 @@ pub fn resolve_target(query_tail: Option<&str>, family: Family, region: &RegionD
 
 /// 换算卡输出文本（复制即所见；保留 4 位有效小数）。
 pub fn card_text(v: f64, from: &str, to: &str) -> Option<f64> {
-    convert(v, from, to).map(|r| (r * 10_000.0).round() / 10_000.0)
+    convert(v, from, to).map(|r| (r * 10_000.0).m_round() / 10_000.0)
 }
 
 // ---------------------------------------------------------------------------
@@ -591,7 +595,7 @@ pub fn sig4(v: f64) -> f64 {
         mag /= 10.0;
     }
     // mantissa ∈ [1,10) → 取 4 位有效数 = round(mantissa×1000)。
-    let scaled = (m * 1_000.0).round();
+    let scaled = (m * 1_000.0).m_round();
     let r = scaled * mag / 1_000.0;
     if v < 0.0 {
         -r

@@ -64,6 +64,10 @@
 //! **先分清责任方再改代码**，否则会把正确的实现改坏、把正确的
 //! 参照改坏。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -86,7 +90,7 @@ use crate::checks::CheckSet;
 /// 但参照已无参照价值**（弱门禁：判据写错比没判据更坏）。
 fn pow2(x: f64) -> f64 {
     let bits = x * core::f64::consts::LN_2;
-    let e = bits.floor();
+    let e = bits.m_floor();
     let f = bits - e;
     // 泰勒展开 exp(f)
     let mut fr = 1.0f64;
@@ -162,7 +166,7 @@ fn quad_ref(n_dot_v: f64, roughness: f64, n_th: u32, n_ph: u32) -> (f64, f64) {
     let a2 = alpha * alpha;
     // 约定几何：N = +Z，V 置于 xz 平面 ⇒ NdotV = v（旋转不变性保证
     // 不失一般性）。
-    let vx = (1.0 - v * v).max(0.0).sqrt();
+    let vx = (1.0 - v * v).max(0.0).m_sqrt();
     let mut scale = 0.0f64;
     let mut bias = 0.0f64;
     let th_n = n_th.max(1) as f64;
@@ -173,19 +177,19 @@ fn quad_ref(n_dot_v: f64, roughness: f64, n_th: u32, n_ph: u32) -> (f64, f64) {
     while ti < n_th {
         // 纹素中心取样（中点法），避免把 θ=0 与 π/2 的端点计入。
         let th = (ti as f64 + 0.5) * d_th;
-        let s_th = th.sin();
-        let ct = th.cos();
+        let s_th = th.m_sin();
+        let ct = th.m_cos();
         let mut pi = 0u32;
         while pi < n_ph {
             let ph = (pi as f64 + 0.5) * d_ph;
-            let lx = s_th * ph.cos();
-            let ly = s_th * ph.sin();
+            let lx = s_th * ph.m_cos();
+            let ly = s_th * ph.m_sin();
             let lz = ct;
             // h = normalize(V + L)
             let hx = vx + lx;
             let hy = ly;
             let hz = v + lz;
-            let hl = (hx * hx + hy * hy + hz * hz).sqrt();
+            let hl = (hx * hx + hy * hy + hz * hz).m_sqrt();
             pi += 1;
             if hl <= 1.0e-12 {
                 continue;
@@ -1491,7 +1495,7 @@ pub fn run_vej09_checks_b() -> CheckSet {
                         CubeFace::PosZ => (uu, -vv, 1.0),
                         CubeFace::NegZ => (-uu, -vv, -1.0),
                     };
-                    let l = (d.0 * d.0 + d.1 * d.1 + d.2 * d.2).sqrt();
+                    let l = (d.0 * d.0 + d.1 * d.1 + d.2 * d.2).m_sqrt();
                     let dir = (d.0 / l, d.1 / l, d.2 / l);
                     let got = cube.sample_dir_nearest(dir);
                     let want_idx = (f * (e as usize) * (e as usize)
@@ -1519,7 +1523,7 @@ pub fn run_vej09_checks_b() -> CheckSet {
     {
         // 峰位在 `α* = sqrt((1−NdotH²)/NdotH²)`（对固定 NdotH 求极值）。
         let nh = 0.8f32;
-        let a_star = ((1.0 - nh * nh) / (nh * nh)).sqrt();
+        let a_star = ((1.0 - nh * nh) / (nh * nh)).m_sqrt();
         let mut best_a = 0.0f32;
         let mut best_d = -1.0f32;
         let mut i = 0u32;

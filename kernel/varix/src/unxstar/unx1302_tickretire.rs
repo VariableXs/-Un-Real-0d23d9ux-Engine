@@ -346,7 +346,7 @@ pub fn run_t1302_checks() -> crate::checks::CheckSet {
     set.add("TR-order-frozen", order_ok, "F1284 次序冻结");
     // 10/10 演练。
     let (ok, rounds, _notes) = drill_10_rounds(0x1302_0001);
-    set.add(
+    set.add_dyn(
         "TR-10-rounds",
         ok,
         &format!("全退役 {}/{} 轮 守恒 100%", rounds, TR_ROUNDS),
@@ -357,7 +357,7 @@ pub fn run_t1302_checks() -> crate::checks::CheckSet {
     set.add("TR-inject-4/4", inj.all_caught(), "");
     // 判据总门。
     let ok_all = ok && inj.all_caught();
-    set.add(
+    set.add_dyn(
         "UNX-F1302-J1",
         ok_all,
         &format!(

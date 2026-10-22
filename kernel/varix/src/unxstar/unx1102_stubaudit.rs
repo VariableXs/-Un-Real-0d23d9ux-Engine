@@ -197,6 +197,20 @@ impl SaLedger {
         }
     }
 
+    /// 新账（接续全局序号）：滚动换段时新账的 `next_seq` 必须接上泵的全局
+    /// seq，否则每条登记都撞 `SeqGap`——而满账封存分支对 `record` 失败的
+    /// 处理是「封段重开 + continue 不推进 i」，恒错配即恒死循环。
+    pub fn with_start_seq(start: u64) -> Self {
+        SaLedger {
+            entries: Vec::new(),
+            next_seq: start,
+            overflow_count: 0,
+            broken_count: 0,
+            offset_bad_count: 0,
+            dup_count: 0,
+        }
+    }
+
     /// 登记一次完整路径注入（四级全部给出，断链即判定入账）。
     /// stages：按登记序给出的级号序列（如 [0,1,2,3] 全链；[0,1,3] 缺级 2）。
     /// offsets：与 stages 等长的实测偏移。
@@ -406,7 +420,7 @@ pub fn pump_100k() -> (bool, String) {
             seg_fp_chain = seg_fp_chain ^ seg.replay_fingerprint();
             seg_fp_chain = seg_fp_chain.wrapping_mul(0x0000_0100_0000_01b3);
             segs += 1;
-            seg = SaLedger::new();
+            seg = SaLedger::with_start_seq(seq);
         }
         // 通道轮转（三通道闭集轮询，覆盖全部通道）。
         let ch = SaChannel::from_num((i % 3) as u8).unwrap_or(SaChannel::Exception);
@@ -422,7 +436,7 @@ pub fn pump_100k() -> (bool, String) {
             seg_fp_chain = seg_fp_chain ^ seg.replay_fingerprint();
             seg_fp_chain = seg_fp_chain.wrapping_mul(0x0000_0100_0000_01b3);
             segs += 1;
-            seg = SaLedger::new();
+            seg = SaLedger::with_start_seq(seq);
             continue;
         }
         i += 1;

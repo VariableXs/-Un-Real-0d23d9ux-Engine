@@ -21,6 +21,7 @@
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 模块版本。
 pub const WS_VERSION: &str = "vcw07_docsec-v1";
@@ -368,7 +369,7 @@ pub fn run_tw07_checks() -> crate::checks::CheckSet {
     // 三场注入。
     g.inj.inject_all(&mut g.filter);
     let (ok, msg) = g.judge();
-    set.add("CGPU-F3528-J1", ok, &msg);
+    set.add_dyn("CGPU-F3528-J1", ok, &msg);
     set.add("WS-mark-gate", g.filter.by_mark >= 2, "");
     set.add("WS-scan-double", g.filter.by_scan >= 1, "");
     set.add("WS-reuse-consistent", g.reuser.consistent(), "");

@@ -21,6 +21,10 @@
 // 上游 F0803 的点与围向类型须显式引入：本模块的 `use super::vee04_raster::*`
 // 只能拿到 vee04 内的**公开**项，而 vee04 对 Point/Winding 的引入是私有的
 // （私有 use 不参与 glob 再导出）——漏这一行会在 Point/Winding 上报 E0433。
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use super::vee03_outline::{Point, Winding};
 use super::vee04_raster::*;
 use crate::checks::CheckSet;
@@ -196,7 +200,7 @@ pub fn run_vee04_checks() -> CheckSet {
     // （`round(255·(i/255)^(1/2.2))`，容差 ±2/255），任一处对不上即判红。
     {
         fn gamma_ref(i: u32) -> f64 {
-            255.0 * (i as f64 / 255.0).powf(1.0 / 2.2)
+            255.0 * (i as f64 / 255.0).m_powf(1.0 / 2.2)
         }
         let mut mono = true;
         for i in 1..256usize {
@@ -208,7 +212,7 @@ pub fn run_vee04_checks() -> CheckSet {
         let mut table_ok = true;
         let mut worst = 0i32;
         for i in [0u32, 1, 4, 16, 32, 48, 64, 96, 128, 160, 192, 224, 250, 255] {
-            let expect = gamma_ref(i).round() as i32;
+            let expect = gamma_ref(i).m_round() as i32;
             let d = GAMMA_LUT[i as usize] as i32 - expect;
             if d.abs() > 2 {
                 table_ok = false;

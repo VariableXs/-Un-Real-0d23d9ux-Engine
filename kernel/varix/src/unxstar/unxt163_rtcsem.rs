@@ -151,6 +151,45 @@ impl t163Code {
 /// CMOS/RTC 寄存器语义表（索引↔地址↔语义）。
 pub const RTC_REG_COUNT: usize = 16;
 
+/// 寄存器语义键（`rtc_reg` 表第一列的键域 · 16 枚闭集 · 顺序即 CMOS 地址序）。
+///
+/// 修正记录（E0425 ×16，本席 AI-5 接入时暴露）：`rtc_reg` 表原本直接引用
+/// `RTC_SEC`/`RTC_MIN`/… 这 16 个语义键名，但**全文件从未定义它们**——
+/// 表在、键名缺 ⇒ 16 条 E0425，模块自诞生起就编译不过（`mod.rs` 尾部
+/// 把它注释掉是合理的保护，本席把原因补记在此）。
+/// 语义键的唯一真源即 CMOS 索引序，故直接以索引值定义（可推导关系，非孤立常数）。
+pub const RTC_SEC: u8 = 0x00;
+/// 秒报警寄存器（索引 0x01）。
+pub const RTC_SEC_ALARM: u8 = 0x01;
+/// 分寄存器（索引 0x02）。
+pub const RTC_MIN: u8 = 0x02;
+/// 分报警寄存器（索引 0x03）。
+pub const RTC_MIN_ALARM: u8 = 0x03;
+/// 小时寄存器（索引 0x04 · 12/24 小时制由 B 位定）。
+pub const RTC_HOUR: u8 = 0x04;
+/// 小时报警寄存器（索引 0x05）。
+pub const RTC_HOUR_ALARM: u8 = 0x05;
+/// 星期寄存器（索引 0x06）。
+pub const RTC_WEEKDAY: u8 = 0x06;
+/// 日寄存器（索引 0x07）。
+pub const RTC_DAY: u8 = 0x07;
+/// 月寄存器（索引 0x08）。
+pub const RTC_MONTH: u8 = 0x08;
+/// 年寄存器（索引 0x09 · 两位年份）。
+pub const RTC_YEAR: u8 = 0x09;
+/// 状态 A（索引 0x0A · UIP 位 + 速率选择）。
+pub const RTC_STAT_A: u8 = 0x0A;
+/// 状态 B（索引 0x0B · 格式/周期中断/方波使能）。
+pub const RTC_STAT_B: u8 = 0x0B;
+/// 状态 C（索引 0x0C · 中断标志，只读清）。
+pub const RTC_STAT_C: u8 = 0x0C;
+/// 状态 D（索引 0x0D · 电池有效位）。
+pub const RTC_STAT_D: u8 = 0x0D;
+/// 诊断寄存器（索引 0x0E · 磁盘类型，遗留语义）。
+pub const RTC_DIAG: u8 = 0x0E;
+/// 复位码寄存器（索引 0x0F · 遗留语义）。
+pub const RTC_RESET: u8 = 0x0F;
+
 /// 冻结表本体（编译期常量，运行期只读）。
 pub static rtc_reg: [(u8, u64); 16] = [
     (RTC_SEC, 0x00), // 秒寄存器（BCD 或二进制由 B 位定）
@@ -633,12 +672,17 @@ fn t163_guard_seg() -> bool {
 
 /// CMOS 寄存器表地址序与索引恒等（0x00..=0x0F 16 项）。
 fn check_c1_rtc_reg_table() -> bool {
-    let mut ok = rtc_reg_COUNT == 16;
-    let mut i = 0u8;
-    while i < 16 {
-        match rtc_reg_get(i) {
+    // 修正记录（E0425 ×2，本席 AI-5 接入时暴露）：原写 `rtc_reg_COUNT == 16`
+    // ——常量实名是 `RTC_REG_COUNT`（全大写），原写法大小写不符 ⇒ 找不到值。
+    // 同时把裸 16 换成真源常量并循环到 `RTC_REG_COUNT`：
+    // 判据的强度**不减反增**——原判据的 `i < 16` 与表长是两处独立数字，
+    // 表长若变则循环仍按 16 走（漏检尾部）；现两者同源于一个常量。
+    let mut ok = RTC_REG_COUNT == 16;
+    let mut i = 0usize;
+    while i < RTC_REG_COUNT {
+        match rtc_reg_get(i as u8) {
             Some(v) => {
-                if v as u8 != i {
+                if v as u8 != i as u8 {
                     ok = false;
                 }
             }
@@ -651,12 +695,12 @@ fn check_c1_rtc_reg_table() -> bool {
 
 /// BCD 表 100 项键值恒等 + 求和守恒。
 fn check_c2_bcd_table() -> bool {
-    let mut ok = bcd_bin_COUNT == 100;
-    let mut i: u8 = 0;
-    while i < 100 {
-        match bcd_bin_get(i) {
+    let mut ok = BCD_BIN_COUNT == 100;
+    let mut i: usize = 0;
+    while i < BCD_BIN_COUNT {
+        match bcd_bin_get(i as u8) {
             Some(v) => {
-                if v as u8 != i {
+                if v as u8 != i as u8 {
                     ok = false;
                 }
             }

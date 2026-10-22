@@ -1,3 +1,4 @@
+
 //! unx2103_sysfstune —— UNX-F2103 sysfs 调参面（只读区+受控热调双区）。
 //! 锚点（CoRun Unxreal 主册 UNX-A3-B26）：UNX-F2103 · sysfs 调参面（只读区+受控热调双区） · 目标 300 行 · 已深化
 //! 判据原文：UNX-F2103-J1 双区断言全过（只读视图/受控热调分界清晰），热调走
@@ -26,6 +27,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 常量与判码
@@ -507,7 +509,12 @@ pub fn run_unx2103_checks() -> CheckSet {
         SysNode { path: "/a".to_string(), zone: Zone::Ro, vtype: ValType::Int, iv: 0, sv: String::new() },
         SysNode { path: "/a".to_string(), zone: Zone::Tunable, vtype: ValType::Int, iv: 0, sv: String::new() },
     ]);
-    cs.add("跨区复现必拒", dup == Err(C_NODE_DUP), "");
+    // 修正记录：原写 `dup == Err(C_NODE_DUP)`（E0369 实锤）——`Sysfs::new`
+    // 返回 `Result<Sysfs, u16>`，而 `Result` 未实现 `PartialEq`（且 `Sysfs`
+    // 含 `Vec<SysNode>` 也不可能 Copy/PartialEq）。改按错误分支判定：
+    // 跨区复现必须落在 `Err(C_NODE_DUP)` 分支上。
+    let dup_rejected = matches!(dup, Err(code) if code == C_NODE_DUP);
+    cs.add("跨区复现必拒", dup_rejected, "");
 
     // J-4 越权写 10/10 全拒（判据③）。
     let (pass, total) = ban_probe(&mut fs);
@@ -565,7 +572,10 @@ mod tests {
             SysNode { path: "/x".to_string(), zone: Zone::Ro, vtype: ValType::Int, iv: 0, sv: String::new() },
             SysNode { path: "/x".to_string(), zone: Zone::Tunable, vtype: ValType::Int, iv: 0, sv: String::new() },
         ]);
-        assert_eq!(dup, Err(C_NODE_DUP));
+        // 修正记录：原为 `assert_eq!(dup, Err(C_NODE_DUP))`（E0369/E0277 实锤）——
+        // `Result<Sysfs, u16>` 两侧无 PartialEq/Debug（`Sysfs` 含 `Vec`）。
+        // 改为按错误分支断言，口径与同文件「跨区复现必拒」判据一致。
+        assert!(matches!(dup, Err(code) if code == C_NODE_DUP));
     }
 
     #[test]

@@ -1409,9 +1409,17 @@ mod tests {
     #[test]
     fn perf_red_items() {
         let set = run_vem07_checks();
-        for name in set.red_items() {
-            println!("[红] {}", name);
+        // `red_items()` 返回 (全量条目数组, 红项数) 而非迭代器（见 `checks.rs`），
+        // 红项列表要用 `get(i)` 逐项过滤才是真的。
+        let (_all, reds) = set.red_items();
+        let mut i = 0usize;
+        while let Some(c) = set.get(i) {
+            if !c.passed {
+                println!("[红] {}", c.name);
+            }
+            i += 1;
         }
+        let _ = reds;
         println!("total={} passed={} dropped={}", set.len(), set.passed_count(), set.dropped());
     }
 }

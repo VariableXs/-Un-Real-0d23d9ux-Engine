@@ -555,7 +555,7 @@ pub fn run_t2001_checks() -> crate::checks::CheckSet {
     set.add("SU-sites-direct", sites_ok, "tick/wakeup/switch 三点直调零滞后");
     // 10/10 演练。
     let (ok, rounds, maps) = drill_10_rounds(0x2001_0001);
-    set.add(
+    set.add_dyn(
         "SU-drill-10/10",
         ok,
         &format!("映射正确 {}/10 轮 maps={}", rounds, maps),
@@ -565,13 +565,13 @@ pub fn run_t2001_checks() -> crate::checks::CheckSet {
         inj: SuInjector::new(),
     };
     gate.inj.inject_all();
-    set.add(
+    set.add_dyn(
         "SU-inject-10/10",
         gate.inj.all_caught(),
         &format!("{}/{}", gate.inj.caught, gate.inj.cases),
     );
     // 判据总门。
     let (jok, msg) = gate.judge(ok, rounds, maps);
-    set.add("UNX-F2001-J1", jok, &msg);
+    set.add_dyn("UNX-F2001-J1", jok, &msg);
     set
 }

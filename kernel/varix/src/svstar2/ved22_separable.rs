@@ -141,6 +141,10 @@
 //!
 //! 逻辑 tick 注入，零墙钟；全部确定性算法、零 IO，回归可复现。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 // no_std 导入三件套 + Box：IR 用 Box 承载递归表达式树。
@@ -766,7 +770,7 @@ fn eval_node(n: &Ir, cb: f32, cs: f32, log: &mut DivZeroLog) -> f32 {
             }
         }
         Ir::Abs(a) => eval_node(a, cb, cs, log).abs(),
-        Ir::Sqrt(a) => eval_node(a, cb, cs, log).sqrt(),
+        Ir::Sqrt(a) => eval_node(a, cb, cs, log).m_sqrt(),
         Ir::SelectOnCb(lo, hi) => {
             if cb <= SOFT_LIGHT_CB_SPLIT {
                 eval_node(lo, cb, cs, log)
@@ -1052,7 +1056,7 @@ fn eval_node_simd(n: &Ir, cb: f32, cs: f32, ops: &mut SimdOp, log: &mut DivZeroL
             v
         }
         Ir::Sqrt(a) => {
-            let v = eval_node_simd(a, cb, cs, ops, log).sqrt();
+            let v = eval_node_simd(a, cb, cs, ops, log).m_sqrt();
             ops.unary = ops.unary.saturating_add(1);
             v
         }
@@ -1139,7 +1143,7 @@ pub fn oracle(mode: SepMode, cb: f32, cs: f32) -> f32 {
                 let d = if b <= 0.25 {
                     ((16.0 * b - 12.0) * b + 4.0) * b
                 } else {
-                    b.sqrt()
+                    b.m_sqrt()
                 };
                 b + (2.0 * s - 1.0) * (d - b)
             }
@@ -1253,7 +1257,7 @@ fn format_k(v: f32) -> String {
     // 定点打印（不用 `{}` 的最短往返格式——那会产出 `0.25` / `1` 混杂的
     // 文本，WGSL 里 `1` 是合法的 i32 字面量却会在 `1.0` 上下文里被
     // 抽象成 AbstractInt，交给 F0628 的模板绑定时是坑）。
-    if v == v.trunc() {
+    if v == v.m_trunc() {
         format!("{:.1}", v)
     } else {
         format!("{:.6}", v)
@@ -1682,7 +1686,7 @@ pub const RAMP: [char; 10] = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@'];
 /// 灰阶取字符（值域外钳制到两端，**不 panic**）。
 pub fn ramp_char(v: f32) -> char {
     let (c, _) = clamp_channel(v);
-    let i = (c * 9.0).round() as isize;
+    let i = (c * 9.0).m_round() as isize;
     let idx = if i < 0 {
         0usize
     } else if i > 9 {

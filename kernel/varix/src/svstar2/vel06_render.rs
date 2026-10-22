@@ -44,6 +44,10 @@
 //! 零 IO、零墙钟；时间以帧号注入不取系统时钟，故同输入双跑逐位一致。
 //! 无隐私面。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -367,7 +371,7 @@ pub struct RenderStats {
 /// 向量长度（零向量返回 0）。
 fn len3(v: [f32; 3]) -> f32 {
     let s = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
-    if s > 0.0 && s.is_finite() { s.sqrt() } else { 0.0 }
+    if s > 0.0 && s.is_finite() { s.m_sqrt() } else { 0.0 }
 }
 
 /// 归一化；零向量或非有限返回 `None`（调用方据拒绝/退化处理，不静默）。

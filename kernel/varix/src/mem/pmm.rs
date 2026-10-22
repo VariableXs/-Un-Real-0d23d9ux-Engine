@@ -190,6 +190,95 @@ impl Default for BadFrames {
 // F052 — buddy allocator
 // ---------------------------------------------------------------------------
 
+/// 一次 `free` 被拒的原因。**每一类都对应一种会让空闲表失去自洽的输入**，
+/// 所以拒绝是安全性的必要条件，不是「保守」：
+///
+/// - [`BadOrder`](FreeReject::BadOrder)：order 超出 `MAX_ORDER`，移位会越界；
+/// - [`NotManaged`](FreeReject::NotManaged)：首帧不在本区——把别处的帧还进来
+///   等于凭空增加本区容量；
+/// - [`Unaligned`](FreeReject::Unaligned)：`frame` 不是 `2^order` 的整数倍。
+///   buddy 是 `frame ^ (1<<order)`，未对齐时这个式子指向的不是兄弟块，
+///   合并会把两个不相邻的块焊在一起；
+/// - [`OutOfRange`](FreeReject::OutOfRange)：块尾越过 `base + count`；
+/// - [`HoleInBlock`](FreeReject::HoleInBlock)：块内夹着非 managed 帧。
+///   跨洞合并在后续 `alloc` 时会交出保留帧；
+/// - [`DoubleFree`](FreeReject::DoubleFree)：该区间已在空闲表里。这是最
+///   昂贵的一类——不拒绝的话同一段物理内存会被分配两次，两个所有者各写
+///   一半，故障点在几百次分配之后才现形。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FreeReject {
+    BadOrder,
+    NotManaged,
+    Unaligned,
+    OutOfRange,
+    HoleInBlock,
+    DoubleFree,
+}
+
+impl FreeReject {
+    /// 稳定的诊断码下标（计数器数组用；新增变体只能追加）。
+    const fn index(self) -> usize {
+        match self {
+            FreeReject::BadOrder => 0,
+            FreeReject::NotManaged => 1,
+            FreeReject::Unaligned => 2,
+            FreeReject::OutOfRange => 3,
+            FreeReject::HoleInBlock => 4,
+            FreeReject::DoubleFree => 5,
+        }
+    }
+
+    /// 计数槽数量。与 `index()` 的取值域同源，新增变体时两处一起改。
+    pub const KINDS: usize = 6;
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            FreeReject::BadOrder => "bad-order",
+            FreeReject::NotManaged => "not-managed",
+            FreeReject::Unaligned => "unaligned",
+            FreeReject::OutOfRange => "out-of-range",
+            FreeReject::HoleInBlock => "hole-in-block",
+            FreeReject::DoubleFree => "double-free",
+        }
+    }
+}
+
+/// `free` 的完整结论。`bool` 版的 `free` 只回答「成没成」，这里保留原因。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FreeVerdict {
+    Released,
+    Rejected(FreeReject),
+}
+
+impl FreeVerdict {
+    pub const fn released(self) -> bool {
+        matches!(self, FreeVerdict::Released)
+    }
+}
+
+/// 空闲表自洽性审计结果。**只读**，不修表——发现不一致时如实上报，
+/// 由调用方决定隔离还是停机；静默「修好」会把双重分配藏得更深。
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct FreeAudit {
+    /// 各阶链表长度之和（按块计）。
+    pub blocks: u32,
+    /// 各阶块大小之和，应等于 `free_frames`。
+    pub frames: u32,
+    /// 头帧未被 managed / 未按阶对齐 / 越界的块数。
+    pub malformed: u32,
+    /// 同一头帧在两条链上重复出现的次数。
+    pub duplicate: u32,
+    /// 两块覆盖同一帧（未被 duplicate 捕获的重叠形态）。
+    pub overlap: u32,
+}
+
+impl FreeAudit {
+    /// 审计通过 = 计数对得上且没有结构性问题。
+    pub fn clean(&self, free_frames: u32) -> bool {
+        self.frames == free_frames && self.malformed == 0 && self.duplicate == 0 && self.overlap == 0
+    }
+}
+
 /// The buddy zone. Free blocks are threaded through `free_next`, which is
 /// indexed by frame number — the same trick real kernels use (storing the link
 /// inside the free page) without needing the page to be mapped first.
@@ -208,6 +297,8 @@ pub struct BuddyAllocator {
     free_frames: u32,
     splits: u32,
     coalesces: u32,
+    /// 各类拒绝的累计次数，下标见 [`FreeReject::index`]。
+    rejected: [u32; FreeReject::KINDS],
 }
 
 impl BuddyAllocator {
@@ -222,6 +313,7 @@ impl BuddyAllocator {
             free_frames: 0,
             splits: 0,
             coalesces: 0,
+            rejected: [0; FreeReject::KINDS],
         }
     }
 
@@ -235,6 +327,7 @@ impl BuddyAllocator {
         self.free_frames = 0;
         self.splits = 0;
         self.coalesces = 0;
+        self.rejected = [0; FreeReject::KINDS];
         // Span the whole addressable range: a bitmap with `len == 0` would
         // silently refuse every `set`, leaving the zone with nothing to seed.
         self.managed.reset(MAX_FRAMES);
@@ -368,14 +461,26 @@ impl BuddyAllocator {
     }
 
     /// Return a block, merging with its buddy as far up as it can go.
+    ///
+    /// 这是 `bool` 形态的兼容入口：只回答成败。需要知道「为什么被拒」的
+    /// 调用方走 [`free_checked`](Self::free_checked)——拒绝原因决定处置方式
+    /// （坏指针要隔离帧、重复释放要记日志、越界是调用方 bug）。
     pub fn free(&mut self, frame: u32, order: usize) -> bool {
-        if order > MAX_ORDER || !self.managed.get(frame as usize) {
-            return false;
+        self.free_checked(frame, order).released()
+    }
+
+    /// 带原因的释放。**六道门全部在动表之前**，任一不过则空闲表一字未动——
+    /// 失败不留半截状态，这是可重试的前提。
+    pub fn free_checked(&mut self, frame: u32, order: usize) -> FreeVerdict {
+        if let Some(reason) = self.check_free(frame, order) {
+            self.rejected[reason.index()] = self.rejected[reason.index()].saturating_add(1);
+            return FreeVerdict::Rejected(reason);
         }
         let mut cur = frame;
         let mut cur_order = order;
         while cur_order < MAX_ORDER {
             let buddy = Self::buddy_of(cur, cur_order);
+            // 结尾对齐：合并只在同一父块内发生，兄弟必须在区间内。
             if buddy < self.base || buddy >= self.base + self.count {
                 break;
             }
@@ -389,8 +494,118 @@ impl BuddyAllocator {
             cur_order += 1;
         }
         self.push_free(cur, cur_order);
-        self.free_frames += 1 << order;
-        true
+        self.free_frames = self.free_frames.saturating_add(1 << order);
+        FreeVerdict::Released
+    }
+
+    /// 释放前的六道门。返回 `None` 表示可以通过。
+    ///
+    /// 顺序是按「代价从低到高」排的：前四道是 O(1)，第五道 O(2^order)
+    /// （最大 512 次位读，free 不在热路径），第六道 O(MAX_ORDER)。
+    fn check_free(&self, frame: u32, order: usize) -> Option<FreeReject> {
+        if order > MAX_ORDER {
+            return Some(FreeReject::BadOrder);
+        }
+        // 1. 首帧必须属于本区。`managed.get` 对越界帧返回 false，
+        //    所以这一条同时挡掉 frame >= MAX_FRAMES。
+        if !self.managed.get(frame as usize) {
+            return Some(FreeReject::NotManaged);
+        }
+        // 2. 对齐：buddy 运算的定义域是「2^order 对齐的块」。
+        let size = 1u32 << order;
+        if frame & (size - 1) != 0 {
+            return Some(FreeReject::Unaligned);
+        }
+        // 3. 整块落在本区尾界内。用 u64 比较，避免 base+count 的 u32 回绕。
+        let end = frame as u64 + size as u64;
+        if end > self.base as u64 + self.count as u64 {
+            return Some(FreeReject::OutOfRange);
+        }
+        // 4. 块内每一帧都必须 managed——跨洞块一旦入表，alloc 会交出保留帧。
+        for f in frame..frame + size {
+            if !self.managed.get(f as usize) {
+                return Some(FreeReject::HoleInBlock);
+            }
+        }
+        // 5. 重复释放：包含 frame 的空闲块，其头帧必然形如
+        //    `frame & !(2^k - 1)`。逐阶向上找一遍即可，不必扫全表。
+        let mut k = order;
+        loop {
+            let head = frame & !((1u32 << k) - 1);
+            if self.is_free_block(head, k) {
+                return Some(FreeReject::DoubleFree);
+            }
+            if k == MAX_ORDER {
+                break;
+            }
+            k += 1;
+        }
+        None
+    }
+
+    /// 某类拒绝的累计次数。
+    pub fn rejected(&self, reason: FreeReject) -> u32 {
+        self.rejected[reason.index()]
+    }
+
+    /// 全部拒绝次数之和——「分配器被喂过多少坏输入」的单一读数。
+    pub fn rejected_total(&self) -> u32 {
+        self.rejected.iter().sum()
+    }
+
+    /// 空闲表自洽性审计：结构 + 计数双面。
+    ///
+    /// 三条不变量：
+    /// 1. 每条链上的头帧都 managed、按该阶对齐、整块不越界；
+    /// 2. 同一头帧不得出现在两条链上（否则同一块被算两次）；
+    /// 3. 任意两个空闲块不得覆盖同一帧（跨阶重叠）。
+    ///
+    /// 第 3 条用「块覆盖标记」实现：审计是 O(free_frames) 次位操作，
+    /// 只在体检时跑，不进分配热路径。
+    pub fn audit(&self) -> FreeAudit {
+        let mut out = FreeAudit::default();
+        let mut seen_head = [false; MAX_FRAMES];
+        let mut covered = [false; MAX_FRAMES];
+        for order in 0..ORDER_COUNT {
+            let size = 1u32 << order;
+            let mut cur = self.free_head[order];
+            let mut guard = 0usize;
+            while cur != NO_FRAME {
+                // 链表成环是致命结构错误：计数后立即停，避免审计自身挂死。
+                guard += 1;
+                if guard > MAX_FRAMES {
+                    out.malformed += 1;
+                    break;
+                }
+                out.blocks += 1;
+                out.frames = out.frames.saturating_add(size);
+                let ok = (cur as usize) < MAX_FRAMES
+                    && self.managed.get(cur as usize)
+                    && cur & (size - 1) == 0
+                    && (cur as u64 + size as u64) <= self.base as u64 + self.count as u64;
+                if !ok {
+                    out.malformed += 1;
+                } else {
+                    if seen_head[cur as usize] {
+                        out.duplicate += 1;
+                    }
+                    seen_head[cur as usize] = true;
+                    for f in cur..cur + size {
+                        if covered[f as usize] {
+                            out.overlap += 1;
+                        }
+                        covered[f as usize] = true;
+                    }
+                }
+                let next = self.free_next[cur as usize];
+                if next == cur {
+                    out.malformed += 1;
+                    break;
+                }
+                cur = next;
+            }
+        }
+        out
     }
 
     fn unlink(&mut self, frame: u32, order: usize) -> bool {

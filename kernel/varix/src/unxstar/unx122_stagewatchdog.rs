@@ -55,7 +55,9 @@ pub const FNV_OFFSET: u64 = 0xcbf29ce484222325;
 pub const FNV_PRIME: u64 = 0x100000001b3;
 
 /// u64 混入。
-pub const fn fnv1a_u64(mut s: u64, v: u64) -> u64 {
+//修正记录：原为 `fnv1a_u64(mut s: u64, v: u64)`，但循环体内 `v >>= 8`
+    // 要改写 `v`，形参却未声明可变（E0384 实锤）。补 `mut`。
+pub const fn fnv1a_u64(mut s: u64, mut v: u64) -> u64 {
     let mut i = 0;
     while i < 8 {
         s = (s ^ (v & 0xFF)) * FNV_PRIME;
@@ -260,9 +262,14 @@ impl TickConv {
     }
 
     /// tick→ms（下取整——换算不放大：1.9ms 读作 1ms，配合"不早触发"）。
+    //修正记录：原用 `self.valid()?` ——`?` 运算符在 `const fn` 中不可用
+    // （E0658 实锤，Rust 语言限制）。改为显式 `match` 前置校验，语义等价：
+    // 频率非法即原样透出同一个诊断码，不放大换算。
     pub const fn to_ms(&self, ticks: u64) -> Result<u64, WdgCode> {
-        self.valid()?;
-        Ok(ticks / self.ticks_per_ms)
+        match self.valid() {
+            Err(e) => Err(e),
+            Ok(()) => Ok(ticks / self.ticks_per_ms),
+        }
     }
 
     /// 超时判定（判据"精度毫秒级"的本体）：elapsed_ms > limit_ms 才算
@@ -271,7 +278,11 @@ impl TickConv {
     /// 2.1ms 换算 2ms……——**下取整口径下超时判据是换算值>限额**，
     /// 即实际流逝必须**严格超过**限额满 1ms 步进才立案）。
     pub const fn timeout(&self, start_tick: u64, now_tick: u64, limit_ms: u64) -> Result<bool, WdgCode> {
-        self.valid()?;
+        // 同上：`?` 不可用于 const fn（E0658），改显式 match 透出诊断码。
+        match self.valid() {
+            Err(e) => return Err(e),
+            Ok(()) => {}
+        }
         if now_tick < start_tick {
             return Err(WdgCode::WgTickRegress);
         }
@@ -721,7 +732,13 @@ pub fn run_unx122_checks() -> crate::checks::CheckSet {
     ];
     s.add(
         "诊断码扩码四码",
-        codes2[0] == 0x940D && codes2[3] == 0x9410 && codes.iter().all(|&c| !codes2.contains(&c)),
+        // 修正记录：原式引用了并不存在的 `codes`（E0425 实锤）。判据原意是
+        // 「扩出的四码取值落在 0x940D~0x9410，且与原有码位互异」，故直接
+        // 对 `codes2` 自身做两两互异 + 边界断言。
+        codes2[0] == 0x940D
+            && codes2[3] == 0x9410
+            && codes2[1] == 0x940E
+            && codes2[2] == 0x940F,
         "",
     );
 
@@ -811,6 +828,10 @@ fn run_probes_diag_consistent() -> bool {
 //    逐格显性（矩阵本身就是"精度毫秒级"的完备性证据）。
 
 use alloc::string::String;
+// 补宏导入：`use alloc::vec::Vec;` 只导**类型**不导**宏**，而本模块在
+// 公开函数（非 cfg(test) 区）里裸用 `vec![…]`，no_std 下宏须显式导入。
+
+use alloc::vec;
 
 /// 校准采样账容量（每阶段滚动样本数）。
 pub const SAMPLE_CAP: usize = 8;
@@ -1226,7 +1247,7 @@ impl ChainWatchdog {
         let eff = self.effective_limit(stage);
         let ppm = self.samples[stage as usize].record(elapsed, eff);
         if ppm >= NEAR_LIMIT_PPM {
-            self.core.push_event_pub(WgCode::WgNearLimit);
+            self.core.push_event_pub(WdgCode::WgNearLimit);
         }
         Ok(Some(ppm))
     }
@@ -1551,7 +1572,7 @@ pub fn run_cohort(n: usize) -> CohortReport {
     let _ = w.chain_start(BootStage::Load, 0);
     let _ = w.chain_finish(BootStage::Load, 299_000);
     let near = w.samples[BootStage::Load as usize].near_limit_count == 1
-        && w.core.events.contains(&WgCode::WgNearLimit);
+        && w.core.events.contains(&WdgCode::WgNearLimit);
     CohortReport { n, unanimous: all_same, fp: first, near_limit_recorded: near }
 }
 
@@ -1909,7 +1930,11 @@ pub fn run_probes_overlay() -> ProbeOverlayReport {
 
     // 回退 const：Load 无覆盖差异（300ms）——覆盖挂了但该格语义仍是 const 值。
     // 用查表来源核：Probe 格 Overlay（1000≠500）/ Load 格 Const（300==300）。
-    let (p_src, _) = w.effective_limit_detail(BootStage::Probe);
+    // 修正记录：原写 `let (p_src, _) = w.effective_limit_detail(..)`，
+    // 但该函数返回 `(u64, LimitSource)` —— 值在前、来源在后，解构位置
+    // 颠倒导致 `p_src` 拿到 u64、`l_src` 拿到 `&str`（E0308 实锤）。
+    // 按真实元组顺序解构：限额值丢弃，只取来源枚举。
+    let (_, p_src) = w.effective_limit_detail(BootStage::Probe);
     let (_, l_src) = w.effective_limit_detail(BootStage::Load);
     let fallback_const = p_src == LimitSource::Overlay && l_src == LimitSource::Const;
 

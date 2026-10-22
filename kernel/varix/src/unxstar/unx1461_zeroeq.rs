@@ -358,19 +358,22 @@ impl ZqEngine {
 pub fn drill_10rounds() -> (bool, String) {
     let mut eng = ZqEngine::new();
     let mut round = 0usize;
-    let mut seq: u64 = 1;
+    // 每向量独立 seq 计数器：向量账的序号不变量是「账内无洞连续」，
+    // 全局 seq 横扫多向量会在每向量留下轮间洞（第二轮起 seq_consistent 必红）。
+    let mut seqs = [1u64; ZQ_VECTOR_MAX];
     while round < ZQ_ROUNDS {
         let mut v = 0usize;
         while v < ZQ_VECTOR_MAX {
             let mut k = 0u64;
             while k < 100 {
+                let seq = seqs[v];
                 if eng.emit(v, seq).is_err() {
                     return (false, format!("emit 失败 v{} s{}", v, seq));
                 }
                 if eng.account(v, seq).is_err() {
                     return (false, format!("account 失败 v{} s{}", v, seq));
                 }
-                seq += 1;
+                seqs[v] += 1;
                 k += 1;
             }
             v += 1;

@@ -334,12 +334,12 @@ pub fn run_t1503_checks() -> crate::checks::CheckSet {
     set.add("QF-matrix-frozen", frozen_ok, "8 合法 + 4 非法 = 12 边");
     // 10/10 回归。
     let (ok, rounds, m) = regress_10_rounds();
-    set.add(
+    set.add_dyn(
         "QF-10-rounds",
         ok,
         &format!("{} 轮全绿", rounds),
     );
-    set.add("QF-coverage-100%", m.coverage_12(), &m.conclusion());
+    set.add_dyn("QF-coverage-100%", m.coverage_12(), &m.conclusion());
     set.add("QF-selfloop-zero", m.self_loop_zero(), "自环零执行");
     set.add("QF-ledger", m.ledger_consistent(), "账自洽");
     // 注入 10 场。
@@ -348,7 +348,7 @@ pub fn run_t1503_checks() -> crate::checks::CheckSet {
     set.add("QF-inject-10/10", inj.all_caught(), "");
     // 判据总门。
     let ok_all = ok && m.coverage_12() && inj.all_caught();
-    set.add(
+    set.add_dyn(
         "UNX-F1503-J1",
         ok_all,
         &format!(

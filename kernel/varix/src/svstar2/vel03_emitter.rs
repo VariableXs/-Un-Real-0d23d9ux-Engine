@@ -35,6 +35,10 @@
 //! 不读全局 RNG，故同种子双跑逐位一致；时间以逻辑 dt 注入。
 //! 只用 `alloc` 容器（无 HashMap——内核无 hasher 依赖，线性扫描并诚实标注复杂度）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -435,7 +439,7 @@ pub fn advance_accumulator(acc: &mut EmitAccumulator, rate_per_sec: f32, dt: f32
         acc.carry = 0.0;
         return 0;
     }
-    let n = acc.carry.floor();
+    let n = acc.carry.m_floor();
     if n >= u32::MAX as f32 {
         return 0;
     }

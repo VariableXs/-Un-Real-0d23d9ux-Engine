@@ -125,6 +125,10 @@
 //!
 //! 零外部依赖；逻辑 tick 注入，零墙钟；确定性算法、零 IO、回归可复现。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -402,7 +406,7 @@ fn normalize_dir(d: (f32, f32, f32)) -> ((f32, f32, f32), bool) {
     if !len2.is_finite() || len2 <= 1e-12 {
         return ((0.0, 0.0, -1.0), true);
     }
-    let len = len2.sqrt();
+    let len = len2.m_sqrt();
     if (len - 1.0).abs() > 1e-6 {
         ((d.0 / len, d.1 / len, d.2 / len), true)
     } else {
@@ -754,7 +758,7 @@ pub fn frustum_from_planes(
                 "frustum_from_planes",
             ));
         }
-        let inv = 1.0 / len2.sqrt();
+        let inv = 1.0 / len2.m_sqrt();
         out[i] = (p.0 * inv, p.1 * inv, p.2 * inv, p.3 * inv);
         i += 1;
     }

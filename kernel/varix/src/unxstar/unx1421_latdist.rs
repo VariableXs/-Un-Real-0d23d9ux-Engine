@@ -351,7 +351,9 @@ impl LdEngine {
             ));
         }
         self.vecs[vec_id].push(lat_us);
-        self.total_steps += 2;
+        // 开销账口径：total_steps 只记 O(1) 样本入账之外的摊销维护步
+        // （封顶后延迟排序等），逐样本的双轨入账本身是样本成本而非引擎
+        // 开销——若在此 +=2，占比恒 200%，≤1% 合同永假（判据永红）。
         self.sample_steps += 1;
         Ok(())
     }

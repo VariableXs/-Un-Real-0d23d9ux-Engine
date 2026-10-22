@@ -592,7 +592,7 @@ pub fn run_t2141_checks() -> crate::checks::CheckSet {
     );
     // 演练。
     let (ok, rounds, scenes) = drill(10);
-    set.add(
+    set.add_dyn(
         "TF-drill-10/10",
         ok,
         &format!("组织 {}/10 轮 场景累计={}", rounds, scenes),
@@ -602,13 +602,13 @@ pub fn run_t2141_checks() -> crate::checks::CheckSet {
         inj: TfInjector::new(),
     };
     gate.inj.inject_all();
-    set.add(
+    set.add_dyn(
         "TF-inject-8/8",
         gate.inj.all_caught(),
         &format!("{}/{}", gate.inj.caught, gate.inj.cases),
     );
     // 判据总门。
     let (jok, msg) = gate.judge(ok, rounds, scenes);
-    set.add("UNX-F2141-J1", jok, &msg);
+    set.add_dyn("UNX-F2141-J1", jok, &msg);
     set
 }

@@ -28,6 +28,7 @@
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::boxed::Box;
 
 /// 模块版本。
 pub const FC_VERSION: &str = "unx2241_finalchain-v1";
@@ -473,7 +474,7 @@ pub fn run_t2241_checks() -> crate::checks::CheckSet {
     );
     // 演练。
     let (ok, rounds, last_exit) = drill(10);
-    set.add(
+    set.add_dyn(
         "FC-drill-10/10",
         ok,
         &format!("终跑 {}/10 轮 exit={}", rounds, last_exit),
@@ -483,13 +484,13 @@ pub fn run_t2241_checks() -> crate::checks::CheckSet {
         inj: FcInjector::new(),
     };
     gate.inj.inject_all();
-    set.add(
+    set.add_dyn(
         "FC-inject-8/8",
         gate.inj.all_caught(),
         &format!("{}/{}", gate.inj.caught, gate.inj.cases),
     );
     // 判据总门。
     let (jok, msg) = gate.judge(ok, rounds, last_exit);
-    set.add("UNX-F2241-J1", jok, &msg);
+    set.add_dyn("UNX-F2241-J1", jok, &msg);
     set
 }

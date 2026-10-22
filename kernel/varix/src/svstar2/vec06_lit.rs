@@ -22,6 +22,10 @@
 //! - 精度损失：f32 后缀按 f64 解析后 roundtrip 比对（x as f32 as f64 != x
 //!   即损失）；f64 后缀按有效十进制位数启发式（>17 位必有舍入）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -513,7 +517,7 @@ fn parse_float_tail(
         ));
     };
     // 应用指数（checked：溢出到无穷 → 报错）
-    let value = significand * 10f64.powi(exp);
+    let value = significand * 10f64.m_powi(exp);
     if !value.is_finite() {
         return Err(err(
             "E_LIT_OVERFLOW",

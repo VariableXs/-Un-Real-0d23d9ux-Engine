@@ -22,6 +22,10 @@
 //! - 防重叠策略可配：Queue（串行排队）或 Replace（新请求覆盖旧请求）——
 //!   同目标并发 fade 是音量抖动的根源，服务层根除。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -63,7 +67,7 @@ impl FadeCurve {
                 } else if t >= 1.0 {
                     1.0
                 } else {
-                    (core::f64::consts::FRAC_PI_2 * t).sin()
+                    (core::f64::consts::FRAC_PI_2 * t).m_sin()
                 }
             }
             FadeCurve::Exponential => t * t, // x^2：感知近似的确定性选型

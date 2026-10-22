@@ -91,6 +91,10 @@
 //! （合成侧假定）、**F0159**（线性纪律）、F1005（文本块族，共用 ancillary
 //! 扫描的形状——但各扫各的，不合并，避免又造一个联合结构）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::perfstar::frameledger_ext;
 use crate::perfstar::mech_inflate;
 use crate::svstar2::vef01_pngdec as dec;
@@ -947,7 +951,7 @@ pub fn srgb_to_linear(v: f32) -> f32 {
     if x <= 0.04045 {
         x / 12.92
     } else {
-        ((x + 0.055) / 1.055).powf(2.4)
+        ((x + 0.055) / 1.055).m_powf(2.4)
     }
 }
 
@@ -962,7 +966,7 @@ pub fn gamma_to_linear(v: f32, gamma: f32) -> f32 {
     if !(gamma > 0.0) || !is_finite(gamma) {
         return x;
     }
-    x.powf(gamma)
+    x.m_powf(gamma)
 }
 
 /// 钳到 `[0,1]`（HDR 管线只接受归一化值）。

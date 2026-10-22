@@ -63,6 +63,15 @@ pub mod cga03_framegraph;
 // cga04_placer —— CGPU-F0004 CPU/GPU 任务放置决策器（成本画像五输入/双路预估公式写死/双路契约资格证+缺路拒/滞回防抖连续 5 帧差>15% 才切换/误差账持续>30% 触发重标定闭环 ±50% 钳制单帧一次/决策日志滚动全量可回放+守恒对账/双路指纹对拍分歧立案冻结/0x65 段十五码）
 pub mod cga04_placer;
 pub mod cga10_bandwidth_sched;
+pub mod cga15_csconv;
+pub mod cga16_simdblend;
+pub mod cga17_yuvdec;
+pub mod cga18_texdec;
+pub mod cga19_prioq;
+pub mod cga20_numa;
+pub mod cga21_tilesort;
+pub mod cga22_tilereuse;
+pub mod cga23_quality;
 pub mod vcg14_ressamp;
 pub mod vcg13_textrast;
 pub mod vca12_hwcompat;
@@ -297,30 +306,35 @@ pub mod cgd14_timecons;
 /// CGPU 域标签（F475 闭环登记用——域表按此串渲染）。
 pub const CGPU_DOMAIN: &str = "cgpu";
 
+/// CGPU 折叠子集数——**单一真源**。
+///
+/// 它同时是 `blocks` 数组的声明长度：数组字面量少一行/多一行都直接编译失败，
+/// 于是「新增单忘登记」和「删单忘抹掉」两种漂移都在编译期被挡住，不需要靠
+/// 测试去数数。测试里再断言一次 `set.len()` 是为了守住「折叠过程自身没丢
+/// 子集」——那条路径编译期管不着。
+pub const CGPU_SUBSET_COUNT: usize = 59;
+
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
 ///
 /// **折叠而非平铺**（AI-CGPU 接线，与 `svstar2::run_svstar2_checks` 同一范式）：
-/// 33 个在账判据集条数总和远超 `CheckSet::MAX_CHECKS = 112`，若走
+/// 57 个在账判据集条数总和远超 `CheckSet::MAX_CHECKS = 112`，若走
 /// `CheckSet::merge` 平铺，尾部会被静默截断——平铺版只跑得完前 112 条，
-/// 余下约 300 条判据永远不参与闭环，`all_passed()` 却照样返回绿。
+/// 余下数百条判据永远不参与闭环，`all_passed()` 却照样返回绿。
 /// 故此处逐集折叠为一条汇总判据（标签＝单号，绿/红如实），并对每个子集
 /// 显式带 `!sub.truncated()` 守卫：子集自身溢出即判红，不让溢出被折叠
 /// 掩盖。新单入账在此数组追加一行。
 ///
-/// 33 条与接线前的 merge 树**逐集一一对应**（顺序亦保持一致），
 /// 折叠只改呈现方式、不减子集——漏登记任何一条都会让该单判据退出闭环。
 /// 其中 T02/W02/W03/W04 四条是补登记：模块与自检早已实现，但既无
 /// `pub mod` 声明也不在折叠数组里，等于从未参与编译与验收。
 pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     use crate::checks::CheckSet;
     let mut set = CheckSet::new(CGPU_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 52] = [
+    let blocks: [(&'static str, CheckSet); CGPU_SUBSET_COUNT] = [
         ("CGPU-F0001", cga01_simdprim_checks::run_cga01_checks()),
         ("CGPU-F0002", cga02_threadpool_checks::run_cga02_checks()),
 ("CGPU-F0010", cga10_bandwidth_sched::run_cga10_checks()),
 ("CGPU-F0014", vcg14_ressamp::run_vcg14_checks()),
-("CGPU-F0013", vcg13_textrast::run_vcg13_checks()),
-("CGPU-F0012", vca12_hwcompat::run_vca12_checks()),
 ("CGPU-F0013", vcg13_textrast::run_vcg13_checks()),
 ("CGPU-F0012", vca12_hwcompat::run_vca12_checks()),
         ("CGPU-E0001", cge01_domain_checks::run_cge01_checks()),
@@ -356,6 +370,16 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-O0705", vco05_statemachine_checks::run_vco05_checks()),
         ("CGPU-O0706", vco06_executor_checks::run_vco06_checks()),
         ("CGPU-O0707", vco07_recovery_checks::run_vco07_checks()),
+        // ── A 域 CPU 加速续组（F0015~F0023）──
+        ("CGPU-F0015", cga15_csconv::run_cga15_checks()),
+        ("CGPU-F0016", cga16_simdblend::run_cga16_checks()),
+        ("CGPU-F0017", cga17_yuvdec::run_cga17_checks()),
+        ("CGPU-F0018", cga18_texdec::run_cga18_checks()),
+        ("CGPU-F0019", cga19_prioq::run_cga19_checks()),
+        ("CGPU-F0020", cga20_numa::run_cga20_checks()),
+        ("CGPU-F0021", cga21_tilesort::run_cga21_checks()),
+        ("CGPU-F0022", cga22_tilereuse::run_cga22_checks()),
+        ("CGPU-F0023", cga23_quality::run_cga23_checks()),
     // 补登记四组"已实现但从未入账"的判据（闭环对账 _tools/audit_domain_closure.py
     // 查出）：此前连 `pub mod` 声明都没有，全文件从未被编译检查，等于死代码。
     // T02 对接协议分层 / W02 文档信息架构 / W03 文档生成管线 / W04 API 参考生成。
@@ -371,6 +395,10 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
     // 双线 TDP/TGP+墙序目录双闸/曲线物理约束三关/双写对拍 31 点/J 域 F0854
     // 遥测对位/密封指纹/两权分立/审计满容拒记/0x51xx 十码）
         ("CGPU-F0966", cgg06_nvpwr_checks::run_cgg06_checks()),
+    // CGPU-F3528/F3529 收口两组（模块与判据早已实现，此前折叠数组未登记，
+    // 等于从未参与闭环）：vcw07b 文档安全深化 / vcw09 文档站。
+        ("CGPU-F3528-DEEP", vcw07b_docsec_deep::run_cgpu_f3528_deep_checks()),
+        ("CGPU-F3529", vcw09_docsite::run_cgpu_f3529_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
@@ -407,15 +435,15 @@ mod tests {
         );
     }
 
-    /// 33 个子集一集不少（漏登记会让该单判据静默退出闭环——折叠数组
-    /// 元素个数必须锁死，新增单时同步改这里）。
+    /// 子集一集不少（漏登记会让该单判据静默退出闭环——折叠数组
+    /// 元素个数由 `CGPU_SUBSET_COUNT` 在编译期锁死，此处再守一遍运行时）。
     #[test]
-    fn cgpu_all_33_subsets_registered() {
+    fn cgpu_all_subsets_registered() {
         let set = run_cgpu_checks();
         assert_eq!(
             set.len(),
-            33,
-            "CGPU 折叠子集数应为33（与接线前merge 树逐集一一对应）"
+            CGPU_SUBSET_COUNT,
+            "CGPU 折叠子集数必须等于 CGPU_SUBSET_COUNT"
         );
         assert!(!set.truncated(), "CGPU 域聚合溢出（子集数超 CheckSet 上限）");
     }
@@ -616,5 +644,63 @@ pub fn run_cgpu20_g06c() -> crate::checks::CheckSet {
 pub mod vcw07b_docsec_deep;
 // vcw09_docsite — CGPU-F3529 文档站（路由归一双射+路径穿越拒+静态幂等零动态零外链+增量最小重建传递闭包+拓扑环拒+三账守恒/0x7700 段十二码）
 pub mod vcw09_docsite;
-        ("CGPU-F3528-DEEP", vcw07b_docsec_deep::run_cgpu_f3528_deep_checks()),
-        ("CGPU-F3529", vcw09_docsite::run_cgpu_f3529_checks()),
+
+// ==========================================================================
+// WB1022 批一（CGPU-F0114~F0123 · A 域收尾组 · 判据押后模式：纯功能）
+// ==========================================================================
+pub mod cga114_detverify;
+pub mod cga115_xcompiler;
+pub mod cga116_jointbench;
+pub mod cga117_opspower;
+pub mod cga118_simdabi;
+pub mod cga119_isaeval;
+pub mod cga120_microarch;
+pub mod cga121_teachdoc;
+pub mod cga122_simdex;
+pub mod cga123_batchclose;
+pub mod cga124_handover;
+pub mod cga125_apifreeze;
+pub mod cga126_perfbudget;
+pub mod cga127_memledger;
+pub mod cga128_errtable;
+pub mod cga129_docgen;
+pub mod cga130_dedupfinal;
+pub mod cga131_aceptmatrix;
+pub mod cga132_depgraph;
+pub mod cga133_defectzero;
+
+// cgb17_xfbackpress ↔ CGPU-F0230 依赖深度与回压（0x63C0 段）（AI-WBX1022 B05 组批次）
+pub mod cgb17_xfbackpress;
+// cgb18_xfcycle ↔ CGPU-F0231 跨帧环检测（0x63D0 段）（AI-WBX1022 B05 组批次）
+pub mod cgb18_xfcycle;
+// cgb19_xfexecint ↔ CGPU-F0232 与帧图执行器集成（0x64A0 段）（AI-WBX1022 B05 组批次）
+pub mod cgb19_xfexecint;
+// cgb20_xfdet ↔ CGPU-F0233 跨帧确定性（0x64B0 段）（AI-WBX1022 B05 组批次）
+pub mod cgb20_xfdet;
+// cgb21_xftel ↔ CGPU-F0234 跨帧遥测（0x64D0 段）（AI-WBX1022 B05 组批次）
+pub mod cgb21_xftel;
+// cgb22_xffuzz ↔ CGPU-F0235 跨帧 fuzz（0x64E0 段）（AI-WBX1022 B05 组批次）
+pub mod cgb22_xffuzz;
+// cgb23_xfapi ↔ CGPU-F0236 跨帧 API 冻结 v1（0x24A0 段）（AI-WBX1022 B05 组批次）
+pub mod cgb23_xfapi;
+// cgb24_xfdoc ↔ CGPU-F0237 跨帧文档（0x24B0 段）（AI-WBX1022 B05 组批次）
+pub mod cgb24_xfdoc;
+// cgb25_xfbench ↔ CGPU-F0238 跨帧基准（0x2820 段）（AI-WBX1022 B05 组批次）
+pub mod cgb25_xfbench;
+// cgb26_xfcons ↔ CGPU-F0239 跨帧组一致性（0x2830 段）（AI-WBX1022 B05 组批次）
+pub mod cgb26_xfcons;
+// cgb27_xfclose ↔ CGPU-F0240 B05 组收口与 B06 移交（0x2840 段）（AI-WBX1022 B05 组批次）
+pub mod cgb27_xfclose;
+// --------------------------------------------------------------------------
+// WB1022 批三（CGPU-F0134~F0143 · A 域收官组 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cga134_stress;
+pub mod cga135_secscan;
+pub mod cga136_compat;
+pub mod cga137_declare;
+pub mod cga138_hovpack;
+pub mod cga139_kmbase;
+pub mod cga140_midmile;
+pub mod cga141_aggcheck;
+pub mod cga142_freezeaudit;
+pub mod cga143_docfinal;

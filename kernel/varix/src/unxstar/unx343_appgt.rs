@@ -496,7 +496,7 @@ pub fn run_t343_checks() -> crate::checks::CheckSet {
     let mut inj = AgInjector::new();
     inj.inject_all(&mut sw);
     let (ok, msg) = sw.judge();
-    set.add("UNX-F0343-J1", ok, &msg);
+    set.add_dyn("UNX-F0343-J1", ok, &msg);
     set.add("AG-seq-6/6", sw.accepted == 6 && sw.rejected == 0, "");
     set.add("AG-cr3-main", sw.cr3 == ag_cr3_base(sw.main.pml4_pa), "");
     set.add("AG-consistent", sw.consistent == Some(true), "");

@@ -374,7 +374,7 @@ pub fn run_t387b_checks() -> crate::checks::CheckSet {
         && d == ObLevel::Dead
         && crit_denied
         && dead_denied;
-    set.add("UNX-F0387-J1", ok && tripped, &msg);
+    set.add_dyn("UNX-F0387-J1", ok && tripped, &msg);
     set.add("OB-trip-3levels", tripped, "");
     set.add("OB-trigger-table", ob_trigger_correct(), "");
     set.add("OB-action-ledger", g.heap.action_ledger_complete(), "");

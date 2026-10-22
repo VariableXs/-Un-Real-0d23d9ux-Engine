@@ -23,6 +23,10 @@
 //! 零 IO、零墙钟；时间以逻辑 dt 注入；事件时间戳由调用方注入（不读墙钟），
 //! 故同输入双跑逐位一致。无隐私面。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -231,7 +235,7 @@ pub fn create_mode(kind: ModeKind, params: &[f32]) -> Result<ModeState, (ModeDia
                 ));
             }
             let id = params[0];
-            if !is_finite(id) || id < 0.0 || id.fract() != 0.0 {
+            if !is_finite(id) || id < 0.0 || id.m_fract() != 0.0 {
                 return Err((
                     ModeDiag::ModeRejected,
                     format!("事件 id 非法（{}）", id),

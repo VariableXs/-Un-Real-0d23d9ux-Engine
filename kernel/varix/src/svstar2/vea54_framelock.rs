@@ -156,13 +156,16 @@ impl ScopeRow {
     pub const FREE: ScopeRow = ScopeRow { declared: true, scope: Scope::Free };
 }
 
-/// 标准范围声明（**两块同步、一块独立、一块离线**）。
+/// 标准范围声明（**两块同步、两块独立**，四槽全声明）。
+///
+/// 纪律：标准夹具必须**能构造成功**（validate_scope 要求四槽逐槽 declared，
+/// 缺一即拒）——「缺一槽声明」的负样本由判据自行改写构造，不进标准态。
 pub fn standard_scope() -> [ScopeRow; MAX_SCREENS] {
     [
         ScopeRow::LOCKED,
         ScopeRow::LOCKED,
         ScopeRow::FREE,
-        ScopeRow::UNDECLARED,
+        ScopeRow::FREE,
     ]
 }
 
@@ -720,7 +723,7 @@ fn checks_scope(cs: &mut CheckSet) {
     );
     let topo = standard_topology();
     let mut missing = standard_scope();
-    missing[MAX_SCREENS - 1] = ScopeRow::FREE;
+    missing[MAX_SCREENS - 1] = ScopeRow::UNDECLARED;
     check(
         cs,
         "A54-范围-缺一槽声明即拒",

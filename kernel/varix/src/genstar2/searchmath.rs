@@ -10,6 +10,10 @@
 //!
 //! 零堆纪律：定深递归下降解析栈，无 alloc。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -115,7 +119,7 @@ impl<'a> Parser<'a> {
         if self.peek() == Some('^') {
             self.i += 1;
             let e = self.pow()?; // 右结合
-            return Some(base.powf(e));
+            return Some(base.m_powf(e));
         }
         Some(base)
     }
@@ -194,7 +198,7 @@ pub fn card_rank_and_skippable() -> (usize, bool) {
 
 /// 复制功能：结果文本化（四舍五入到 6 位有效——复制即所见）。
 pub fn copy_text(v: f64) -> f64 {
-    (v * 1_000_000.0).round() / 1_000_000.0
+    (v * 1_000_000.0).m_round() / 1_000_000.0
 }
 
 // ---------------------------------------------------------------------------
@@ -349,7 +353,7 @@ pub fn percent_of(query: &str) -> Option<f64> {
 /// 有效——格式即语义，复制出去的数不能吓人）。
 pub fn format_result(v: f64) -> [u8; 32] {
     let mut out = [0u8; 32];
-    if v.is_finite() && v == v.trunc() && v.abs() < 1e15 {
+    if v.is_finite() && v == v.m_trunc() && v.abs() < 1e15 {
         // 整数：无小数点。
         let n = v as i64;
         let mut tmp = [0u8; 32];
@@ -377,7 +381,7 @@ pub fn format_result(v: f64) -> [u8; 32] {
         return out;
     }
     // 浮点：6 位有效小数（简化格式——复制语义不做科学计数）。
-    let int_part = v.trunc();
+    let int_part = v.m_trunc();
     let frac = (v - int_part).abs();
     let _ = frac;
     format_float_manual(v, &mut out);
@@ -389,8 +393,8 @@ fn format_float_manual(v: f64, out: &mut [u8; 32]) {
     // 走宿主测试链路的 format!，内核路径只承载数字语义）。
     let neg = v < 0.0;
     let av = v.abs();
-    let ip = av.trunc() as u64;
-    let fp = ((av - av.trunc()) * 10_000.0).round() as u64;
+    let ip = av.m_trunc() as u64;
+    let fp = ((av - av.m_trunc()) * 10_000.0).m_round() as u64;
     let mut w = 0usize;
     if neg {
         out[w] = b'-';
@@ -454,18 +458,18 @@ pub fn card_budget_sum() -> u64 {
 pub fn run_searchmath_v3_checks() -> CheckSet {
     let mut cs = CheckSet::new("F457-v3");
     // 1) 单位换算：正反向、未知单位诚实。
-    cs.add("unit_km_mi", (unit_convert("5km in mi").unwrap() * 1_000.0).round() as i64 == 3_107, "");
-    cs.add("unit_reverse", (unit_convert("10mi in km").unwrap() * 100.0).round() as i64 == 1_609, "");
-    cs.add("unit_kg_lb", (unit_convert("2kg in lb").unwrap() * 1_000.0).round() as i64 == 4_409, "");
+    cs.add("unit_km_mi", (unit_convert("5km in mi").unwrap() * 1_000.0).m_round() as i64 == 3_107, "");
+    cs.add("unit_reverse", (unit_convert("10mi in km").unwrap() * 100.0).m_round() as i64 == 1_609, "");
+    cs.add("unit_kg_lb", (unit_convert("2kg in lb").unwrap() * 1_000.0).m_round() as i64 == 4_409, "");
     cs.add("unit_unknown_none", unit_convert("5km in smoot").is_none(), "");
-    cs.add("unit_case_insensitive", (unit_convert("2KG in LB").unwrap() * 1_000.0).round() as i64 == 4_409, "");
+    cs.add("unit_case_insensitive", (unit_convert("2KG in LB").unwrap() * 1_000.0).m_round() as i64 == 4_409, "");
     // 2) 常量表：pi/e/tau/phi。
-    cs.add("const_pi", (lookup_constant("pi").unwrap() * 100.0).round() as i64 == 314, "");
-    cs.add("const_case", (lookup_constant("PI").unwrap() * 100.0).round() as i64 == 314, "");
+    cs.add("const_pi", (lookup_constant("pi").unwrap() * 100.0).m_round() as i64 == 314, "");
+    cs.add("const_case", (lookup_constant("PI").unwrap() * 100.0).m_round() as i64 == 314, "");
     cs.add("const_unknown", lookup_constant("c").is_none(), "");
     // 3) 百分链式：of 形态。
     cs.add("percent_of", percent_of("20% of 50") == Some(10.0), "");
-    cs.add("percent_of_frac", (percent_of("50% of 33.3").unwrap() * 10.0).round() / 10.0 == 16.7, "");
+    cs.add("percent_of_frac", (percent_of("50% of 33.3").unwrap() * 10.0).m_round() / 10.0 == 16.7, "");
     cs.add("percent_no_pct_sign", percent_of("20 of 50").is_none(), "");
     // 4) 结果格式：整数无点、浮点四位、负数带符号。
     cs.add("fmt_int", &format_result(42.0)[..2] == b"42", "");

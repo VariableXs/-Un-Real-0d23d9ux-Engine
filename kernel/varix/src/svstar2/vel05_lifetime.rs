@@ -43,6 +43,10 @@
 //! 零 IO、零墙钟；时间以逻辑 `dt` 注入，随机源显式注入，故同输入双跑逐位一致。
 //! 无隐私面。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -393,7 +397,7 @@ impl CurveLut {
             return self.at_or_zero(self.steps);
         }
         let x = tc * self.steps as f32;
-        let i = x.floor() as usize;
+        let i = x.m_floor() as usize;
         if i >= self.steps {
             return self.at_or_zero(self.steps);
         }

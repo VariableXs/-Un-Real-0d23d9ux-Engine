@@ -36,6 +36,10 @@
 //!
 //! 逻辑 tick 注入，零墙钟；零外部依赖，只依赖 `crate::checks`（自检侧）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use super::vej04_pointlight::{curve_attenuation, FalloffCurve};
@@ -388,8 +392,8 @@ pub fn combined_attenuation(light: &SpotLight, px: (f32, f32, f32)) -> f32 {
 /// 反余弦（无 libm 的确定性实现：半角恒等式 + 自建 atan2）。
 fn acos_approx(c: f32) -> f32 {
     let c = c.clamp(-1.0, 1.0);
-    let sin_half = ((1.0 - c) * 0.5).max(0.0).sqrt();
-    let cos_half = ((1.0 + c) * 0.5).max(1e-12).sqrt();
+    let sin_half = ((1.0 - c) * 0.5).max(0.0).m_sqrt();
+    let cos_half = ((1.0 + c) * 0.5).max(1e-12).m_sqrt();
     2.0 * atan2_approx(sin_half, cos_half)
 }
 

@@ -1278,8 +1278,17 @@ mod tests {
     #[test]
     fn veo04_bad_string_offset_exact() {
         let st = lex("\"a\nb\"");
-        let bad = st.errors().first().expect("应产出坏字符串");
-        assert_eq!(st.pre.get(bad.start as usize..bad.end as usize), Some("\"a"));
+        // 先把坏串条目**拷贝出来**再取切片：`errors().first()` 借的是临时 Vec 的元素，
+        // 借用活不过该语句（E0716）。
+        let bad_start;
+        let bad_end;
+        {
+            let errs = st.errors();
+            let bad = errs.first().expect("应产出坏字符串");
+            bad_start = bad.start;
+            bad_end = bad.end;
+        }
+        assert_eq!(st.pre.get(bad_start as usize..bad_end as usize), Some("\"a"));
     }
 
     #[test]

@@ -13,6 +13,10 @@
 //!
 //! **反假变体**：见文件末 `VARIANT_REGISTRY`，每条都已实测让判据变红。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -245,7 +249,7 @@ pub fn run_vej08_checks() -> CheckSet {
                 let dx = p.pos.0 - manual.pos.0;
                 let dy = p.pos.1 - manual.pos.1;
                 let dz = p.pos.2 - manual.pos.2;
-                if (dx * dx + dy * dy + dz * dz).sqrt() < avoid_r - 1e-4 {
+                if (dx * dx + dy * dy + dz * dz).m_sqrt() < avoid_r - 1e-4 {
                     all_clear = false;
                 }
             }

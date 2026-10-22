@@ -384,9 +384,9 @@ pub fn run_t1026_checks() -> crate::checks::CheckSet {
     // 候选面构建。
     let surf = HcSurface::build();
     match surf {
-        Err(c) => set.add("HC-surface", false, &format!("build err 0x{:04x}", c.num())),
+        Err(c) => set.add_dyn("HC-surface", false, &format!("build err 0x{:04x}", c.num())),
         Ok(s) => {
-            set.add(
+            set.add_dyn(
                 "HC-surface-complete",
                 s.complete(),
                 &format!("{} 档全量", s.candidates.len()),
@@ -398,7 +398,7 @@ pub fn run_t1026_checks() -> crate::checks::CheckSet {
             );
             set.add("HC-format-uniform", s.format_uniform(), "与 TSC 面同构（F1041 消费零特判）");
             let rec = s.recommend();
-            set.add(
+            set.add_dyn(
                 "HC-recommend",
                 rec.is_some(),
                 &rec.map(|c| format!("主时钟源推荐 {} 总分 {}", c.source, c.total))
@@ -415,7 +415,7 @@ pub fn run_t1026_checks() -> crate::checks::CheckSet {
                 && rec.is_some()
                 && inj.all_caught();
             let top = rec.map(|c| format!("{}({})", c.source, c.total)).unwrap_or_default();
-            set.add(
+            set.add_dyn(
                 "UNX-F1026-J1",
                 ok,
                 &format!("{}: 档=5 一致=100% 格式=v{} 推荐={} seg=0x{:04x}", HC_VERSION, HC_FORMAT_VER, top, HC_SEG_BASE),

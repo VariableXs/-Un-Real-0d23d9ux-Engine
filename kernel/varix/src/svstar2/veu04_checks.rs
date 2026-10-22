@@ -1240,7 +1240,7 @@ pub fn run_veu04_checks() -> CheckSet {
 mod tests {
     use super::*;
 
-    fn std_env() -> (RuleInputs, veu03_registry::ContractRegistry, PredicateBindings) {
+    fn std_env() -> (RuleInputs, ContractRegistry, PredicateBindings) {
         let mut reg = standard_registry();
         let _ = reg.register(standard_contract_input());
         (standard_inputs(), reg, standard_bindings())

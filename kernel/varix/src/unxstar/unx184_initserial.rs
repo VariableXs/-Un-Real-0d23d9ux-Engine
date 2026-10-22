@@ -410,7 +410,7 @@ pub fn run_t184_checks() -> crate::checks::CheckSet {
     g.ser.adr_waiver("ADR-A3-0001", IsStage::Timer, IsStage::Scheduler);
     g.ser.adr_waiver("ADR-A3-0002", IsStage::Drivers, IsStage::UserPrep);
     let (ok, msg) = g.judge();
-    set.add("UNX-F0184-J1", ok && clean1, &msg);
+    set.add_dyn("UNX-F0184-J1", ok && clean1, &msg);
     set.add("IS-clean-pass", clean1, "");
     set.add("IS-viol-100%", g.ser.viol_detected(), "");
     set.add("IS-inject-exact", g.inj.all_exact(), "");

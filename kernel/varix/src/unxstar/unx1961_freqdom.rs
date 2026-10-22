@@ -1,3 +1,4 @@
+
 //! unx1961_freqdom —— UNX-F1961 频域发现与 policy 基架（共享频域组）。
 //! 锚点（CoRun Unxreal 主册）：UNX-F1961 · 频域发现与 policy 基架（共享频域组） · 目标 380 行 · 已深化
 //! 判据原文：UNX-F1961-J1 频域发现断言全过（8 核→频域映射正确、共享频域组聚合语义），
@@ -19,6 +20,7 @@
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 模块版本。
 pub const FD_VERSION: &str = "unx1961_freqdom-v1";
@@ -317,7 +319,7 @@ pub fn run_t1961_checks() -> crate::checks::CheckSet {
     let d = FdDiscovery::discover();
     // 8 核映射正确（双核对共享域口径）。
     let map_ok = (0..FD_CPUS).all(|c| d.domain_of(c) == Ok(c / 2));
-    set.add(
+    set.add_dyn(
         "FD-map-correct",
         map_ok,
         &format!("8 核→4 域 p0c0:(0,1) p0c1:(2,3) p1c0:(4,5) p1c1:(6,7)"),
@@ -333,7 +335,7 @@ pub fn run_t1961_checks() -> crate::checks::CheckSet {
     let _ = t.register(1, FdPolicyKind::PowerSave);
     let _ = t.register(2, FdPolicyKind::Performance);
     let _ = t.register(3, FdPolicyKind::SchedUtil);
-    set.add(
+    set.add_dyn(
         "FD-policy-registered",
         t.all_registered(),
         &format!("{}/{} 域在册", t.registered, FD_DOMAINS),
@@ -351,7 +353,7 @@ pub fn run_t1961_checks() -> crate::checks::CheckSet {
     set.add("FD-inject-4/4", inj.all_caught(), "");
     // 判据总门。
     let ok = map_ok && d.membership_conserved() && t.all_registered() && agg == Ok(4) && inj.all_caught();
-    set.add(
+    set.add_dyn(
         "UNX-F1961-J1",
         ok,
         &format!(

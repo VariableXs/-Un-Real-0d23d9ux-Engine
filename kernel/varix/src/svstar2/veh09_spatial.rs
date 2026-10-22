@@ -76,6 +76,10 @@
 //! 排序口径**公开可审**：`优先级降序 → 距离升序 → 索引升序`（确定性，
 //! 无随机源——同输入必同输出，这是可测性的前提）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::format;
@@ -790,8 +794,8 @@ impl DistanceModel {
                     self.fallback_gain
                 } else {
                     // 参考点→最大点间的对数插值：两端精确、中段平缓。
-                    let t = (d.ln() - self.reference_m.ln())
-                        / (self.max_distance_m.ln() - self.reference_m.ln());
+                    let t = (d.m_ln() - self.reference_m.m_ln())
+                        / (self.max_distance_m.m_ln() - self.reference_m.m_ln());
                     lerp(1.0, self.fallback_gain, t)
                 }
             }
@@ -855,7 +859,7 @@ impl DistanceModel {
         let mix = low_freq_mix.clamp(0.0, 1.0);
         // dB → 线性：10^(db/20)，再按低频权重与邻近程度缩放。
         let db = self.near_field_boost_db * proximity * mix;
-        10.0f32.powf(db / 20.0)
+        10.0f32.m_powf(db / 20.0)
     }
 
     /// 总增益 = 距离增益 × 近场低频增强。

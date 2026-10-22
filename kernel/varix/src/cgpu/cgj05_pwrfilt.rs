@@ -568,7 +568,7 @@ pub fn run_tj05_checks() -> crate::checks::CheckSet {
     let mut inj = PfInjector::new();
     inj.inject_all(&mut p);
     let (ok, msg) = p.judge();
-    set.add("CGPU-F1447-J1", ok, &msg);
+    set.add_dyn("CGPU-F1447-J1", ok, &msg);
     set.add("PF-five-stage", p.conserved(), "");
     set.add("PF-dual-filter", p.med.spikes_clamped >= 1 && p.ema.init, "");
     set.add("PF-agg-windows", !p.agg.done.is_empty(), "");

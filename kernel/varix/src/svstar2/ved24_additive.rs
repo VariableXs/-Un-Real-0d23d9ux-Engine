@@ -245,6 +245,10 @@
 //! | [`C24-KEY-OUT-OF-RANGE-NONE`] | 越界键静默变合法模式 |
 //! | [`C24-LEDGER-EXACT`] | 记账被吞（幽灵记账 / 漏记） |
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 // no_std 导入三件套 + format!：本条产出摘要、WGSL 文本与文本行。
@@ -657,7 +661,7 @@ pub fn fpow(x: f32, y: f32) -> f32 {
     let lg = e as f32 + log2_m;
     let ylg = gy * lg;
     // 2^ylg = 2^floor(ylg) · 2^frac(ylg)
-    let ef = ylg.floor();
+    let ef = ylg.m_floor();
     let fr = ylg - ef;
     let mant = 1.0 + exp2_frac_poly(fr);
     let mut out = mant;
@@ -1380,7 +1384,7 @@ fn oracle_fpow(x: f64, y: f64) -> f64 {
     let target = y * ln_x;
     // e^target = 2^(target/ln2)，用 2 的幂缩放 + exp 泰勒
     let lg = target / 0.693_147_180_559_945_3;
-    let ef = lg.floor();
+    let ef = lg.m_floor();
     let fr = lg - ef;
     // 2^fr = e^(fr·ln2)
     let z = fr * 0.693_147_180_559_945_3;

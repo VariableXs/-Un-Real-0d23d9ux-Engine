@@ -24,6 +24,10 @@
 //!
 //! 时间注入式，宿主测试确定复现。无外部依赖。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -147,7 +151,7 @@ pub fn mat_mul(a: &Mat3, b: &Mat3) -> Mat3 {
 /// 3x3 变换单像素（sRGB 0-255 → clamp 0-255）。
 pub fn apply_matrix(m: &Mat3, rgb: (u8, u8, u8)) -> (u8, u8, u8) {
     let (r, g, b) = (rgb.0 as f64, rgb.1 as f64, rgb.2 as f64);
-    let clamp = |v: f64| -> u8 { v.round().clamp(0.0, 255.0) as u8 };
+    let clamp = |v: f64| -> u8 { v.m_round().clamp(0.0, 255.0) as u8 };
     (
         clamp(m[0] * r + m[1] * g + m[2] * b),
         clamp(m[3] * r + m[4] * g + m[5] * b),
@@ -166,7 +170,7 @@ pub fn correct_pixel(kind: CvdKind, strength_pct: u32, rgb: (u8, u8, u8)) -> (u8
     );
     let add = mul_vec(&correction_gain(kind), err);
     let t = gain_scale(strength_pct);
-    let clamp = |v: f64| -> u8 { v.round().clamp(0.0, 255.0) as u8 };
+    let clamp = |v: f64| -> u8 { v.m_round().clamp(0.0, 255.0) as u8 };
     (
         clamp(rgb.0 as f64 + t * add.0),
         clamp(rgb.1 as f64 + t * add.1),
@@ -185,7 +189,7 @@ pub fn sim_distance(kind: CvdKind, a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
         sa.1 as f64 - sb.1 as f64,
         sa.2 as f64 - sb.2 as f64,
     );
-    (d.0 * d.0 + d.1 * d.1 + d.2 * d.2).sqrt()
+    (d.0 * d.0 + d.1 * d.1 + d.2 * d.2).m_sqrt()
 }
 
 /// 强度插值对拍：模拟矩阵插值（预览图例渲染源——强度作用于预览时

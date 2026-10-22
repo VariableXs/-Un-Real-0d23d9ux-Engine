@@ -122,6 +122,10 @@
 // `ToString` 必须显式引入：本 crate 在内核镜像目标下是纯 `no_std`，
 // `u32/u64` 的 `to_string()` 由 `alloc::string::ToString` 提供，
 // 漏掉这一行会在 `cargo build --lib` 报 E0599（宿主 std 侧不会暴露）。
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -668,8 +672,8 @@ pub fn solve_direction(p4: &(f32, f32, f32, f32), p: &FxaaParams) -> EdgeDir {
 pub fn sample_bilinear(f: &Frame, fx: f32, fy: f32) -> Option<Rgb> {
     let fx = finite_or(fx);
     let fy = finite_or(fy);
-    let x0f = fx.floor();
-    let y0f = fy.floor();
+    let x0f = fx.m_floor();
+    let y0f = fy.m_floor();
     // 权重 frac∈ [0,1)：`floor` 后的差值天然满足，无需额外钳制。
     let tx = fx - x0f;
     let ty = fy - y0f;
@@ -1201,7 +1205,7 @@ pub fn high_frequency_energy(f: &Frame) -> Option<f32> {
     if n <= 0.0 {
         None
     } else {
-        Some(finite_or((acc / n).sqrt()))
+        Some(finite_or((acc / n).m_sqrt()))
     }
 }
 
@@ -1228,11 +1232,11 @@ pub fn synth_multiscale(n: u32) -> Frame {
             let yf = y as f32;
             let mut v = 0.5f32;
             // 五个频率的正弦斜边，振幅递减 => 对比度连续分布
-            v += 0.30 * (2.0 * PI * (xf + yf) / (nf * 2.0)).sin();
-            v += 0.18 * (2.0 * PI * (xf - 2.0 * yf) / (nf * 3.0)).sin();
-            v += 0.12 * (2.0 * PI * (xf + 3.0 * yf) / (nf * 5.0)).sin();
-            v += 0.07 * (2.0 * PI * (2.0 * xf - yf) / (nf * 8.0)).sin();
-            v += 0.04 * (2.0 * PI * (xf + 5.0 * yf) / (nf * 13.0)).sin();
+            v += 0.30 * (2.0 * PI * (xf + yf) / (nf * 2.0)).m_sin();
+            v += 0.18 * (2.0 * PI * (xf - 2.0 * yf) / (nf * 3.0)).m_sin();
+            v += 0.12 * (2.0 * PI * (xf + 3.0 * yf) / (nf * 5.0)).m_sin();
+            v += 0.07 * (2.0 * PI * (2.0 * xf - yf) / (nf * 8.0)).m_sin();
+            v += 0.04 * (2.0 * PI * (xf + 5.0 * yf) / (nf * 13.0)).m_sin();
             let v = clamp01(v);
             let _ = f.put(x, y, Rgb::new(v, v, v));
         }

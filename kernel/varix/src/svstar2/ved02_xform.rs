@@ -37,6 +37,10 @@
 //!
 //! 零外部依赖；浮点确定性纪律：同输入同输出（IEEE 754 基本运算，无快速数学）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use alloc::format;
@@ -87,7 +91,7 @@ impl Mat2D {
 
     /// 旋转矩阵（弧度）。
     pub fn rotation(rad: f32) -> Self {
-        let (s, c) = rad.sin_cos();
+        let (s, c) = rad.m_sin_cos();
         Mat2D { a: c, b: s, c: -s, d: c, e: 0.0, f: 0.0 }
     }
 
@@ -98,7 +102,7 @@ impl Mat2D {
 
     /// 倾斜矩阵（skew_x：x 随 y 偏移；skew_y：y 随 x 偏移）。
     pub fn skewing(kx: f32, ky: f32) -> Self {
-        Mat2D { a: 1.0, b: ky.tan(), c: kx.tan(), d: 1.0, e: 0.0, f: 0.0 }
+        Mat2D { a: 1.0, b: ky.m_tan(), c: kx.m_tan(), d: 1.0, e: 0.0, f: 0.0 }
     }
 
     /// 级联乘法（级联契约：`parent.mul(local)` = 先 local 后 parent，
@@ -202,20 +206,20 @@ impl Mat2D {
     pub fn decompose(&self) -> Option<(f32, f32, f32, f32, f32, f32)> {
         let tx = self.e;
         let ty = self.f;
-        let sx = (self.a * self.a + self.b * self.b).sqrt();
+        let sx = (self.a * self.a + self.b * self.b).m_sqrt();
         if sx.abs() < NEAR_ZERO_DET {
             return None;
         }
-        let rot = self.b.atan2(self.a);
+        let rot = self.b.m_atan2(self.a);
         let det = self.det();
         let sy = det / sx;
         if sy.abs() < NEAR_ZERO_DET {
             return None;
         }
         // 注意：f32::sin_cos 返回 (sin, cos)。
-        let (sin_r, cos_r) = rot.sin_cos();
+        let (sin_r, cos_r) = rot.m_sin_cos();
         let shear = (self.c * cos_r + self.d * sin_r) / sy;
-        let skx = shear.atan();
+        let skx = shear.m_atan();
         Some((tx, ty, rot, skx, sx, sy))
     }
 
@@ -442,7 +446,7 @@ impl Mat4 {
 
     /// 绕 X 轴旋转（弧度）。
     pub fn rotation_x(rad: f32) -> Self {
-        let (s, c) = rad.sin_cos();
+        let (s, c) = rad.m_sin_cos();
         let mut r = Self::IDENTITY;
         r.m[1][1] = c;
         r.m[1][2] = -s;
@@ -453,7 +457,7 @@ impl Mat4 {
 
     /// 绕 Y 轴旋转。
     pub fn rotation_y(rad: f32) -> Self {
-        let (s, c) = rad.sin_cos();
+        let (s, c) = rad.m_sin_cos();
         let mut r = Self::IDENTITY;
         r.m[0][0] = c;
         r.m[0][2] = s;
@@ -464,7 +468,7 @@ impl Mat4 {
 
     /// 绕 Z 轴旋转。
     pub fn rotation_z(rad: f32) -> Self {
-        let (s, c) = rad.sin_cos();
+        let (s, c) = rad.m_sin_cos();
         let mut r = Self::IDENTITY;
         r.m[0][0] = c;
         r.m[0][1] = -s;
@@ -475,7 +479,7 @@ impl Mat4 {
 
     /// 透视投影（竖直 fov 弧度 / 宽高比 / 近远平面；D3D 风格 0..1 深度）。
     pub fn perspective(fov_y: f32, aspect: f32, near: f32, far: f32) -> Self {
-        let f = 1.0 / (fov_y / 2.0).tan();
+        let f = 1.0 / (fov_y / 2.0).m_tan();
         let mut r = Mat4 { m: [[0.0; 4]; 4] };
         r.m[0][0] = f / aspect;
         r.m[1][1] = f;
@@ -561,9 +565,9 @@ pub fn run_ved02_checks() -> CheckSet {
 pub fn screen_text(m: &Mat2D) -> String {
     format!(
         "变换矩阵：scale=({:.3},{:.3}) rot={:.3} skew={:.3} translate=({:.3},{:.3})",
-        (m.a * m.a + m.b * m.b).sqrt(),
-        m.det() / (m.a * m.a + m.b * m.b).sqrt().max(f32::EPSILON),
-        m.b.atan2(m.a),
+        (m.a * m.a + m.b * m.b).m_sqrt(),
+        m.det() / (m.a * m.a + m.b * m.b).m_sqrt().max(f32::EPSILON),
+        m.b.m_atan2(m.a),
         0.0,
         m.e,
         m.f

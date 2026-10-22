@@ -119,6 +119,10 @@
 //!
 //! 零外部依赖；逻辑 tick 注入，零墙钟；确定性算法、零 IO、回归可复现。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -360,7 +364,7 @@ impl ValueRange {
         if self.step <= 0.0 {
             return c;
         }
-        let steps = ((c - self.min) / self.step).floor();
+        let steps = ((c - self.min) / self.step).m_floor();
         let mut aligned = self.min + steps * self.step;
         // 浮点误差兜底：floor 后的乘法可能让 aligned 越过上界一丝。
         if aligned > self.max {
@@ -377,7 +381,7 @@ impl ValueRange {
         if self.step <= 0.0 {
             return 0;
         }
-        let n = ((self.max - self.min) / self.step).floor();
+        let n = ((self.max - self.min) / self.step).m_floor();
         if n < 0.0 {
             0
         } else {

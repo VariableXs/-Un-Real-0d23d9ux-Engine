@@ -388,7 +388,7 @@ pub fn run_t205_checks() -> crate::checks::CheckSet {
     let mut inj = RuInjector::new();
     inj.inject_all(&mut pump);
     let (ok, msg) = pump.judge();
-    set.add("UNX-F0205-J1", ok && cmd_ok, &msg);
+    set.add_dyn("UNX-F0205-J1", ok && cmd_ok, &msg);
     set.add("RU-cmd-trigger", cmd_ok, "");
     set.add("RU-zero-loss-1MB", pump.zero_loss(), "");
     set.add("RU-inject-reject", inj.all_rejected(), "");

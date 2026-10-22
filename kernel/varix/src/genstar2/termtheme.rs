@@ -11,6 +11,10 @@
 //!
 //! 零堆纪律：静态色板表，无 alloc。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -34,7 +38,7 @@ pub fn rel_luminance(c: Rgb) -> f64 {
         if s <= 0.03928 {
             s / 12.92
         } else {
-            ((s + 0.055) / 1.055).powf(2.4)
+            ((s + 0.055) / 1.055).m_powf(2.4)
         }
     }
     0.2126 * ch(c.0) + 0.7152 * ch(c.1) + 0.0722 * ch(c.2)
@@ -44,7 +48,7 @@ pub fn rel_luminance(c: Rgb) -> f64 {
 pub fn contrast_x100(a: Rgb, b: Rgb) -> u32 {
     let (la, lb) = (rel_luminance(a), rel_luminance(b));
     let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
-    ((hi + 0.05) / (lo + 0.05) * 100.0).round() as u32
+    ((hi + 0.05) / (lo + 0.05) * 100.0).m_round() as u32
 }
 
 /// 一套终端主题（前景/背景/光标/选区四要素——预设与自定义同构）。
@@ -86,7 +90,7 @@ pub fn opacity_redline_ok(p: &TermPalette, opacity_permille: u16) -> bool {
         return contrast_x100(p.fg, p.bg) >= CONTRAST_MIN_X100;
     }
     let a = opacity_permille as f64 / 1_000.0;
-    let mix = |c: u8, wall: u8| -> u8 { (c as f64 * a + wall as f64 * (1.0 - a)).round() as u8 };
+    let mix = |c: u8, wall: u8| -> u8 { (c as f64 * a + wall as f64 * (1.0 - a)).m_round() as u8 };
     let bg = p.bg;
     let worst_white = (mix(bg.0, 255), mix(bg.1, 255), mix(bg.2, 255));
     let worst_black = (mix(bg.0, 0), mix(bg.1, 0), mix(bg.2, 0));
@@ -254,7 +258,7 @@ pub fn opacity_redline_matrix(p: &TermPalette, opacity_permille: u16) -> bool {
     let blend = |fg_channel: u8, wallpaper: u8| -> u8 {
         let bg_ch = 0u8; // 占位——混合发生在背景通道。
         let _ = bg_ch;
-        ((fg_channel as f64 * a + wallpaper as f64 * (1.0 - a)).round()) as u8
+        ((fg_channel as f64 * a + wallpaper as f64 * (1.0 - a)).m_round()) as u8
     };
     let _ = blend;
     // 等效背景 = 主题背景 × α + 壁纸 × (1-α)；两极端壁纸各判一次。
@@ -262,9 +266,9 @@ pub fn opacity_redline_matrix(p: &TermPalette, opacity_permille: u16) -> bool {
     let wall_black = (0u8, 0u8, 0u8);
     let eff = |wall: Rgb| -> Rgb {
         (
-            (p.bg.0 as f64 * a + wall.0 as f64 * (1.0 - a)).round() as u8,
-            (p.bg.1 as f64 * a + wall.1 as f64 * (1.0 - a)).round() as u8,
-            (p.bg.2 as f64 * a + wall.2 as f64 * (1.0 - a)).round() as u8,
+            (p.bg.0 as f64 * a + wall.0 as f64 * (1.0 - a)).m_round() as u8,
+            (p.bg.1 as f64 * a + wall.1 as f64 * (1.0 - a)).m_round() as u8,
+            (p.bg.2 as f64 * a + wall.2 as f64 * (1.0 - a)).m_round() as u8,
         )
     };
     contrast_x100(p.fg, eff(wall_white)) >= CONTRAST_MIN_X100

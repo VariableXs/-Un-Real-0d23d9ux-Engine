@@ -170,15 +170,19 @@ pub enum Precision {
 /// 精度模式表（判据侧字面量对账：两模式、模式数=2）。
 pub const PRECISION_MODES: [Precision; 2] = [Precision::Fast, Precision::High];
 
-/// 矩阵 × 定点向量（恒定除以矩阵定位基数，O(1)；i64 中间量上界内）。
+/// 矩阵 × 定点向量（恒定除以矩阵定位基数，O(1)）。
+///
+/// 中间量纪律：高精模式矩阵 ~3.3e8（亿分位）× 向量 ~2.55e11（10⁹/通道 ×
+/// 255）单项乘积即 ~8.4e19，**超出 i64::MAX（9.2e18）**——中间累加必须走
+/// i128（上界 ~2.5e20，余量充足）；除以定位基数后结果回落 i64 域。
 fn mul_mv_scaled(m: &[[i64; 3]; 3], v_s: [i64; 3], m_scale: i64) -> [i64; 3] {
     let mut out = [0i64; 3];
     for i in 0..3 {
-        let mut acc = 0i64;
+        let mut acc: i128 = 0;
         for k in 0..3 {
-            acc += m[i][k] * v_s[k];
+            acc += (m[i][k] as i128) * (v_s[k] as i128);
         }
-        out[i] = acc / m_scale;
+        out[i] = (acc / m_scale as i128) as i64;
     }
     out
 }

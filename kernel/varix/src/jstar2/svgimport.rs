@@ -21,6 +21,10 @@
 //! - **产物**：jbase `CursorSchemeModel`（vector_source=true——F636
 //!   派生优先级的依据）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::{
     fill_polygon, CursorFrame, CursorSchemeModel, OriginKind, PixBuf, PointerState, fnv1a64,
@@ -686,7 +690,7 @@ pub fn import_svg(src: &str, name: &str) -> SvgImport {
                 let mut pts = Vec::with_capacity(24);
                 for k in 0..24 {
                     let a = k as f64 * core::f64::consts::TAU / 24.0;
-                    pts.push((((cx + rx * a.cos()) * 1000.0) as i64, ((cy + ry * a.sin()) * 1000.0) as i64));
+                    pts.push((((cx + rx * a.m_cos()) * 1000.0) as i64, ((cy + ry * a.m_sin()) * 1000.0) as i64));
                 }
                 pts.push(pts[0]);
                 polylines.push(Polyline { pts, closed: true });

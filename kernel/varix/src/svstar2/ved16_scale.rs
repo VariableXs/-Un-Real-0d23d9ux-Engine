@@ -49,6 +49,10 @@
 //! **逻辑 tick 注入，零墙钟**；零 IO；类型自持（不 import 未注册的兄弟模块），上游契约以等价
 //! 自有类型承接——编译期不受平行会话注册次序影响。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use alloc::format;
@@ -374,10 +378,10 @@ pub type RectKey = (i64, i64, i64, i64);
 /// 包围盒量化键（1 像素精度；仅用于占位重建时的等值快比，不做精确判定）。
 pub fn rect_key(r: &Rect) -> RectKey {
     (
-        (r.x.round()) as i64,
-        (r.y.round()) as i64,
-        (r.w.round().max(0.0)) as i64,
-        (r.h.round().max(0.0)) as i64,
+        (r.x.m_round()) as i64,
+        (r.y.m_round()) as i64,
+        (r.w.m_round().max(0.0)) as i64,
+        (r.h.m_round().max(0.0)) as i64,
     )
 }
 

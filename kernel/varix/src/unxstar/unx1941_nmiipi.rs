@@ -337,7 +337,7 @@ pub fn run_t1941_checks() -> crate::checks::CheckSet {
     );
     // 10/10 演练。
     let (ok, rounds) = drill_10_rounds(0x1941_0001);
-    set.add(
+    set.add_dyn(
         "NI-10-rounds",
         ok,
         &format!("不丢不重 {}/{} 轮", rounds, NI_ROUNDS),
@@ -347,7 +347,7 @@ pub fn run_t1941_checks() -> crate::checks::CheckSet {
     inj.inject_all();
     set.add("NI-inject-4/4", inj.all_caught(), "");
     // 判据总门。
-    set.add(
+    set.add_dyn(
         "UNX-F1941-J1",
         ok && inj.all_caught(),
         &format!(

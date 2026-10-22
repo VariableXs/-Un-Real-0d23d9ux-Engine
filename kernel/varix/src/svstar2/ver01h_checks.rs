@@ -52,6 +52,7 @@
 //!    **同层多分支**语料；纯链语料的拓扑序唯一，倒序实现输出仍相同。
 
 use crate::checks::CheckSet;
+use crate::ktrace;
 use crate::svstar2::ver01h_evalperf::*;
 
 use alloc::format;
@@ -1141,8 +1142,8 @@ fn chk_code_table(set: &mut CheckSet) {
         let ee: Vec<(u32, u32)> = vec![(0u32, 1u32); n];
         match EvalGraph::build(ep, &ee) {
             Err(PerfCode::EdgeLimit) => reached.push(PerfCode::EdgeLimit),
-            Err(e) => std::println!("[chk] EdgeLimit 语料被 {:?} 抢先", e),
-            Ok(_) => std::println!("[chk] EdgeLimit 语料竟建图成功"),
+            Err(e) => ktrace!("[chk] EdgeLimit 语料被 {:?} 抢先", e),
+            Ok(_) => ktrace!("[chk] EdgeLimit 语料竟建图成功"),
         }
     }
     // 10) DepthLimit：链长 > MAX_DEPTH(32)。
@@ -1219,7 +1220,7 @@ fn chk_code_table(set: &mut CheckSet) {
             {
                 reached.push(PerfCode::P95Degraded);
             }
-            _ => std::println!("[chk] P95Degraded 语料未造出告警 alert={:?}", got.as_ref().map(|x| x.profile.alert)),
+            _ => ktrace!("[chk] P95Degraded 语料未造出告警 alert={:?}", got.as_ref().map(|x| x.profile.alert)),
         }
     }
     // 13) BudgetUnaligned：AD06 声明的预算与 UNIT_BUDGET 不一致。

@@ -478,14 +478,14 @@ pub fn run_t2161_checks() -> crate::checks::CheckSet {
     // 基线小组织。
     let mut org = StOrganizer::new_standard();
     let n = org.generate_combos().unwrap_or(0);
-    set.add(
+    set.add_dyn(
         "ST-base-combos",
         n == 24,
         &format!("4×3×2 = {} 组合全预告", n),
     );
     // 演练。
     let (ok, rounds, combos) = drill(10);
-    set.add(
+    set.add_dyn(
         "ST-drill-10/10",
         ok,
         &format!("组织 {}/10 轮 组合累计={}", rounds, combos),
@@ -495,13 +495,13 @@ pub fn run_t2161_checks() -> crate::checks::CheckSet {
         inj: StInjector::new(),
     };
     gate.inj.inject_all();
-    set.add(
+    set.add_dyn(
         "ST-inject-8/8",
         gate.inj.all_caught(),
         &format!("{}/{}", gate.inj.caught, gate.inj.cases),
     );
     // 判据总门。
     let (jok, msg) = gate.judge(ok, rounds, combos);
-    set.add("UNX-F2161-J1", jok, &msg);
+    set.add_dyn("UNX-F2161-J1", jok, &msg);
     set
 }

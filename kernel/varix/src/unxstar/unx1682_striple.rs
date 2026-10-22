@@ -22,7 +22,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use crate::unx1681_timeslice::{
+use crate::unxstar::unx1681_timeslice::{
     TS_BASE_SLICE_NS, TS_MAX_SLICE_NS, TS_MIN_SLICE_NS, TsModel,
 };
 
@@ -264,7 +264,7 @@ impl StTable {
             let class_ok = row
                 .classes
                 .iter()
-                .all(|c| *c == "" || crate::unx1661_schedcls::SL_CLASS_NAMES.contains(c));
+                .all(|c| *c == "" || crate::unxstar::unx1661_schedcls::SL_CLASS_NAMES.contains(c));
             if !tier_ok || !slice_ok || !class_ok {
                 return Err(StDiag::new(
                     StCode::ColumnMissing,
@@ -305,7 +305,7 @@ impl StTable {
         let mut seen = [false; 8];
         // RT 三类：N/A 留痕也是一次归类（账面显性 · 非缺项）。
         for rt in ST_RT_CLASSES.iter() {
-            if let Some(pos) = crate::unx1661_schedcls::SL_CLASS_NAMES
+            if let Some(pos) = crate::unxstar::unx1661_schedcls::SL_CLASS_NAMES
                 .iter()
                 .position(|n| n == rt)
             {
@@ -325,7 +325,7 @@ impl StTable {
                 if c.is_empty() {
                     continue;
                 }
-                if let Some(pos) = crate::unx1661_schedcls::SL_CLASS_NAMES
+                if let Some(pos) = crate::unxstar::unx1661_schedcls::SL_CLASS_NAMES
                     .iter()
                     .position(|n| n == c)
                 {
@@ -346,7 +346,7 @@ impl StTable {
                 return Err(StDiag::new(
                     StCode::CoverageBreak,
                     "build_once",
-                    format!("类 {} 遗漏归类", crate::unx1661_schedcls::SL_CLASS_NAMES[i]),
+                    format!("类 {} 遗漏归类", crate::unxstar::unx1661_schedcls::SL_CLASS_NAMES[i]),
                 ));
             }
         }
@@ -386,7 +386,7 @@ impl StTable {
             ));
         }
         // 冒名类：F1663 闭集外。
-        let pos = match crate::unx1661_schedcls::SL_CLASS_NAMES
+        let pos = match crate::unxstar::unx1661_schedcls::SL_CLASS_NAMES
             .iter()
             .position(|n| *n == class)
         {
@@ -454,7 +454,7 @@ impl StTable {
 
     /// 对齐账全导出（8 行 · 类名+归类）。
     pub fn affinity_export(&self) -> Vec<String> {
-        crate::unx1661_schedcls::SL_CLASS_NAMES
+        crate::unxstar::unx1661_schedcls::SL_CLASS_NAMES
             .iter()
             .zip(self.affinity.iter())
             .map(|(n, a)| match a {
@@ -600,7 +600,7 @@ pub fn run_t682_checks() -> crate::checks::CheckSet {
     let mut g = StGate::new();
     // 单点建表冻结。
     let fp = g.table.build_once();
-    set.add(
+    set.add_dyn(
         "ST-freeze-build",
         fp.is_ok(),
         &match fp {
@@ -627,6 +627,6 @@ pub fn run_t682_checks() -> crate::checks::CheckSet {
     set.add("ST-inject-14/14", g.inj.all_caught(), "");
     // 判据总门。
     let (ok, msg) = g.judge();
-    set.add("UNX-F1682-J1", ok, &msg);
+    set.add_dyn("UNX-F1682-J1", ok, &msg);
     set
 }

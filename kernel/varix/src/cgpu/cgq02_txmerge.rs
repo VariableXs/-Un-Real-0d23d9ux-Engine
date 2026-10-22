@@ -20,6 +20,7 @@
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 
 /// 模块版本。
 pub const TM_VERSION: &str = "cgq02_txmerge-v1";
@@ -393,7 +394,7 @@ pub fn run_tq02_checks() -> crate::checks::CheckSet {
     let mut set = crate::checks::CheckSet::new("cgq02-tq02");
     let mut g = TmGate::new();
     let (ok, msg) = g.judge();
-    set.add("CGPU-F1286-J1", ok, &msg);
+    set.add_dyn("CGPU-F1286-J1", ok, &msg);
     set.add("TM-conserved", g.acct.conserved(), "");
     set.add("TM-deterministic", g.acct.deterministic(&g.src, TmMode::Gentle), "");
     set.add("TM-window-declared", TmMode::Gentle.window() == TM_WINDOW_US, "");

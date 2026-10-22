@@ -14,6 +14,10 @@
 //! 时间纪律：采样以归一化进度 `t ∈ [0,1]` 输入；时长由各功能的
 //! MotionSpec 表给出；无时钟、无全局状态——渲染层按帧取值即可。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
@@ -50,7 +54,7 @@ pub fn sample(t: f32, curve: Curve) -> f32 {
     }
     match curve {
         Curve::Linear => t,
-        Curve::Standard => 1.0 - (1.0 - t).powi(3),
+        Curve::Standard => 1.0 - (1.0 - t).m_powi(3),
         // easeOutBack 族：1 + (c1+1)(t-1)³ + c1(t-1)²——过冲峰值 =
         // 1 + (4/27)·c1³/(c1+1)²（解析可对账，不靠肉眼）。
         Curve::Emphasis => ease_out_back(t, 0.45),

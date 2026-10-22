@@ -20,6 +20,10 @@
 //! 时间纪律：与 STAR-K2 sbase 同款——**一切时间由调用方以参数注入**，
 //! 模块不持真实时钟，宿主测试确定复现。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -211,7 +215,7 @@ fn srgb_channel(c: u8) -> f64 {
     if c <= 0.04045 {
         c / 12.92
     } else {
-        ((c + 0.055) / 1.055).powf(2.4)
+        ((c + 0.055) / 1.055).m_powf(2.4)
     }
 }
 
@@ -226,7 +230,7 @@ pub fn contrast_ratio_x100(a: (u8, u8, u8), b: (u8, u8, u8)) -> u32 {
     let la = relative_luminance(a);
     let lb = relative_luminance(b);
     let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
-    ((hi + 0.05) / (lo + 0.05) * 100.0).round() as u32
+    ((hi + 0.05) / (lo + 0.05) * 100.0).m_round() as u32
 }
 
 // ---------------------------------------------------------------------------
@@ -240,24 +244,24 @@ pub fn kelvin_to_rgb(k: u32) -> (u8, u8, u8) {
     let r = if t <= 66.0 {
         255.0
     } else {
-        329.698727446 * (t - 60.0).powf(-0.1332047592)
+        329.698727446 * (t - 60.0).m_powf(-0.1332047592)
     };
     let g = if t <= 66.0 {
-        99.4708025861 * t.ln() - 161.1195681661
+        99.4708025861 * t.m_ln() - 161.1195681661
     } else {
-        288.1221695283 * (t - 60.0).powf(-0.0755148492)
+        288.1221695283 * (t - 60.0).m_powf(-0.0755148492)
     };
     let b = if t >= 66.0 {
         255.0
     } else if t <= 19.0 {
         0.0
     } else {
-        138.5177312231 * (t - 10.0).ln() - 305.0447927307
+        138.5177312231 * (t - 10.0).m_ln() - 305.0447927307
     };
     (
-        r.max(0.0).min(255.0).round() as u8,
-        g.max(0.0).min(255.0).round() as u8,
-        b.max(0.0).min(255.0).round() as u8,
+        r.max(0.0).min(255.0).m_round() as u8,
+        g.max(0.0).min(255.0).m_round() as u8,
+        b.max(0.0).min(255.0).m_round() as u8,
     )
 }
 

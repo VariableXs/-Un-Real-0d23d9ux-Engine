@@ -61,6 +61,10 @@
 //! **性能（锚点原文）**：对拍构建期；哨兵行为检测随 CI；统计矩
 //! 测量按需；全链 10 分钟内（步数预算兜底）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -422,7 +426,7 @@ impl Watchdog {
 pub fn frame_rate_total(rate_per_sec: f32, total_sec: f32, fps: u32) -> u32 {
     let mut acc = EmitAccumulator::new();
     let dt = 1.0 / fps as f32;
-    let frames = (total_sec * fps as f32).round() as u32;
+    let frames = (total_sec * fps as f32).m_round() as u32;
     let mut total = 0u32;
     let mut f = 0u32;
     while f < frames {

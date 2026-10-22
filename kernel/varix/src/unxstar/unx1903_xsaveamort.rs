@@ -302,7 +302,7 @@ pub fn run_t1903_checks() -> crate::checks::CheckSet {
     );
     // 样本矩阵。
     let (ok, n, notes) = sample_matrix(0x1903_0001);
-    set.add(
+    set.add_dyn(
         "XA-matrix-10/10",
         ok,
         &format!("保真 {}/{} {}", n, XA_SAMPLES, notes.first().cloned().unwrap_or_default()),
@@ -312,7 +312,7 @@ pub fn run_t1903_checks() -> crate::checks::CheckSet {
     inj.inject_all();
     set.add("XA-inject-4/4", inj.all_caught(), "");
     // 判据总门。
-    set.add(
+    set.add_dyn(
         "UNX-F1903-J1",
         ok && inj.all_caught(),
         &format!(

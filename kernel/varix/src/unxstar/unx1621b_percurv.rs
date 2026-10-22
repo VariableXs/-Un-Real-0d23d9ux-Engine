@@ -379,7 +379,7 @@ pub fn run_t621b_checks() -> crate::checks::CheckSet {
     // 四场注入。
     g.inj.inject_all(&g.lay);
     let (ok, msg) = g.judge();
-    set.add("UNX-F1621-J1", ok, &msg);
+    set.add_dyn("UNX-F1621-J1", ok, &msg);
     set.add("PC-offsets-frozen", g.lay.offsets_frozen(), "");
     set.add("PC-zero-overrun", g.lay.within_a1() && g.lay.no_overlap(), "");
     set.add("PC-multi-cpu", g.lay.multi_cpu_within(8), "");

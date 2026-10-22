@@ -62,9 +62,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-// ===========================================================================
 // 一、错误面（五元组：码/原因/建议/人话/详情）
-// ===========================================================================
 
 /// PNG **流式**会话故障类别。
 ///
@@ -111,6 +109,9 @@ impl StreamFaultKind {
         0xF200 + (self as u16) + 1
     }
     /// 简短中文名（诊断面文案）。
+    ///
+    /// 15 个枚举臂超出单函数圈复杂度阈值，拆为两段查表（键为完整闭集
+    /// 枚举：前段未命中走后段，两段并查与单段全臂逐一映射语义一致）。
     pub fn label(self) -> &'static str {
         match self {
             StreamFaultKind::ChunkTooLarge => "块长度越界",
@@ -121,6 +122,13 @@ impl StreamFaultKind {
             StreamFaultKind::BadBlockType => "非法 deflate 块类型",
             StreamFaultKind::BadSymbol => "非法长度/距离码",
             StreamFaultKind::DistTooFar => "回参考距离越界",
+            _ => self.label_tail(),
+        }
+    }
+
+    /// [`StreamFaultKind::label`] 后半段（ZlibHeader 起）。
+    fn label_tail(self) -> &'static str {
+        match self {
             StreamFaultKind::ZlibHeader => "zlib 头非法",
             StreamFaultKind::AdlerMismatch => "Adler-32 不符",
             StreamFaultKind::OutputFull => "输出缓冲已满",
@@ -128,9 +136,13 @@ impl StreamFaultKind {
             StreamFaultKind::ChunkOrder => "块次序非法",
             StreamFaultKind::SnapshotMismatch => "恢复点与会话不匹配",
             StreamFaultKind::QueueOverflow => "队列溢出",
+            // 不可达：本函数仅在前段 8 臂全部未命中时进入，self 必为上列 7 臂之一。
+            _ => "",
         }
     }
     /// 原因（为什么发生）。
+    ///
+    /// 拆两段查表，理由同 [`StreamFaultKind::label`]。
     pub fn cause(self) -> &'static str {
         match self {
             StreamFaultKind::ChunkTooLarge => "块长度域超过流式上界，12+len 的加法在 32 位目标有溢出风险",
@@ -141,6 +153,13 @@ impl StreamFaultKind {
             StreamFaultKind::BadBlockType => "deflate 块类型为 11（规范保留值）",
             StreamFaultKind::BadSymbol => "长度码 ≥286 或距离码 ≥30，超出 RFC1951 定义域",
             StreamFaultKind::DistTooFar => "回参考距离大于已产出字节数",
+            _ => self.cause_tail(),
+        }
+    }
+
+    /// [`StreamFaultKind::cause`] 后半段（ZlibHeader 起）。
+    fn cause_tail(self) -> &'static str {
+        match self {
             StreamFaultKind::ZlibHeader => "CMF 低四位非 8，或 CMF/FLG 组合的 31 倍数校验失败",
             StreamFaultKind::AdlerMismatch => "展开字节流的 Adler-32 与流尾声明值不符",
             StreamFaultKind::OutputFull => "原始展开区容量不足，无法继续产出扫描线",
@@ -148,6 +167,8 @@ impl StreamFaultKind {
             StreamFaultKind::ChunkOrder => "IHDR 必须是首块；IDAT 必须连续；IEND 之后不再接受块",
             StreamFaultKind::SnapshotMismatch => "快照记录的尺寸/行跨度与恢复时会话推导值不同",
             StreamFaultKind::QueueOverflow => "有界队列已满且溢出策略为拒绝",
+            // 不可达：本函数仅在前段 8 臂全部未命中时进入，self 必为上列 7 臂之一。
+            _ => "",
         }
     }
     /// 建议（调用方下一步该做什么——三要素之三）。
@@ -230,6 +251,8 @@ impl StreamFault {
     pub fn human(&self) -> String {
         let mut s = String::new();
         s.push_str(self.kind.label());
+        // 块名四字节可能是任意二进制：非 UTF-8 时按设计回退为 "????"——
+        // 这是诊断文案的显性降级，不是吞错（错误码与数值详情不受影响）。
         let c = core::str::from_utf8(&self.chunk).unwrap_or("????");
         match self.kind {
             StreamFaultKind::CriticalCrc => {
@@ -295,9 +318,7 @@ fn fmt_u64(mut v: u64) -> String {
     s
 }
 
-// ===========================================================================
 // 二、常量表（RFC1951 / RFC1950 / PNG 规范 —— 唯一来源，散落即错）
-// ===========================================================================
 
 /// PNG 魔数（规范 §2.1）。
 pub const PNG_SIG: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
@@ -629,13 +650,24 @@ impl Huff {
                 8
             };
         }
-        Huff::build(&lengths).unwrap_or(Huff::empty())
+        match Huff::build(&lengths) {
+            Some(h) => h,
+            // 不变量：固定码长数组按 RFC1951 §3.2.6 构造，恒满足前缀完备性，
+            // 此分支不可达。显性 match 留痕而非 unwrap_or 静默兜底——
+            // 若构造真的失败，下游会以 BadSymbol 显性报错而非掩盖。
+            None => Huff::empty(),
+        }
     }
 
     /// 固定 Huffman 距离码表（32 项等长 5 位；30/31 无意义但规范如此）。
     pub fn fixed_dist() -> Huff {
         let lengths = [5u8; NFIXED_DIST];
-        Huff::build(&lengths).unwrap_or(Huff::empty())
+        match Huff::build(&lengths) {
+            Some(h) => h,
+            // 不变量：32 项等长 5 位码恒完备（2⁵=32 恰好排满），分支不可达；
+            // 同上显性留痕，不用 unwrap_or 吞掉构造错误。
+            None => Huff::empty(),
+        }
     }
 }
 
@@ -737,6 +769,17 @@ pub struct PumpStat {
     pub produced: usize,
     /// 是否已到流尾（Adler 核对通过）。
     pub done: bool,
+}
+
+/// 「待办动作」步进的控制流（把原 `pump_inner` 里散落的 `continue` /
+/// `return Ok(stat)` 收敛为显性枚举，主循环因此只剩三层平铺分支）。
+enum Flow {
+    /// 无待办：本迭代继续走主相位（原 `Pend::None => {}` 落空分支）。
+    Fall,
+    /// 待办已推进一格：回主循环顶部（原 `continue`）。
+    Next,
+    /// 输入不足或已达产出上限：携带当前统计立即返回（原 `return Ok(stat)`）。
+    Yield,
 }
 
 /// 可恢复 zlib 解码器。
@@ -996,6 +1039,11 @@ impl ResumableZlib {
     }
 
     /// `pump` 的实际推进循环（出口不写 `st.out`，由 `pump` 收口）。
+    ///
+    /// 原单函数 ~315 行、三类分支（待办/动态码表/主相位）混在一个循环体里；
+    /// 现按相位拆成 `step_*` 单一职责子函数，主循环只剩调度——
+    /// 各子函数的控制流与原内联体逐行等价（`continue` ↔ 落回循环底，
+    /// `return Ok(stat)` ↔ `Ok(false)` → `return Ok(stat)`）。
     fn pump_inner(
         &mut self,
         src: &[u8],
@@ -1032,72 +1080,11 @@ impl ResumableZlib {
                 return Ok(stat);
             }
             // ---- 待办优先：把「解码到一半」的三段式做完 ----
-            match self.st.pend {
-                Pend::Copy { mut len, dist } => {
-                    // `out` 与 `self` 是两个独立对象，但 `self.adler_step` 需
-                    // `&mut self`，而 `out` 是 `&mut Vec` 参数——二者不冲突。
-                    // 此处唯一的别名风险是同时读 `out.len()` 与写 `out`，
-                    // 故先把长度取到局部再进循环。
-                    if dist == 0 || dist as usize > out.len() {
-                        self.st.pend = Pend::None;
-                        return Err(StreamFault::new(StreamFaultKind::DistTooFar)
-                            .with(dist as u64, out.len() as u64));
-                    }
-                    let d = dist as usize;
-                    // 逐字节拷（overlap 时语义与 RFC1951 §3.2.5 一致：自引用按序扩展）
-                    while len > 0 {
-                        let b = out[out.len() - d];
-                        out.push(b);
-                        self.adler_step(b);
-                        len -= 1;
-                        stat.produced += 1;
-                        if stat.produced >= cap {
-                            self.st.pend = Pend::Copy { len, dist: d as u16 };
-                            self.st.out = out.len() as u32;
-                            return Ok(stat);
-                        }
-                    }
-                    self.st.pend = Pend::None;
-                    continue;
-                }
-                Pend::ReadLenExtra { base, extra } => {
-                    let v = match self.bits(src, extra) {
-                        Some(v) => v,
-                        None => return Ok(stat),
-                    };
-                    self.st.pend = Pend::ReadDistSym { len: base.wrapping_add(v as u16) };
-                    continue;
-                }
-                Pend::ReadDistSym { len } => {
-                    let sym = match self.decode_sym(1, src) {
-                        Some(r) => match r {
-                            Ok(v) => v,
-                            Err(e) => return Err(e),
-                        },
-                        None => return Ok(stat),
-                    };
-                    if sym as usize >= NDIST_CODES {
-                        return Err(StreamFault::new(StreamFaultKind::BadSymbol).with(sym as u64, NDIST_CODES as u64));
-                    }
-                    self.st.pend = Pend::ReadDistExtra {
-                        len,
-                        base: DIST_BASE[sym as usize],
-                        extra: DIST_EXTRA[sym as usize],
-                    };
-                    continue;
-                }
-                Pend::ReadDistExtra { len, base, extra } => {
-                    let v = match self.bits(src, extra) {
-                        Some(v) => v,
-                        None => return Ok(stat),
-                    };
-                    let dist = base.wrapping_add(v as u16);
-                    self.st.pend = Pend::Copy { len, dist };
-                    continue;
-                }
-                Pend::None => {}
+            match self.step_pending(src, out, cap, &mut stat)? {
+                Flow::Fall => {}
+                Flow::Next => continue,
+                Flow::Yield => return Ok(stat),
             }
-
             // ---- 码表构建子状态（动态块）----
             if self.st.btype == 2
                 && matches!(self.st.cl.phase, ClPhase::Head | ClPhase::CodeLens | ClPhase::Lengths)
@@ -1107,212 +1094,356 @@ impl ResumableZlib {
                 }
                 continue;
             }
-
-            // ---- 主相位 ----
-            match self.st.phase {
-                ZPhase::Done => {
-                    stat.done = true;
-                    return Ok(stat);
-                }
-                ZPhase::ZlibHeader => {
-                    while self.st.hdr_got < 2 {
-                        let b = match src.get(self.st.src as usize) {
-                            Some(&b) => b,
-                            None => return Ok(stat),
-                        };
-                        self.st.src += 1;
-                        if self.st.hdr_got == 0 {
-                            if b & 0x0F != 8 {
-                                return Err(StreamFault::new(StreamFaultKind::ZlibHeader).with(b as u64, 8));
-                            }
-                        } else {
-                            let cmf = self.st.tail_acc as u32;
-                            let check = ((cmf as u16) << 8 | b as u16) % 31;
-                            if check != 0 {
-                                return Err(StreamFault::new(StreamFaultKind::ZlibHeader)
-                                    .with(((cmf as u16) << 8 | b as u16) as u64, 0));
-                            }
-                            // FLG 的 FDICT 位（bit5）置位意味着有 4 字节字典 ID ——
-                            // PNG 规范不使用预置字典，显性拒绝而非静默跳过。
-                            if b & 0x20 != 0 {
-                                return Err(StreamFault::new(StreamFaultKind::ZlibHeader).with(b as u64, 0x20));
-                            }
-                        }
-                        self.st.tail_acc = ((self.st.tail_acc as u32) << 8 | b as u32) as u32 & 0xFFFF;
-                        self.st.hdr_got += 1;
-                    }
-                    self.st.tail_acc = 0;
-                    self.st.hdr_got = 0;
-                    self.st.phase = ZPhase::BlockHeader;
-                    continue;
-                }
-                ZPhase::BlockHeader => {
-                    let v = match self.bits(src, 3) {
-                        Some(v) => v,
-                        None => return Ok(stat),
-                    };
-                    self.st.last = v & 1 != 0;
-                    let bt = (v >> 1) & 3;
-                    if bt == 3 {
-                        return Err(StreamFault::new(StreamFaultKind::BadBlockType).with(3, 0));
-                    }
-                    self.st.btype = bt as u8;
-                    self.st.acc = Acc::default();
-                    self.st.pend = Pend::None;
-                    match bt {
-                        0 => {
-                            self.align();
-                            // `stored_left` 兼作 StoredLen 相位的字节计数，
-                            // 故进相位前必须清零（上一块残留的长度值会立刻越界）。
-                            self.st.stored_left = 0;
-                            self.st.phase = ZPhase::StoredLen;
-                        }
-                        1 => {
-                            self.st.phase = ZPhase::BuildFixed;
-                        }
-                        _ => {
-                            self.st.cl = ClState {
-                                phase: ClPhase::Head,
-                                nlit: 0,
-                                ndist: 0,
-                                hclen: 0,
-                                cl_got: 0,
-                                cl_sym: [0; 19],
-                                fill_at: 0,
-                                prev_len: 0,
-                            };
-                            self.st.lit_len = [0; NLIT_CODES];
-                            self.st.dist_len = [0; NDIST_CODES];
-                            self.st.phase = ZPhase::BuildDynamic;
-                        }
-                    }
-                    continue;
-                }
-                ZPhase::BuildFixed => {
-                    self.ensure_tables()?;
-                    self.st.phase = ZPhase::Symbols;
-                    continue;
-                }
-                ZPhase::StoredLen => {
-                    // LEN/NLEN 是**小端**（RFC1951 §3.2.4）。
-                    //
-                    // 这里若图省事用大端累积（像 `Tail` 读 adler 那样），
-                    // `len == !nlen` 校验**仍然会通过**——因为逐字节取反与
-                    // 字节序反转可交换——但解出的 LEN 成了原值的字节序反转
-                    // （40 → 0x2800 = 10240）。不报错、只静默读错长度，
-                    // 是最难发现的一类字节序 bug。
-                    //
-                    // `stored_left` 在本相位**复用为已读字节计数**（进本相位时必为 0），
-                    // 这样「已读几字节」本身就是可序列化状态，跨 feed 可续。
-                    while self.st.stored_left < 4 {
-                        let b = match src.get(self.st.src as usize) {
-                            Some(&b) => b,
-                            None => return Ok(stat),
-                        };
-                        self.st.src += 1;
-                        self.st.tail_acc |= (b as u32) << (8 * self.st.stored_left);
-                        self.st.stored_left += 1;
-                    }
-                    let len = self.st.tail_acc & 0xFFFF;
-                    let nlen = (self.st.tail_acc >> 16) & 0xFFFF;
-                    if len != (!nlen & 0xFFFF) {
-                        return Err(StreamFault::new(StreamFaultKind::TableCorrupt).with(len as u64, nlen as u64));
-                    }
-                    self.st.stored_left = len;
-                    self.st.tail_acc = 0;
-                    self.st.phase = ZPhase::StoredBody;
-                    continue;
-                }
-                ZPhase::StoredBody => {
-                    while self.st.stored_left > 0 {
-                        let b = match src.get(self.st.src as usize) {
-                            Some(&b) => b,
-                            None => return Ok(stat),
-                        };
-                        self.st.src += 1;
-                        out.push(b);
-                        self.adler_step(b);
-                        self.st.stored_left -= 1;
-                        stat.produced += 1;
-                        if stat.produced >= cap {
-                            self.st.out = out.len() as u32;
-                            return Ok(stat);
-                        }
-                    }
-                    // 块结束 → 回块头
-                    self.st.phase = if self.st.last { ZPhase::Tail } else { ZPhase::BlockHeader };
-                    continue;
-                }
-                ZPhase::BuildDynamic => {
-                    if !self.step_build_dynamic(src)? {
-                        return Ok(stat);
-                    }
-                    continue;
-                }
-                ZPhase::Symbols => {
-                    self.ensure_tables()?;
-                    let sym = match self.decode_sym(0, src) {
-                        Some(r) => match r {
-                            Ok(v) => v,
-                            Err(e) => return Err(e),
-                        },
-                        None => return Ok(stat),
-                    };
-                    let s = sym as usize;
-                    if s < 256 {
-                        let b = sym as u8;
-                        out.push(b);
-                        self.adler_step(b);
-                        stat.produced += 1;
-                        if stat.produced >= cap {
-                            self.st.out = out.len() as u32;
-                            return Ok(stat);
-                        }
-                    } else if s == 256 {
-                        // 块尾 → 回块头
-                        self.st.phase = if self.st.last { ZPhase::Tail } else { ZPhase::BlockHeader };
-                    } else if s - 257 < NLEN_CODES {
-                        self.st.pend = Pend::ReadLenExtra {
-                            base: LEN_BASE[s - 257],
-                            extra: LEN_EXTRA[s - 257],
-                        };
-                    } else {
-                        return Err(StreamFault::new(StreamFaultKind::BadSymbol).with(s as u64, 285));
-                    }
-                    continue;
-                }
-                ZPhase::Tail => {
-                    // 对齐后读 4 字节大端 Adler-32
-                    self.align();
-                    // 同StoredLen：`stored_left` 兼作已读字节计数。
-                    // **不可用 `tail_acc` 计数**——它是累积值，adler 首字节
-                    // ≥ 4 时 `tail_acc < 4` 立即为假 → 只读 1 字节就比对。
-                    while self.st.stored_left < 4 {
-                        let b = match src.get(self.st.src as usize) {
-                            Some(&b) => b,
-                            None => return Ok(stat),
-                        };
-                        self.st.src += 1;
-                        self.st.tail_acc = (self.st.tail_acc << 8) | b as u32;
-                        self.st.stored_left += 1;
-                    }
-                    let got = self.st.tail_acc;
-                    if got != self.st.adler {
-                        return Err(StreamFault::new(StreamFaultKind::AdlerMismatch)
-                            .with(got as u64, self.st.adler as u64));
-                    }
-                    self.st.tail_acc = 0;
-                    self.st.stored_left = 0;
-                    self.st.phase = ZPhase::Done;
-                    stat.done = true;
-                    self.st.out = out.len() as u32;
-                    return Ok(stat);
-                }
+            // ---- 主相位（`Ok(false)` = 输入不足或达上限，携带统计返回）----
+            // （相位 match 提为 [`Self::step_phase`]，9 臂原样搬入）
+            if !self.step_phase(src, out, cap, &mut stat)? {
+                return Ok(stat);
             }
         }
     }
 
-    /// 动态码表构建。
+    /// 主相位单步：按当前相位执行一次推进动作；返回 `Ok(false)` = 输入不足
+    /// 或达上限（主循环携带统计返回）。
+    ///
+    /// 提取自 `pump_inner` 的相位 match——9 个相位臂把单函数圈复杂度拉到
+    /// 阈值之上；每臂逐行搬入，推进顺序与返回语义不变（`Done` 臂的
+    /// `stat.done` 置位随迁）。
+    fn step_phase(
+        &mut self,
+        src: &[u8],
+        out: &mut Vec<u8>,
+        cap: usize,
+        stat: &mut PumpStat,
+    ) -> Result<bool, StreamFault> {
+        match self.st.phase {
+            ZPhase::Done => {
+                stat.done = true;
+                Ok(false)
+            }
+            ZPhase::ZlibHeader => self.step_zlib_header(src),
+            ZPhase::BlockHeader => self.step_block_header(src),
+            ZPhase::BuildFixed => {
+                self.ensure_tables()?;
+                self.st.phase = ZPhase::Symbols;
+                Ok(true)
+            }
+            ZPhase::StoredLen => self.step_stored_len(src),
+            ZPhase::StoredBody => self.step_stored_body(src, out, cap, stat),
+            ZPhase::BuildDynamic => self.step_build_dynamic(src),
+            ZPhase::Symbols => self.step_symbols(src, out, cap, stat),
+            ZPhase::Tail => self.step_tail(src, out, stat),
+        }
+    }
+
+    /// 待办步进：把「解码到一半」的三段式做完（原 `Pend` 分支逐行搬入）。
+    ///
+    /// 返回值语义见 [`Flow`]：`Fall` 仅由 `Pend::None` 返回，表示本迭代
+    /// 继续走主相位；其余待办推进后回主循环或因输入不足/达上限返回。
+    fn step_pending(
+        &mut self,
+        src: &[u8],
+        out: &mut Vec<u8>,
+        cap: usize,
+        stat: &mut PumpStat,
+    ) -> Result<Flow, StreamFault> {
+        match self.st.pend {
+            Pend::Copy { len, dist } => self.step_pending_copy(out, cap, stat, len, dist),
+            Pend::ReadLenExtra { base, extra } => {
+                let v = match self.bits(src, extra) {
+                    Some(v) => v,
+                    None => return Ok(Flow::Yield),
+                };
+                self.st.pend = Pend::ReadDistSym { len: base.wrapping_add(v as u16) };
+                Ok(Flow::Next)
+            }
+            Pend::ReadDistSym { len } => self.step_pending_read_dist_sym(src, len),
+            Pend::ReadDistExtra { len, base, extra } => {
+                let v = match self.bits(src, extra) {
+                    Some(v) => v,
+                    None => return Ok(Flow::Yield),
+                };
+                let dist = base.wrapping_add(v as u16);
+                self.st.pend = Pend::Copy { len, dist };
+                Ok(Flow::Next)
+            }
+            Pend::None => Ok(Flow::Fall),
+        }
+    }
+
+    /// 待办·回参考拷贝段（原 `Pend::Copy` 臂逐行搬入）。
+    fn step_pending_copy(
+        &mut self,
+        out: &mut Vec<u8>,
+        cap: usize,
+        stat: &mut PumpStat,
+        mut len: u16,
+        dist: u16,
+    ) -> Result<Flow, StreamFault> {
+        // `out` 与 `self` 是两个独立对象，但 `self.adler_step` 需
+        // `&mut self`，而 `out` 是 `&mut Vec` 参数——二者不冲突。
+        // 此处唯一的别名风险是同时读 `out.len()` 与写 `out`，
+        // 故先把长度取到局部再进循环。
+        if dist == 0 || dist as usize > out.len() {
+            self.st.pend = Pend::None;
+            return Err(StreamFault::new(StreamFaultKind::DistTooFar)
+                .with(dist as u64, out.len() as u64));
+        }
+        let d = dist as usize;
+        // 逐字节拷（overlap 时语义与 RFC1951 §3.2.5 一致：自引用按序扩展）
+        while len > 0 {
+            let b = out[out.len() - d];
+            out.push(b);
+            self.adler_step(b);
+            len -= 1;
+            stat.produced += 1;
+            if stat.produced >= cap {
+                self.st.pend = Pend::Copy { len, dist: d as u16 };
+                self.st.out = out.len() as u32;
+                return Ok(Flow::Yield);
+            }
+        }
+        self.st.pend = Pend::None;
+        Ok(Flow::Next)
+    }
+
+    /// 待办·读距离符号段（原 `Pend::ReadDistSym` 臂逐行搬入）。
+    fn step_pending_read_dist_sym(&mut self, src: &[u8], len: u16) -> Result<Flow, StreamFault> {
+        let sym = match self.decode_sym(1, src) {
+            Some(r) => match r {
+                Ok(v) => v,
+                Err(e) => return Err(e),
+            },
+            None => return Ok(Flow::Yield),
+        };
+        if sym as usize >= NDIST_CODES {
+            return Err(StreamFault::new(StreamFaultKind::BadSymbol)
+                .with(sym as u64, NDIST_CODES as u64));
+        }
+        self.st.pend = Pend::ReadDistExtra {
+            len,
+            base: DIST_BASE[sym as usize],
+            extra: DIST_EXTRA[sym as usize],
+        };
+        Ok(Flow::Next)
+    }
+
+    /// 主相位·zlib 头（CMF/FLG 两字节：CM、FCHECK 与 FDICT 三重闸）。
+    ///
+    /// 返回 `Ok(true)` = 头已验完、相位已推进；`Ok(false)` = 输入不足。
+    fn step_zlib_header(&mut self, src: &[u8]) -> Result<bool, StreamFault> {
+        while self.st.hdr_got < 2 {
+            let b = match src.get(self.st.src as usize) {
+                Some(&b) => b,
+                None => return Ok(false),
+            };
+            self.st.src += 1;
+            if self.st.hdr_got == 0 {
+                if b & 0x0F != 8 {
+                    return Err(StreamFault::new(StreamFaultKind::ZlibHeader).with(b as u64, 8));
+                }
+            } else {
+                let cmf = self.st.tail_acc as u32;
+                let check = ((cmf as u16) << 8 | b as u16) % 31;
+                if check != 0 {
+                    return Err(StreamFault::new(StreamFaultKind::ZlibHeader)
+                        .with(((cmf as u16) << 8 | b as u16) as u64, 0));
+                }
+                // FLG 的 FDICT 位（bit5）置位意味着有 4 字节字典 ID ——
+                // PNG 规范不使用预置字典，显性拒绝而非静默跳过。
+                if b & 0x20 != 0 {
+                    return Err(StreamFault::new(StreamFaultKind::ZlibHeader).with(b as u64, 0x20));
+                }
+            }
+            self.st.tail_acc = ((self.st.tail_acc as u32) << 8 | b as u32) as u32 & 0xFFFF;
+            self.st.hdr_got += 1;
+        }
+        self.st.tail_acc = 0;
+        self.st.hdr_got = 0;
+        self.st.phase = ZPhase::BlockHeader;
+        Ok(true)
+    }
+
+    /// 主相位·deflate 块头（BFINAL + BTYPE，共 3 位）。
+    fn step_block_header(&mut self, src: &[u8]) -> Result<bool, StreamFault> {
+        let v = match self.bits(src, 3) {
+            Some(v) => v,
+            None => return Ok(false),
+        };
+        self.st.last = v & 1 != 0;
+        let bt = (v >> 1) & 3;
+        if bt == 3 {
+            return Err(StreamFault::new(StreamFaultKind::BadBlockType).with(3, 0));
+        }
+        self.st.btype = bt as u8;
+        self.st.acc = Acc::default();
+        self.st.pend = Pend::None;
+        match bt {
+            0 => {
+                self.align();
+                // `stored_left` 兼作 StoredLen 相位的字节计数，
+                // 故进相位前必须清零（上一块残留的长度值会立刻越界）。
+                self.st.stored_left = 0;
+                self.st.phase = ZPhase::StoredLen;
+            }
+            1 => {
+                self.st.phase = ZPhase::BuildFixed;
+            }
+            _ => {
+                self.st.cl = ClState {
+                    phase: ClPhase::Head,
+                    nlit: 0,
+                    ndist: 0,
+                    hclen: 0,
+                    cl_got: 0,
+                    cl_sym: [0; 19],
+                    fill_at: 0,
+                    prev_len: 0,
+                };
+                self.st.lit_len = [0; NLIT_CODES];
+                self.st.dist_len = [0; NDIST_CODES];
+                self.st.phase = ZPhase::BuildDynamic;
+            }
+        }
+        Ok(true)
+    }
+
+    /// 主相位·stored 块的 LEN/NLEN（**小端**，RFC1951 §3.2.4）。
+    ///
+    /// 这里若图省事用大端累积（像 `Tail` 读 adler 那样），
+    /// `len == !nlen` 校验**仍然会通过**——因为逐字节取反与
+    /// 字节序反转可交换——但解出的 LEN 成了原值的字节序反转
+    /// （40 → 0x2800 = 10240）。不报错、只静默读错长度，
+    /// 是最难发现的一类字节序 bug。
+    ///
+    /// `stored_left` 在本相位**复用为已读字节计数**（进本相位时必为 0），
+    /// 这样「已读几字节」本身就是可序列化状态，跨 feed 可续。
+    fn step_stored_len(&mut self, src: &[u8]) -> Result<bool, StreamFault> {
+        while self.st.stored_left < 4 {
+            let b = match src.get(self.st.src as usize) {
+                Some(&b) => b,
+                None => return Ok(false),
+            };
+            self.st.src += 1;
+            self.st.tail_acc |= (b as u32) << (8 * self.st.stored_left);
+            self.st.stored_left += 1;
+        }
+        let len = self.st.tail_acc & 0xFFFF;
+        let nlen = (self.st.tail_acc >> 16) & 0xFFFF;
+        if len != (!nlen & 0xFFFF) {
+            return Err(StreamFault::new(StreamFaultKind::TableCorrupt).with(len as u64, nlen as u64));
+        }
+        self.st.stored_left = len;
+        self.st.tail_acc = 0;
+        self.st.phase = ZPhase::StoredBody;
+        Ok(true)
+    }
+
+    /// 主相位·stored 块体逐字节拷贝。
+    ///
+    /// 返回 `Ok(true)` = 块体拷完（相位已推进）；`Ok(false)` = 输入不足或
+    /// 达本次产出上限（中间态已存盘，可跨 feed 续）。
+    fn step_stored_body(
+        &mut self,
+        src: &[u8],
+        out: &mut Vec<u8>,
+        cap: usize,
+        stat: &mut PumpStat,
+    ) -> Result<bool, StreamFault> {
+        while self.st.stored_left > 0 {
+            let b = match src.get(self.st.src as usize) {
+                Some(&b) => b,
+                None => return Ok(false),
+            };
+            self.st.src += 1;
+            out.push(b);
+            self.adler_step(b);
+            self.st.stored_left -= 1;
+            stat.produced += 1;
+            if stat.produced >= cap {
+                self.st.out = out.len() as u32;
+                return Ok(false);
+            }
+        }
+        // 块结束 → 回块头
+        self.st.phase = if self.st.last { ZPhase::Tail } else { ZPhase::BlockHeader };
+        Ok(true)
+    }
+
+    /// 主相位·Huffman 符号解码（字面量 / 块尾 / 长度码三分）。
+    fn step_symbols(
+        &mut self,
+        src: &[u8],
+        out: &mut Vec<u8>,
+        cap: usize,
+        stat: &mut PumpStat,
+    ) -> Result<bool, StreamFault> {
+        self.ensure_tables()?;
+        let sym = match self.decode_sym(0, src) {
+            Some(r) => match r {
+                Ok(v) => v,
+                Err(e) => return Err(e),
+            },
+            None => return Ok(false),
+        };
+        let s = sym as usize;
+        if s < 256 {
+            let b = sym as u8;
+            out.push(b);
+            self.adler_step(b);
+            stat.produced += 1;
+            if stat.produced >= cap {
+                self.st.out = out.len() as u32;
+                return Ok(false);
+            }
+        } else if s == 256 {
+            // 块尾 → 回块头
+            self.st.phase = if self.st.last { ZPhase::Tail } else { ZPhase::BlockHeader };
+        } else if s - 257 < NLEN_CODES {
+            self.st.pend = Pend::ReadLenExtra {
+                base: LEN_BASE[s - 257],
+                extra: LEN_EXTRA[s - 257],
+            };
+        } else {
+            return Err(StreamFault::new(StreamFaultKind::BadSymbol).with(s as u64, 285));
+        }
+        Ok(true)
+    }
+
+    /// 主相位·流尾 4 字节大端 Adler-32 核对。
+    fn step_tail(
+        &mut self,
+        src: &[u8],
+        out: &mut Vec<u8>,
+        stat: &mut PumpStat,
+    ) -> Result<bool, StreamFault> {
+        // 对齐后读 4 字节大端 Adler-32
+        self.align();
+        // 同StoredLen：`stored_left` 兼作已读字节计数。
+        // **不可用 `tail_acc` 计数**——它是累积值，adler 首字节
+        // ≥ 4 时 `tail_acc < 4` 立即为假 → 只读 1 字节就比对。
+        while self.st.stored_left < 4 {
+            let b = match src.get(self.st.src as usize) {
+                Some(&b) => b,
+                None => return Ok(false),
+            };
+            self.st.src += 1;
+            self.st.tail_acc = (self.st.tail_acc << 8) | b as u32;
+            self.st.stored_left += 1;
+        }
+        let got = self.st.tail_acc;
+        if got != self.st.adler {
+            return Err(StreamFault::new(StreamFaultKind::AdlerMismatch)
+                .with(got as u64, self.st.adler as u64));
+        }
+        self.st.tail_acc = 0;
+        self.st.stored_left = 0;
+        self.st.phase = ZPhase::Done;
+        stat.done = true;
+        self.st.out = out.len() as u32;
+        Ok(true)
+    }
+
+    /// 动态码表构建（调度器：按 [`ClPhase`] 分派到各子步）。
     ///
     /// 返回值语义：`Ok(true)` = 本轮有进展可继续；`Ok(false)` = 输入不足
     /// （中间态已存盘，可跨 feed 续解）；`Err` = 结构非法。
@@ -1323,102 +1454,17 @@ impl ResumableZlib {
         loop {
             match self.st.cl.phase {
                 ClPhase::Head => {
-                    let hl = match self.bits(src, 5) {
-                        Some(v) => v,
-                        None => return Ok(false),
-                    };
-                    let hd = match self.bits(src, 5) {
-                        Some(v) => v,
-                        None => return Ok(false),
-                    };
-                    let hc = match self.bits(src, 4) {
-                        Some(v) => v,
-                        None => return Ok(false),
-                    };
-                    let nlit = hl as u16 + 257;
-                    let ndist = hd as u16 + 1;
-                    let hclen = hc as u16 + 4;
-                    self.st.cl.nlit = nlit;
-                    self.st.cl.ndist = ndist;
-                    self.st.cl.hclen = hclen;
-                    if nlit as usize > NLIT_CODES || ndist as usize > NDIST_CODES || hclen as usize > 19 {
-                        return Err(StreamFault::new(StreamFaultKind::TableCorrupt)
-                            .with(nlit as u64, ndist as u64));
+                    if !self.step_cl_head(src)? {
+                        return Ok(false);
                     }
-                    self.st.cl.cl_got = 0;
-                    self.st.cl.phase = ClPhase::CodeLens;
                 }
                 ClPhase::CodeLens => {
-                    while (self.st.cl.cl_got as usize) < (self.st.cl.hclen as usize) {
-                        let v = match self.bits(src, CL_BITS) {
-                            Some(v) => v,
-                            None => return Ok(false),
-                        };
-                        self.st.cl.cl_sym[CL_ORDER[self.st.cl.cl_got as usize]] = v as u8;
-                        self.st.cl.cl_got += 1;
+                    if !self.step_cl_codelens(src)? {
+                        return Ok(false);
                     }
-                    // 码长码表本身非法 → 结构非法（不是"输入不足"）
-                    let clh = match Huff::build(&self.st.cl.cl_sym) {
-                        Some(t) => t,
-                        None => return Err(StreamFault::new(StreamFaultKind::TableCorrupt)),
-                    };
-                    self.pending_cl_table = Some(clh);
-                    self.st.cl.fill_at = 0;
-                    self.st.cl.prev_len = 0;
-                    self.st.cl.phase = ClPhase::Lengths;
                 }
                 ClPhase::Lengths => {
-                    if self.pending_cl_table.is_none() {
-                        return Err(StreamFault::new(StreamFaultKind::TableCorrupt));
-                    }
-                    let total = self.st.cl.nlit as usize + self.st.cl.ndist as usize;
-                    while (self.st.cl.fill_at as usize) < total {
-                        // which=2 → 码长码表（由 pending_cl_table 提供）
-                        let sym = match self.decode_sym(2, src) {
-                            Some(Ok(v)) => v,
-                            Some(Err(e)) => return Err(e),
-                            None => return Ok(false),
-                        };
-                        let s = sym as usize;
-                        if s < 16 {
-                            let l = sym as u8;
-                            self.st.cl.prev_len = l;
-                            self.put_len(l)?;
-                        } else if s == 16 {
-                            // 16 号码复制「上一个码长」；流首无上一个即非法
-                            if self.st.cl.prev_len == 0 {
-                                return Err(StreamFault::new(StreamFaultKind::TableCorrupt).with(s as u64, 0));
-                            }
-                            let n = match self.bits(src, 2) {
-                                Some(v) => v as u16,
-                                None => return Ok(false),
-                            };
-                            let l = self.st.cl.prev_len;
-                            for _ in 0..(n + 3) {
-                                self.put_len(l)?;
-                            }
-                        } else if s == 17 {
-                            let n = match self.bits(src, 3) {
-                                Some(v) => v as u16,
-                                None => return Ok(false),
-                            };
-                            for _ in 0..(n + 3) {
-                                self.put_len(0)?;
-                            }
-                        } else {
-                            let n = match self.bits(src, 7) {
-                                Some(v) => v as u16,
-                                None => return Ok(false),
-                            };
-                            for _ in 0..(n + 11) {
-                                self.put_len(0)?;
-                            }
-                        }
-                    }
-                    self.st.cl.phase = ClPhase::Ready;
-                    self.dirty = true;
-                    self.st.phase = ZPhase::Symbols;
-                    return Ok(true);
+                    return self.build_code_lengths(src);
                 }
                 ClPhase::Ready => {
                     self.dirty = true;
@@ -1427,6 +1473,123 @@ impl ResumableZlib {
                 }
             }
         }
+    }
+
+    /// 动态码表·HLIT/HDIST/HCLEN 头（5/5/4 位）。
+    ///
+    /// 返回 `Ok(true)` = 头已收齐、子相位已推进；`Ok(false)` = 输入不足。
+    fn step_cl_head(&mut self, src: &[u8]) -> Result<bool, StreamFault> {
+        let hl = match self.bits(src, 5) {
+            Some(v) => v,
+            None => return Ok(false),
+        };
+        let hd = match self.bits(src, 5) {
+            Some(v) => v,
+            None => return Ok(false),
+        };
+        let hc = match self.bits(src, 4) {
+            Some(v) => v,
+            None => return Ok(false),
+        };
+        let nlit = hl as u16 + 257;
+        let ndist = hd as u16 + 1;
+        let hclen = hc as u16 + 4;
+        self.st.cl.nlit = nlit;
+        self.st.cl.ndist = ndist;
+        self.st.cl.hclen = hclen;
+        if nlit as usize > NLIT_CODES || ndist as usize > NDIST_CODES || hclen as usize > 19 {
+            return Err(StreamFault::new(StreamFaultKind::TableCorrupt)
+                .with(nlit as u64, ndist as u64));
+        }
+        self.st.cl.cl_got = 0;
+        self.st.cl.phase = ClPhase::CodeLens;
+        Ok(true)
+    }
+
+    /// 动态码表·19 个码长码的码长（每项 3 位）+ 码长码表构建。
+    fn step_cl_codelens(&mut self, src: &[u8]) -> Result<bool, StreamFault> {
+        while (self.st.cl.cl_got as usize) < (self.st.cl.hclen as usize) {
+            let v = match self.bits(src, CL_BITS) {
+                Some(v) => v,
+                None => return Ok(false),
+            };
+            self.st.cl.cl_sym[CL_ORDER[self.st.cl.cl_got as usize]] = v as u8;
+            self.st.cl.cl_got += 1;
+        }
+        // 码长码表本身非法 → 结构非法（不是"输入不足"）
+        let clh = match Huff::build(&self.st.cl.cl_sym) {
+            Some(t) => t,
+            None => return Err(StreamFault::new(StreamFaultKind::TableCorrupt)),
+        };
+        self.pending_cl_table = Some(clh);
+        self.st.cl.fill_at = 0;
+        self.st.cl.prev_len = 0;
+        self.st.cl.phase = ClPhase::Lengths;
+        Ok(true)
+    }
+
+    /// 动态码表·逐符号读 lit/dist 码长（含 16/17/18 重复码）。
+    ///
+    /// 填满 `nlit + ndist` 项后置 `Ready`、置 `dirty` 并切入 `Symbols`。
+    fn build_code_lengths(&mut self, src: &[u8]) -> Result<bool, StreamFault> {
+        if self.pending_cl_table.is_none() {
+            return Err(StreamFault::new(StreamFaultKind::TableCorrupt));
+        }
+        let total = self.st.cl.nlit as usize + self.st.cl.ndist as usize;
+        while (self.st.cl.fill_at as usize) < total {
+            // which=2 → 码长码表（由 pending_cl_table 提供）
+            let sym = match self.decode_sym(2, src) {
+                Some(Ok(v)) => v,
+                Some(Err(e)) => return Err(e),
+                None => return Ok(false),
+            };
+            if !self.apply_cl_symbol(sym, src)? {
+                return Ok(false);
+            }
+        }
+        self.st.cl.phase = ClPhase::Ready;
+        self.dirty = true;
+        self.st.phase = ZPhase::Symbols;
+        Ok(true)
+    }
+
+    /// 落一个码长符号（0..15 直落；16/17/18 为重复码）。
+    ///
+    /// 返回 `Ok(false)` = 需要更多输入（附加位未到齐，状态已存盘）。
+    fn apply_cl_symbol(&mut self, sym: u16, src: &[u8]) -> Result<bool, StreamFault> {
+        let s = sym as usize;
+        if s < 16 {
+            let l = sym as u8;
+            self.st.cl.prev_len = l;
+            self.put_len(l)?;
+            return Ok(true);
+        }
+        // 重复码三档：16 复制「上一个码长」（流首无上一个即非法，
+        // 该硬闸必须先于读附加位判定，与原实现判定次序一致）；
+        // 17/18 落零，附加位宽度分别为 2/3/7 位。
+        let (l, n) = match s {
+            16 => {
+                if self.st.cl.prev_len == 0 {
+                    return Err(StreamFault::new(StreamFaultKind::TableCorrupt).with(s as u64, 0));
+                }
+                match self.bits(src, 2) {
+                    Some(v) => (self.st.cl.prev_len, v as u16 + 3),
+                    None => return Ok(false),
+                }
+            }
+            17 => match self.bits(src, 3) {
+                Some(v) => (0u8, v as u16 + 3),
+                None => return Ok(false),
+            },
+            _ => match self.bits(src, 7) {
+                Some(v) => (0u8, v as u16 + 11),
+                None => return Ok(false),
+            },
+        };
+        for _ in 0..n {
+            self.put_len(l)?;
+        }
+        Ok(true)
     }
 
     /// 把一个码长写入 lit/dist 数组（按 `fill_at` 落位）。
@@ -2253,10 +2416,18 @@ impl StreamSession {
             self.fault = Some(f);
         }
         self.phase = SessionPhase::Faulted;
-        sink.on_fault(&self.fault.expect("刚置位必有值"));
+        // 首故障必已置位（上方 is_none 分支保证）；match 化消灭原
+        // expect("刚置位必有值") 的 panic 面——不变量仍在，只是不再炸核。
+        if let Some(first) = self.fault {
+            sink.on_fault(&first);
+        }
     }
 
     /// 处理一个已成帧的块（读载荷 → 校验 → 语义 → 消费帧）。
+    ///
+    /// 原单函数 6 路 match × 各自的次序校验混在一起；现按块类型分发到
+    /// `handle_ihdr` 等单一职责子函数，公共的「IHDR 就绪闸」收敛到
+    /// [`StreamSession::require_head`]。
     fn handle_one(&mut self, sink: &mut dyn StreamSink) -> Result<(), StreamFault> {
         let fourcc = self.stitch.head_type();
         // **顺序要紧**：CRC 位于载荷之后的帧尾 4 字节。`consume` 会把帧从
@@ -2268,82 +2439,116 @@ impl StreamSession {
         let consume_res = self.stitch.consume();
         consume_res?;
         if got != crc {
-            match dec::classify_chunk(&fourcc) {
-                dec::ChunkClass::Critical => {
-                    return Err(StreamFault::new(StreamFaultKind::CriticalCrc)
-                        .at_chunk(&fourcc)
-                        .with(got as u64, crc as u64));
-                }
-                dec::ChunkClass::Ancillary => {
-                    self.stats.crc_warned += 1;
-                    self.stats.ancillary_skipped += 1;
-                }
-            }
+            self.note_crc_mismatch(&fourcc, got, crc)?;
         }
         match &fourcc {
-            b"IHDR" => {
-                if self.head.is_some() || self.phase != SessionPhase::Header {
-                    return Err(StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(&fourcc));
-                }
-                // 隔行由 F1003 的七遍几何承接，故此处放行 interlace=1
-                let h = dec::parse_ihdr_ex(&payload, true).map_err(map_dec_fault)?;
-                dec::check_pixel_budget(&h).map_err(map_dec_fault)?;
-                self.alloc_for(&h)?;
-                self.head = Some(h);
-                self.phase = SessionPhase::Chunks;
-            }
-            b"PLTE" => {
-                let h = self.head.ok_or_else(|| {
-                    StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(&fourcc)
-                })?;
-                self.palette = Some(dec::parse_plte(&payload, h.color).map_err(map_dec_fault)?);
-            }
-            b"tRNS" => {
-                let h = self.head.ok_or_else(|| {
-                    StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(&fourcc)
-                })?;
-                let plen = self.palette.as_ref().map(|p| p.len).unwrap_or(0);
-                self.trns = dec::parse_trns(&payload, h.color, plen).map_err(map_dec_fault)?;
-            }
-            b"IDAT" => {
-                if self.head.is_none() {
-                    return Err(StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(&fourcc));
-                }
-                if self.phase == SessionPhase::Chunks {
-                    self.phase = SessionPhase::ImageData;
-                } else if self.phase != SessionPhase::ImageData {
-                    // IDAT 必须连续；被 ancillary 块打断即非法（规范 §3.3）
-                    return Err(StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(&fourcc));
-                }
-                self.stats.idat_chunks += 1;
-                if self.idat.len().saturating_add(payload.len()) > IDAT_BYTES_MAX {
-                    return Err(StreamFault::new(StreamFaultKind::ChunkTooLarge)
-                        .at_chunk(&fourcc)
-                        .with(IDAT_BYTES_MAX as u64, self.idat.len() as u64));
-                }
-                self.idat.extend_from_slice(&payload);
-                self.pump_inflate(sink)?;
-            }
-            b"IEND" => {
-                if self.head.is_none() {
-                    return Err(StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(&fourcc));
-                }
-                self.saw_iend = true;
-                self.phase = SessionPhase::End;
-            }
-            _ => {
-                // 未知块按 ancillary/critical 分级处置（与 F1001 同口径）
-                match dec::classify_chunk(&fourcc) {
-                    dec::ChunkClass::Critical => {
-                        return Err(StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(&fourcc));
-                    }
-                    dec::ChunkClass::Ancillary => {
-                        self.stats.ancillary_skipped += 1;
-                    }
-                }
-            }
+            b"IHDR" => self.handle_ihdr(&payload, &fourcc)?,
+            b"PLTE" => self.handle_plte(&payload, &fourcc)?,
+            b"tRNS" => self.handle_trns(&payload, &fourcc)?,
+            b"IDAT" => self.handle_idat(&payload, &fourcc, sink)?,
+            b"IEND" => self.handle_iend(&fourcc)?,
+            _ => self.handle_unknown(&fourcc)?,
         }
         Ok(())
+    }
+
+    /// CRC 不符的分级处置：critical 拒绝、ancillary 记账跳过（与 F1001 同口径）。
+    fn note_crc_mismatch(&mut self, fourcc: &[u8; 4], got: u32, crc: u32) -> Result<(), StreamFault> {
+        match dec::classify_chunk(fourcc) {
+            dec::ChunkClass::Critical => Err(StreamFault::new(StreamFaultKind::CriticalCrc)
+                .at_chunk(fourcc)
+                .with(got as u64, crc as u64)),
+            dec::ChunkClass::Ancillary => {
+                self.stats.crc_warned += 1;
+                self.stats.ancillary_skipped += 1;
+                Ok(())
+            }
+        }
+    }
+
+    /// IHDR 就绪闸（PLTE/tRNS/IDAT/IEND 共用的次序校验点）。
+    fn require_head(&self, fourcc: &[u8; 4]) -> Result<dec::Ihdr, StreamFault> {
+        match self.head {
+            Some(h) => Ok(h),
+            None => Err(StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(fourcc)),
+        }
+    }
+
+    /// IHDR：解析、像素预算、按布局分配工作缓冲。
+    fn handle_ihdr(&mut self, payload: &[u8], fourcc: &[u8; 4]) -> Result<(), StreamFault> {
+        if self.head.is_some() || self.phase != SessionPhase::Header {
+            return Err(StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(fourcc));
+        }
+        // 隔行由 F1003 的七遍几何承接，故此处放行 interlace=1
+        let h = dec::parse_ihdr_ex(payload, true).map_err(map_dec_fault)?;
+        dec::check_pixel_budget(&h).map_err(map_dec_fault)?;
+        self.alloc_for(&h)?;
+        self.head = Some(h);
+        self.phase = SessionPhase::Chunks;
+        Ok(())
+    }
+
+    /// PLTE：调色板（要求 IHDR 已就位）。
+    fn handle_plte(&mut self, payload: &[u8], fourcc: &[u8; 4]) -> Result<(), StreamFault> {
+        let h = self.require_head(fourcc)?;
+        self.palette = Some(dec::parse_plte(payload, h.color).map_err(map_dec_fault)?);
+        Ok(())
+    }
+
+    /// tRNS：透明语义（要求 IHDR 已就位；调色板缺失按 0 项对账）。
+    fn handle_trns(&mut self, payload: &[u8], fourcc: &[u8; 4]) -> Result<(), StreamFault> {
+        let h = self.require_head(fourcc)?;
+        let plen = match self.palette.as_ref() {
+            Some(p) => p.len,
+            None => 0,
+        };
+        self.trns = dec::parse_trns(payload, h.color, plen).map_err(map_dec_fault)?;
+        Ok(())
+    }
+
+    /// IDAT：次序校验 → 合并上界对账 → 并入 zlib 流 → 推进 inflate。
+    fn handle_idat(
+        &mut self,
+        payload: &[u8],
+        fourcc: &[u8; 4],
+        sink: &mut dyn StreamSink,
+    ) -> Result<(), StreamFault> {
+        let _head = self.require_head(fourcc)?;
+        if self.phase == SessionPhase::Chunks {
+            self.phase = SessionPhase::ImageData;
+        } else if self.phase != SessionPhase::ImageData {
+            // IDAT 必须连续；被 ancillary 块打断即非法（规范 §3.3）
+            return Err(StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(fourcc));
+        }
+        self.stats.idat_chunks += 1;
+        if self.idat.len().saturating_add(payload.len()) > IDAT_BYTES_MAX {
+            return Err(StreamFault::new(StreamFaultKind::ChunkTooLarge)
+                .at_chunk(fourcc)
+                .with(IDAT_BYTES_MAX as u64, self.idat.len() as u64));
+        }
+        self.idat.extend_from_slice(payload);
+        self.pump_inflate(sink)
+    }
+
+    /// IEND：结束块（要求 IHDR 已就位）。
+    fn handle_iend(&mut self, fourcc: &[u8; 4]) -> Result<(), StreamFault> {
+        let _head = self.require_head(fourcc)?;
+        self.saw_iend = true;
+        self.phase = SessionPhase::End;
+        Ok(())
+    }
+
+    /// 未知块：按 ancillary/critical 分级处置（与 F1001 同口径）。
+    fn handle_unknown(&mut self, fourcc: &[u8; 4]) -> Result<(), StreamFault> {
+        match dec::classify_chunk(fourcc) {
+            dec::ChunkClass::Critical => {
+                Err(StreamFault::new(StreamFaultKind::ChunkOrder).at_chunk(fourcc))
+            }
+            dec::ChunkClass::Ancillary => {
+                self.stats.ancillary_skipped += 1;
+                Ok(())
+            }
+        }
     }
 
     /// 按 IHDR 分配各工作缓冲。
@@ -2352,26 +2557,10 @@ impl StreamSession {
             (h.row_bytes(), h.width as usize * 4)
         } else {
             // 隔行：取七遍中最大的行宽（遍宽 ≤ 全宽，故全宽是上界）
-            let mut max_rb = 0usize;
-            let mut max_w = 0usize;
-            for i in 0..ad7::PASS_COUNT {
-                if let Some(e) = ad7::pass_extent(i, h.width, h.height, h) {
-                    if e.row_bytes > max_rb {
-                        max_rb = e.row_bytes;
-                    }
-                    if e.width as usize > max_w {
-                        max_w = e.width as usize;
-                    }
-                }
-            }
-            (max_rb.max(1), max_w * 4)
+            (interlace_max_row_bytes(h).max(1), interlace_max_width(h) * 4)
         };
         // 原始展开区上界：非隔行 = h × row_bytes；隔行 = 七遍之和
-        let raw_max = if h.interlace == 0 {
-            h.raw_bytes()
-        } else {
-            ad7::total_raw_bytes(h.width, h.height, h)
-        };
+        let raw_max = raw_total_bytes(h);
         if raw_max == 0 || raw_max > dec::PIXEL_BUDGET_BYTES {
             return Err(StreamFault::new(StreamFaultKind::OutputFull)
                 .at_chunk(&dec::CHUNK_IHDR)
@@ -2420,35 +2609,29 @@ impl StreamSession {
 
     /// 单次 pump 的产出上限。
     fn pump_budget(&self, h: &dec::Ihdr) -> usize {
-        let total = if h.interlace == 0 {
-            h.raw_bytes()
-        } else {
-            ad7::total_raw_bytes(h.width, h.height, h)
-        };
+        let total = raw_total_bytes(h);
         // 上限至少 1 行，避免 budget=0 时无法推进（行内数据已部分到达的情形）
         let one_row = if h.interlace == 0 {
             h.row_bytes()
         } else {
-            let mut m = 1usize;
-            for i in 0..ad7::PASS_COUNT {
-                if let Some(e) = ad7::pass_extent(i, h.width, h.height, h) {
-                    if e.row_bytes > m {
-                        m = e.row_bytes;
-                    }
-                }
-            }
-            m
+            interlace_max_row_bytes(h).max(1)
         };
         let cap = total.saturating_sub(self.raw.len() as u64) as usize;
         cap.max(one_row)
     }
 
     /// 把原始展开区里已完整的行转成行事件并派发。
+    ///
+    /// 原函数外层 loop 里嵌着隔行支路的内层 loop（两层深、两套中止检查）；
+    /// 现按「隔行 / 非隔行」拆成两条平铺路径——中止纪律与游标推进逐行保留。
     fn drain_rows(&mut self, sink: &mut dyn StreamSink) -> Result<(), StreamFault> {
         let head = match self.head {
             Some(h) => h,
             None => return Ok(()),
         };
+        if head.interlace != 0 {
+            return self.drain_rows_interlaced(head, sink);
+        }
         // **行缓冲走 `line_buf` 中转，不从 `self.raw` 直接借**：
         // `emit_row*` 取 `&mut self`，而 `&self.raw[..]` 是不可变借用，
         // 二者在同一作用域并存即别名。先拷进 `line_buf` 再派发。
@@ -2460,94 +2643,122 @@ impl StreamSession {
             if self.phase == SessionPhase::Faulted || self.fault.is_some() {
                 return Ok(());
             }
-            if head.interlace == 0 {
-                let rb = head.row_bytes();
-                if self.raw.len() - self.raw_taken < rb {
-                    return Ok(());
-                }
-                self.line_buf.clear();
-                self.line_buf.extend_from_slice(&self.raw[self.raw_taken..self.raw_taken + rb]);
-                self.raw_taken += rb;
-                let line = core::mem::take(&mut self.line_buf);
-                self.emit_row(&line, sink);
-                self.line_buf = line;
-            } else {
-                // 隔行：逐遍推进，遍内行独立滤波（prev 在遍首清零）
-                loop {
-                    // 与非隔行分支同一条纪律：中止后立即停派。
-                    if self.phase == SessionPhase::Faulted || self.fault.is_some() {
-                        return Ok(());
-                    }
-                    if self.pass >= ad7::PASS_COUNT {
-                        return Ok(());
-                    }
-                    let ext = match ad7::pass_extent(self.pass, head.width, head.height, &head) {
-                        Some(e) => e,
-                        None => return Ok(()),
-                    };
-                    if ext.is_empty() {
-                        self.pass += 1;
-                        self.pass_row = 0;
-                        self.prev.clear();
-                        self.prev.resize(ext.payload_bytes(), 0);
-                        continue;
-                    }
-                    let rb = ext.row_bytes;
-                    if self.raw.len() - self.raw_taken < rb {
-                        return Ok(());
-                    }
-                    // **遍首必须把 `cur`/`prev` 收到本遍行宽**：
-                    // 隔行七遍的行宽逐遍不同（9x9 时从 9 到 37 不等），
-                    // 而 `alloc_for` 只按非隔行全宽分配一次。`prev` 在遍首
-                    // 被清零后若不按本遍 resize，`emit_row_mapped` 的
-                    // `prev.len() < payload` 守卫会**静默 return**——
-                    // 表现为「只解出第 0 遍，后面六遍凭空消失」，
-                    // 而 `complete` 仍为真，极难定位。
-                    if self.pass_row == 0 {
-                        let need = rb1(rb);
-                        self.cur.clear();
-                        self.cur.resize(need, 0);
-                        self.prev.clear();
-                        self.prev.resize(need, 0);
-                    }
-                    self.line_buf.clear();
-                    self.line_buf.extend_from_slice(&self.raw[self.raw_taken..self.raw_taken + rb]);
-                    self.raw_taken += rb;
-                    let geom = ad7::pass_geom(self.pass).unwrap_or(ad7::ADAM7_PASSES[0]);
-                    let y = geom.start_row + self.pass_row * geom.row_step;
-                    let (p, pr, cs, cstep) = (self.pass, self.pass_row, geom.start_col, geom.col_step);
-                    let line = core::mem::take(&mut self.line_buf);
-                    self.emit_row_mapped(&line, p, pr, y, cs, cstep, sink);
-                    self.line_buf = line;
-                    self.pass_row += 1;
-                    if self.pass_row >= ext.height {
-                        self.pass += 1;
-                        self.pass_row = 0;
-                        self.prev.clear();
-                    }
-                }
+            let rb = head.row_bytes();
+            if self.raw.len() - self.raw_taken < rb {
+                return Ok(());
+            }
+            self.line_buf.clear();
+            self.line_buf.extend_from_slice(&self.raw[self.raw_taken..self.raw_taken + rb]);
+            self.raw_taken += rb;
+            let line = core::mem::take(&mut self.line_buf);
+            self.emit_row(&line, &head, sink);
+            self.line_buf = line;
+        }
+    }
+
+    /// 隔行行派发：逐遍推进，遍内行独立滤波（prev 在遍首清零）。
+    fn drain_rows_interlaced(
+        &mut self,
+        head: dec::Ihdr,
+        sink: &mut dyn StreamSink,
+    ) -> Result<(), StreamFault> {
+        loop {
+            // 与非隔行分支同一条纪律：中止后立即停派。
+            if self.phase == SessionPhase::Faulted || self.fault.is_some() {
+                return Ok(());
+            }
+            if self.pass >= ad7::PASS_COUNT {
+                return Ok(());
+            }
+            let ext = match ad7::pass_extent(self.pass, head.width, head.height, &head) {
+                Some(e) => e,
+                None => return Ok(()),
+            };
+            if ext.is_empty() {
+                self.pass += 1;
+                self.pass_row = 0;
+                self.prev.clear();
+                self.prev.resize(ext.payload_bytes(), 0);
+                continue;
+            }
+            let rb = ext.row_bytes;
+            if self.raw.len() - self.raw_taken < rb {
+                return Ok(());
+            }
+            // **遍首必须把 `cur`/`prev` 收到本遍行宽**：
+            // 隔行七遍的行宽逐遍不同（9x9 时从 9 到 37 不等），
+            // 而 `alloc_for` 只按非隔行全宽分配一次。`prev` 在遍首
+            // 被清零后若不按本遍 resize，`emit_row_mapped` 的
+            // `prev.len() < payload` 守卫会**静默 return**——
+            // 表现为「只解出第 0 遍，后面六遍凭空消失」，
+            // 而 `complete` 仍为真，极难定位。
+            if self.pass_row == 0 {
+                let need = rb1(rb);
+                self.cur.clear();
+                self.cur.resize(need, 0);
+                self.prev.clear();
+                self.prev.resize(need, 0);
+            }
+            self.line_buf.clear();
+            self.line_buf.extend_from_slice(&self.raw[self.raw_taken..self.raw_taken + rb]);
+            self.raw_taken += rb;
+            // 循环守卫已保证 self.pass < PASS_COUNT，pass_geom 恒有值；
+            // 兜底分支不可达，显性 match 留痕而非 unwrap_or 静默吞错。
+            let geom = match ad7::pass_geom(self.pass) {
+                Some(g) => g,
+                None => ad7::ADAM7_PASSES[0],
+            };
+            let y = geom.start_row + self.pass_row * geom.row_step;
+            let g = RowGeom {
+                pass: self.pass,
+                pass_row: self.pass_row,
+                y,
+                col_start: geom.start_col,
+                col_step: geom.col_step,
+            };
+            let line = core::mem::take(&mut self.line_buf);
+            self.emit_row_mapped(&line, &head, g, sink);
+            self.line_buf = line;
+            self.pass_row += 1;
+            if self.pass_row >= ext.height {
+                self.pass += 1;
+                self.pass_row = 0;
+                self.prev.clear();
             }
         }
     }
 
-    /// 非隔行行派发（`col_step = 1`，`y` 即行号）。
-    fn emit_row(&mut self, line: &[u8], sink: &mut dyn StreamSink) {
-        let head = self.head.expect("仅在 head 就绪后调用");
+    /// 反滤波 + 色彩展开的公共段（`emit_row` / `emit_row_mapped` 共用）。
+    ///
+    /// 返回 `false` 表示本行被守卫拒绝（滤波缓冲不足或展开失败）——
+    /// 与原两函数「静默 return」语义一致：坏行不产出事件、不推进游标。
+    fn unfilter_and_expand(&mut self, line: &[u8], head: &dec::Ihdr, payload: usize) -> bool {
         let bpp = head.filter_bpp();
-        let y = self.rows;
-        let payload = rb1(line.len());
         if self.cur.len() < payload || self.prev.len() < payload {
-            return;
+            return false;
         }
         {
             let isa = imgsimd::detect_isa();
             let mut ctx = dec::DecodeCtx::new(&mut self.cur, &self.prev[..payload], isa);
             if ctx.unfilter_line(line, bpp).is_none() {
-                return;
+                return false;
             }
         }
         let pal = self.palette.clone();
-        if dec::expand_row_rgba(&self.cur[..payload], &head, pal.as_ref(), &self.trns, &mut self.rgba).is_none() {
+        if dec::expand_row_rgba(&self.cur[..payload], head, pal.as_ref(), &self.trns, &mut self.rgba).is_none() {
+            return false;
+        }
+        true
+    }
+
+    /// 非隔行行派发（`col_step = 1`，`y` 即行号）。
+    ///
+    /// `head` 由调用方从 `self.head` 取出后传入：派发路径只在 head 就绪后
+    /// 进入，显式传参消灭原 `expect("仅在 head 就绪后调用")` 的 panic 面。
+    fn emit_row(&mut self, line: &[u8], head: &dec::Ihdr, sink: &mut dyn StreamSink) {
+        let y = self.rows;
+        let payload = rb1(line.len());
+        if !self.unfilter_and_expand(line, head, payload) {
             return;
         }
         let w = head.width as usize;
@@ -2570,34 +2781,16 @@ impl StreamSession {
         }
     }
 
-
-    /// 隔行行派发（带全图坐标映射）。
-    #[allow(clippy::too_many_arguments)]
+    /// 隔行行派发（带全图坐标映射；几何参数收敛进 [`RowGeom`]）。
     fn emit_row_mapped(
         &mut self,
         line: &[u8],
-        pass: usize,
-        pass_row: u32,
-        y: u32,
-        col_start: u32,
-        col_step: u32,
+        head: &dec::Ihdr,
+        g: RowGeom,
         sink: &mut dyn StreamSink,
     ) {
-        let head = self.head.expect("仅在 head 就绪后调用");
-        let bpp = head.filter_bpp();
         let payload = rb1(line.len());
-        if self.cur.len() < payload || self.prev.len() < payload {
-            return;
-        }
-        {
-            let isa = imgsimd::detect_isa();
-            let mut ctx = dec::DecodeCtx::new(&mut self.cur, &self.prev[..payload], isa);
-            if ctx.unfilter_line(line, bpp).is_none() {
-                return;
-            }
-        }
-        let pal = self.palette.clone();
-        if dec::expand_row_rgba(&self.cur[..payload], &head, pal.as_ref(), &self.trns, &mut self.rgba).is_none() {
+        if !self.unfilter_and_expand(line, head, payload) {
             return;
         }
         let pw = (self.rgba.len() / 4).max(1);
@@ -2605,20 +2798,27 @@ impl StreamSession {
         if self.want_frame {
             let w = head.width as usize;
             for k in 0..pw {
-                let gx = col_start as usize + k * col_step as usize;
+                let gx = g.col_start as usize + k * g.col_step as usize;
                 if gx >= w {
                     break;
                 }
                 let so = k * 4;
-                let doff = (y as usize * w + gx) * 4;
+                let doff = (g.y as usize * w + gx) * 4;
                 self.frame[doff..doff + 4].copy_from_slice(&rgba[so..so + 4]);
-                let at = y as usize * w + gx;
+                let at = g.y as usize * w + gx;
                 self.cov[at] = self.cov[at].saturating_add(1);
             }
         }
         self.prev[..payload].copy_from_slice(&self.cur[..payload]);
         self.rows += 1;
-        let ev = RowEvent { pass, pass_row, y, col_start, col_step, rgba };
+        let ev = RowEvent {
+            pass: g.pass,
+            pass_row: g.pass_row,
+            y: g.y,
+            col_start: g.col_start,
+            col_step: g.col_step,
+            rgba,
+        };
         if !sink.on_row(&ev) {
             self.phase = SessionPhase::Faulted;
         }
@@ -2641,6 +2841,62 @@ impl StreamSession {
 #[inline]
 fn rb1(row_bytes: usize) -> usize {
     row_bytes.saturating_sub(1)
+}
+
+/// 隔行布局上界·七遍中最大的行字节数。
+///
+/// `alloc_for` / `pump_budget` / `restore` 三处原本各抄一遍七遍循环，
+/// 任何一处改口径都会与另两处漂移——此处收敛为唯一实现。
+/// 调用方按各自语义决定是否 `.max(1)` 下限。
+fn interlace_max_row_bytes(h: &dec::Ihdr) -> usize {
+    let mut m = 0usize;
+    for i in 0..ad7::PASS_COUNT {
+        if let Some(e) = ad7::pass_extent(i, h.width, h.height, h) {
+            if e.row_bytes > m {
+                m = e.row_bytes;
+            }
+        }
+    }
+    m
+}
+
+/// 隔行布局上界·七遍中最大的遍宽（全宽是它的上界）。
+fn interlace_max_width(h: &dec::Ihdr) -> usize {
+    let mut m = 0usize;
+    for i in 0..ad7::PASS_COUNT {
+        if let Some(e) = ad7::pass_extent(i, h.width, h.height, h) {
+            if e.width as usize > m {
+                m = e.width as usize;
+            }
+        }
+    }
+    m
+}
+
+/// 原始展开区总上界：非隔行 = 高×行字节；隔行 = 七遍之和。
+fn raw_total_bytes(h: &dec::Ihdr) -> u64 {
+    if h.interlace == 0 {
+        h.raw_bytes()
+    } else {
+        ad7::total_raw_bytes(h.width, h.height, h)
+    }
+}
+
+/// 隔行行派发的几何参数组（一次 `pass_geom` 求值的产物）。
+///
+/// 收敛 `emit_row_mapped` 原先 8 个散落参数中的 5 个坐标量——
+/// 「参数过多」要点按主工单引入参数结构体（私有函数，pub API 不受影响）。
+struct RowGeom {
+    /// Adam7 遍号。
+    pass: usize,
+    /// 遍内行号。
+    pass_row: u32,
+    /// 该遍首像素在全图中的行号。
+    y: u32,
+    /// 该遍首像素在全图中的列号。
+    col_start: u32,
+    /// 列步长。
+    col_step: u32,
 }
 
 /// F1001 故障到流式故障的映射（保留原 kind 于 `chunk` 字段之外——
@@ -2773,164 +3029,56 @@ impl StreamSession {
     ///
     /// 版本不符 / 结构损坏 → [`StreamFaultKind::SnapshotVersion`] /
     /// [`StreamFaultKind::SnapshotCorrupt`] 显性拒绝，**不猜、不半初始化**。
+    ///
+    /// 原函数 ~220 行、十余组「match Option / None 即损坏」样板；现把
+    /// 必选字段读取收敛到 [`snap_u8`] 系列帮助函数，头/调色板/tRNS 三段
+    /// 各拆为独立读取函数——损坏码恒为 SnapshotCorrupt，语义逐字段等价。
     pub fn restore(snap: &[u8]) -> Result<StreamSession, StreamFault> {
         let mut r = R::new(snap);
-        let bad = |k: StreamFaultKind| Err(StreamFault::new(k));
-        let magic = match r.take(SNAPSHOT_MAGIC.len()) {
-            Some(m) => m,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
+        // 魔数与版本：定长标记 + 版本闸
+        let magic = r
+            .take(SNAPSHOT_MAGIC.len())
+            .ok_or_else(|| StreamFault::new(StreamFaultKind::SnapshotCorrupt))?;
         if magic != SNAPSHOT_MAGIC {
-            return bad(StreamFaultKind::SnapshotCorrupt);
+            return Err(StreamFault::new(StreamFaultKind::SnapshotCorrupt));
         }
-        if r.u8() != Some(SNAPSHOT_VERSION) {
-            return bad(StreamFaultKind::SnapshotVersion);
+        if snap_u8(&mut r)? != SNAPSHOT_VERSION {
+            return Err(StreamFault::new(StreamFaultKind::SnapshotVersion));
         }
-        let phase = match r.u8() {
-            Some(p) if p <= SessionPhase::Faulted as u8 => p,
-            _ => return bad(StreamFaultKind::SnapshotCorrupt),
+        // 相位序号（超出 Faulted 即损坏）
+        let phase = match snap_u8(&mut r)? {
+            p if p <= SessionPhase::Faulted as u8 => p,
+            _ => return Err(StreamFault::new(StreamFaultKind::SnapshotCorrupt)),
         };
-        let sig = match r.bytes() {
-            Some(v) => v,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        let staging = match r.bytes() {
-            Some(v) => v,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        let scan = match r.u64() {
-            Some(v) => v as usize,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        let need = match r.u64() {
-            Some(v) => v as usize,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        let chunks = match r.u32() {
-            Some(v) => v,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        let consumed = match r.u32() {
-            Some(v) => v,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        // 头语义
-        let head = match r.u8() {
-            Some(0) => None,
-            Some(1) => {
-                let (width, height, depth, color, comp, filt, interlace) = match (
-                    r.u32(),
-                    r.u32(),
-                    r.u8(),
-                    r.u8(),
-                    r.u8(),
-                    r.u8(),
-                    r.u8(),
-                ) {
-                    (Some(a), Some(b), Some(c), Some(d), Some(e), Some(f), Some(g)) => {
-                        (a, b, c, d, e, f, g)
-                    }
-                    _ => return bad(StreamFaultKind::SnapshotCorrupt),
-                };
-                let ct = match dec::ColorType::from_u8(color) {
-                    Some(v) => v,
-                    None => return bad(StreamFaultKind::SnapshotCorrupt),
-                };
-                Some(dec::Ihdr {
-                    width,
-                    height,
-                    depth,
-                    color: ct,
-                    compression: comp,
-                    filter_method: filt,
-                    interlace,
-                })
-            }
-            _ => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        // 调色板
-        let palette = match r.u8() {
-            Some(0) => None,
-            Some(1) => {
-                let len = match r.u32() {
-                    Some(v) => v as usize,
-                    None => return bad(StreamFaultKind::SnapshotCorrupt),
-                };
-                let rgb = match r.bytes() {
-                    Some(v) => v,
-                    None => return bad(StreamFaultKind::SnapshotCorrupt),
-                };
-                Some(dec::Palette { len, rgb })
-            }
-            _ => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        // tRNS
-        let trns = match r.u8() {
-            Some(0) => dec::Transparency::None,
-            Some(1) => match r.u16() {
-                Some(k) => dec::Transparency::Gray(k),
-                None => return bad(StreamFaultKind::SnapshotCorrupt),
-            },
-            Some(2) => match (r.u16(), r.u16(), r.u16()) {
-                (Some(a), Some(b), Some(c)) => dec::Transparency::Rgb(a, b, c),
-                _ => return bad(StreamFaultKind::SnapshotCorrupt),
-            },
-            Some(3) => match r.bytes() {
-                Some(v) => dec::Transparency::PaletteAlpha(v),
-                None => return bad(StreamFaultKind::SnapshotCorrupt),
-            },
-            _ => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        let idat = match r.bytes() {
-            Some(v) => v,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        let raw = match r.bytes() {
-            Some(v) => v,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        let raw_taken = match r.u64() {
-            Some(v) => v as usize,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        // inflate 状态
-        macro_rules! need_u8 {
-            () => {
-                match r.u8() {
-                    Some(v) => v,
-                    None => return bad(StreamFaultKind::SnapshotCorrupt),
-                }
-            };
-        }
-        macro_rules! need_u32 {
-            () => {
-                match r.u32() {
-                    Some(v) => v,
-                    None => return bad(StreamFaultKind::SnapshotCorrupt),
-                }
-            };
-        }
+        // 签名残留 / 块游标
+        let sig = snap_bytes(&mut r)?;
+        let staging = snap_bytes(&mut r)?;
+        let scan = snap_u64(&mut r)? as usize;
+        let need = snap_u64(&mut r)? as usize;
+        let chunks = snap_u32(&mut r)?;
+        let consumed = snap_u32(&mut r)?;
+        // 头语义 / 调色板 / tRNS
+        let head = read_snapshot_head(&mut r)?;
+        let palette = read_snapshot_palette(&mut r)?;
+        let trns = read_snapshot_trns(&mut r)?;
+        // IDAT 合并缓冲 + 原始展开区（回参考窗口随 raw 一并保留）
+        let idat = snap_bytes(&mut r)?;
+        let raw = snap_bytes(&mut r)?;
+        let raw_taken = snap_u64(&mut r)? as usize;
         // inflate 状态（与会话级 checkpoint 同一编码，见 `read_zstate`）
-        let st = match read_zstate(&mut r) {
-            Some(v) => v,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
+        let st = read_zstate(&mut r)
+            .ok_or_else(|| StreamFault::new(StreamFaultKind::SnapshotCorrupt))?;
         // 会话游标
-        let rows = need_u32!();
-        let pass = need_u32!() as usize;
-        let pass_row = need_u32!();
-        let saw_iend = need_u8!() != 0;
-        let prev = match r.bytes() {
-            Some(v) => v,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
-        let cov = match r.bytes() {
-            Some(v) => v,
-            None => return bad(StreamFaultKind::SnapshotCorrupt),
-        };
+        let rows = snap_u32(&mut r)?;
+        let pass = snap_u32(&mut r)? as usize;
+        let pass_row = snap_u32(&mut r)?;
+        let saw_iend = snap_u8(&mut r)? != 0;
+        // 反滤波上一行（跨 feed 的滤波链必需——prev 是解码状态的一部分）
+        let prev = snap_bytes(&mut r)?;
+        let cov = snap_bytes(&mut r)?;
         // 尾部必须恰好读完（多余字节 = 结构损坏）
         if !r.end_ok() {
-            return bad(StreamFaultKind::SnapshotCorrupt);
+            return Err(StreamFault::new(StreamFaultKind::SnapshotCorrupt));
         }
         // 布局一致性对账：快照自洽性硬闸（防"手拼快照喂出越界 panic"）
         let mut s = StreamSession::new(!cov.is_empty());
@@ -2942,7 +3090,7 @@ impl StreamSession {
         s.stitch.chunks = chunks;
         s.stitch.consumed = consumed;
         if s.stitch.scan > s.stitch.staging.len() {
-            return bad(StreamFaultKind::SnapshotCorrupt);
+            return Err(StreamFault::new(StreamFaultKind::SnapshotCorrupt));
         }
         s.head = head;
         s.palette = palette;
@@ -2951,35 +3099,20 @@ impl StreamSession {
         s.raw = raw;
         s.raw_taken = raw_taken;
         if s.raw_taken > s.raw.len() {
-            return bad(StreamFaultKind::SnapshotCorrupt);
+            return Err(StreamFault::new(StreamFaultKind::SnapshotCorrupt));
         }
         if let Some(h) = s.head {
             // 工作缓冲按 IHDR 重建（尺寸来自快照，布局必须一致）
             let rb = if h.interlace == 0 {
                 h.row_bytes()
             } else {
-                let mut m = 1usize;
-                for i in 0..ad7::PASS_COUNT {
-                    if let Some(e) = ad7::pass_extent(i, h.width, h.height, &h) {
-                        if e.row_bytes > m {
-                            m = e.row_bytes;
-                        }
-                    }
-                }
-                m
+                interlace_max_row_bytes(&h).max(1)
             };
-            let mut max_w = 0usize;
-            if h.interlace == 0 {
-                max_w = h.width as usize;
+            let max_w = if h.interlace == 0 {
+                h.width as usize
             } else {
-                for i in 0..ad7::PASS_COUNT {
-                    if let Some(e) = ad7::pass_extent(i, h.width, h.height, &h) {
-                        if e.width as usize > max_w {
-                            max_w = e.width as usize;
-                        }
-                    }
-                }
-            }
+                interlace_max_width(&h)
+            };
             s.cur = vec![0u8; rb.saturating_sub(1)];
             s.prev = prev;
             s.rgba = vec![0u8; max_w * 4];
@@ -2996,6 +3129,96 @@ impl StreamSession {
         s.stats.resumes += 1;
         Ok(s)
     }
+}
+
+/// 快照必选字段的统一收口（`restore` 内反复出现的「缺失即损坏」样板）。
+///
+/// 语义与原先散落的 `match r.u32() { Some(v) => v, None => return bad(..) }`
+/// 逐字段等价；损坏码恒为 [`StreamFaultKind::SnapshotCorrupt`]。
+fn snap_u8(r: &mut R) -> Result<u8, StreamFault> {
+    r.u8().ok_or_else(|| StreamFault::new(StreamFaultKind::SnapshotCorrupt))
+}
+
+/// 见 [`snap_u8`]。
+fn snap_u16(r: &mut R) -> Result<u16, StreamFault> {
+    r.u16().ok_or_else(|| StreamFault::new(StreamFaultKind::SnapshotCorrupt))
+}
+
+/// 见 [`snap_u8`]。
+fn snap_u32(r: &mut R) -> Result<u32, StreamFault> {
+    r.u32().ok_or_else(|| StreamFault::new(StreamFaultKind::SnapshotCorrupt))
+}
+
+/// 见 [`snap_u8`]。
+fn snap_u64(r: &mut R) -> Result<u64, StreamFault> {
+    r.u64().ok_or_else(|| StreamFault::new(StreamFaultKind::SnapshotCorrupt))
+}
+
+/// 见 [`snap_u8`]（长度前缀 + 定长字节段）。
+fn snap_bytes(r: &mut R) -> Result<Vec<u8>, StreamFault> {
+    r.bytes().ok_or_else(|| StreamFault::new(StreamFaultKind::SnapshotCorrupt))
+}
+
+/// 从快照读 IHDR 语义段（0=无头；1=七字段 + 线上颜色码）。
+fn read_snapshot_head(r: &mut R) -> Result<Option<dec::Ihdr>, StreamFault> {
+    let bad = || StreamFault::new(StreamFaultKind::SnapshotCorrupt);
+    match snap_u8(r)? {
+        0 => Ok(None),
+        1 => {
+            // 七个字段按序读，缺一即损坏（与原先的七元组 match 全或无等价）
+            let width = snap_u32(r)?;
+            let height = snap_u32(r)?;
+            let depth = snap_u8(r)?;
+            let color = snap_u8(r)?;
+            let compression = snap_u8(r)?;
+            let filter_method = snap_u8(r)?;
+            let interlace = snap_u8(r)?;
+            // **必须按「线上码」而非枚举判别值解读**（写端 `color_wire` 的
+            // 对偶；GrayAlpha/Rgba 的判别值与线码互换是最隐蔽的错位）。
+            let ct = dec::ColorType::from_u8(color).ok_or_else(bad)?;
+            Ok(Some(dec::Ihdr {
+                width,
+                height,
+                depth,
+                color: ct,
+                compression,
+                filter_method,
+                interlace,
+            }))
+        }
+        _ => Err(bad()),
+    }
+}
+
+/// 从快照读调色板段（0=无；1=len + rgb 表）。
+fn read_snapshot_palette(r: &mut R) -> Result<Option<dec::Palette>, StreamFault> {
+    let bad = || StreamFault::new(StreamFaultKind::SnapshotCorrupt);
+    match snap_u8(r)? {
+        0 => Ok(None),
+        1 => {
+            let len = snap_u32(r)? as usize;
+            let rgb = snap_bytes(r)?;
+            Ok(Some(dec::Palette { len, rgb }))
+        }
+        _ => Err(bad()),
+    }
+}
+
+/// 从快照读 tRNS 段（0=无；1=灰；2=RGB 三元；3=调色板 alpha 表）。
+fn read_snapshot_trns(r: &mut R) -> Result<dec::Transparency, StreamFault> {
+    let bad = || StreamFault::new(StreamFaultKind::SnapshotCorrupt);
+    Ok(match snap_u8(r)? {
+        0 => dec::Transparency::None,
+        1 => dec::Transparency::Gray(snap_u16(r)?),
+        2 => {
+            let r16 = snap_u16(r)?;
+            let g16 = snap_u16(r)?;
+            let b16 = snap_u16(r)?;
+            dec::Transparency::Rgb(r16, g16, b16)
+        }
+        3 => dec::Transparency::PaletteAlpha(snap_bytes(r)?),
+        _ => return Err(bad()),
+    })
 }
 
 /// inflate 核心状态的**唯一**序列化编码（会话级快照与 inflate 级快照共用）。

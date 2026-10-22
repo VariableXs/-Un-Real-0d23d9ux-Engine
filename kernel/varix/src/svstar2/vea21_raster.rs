@@ -42,6 +42,10 @@
 //!   本条管「几何怎么被光栅化」，F0020 管「光栅化之后怎么被测试」，交界处共享深度缓冲
 //!   但不共享状态机（两条各有各的转移表，避免互相牵连）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use alloc::format;
@@ -425,10 +429,10 @@ pub type RectKey = (i64, i64, i64, i64);
 /// 矩形量化键。
 pub fn rect_key(r: &ScissorRect) -> RectKey {
     (
-        r.x.round() as i64,
-        r.y.round() as i64,
-        r.w.round().max(0.0) as i64,
-        r.h.round().max(0.0) as i64,
+        r.x.m_round() as i64,
+        r.y.m_round() as i64,
+        r.w.m_round().max(0.0) as i64,
+        r.h.m_round().max(0.0) as i64,
     )
 }
 

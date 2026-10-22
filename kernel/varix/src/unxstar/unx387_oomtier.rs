@@ -288,7 +288,7 @@ impl OomTier {
         let level = self.wm.judge();
         let pm = self.wm.permille();
         self.seq += 1;
-        let (action, granted, code): (TierAction, bool, u64) = match level {
+        let (action, granted, code): (TierAction, bool, u16) = match level {
             None => (TierAction::Note, true, 0),
             Some(lv) => match TierAction::of(lv) {
                 TierAction::Note => (TierAction::Note, true, 0),
@@ -503,17 +503,17 @@ pub fn run_unx387_checks() -> CheckSet {
     let mut cs = CheckSet::new("UNX-F0387");
 
     // J-1 段守卫 + 水位单调。
-    cs.add("0xC3段独占", seg_guard() && WATERMARK_MONO);
+    cs.add("0xC3段独占", seg_guard() && WATERMARK_MONO, "");
 
     // J-2 六探针边界矩阵：触发正确（判据①）。
     let bm = boundary_matrix();
-    cs.add("OOM三级触发矩阵", bm.iter().all(|&b| b));
+    cs.add("OOM三级触发矩阵", bm.iter().all(|&b| b), "");
 
     // J-3 分级动作账：warn 记账、crit 拒大单+回收、dead 全拒（判据②）。
     let mut tier = match OomTier::new(10_000) {
         Ok(t) => t,
         Err(_) => {
-            cs.add("分级账构造", false);
+            cs.add("分级账构造", false, "");
             return cs;
         }
     };
@@ -533,24 +533,24 @@ pub fn run_unx387_checks() -> CheckSet {
         && tier.dead_zero_grant()
         && tier.trigger_recheck()
         && tier.ledger_ok();
-    cs.add("分级动作账齐", act_ok);
+    cs.add("分级动作账齐", act_ok, "");
     // c_big_ok/d_denied 仅压制未用告警（编排注释已说明口径）。
     let _ = (c_big_ok, d_denied);
 
     // J-4 dead 零放行专压：冲满后连续请求全拒。
     let (denied_after, leak) = stress_dead_zero_grant(0xC387_0001);
-    cs.add("dead级零放行", leak == 0 && denied_after > 0);
+    cs.add("dead级零放行", leak == 0 && denied_after > 0, "");
 
     // J-5 压力循环：512 轮水位循环 + 三账互洽。
     let st = stress_tier(512, 0xC387_0002);
-    cs.add("压力分级账", st.ok && st.granted > 0 && st.denied > 0);
+    cs.add("压力分级账", st.ok && st.granted > 0 && st.denied > 0, "");
 
     // J-6 重放对拍：同种子两次压力恒同四柱。
     let s1 = stress_tier(256, 0xC387_0003);
     let s2 = stress_tier(256, 0xC387_0003);
     let s3 = stress_tier(256, 0xC387_0004);
     let fz = |s: &TierStress| s.granted * 7 + s.denied * 13 + s.warn_hits * 29 + s.crit_hits * 53 + s.dead_hits * 97;
-    cs.add("重放对拍", fz(&s1) == fz(&s2) && fz(&s1) != fz(&s3));
+    cs.add("重放对拍", fz(&s1) == fz(&s2) && fz(&s1) != fz(&s3), "");
 
     // J-7 判码文本闭集：七码各得其所。
     let texts_ok = code_text(C_WM_MONO) != "未知判码"
@@ -561,7 +561,7 @@ pub fn run_unx387_checks() -> CheckSet {
         && code_text(C_LEDGER_BREAK) != "未知判码"
         && code_text(C_REPLAY_DRIFT) != "未知判码"
         && code_text(0xC300) == "未知判码";
-    cs.add("判码文本闭集", texts_ok);
+    cs.add("判码文本闭集", texts_ok, "");
 
     cs
 }

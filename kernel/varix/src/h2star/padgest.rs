@@ -13,6 +13,10 @@
 //! 距离变化量）；意图阈值（划过不误触——位移不足按滚动/点击处理）；
 //! 延迟账（识别耗时注入 <80ms 硬线）；逐条改禁映射表（持久化快照）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
@@ -58,7 +62,7 @@ pub const RECOG_LIMIT_MS: u64 = 80;
 /// 手势识别：轨迹 → 手势（None=非手势——滚动/点击由各自通路处理）。
 /// 快速小位移（<阈值）返回 None（误触发专项的机制保证）。
 pub fn recognize(s: &TouchStroke) -> Option<Gesture> {
-    let mag = (s.dx * s.dx + s.dy * s.dy).sqrt();
+    let mag = (s.dx * s.dx + s.dy * s.dy).m_sqrt();
     match s.fingers {
         2 => {
             if s.tap {
@@ -123,7 +127,7 @@ pub fn path_len(pts: &[Pt]) -> f32 {
         .map(|w| {
             let dx = w[1].x - w[0].x;
             let dy = w[1].y - w[0].y;
-            (dx * dx + dy * dy).sqrt()
+            (dx * dx + dy * dy).m_sqrt()
         })
         .sum()
 }
@@ -149,7 +153,7 @@ pub fn resample(pts: &[Pt], n: usize) -> Vec<Pt> {
     for &cur in &pts[1..] {
         let dx = cur.x - prev.x;
         let dy = cur.y - prev.y;
-        let seg = (dx * dx + dy * dy).sqrt();
+        let seg = (dx * dx + dy * dy).m_sqrt();
         if seg <= f32::EPSILON {
             continue;
         }
@@ -187,7 +191,7 @@ pub fn recognize_path(pts: &[Pt], fingers: u8) -> Option<Gesture> {
     let last = *pts.last().unwrap();
     let net_x = last.x - first.x;
     let net_y = last.y - first.y;
-    let net = (net_x * net_x + net_y * net_y).sqrt();
+    let net = (net_x * net_x + net_y * net_y).m_sqrt();
     if net < INTENT_THRESHOLD_PX {
         return None; // 位移不足——划过/误碰。
     }
@@ -339,7 +343,7 @@ pub fn run_padgest_checks() -> CheckSet {
     let mut arc: Vec<Pt> = Vec::new();
     for i in 0..60u32 {
         let a = i as f32 / 60.0 * core::f32::consts::PI;
-        arc.push(Pt { t_ms: i * 4, x: 200.0 - 120.0 * a.cos(), y: 200.0 - 120.0 * (1.0 - a.sin()) });
+        arc.push(Pt { t_ms: i * 4, x: 200.0 - 120.0 * a.m_cos(), y: 200.0 - 120.0 * (1.0 - a.m_sin()) });
     }
     set.add(
         "F279 curve→scroll lane",

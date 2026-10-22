@@ -16,6 +16,36 @@ pub const T168_VERSION: &str = "t168-setpath-v1";
 
 /// 诊断段基址。
 pub const T168_SEG_BASE: u16 = 0x3760;
+/// 第二诊断段基址（`ChainCapOrEmpty` 独占 · 全域 grep `0x37c[0-9a-f]` 无占用）。
+pub const CHAIN_CAP_SEG_BASE: u16 = 0x37c0;
+
+// --------------------------------------------------------------------------
+// FNV-1a 64 位链式原语
+//
+// 修正记录（E0425 ×4，本席 AI-5 接入时暴露）：回滚链 `wchainChain` 的
+// 构造 / 追加 / 回放校验三处引用 `FNV_OFFSET` 与 `fnv1a64_from`，
+// 二者**全文件从未定义** ⇒ 模块自诞生起就编译不过。
+// 实现照搬本域既定范式（`unx1081_eventlog.rs:284` 等 20+ 处同款），
+// 与 `unxt169_timeledger` 同一口径，保证同一 UNX-F0162 时间域内
+// 两条路径（读侧总账 / 写侧回滚链）的指纹可互校。
+// --------------------------------------------------------------------------
+
+/// FNV-1a 64 位偏移基（标准值）。
+pub const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+/// FNV-1a 64 位质数（标准值）。
+pub const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+/// 以给定初值继续递推（链式原语 · 与本域其余模块同款）。
+pub const fn fnv1a64_from(h: u64, data: &[u8]) -> u64 {
+    let mut hh = h;
+    let mut i = 0usize;
+    while i < data.len() {
+        hh ^= data[i] as u64;
+        hh = hh.wrapping_mul(FNV_PRIME);
+        i += 1;
+    }
+    hh
+}
 
 // --------------------------------------------------------------------------
 // 诊断码（t168 十六码 · 16 枚互斥 + segment_guard）
@@ -55,11 +85,20 @@ pub enum t168Code {
     GuardTripped,
     /// 0x376f 段位守卫失败（诊断码越出本模块段）。
     SegmentGuard,
+    /// 0x37c0 回滚链拒收（链容量满或空链/零负载段）。
+    ///
+    /// 修正记录（E0599，本席 AI-5 接入时暴露）：`wchainChain::append` 对
+    /// 「链满 / 零负载段」返回 `t168Code::ChainCapOrEmpty`，而该变体**从未申报**。
+    /// 原 16 变体已占满 0x3760..=0x376f 且段内连续无空位，故按铁律 5
+    /// （领段必 grep 全域防撞）新领 **0x37c0 段**——全域 grep `0x37c[0-9a-f]`
+    /// 结果为空，0x3700..=0x37b0 已由 unxt162~unxt167 及
+    /// `unx162_timecorebmxmx.rs` 逐段占满，0x37c0 为下一空闲段。
+    ChainCapOrEmpty,
 }
 
 impl t168Code {
     /// 全量闭集。
-    pub const ALL: [t168Code; 16] = [
+    pub const ALL: [t168Code; 17] = [
         t168Code::WriteOutOfOrder,
         t168Code::UipGateBlocked,
         t168Code::ReadbackMismatch,
@@ -76,6 +115,7 @@ impl t168Code {
         t168Code::OrderViolated,
         t168Code::GuardTripped,
         t168Code::SegmentGuard,
+        t168Code::ChainCapOrEmpty,
     ];
 
     /// 码值（连续十六进制，与声明序恒等）。
@@ -97,6 +137,7 @@ impl t168Code {
             t168Code::OrderViolated => 0x376d,
             t168Code::GuardTripped => 0x376e,
             t168Code::SegmentGuard => 0x376f,
+            t168Code::ChainCapOrEmpty => CHAIN_CAP_SEG_BASE,
         }
     }
 
@@ -119,6 +160,7 @@ impl t168Code {
             t168Code::OrderViolated => "次序违例（依赖序/时序破缺）",
             t168Code::GuardTripped => "守卫触发（重入/越限被拒）",
             t168Code::SegmentGuard => "段位守卫失败（诊断码越出本模块段）",
+            t168Code::ChainCapOrEmpty => "回滚链拒收（链容量满或零负载段）",
         }
     }
 
@@ -141,6 +183,7 @@ impl t168Code {
             t168Code::OrderViolated => "按依赖矩阵重排后重跑",
             t168Code::GuardTripped => "检查临界区嵌套与阈值",
             t168Code::SegmentGuard => "核对诊断码分配表",
+            t168Code::ChainCapOrEmpty => "拆链后重投（链满时先结清未回滚段）",
         }
     }
 }
@@ -579,12 +622,26 @@ impl wdualDual {
 // ---------------------------------------------------------------------------
 
 /// 段位守卫：全部诊断码必须落在本段 [0x3760, 0x376f]。
+/// 本模块登记的诊断段（按闭集登记制，不再写死区间）。
+///
+/// 修正记录（本席 AI-5）：段守卫原写 `if c < 0x3760 || c > 0x376f`——
+/// 区间**硬编码在判据里**，与表体的实际分配脱钩。本席为 `ChainCapOrEmpty`
+/// 新领 0x37c0 段后，该守卫立即报红（`t168_segment_guard_holds` 实测失败）。
+/// 正解：段边界提为具名常量，判据按「每个码值必须落在某个已登记段内」判定。
+/// 这样新增诊断码时**只需登记段号**，不必记得同步判据里的魔法数。
+pub const T168_SEG_RANGE: (u16, u16) = (T168_SEG_BASE, T168_SEG_BASE + 0x0F);
+/// 本模块第二诊断段（`ChainCapOrEmpty` 独占 · 0x37c0 段）。
+pub const T168_SEG_RANGE2: (u16, u16) = (CHAIN_CAP_SEG_BASE, CHAIN_CAP_SEG_BASE);
+
+/// 段位守卫：闭集内每个码值必须落在某个已登记诊断段内。
 pub const fn t168_segment_guard() -> bool {
     let mut ok = true;
     let mut i = 0usize;
     while i < t168Code::ALL.len() {
         let c = t168Code::ALL[i].code();
-        if c < 0x3760 || c > 0x376f {
+        let in_seg1 = c >= T168_SEG_RANGE.0 && c <= T168_SEG_RANGE.1;
+        let in_seg2 = c >= T168_SEG_RANGE2.0 && c <= T168_SEG_RANGE2.1;
+        if !in_seg1 && !in_seg2 {
             ok = false;
         }
         i += 1;

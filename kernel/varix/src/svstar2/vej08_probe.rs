@@ -110,6 +110,10 @@
 
 #![allow(clippy::needless_range_loop)]
 
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
+
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -473,7 +477,7 @@ fn normalize3(v: (f32, f32, f32)) -> (f32, f32, f32) {
     if !(l2 > 1.0e-12) {
         return (0.0, 1.0, 0.0);
     }
-    let inv = 1.0 / l2.sqrt();
+    let inv = 1.0 / l2.m_sqrt();
     (v.0 * inv, v.1 * inv, v.2 * inv)
 }
 
@@ -1164,9 +1168,9 @@ pub fn fib_dirs(n: u32) -> Vec<(f32, f32, f32)> {
     for i in 0..cnt {
         let fi = i as f32;
         let z = 1.0 - 2.0 * (fi + 0.5) / (cnt as f32);
-        let r = (1.0 - z * z).max(0.0).sqrt();
+        let r = (1.0 - z * z).max(0.0).m_sqrt();
         let th = ga * fi;
-        v.push((r * th.cos(), r * th.sin(), z));
+        v.push((r * th.m_cos(), r * th.m_sin(), z));
     }
     v
 }
@@ -1192,7 +1196,7 @@ fn dot3(a: (f32, f32, f32), b: (f32, f32, f32)) -> f32 {
 fn norm3(v: (f32, f32, f32)) -> f32 {
     let l2 = v.0 * v.0 + v.1 * v.1 + v.2 * v.2;
     if l2 > 0.0 {
-        l2.sqrt()
+        l2.m_sqrt()
     } else {
         0.0
     }
@@ -1280,7 +1284,7 @@ pub fn check_density(field: &ProbeField) -> usize {
                 }
             }
         }
-        if nearest == f32::INFINITY || nearest.sqrt() > DENSITY_WARN_SPACING {
+        if nearest == f32::INFINITY || nearest.m_sqrt() > DENSITY_WARN_SPACING {
             sparse += 1;
         }
     }

@@ -16,6 +16,10 @@
 //! ③ 「解耦」类判据不能只测「行为一样」（重合行为会掩盖缺失分支），
 //!    须直接断言**签名无写回**。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -236,7 +240,7 @@ pub fn run_vel06_all_checks() -> CheckSet {
             let d0 = a.position[0] - b.position[0];
             let d1 = a.position[1] - b.position[1];
             let d2 = a.position[2] - b.position[2];
-            (d0 * d0 + d1 * d1 + d2 * d2).sqrt()
+            (d0 * d0 + d1 * d1 + d2 * d2).m_sqrt()
         };
         let mut monotone = true;
         let mut areas_ok = true;
@@ -346,12 +350,12 @@ pub fn run_vel06_all_checks() -> CheckSet {
             let seg = [step[0], step[1], step[2]];
             // 宽度向量 = 同一段两顶点之差。
             let w = sub3(p1, p0);
-            let wl = (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).sqrt();
+            let wl = (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).m_sqrt();
             if wl <= 0.0 {
                 nonzero_width = false;
             }
             // 正交判据用**归一化点积**（避免长度因子掩盖）：|cos| < 1e-3。
-            let seg_l = (seg[0] * seg[0] + seg[1] * seg[1] + seg[2] * seg[2]).sqrt();
+            let seg_l = (seg[0] * seg[0] + seg[1] * seg[1] + seg[2] * seg[2]).m_sqrt();
             let cos = dot(w, seg) / (wl * seg_l);
             if cos.abs() > 1e-3 {
                 orthogonal = false;
@@ -711,7 +715,7 @@ pub fn run_vel06_all_checks() -> CheckSet {
             let a = e(1, 0);
             let b = e(3, 0);
             let cx = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-            (cx[0] * cx[0] + cx[1] * cx[1] + cx[2] * cx[2]).sqrt()
+            (cx[0] * cx[0] + cx[1] * cx[1] + cx[2] * cx[2]).m_sqrt()
         };
         let a0 = quad_area(0.0);
         // 两件独立的事都要断：① 绝对面积等于判据侧重算的解析值（抓
@@ -787,7 +791,7 @@ pub fn run_vel06_all_checks() -> CheckSet {
             let d0 = p[0] - q[0];
             let d1 = p[1] - q[1];
             let d2 = p[2] - q[2];
-            (d0 * d0 + d1 * d1 + d2 * d2).sqrt()
+            (d0 * d0 + d1 * d1 + d2 * d2).m_sqrt()
         };
         // 零速面片：长宽皆 = size(1.0) → 边长 2×1×1 = 2。
         let l0 = edge(0, 0, 1);
@@ -846,7 +850,7 @@ pub fn run_vel06_all_checks() -> CheckSet {
                 let d0 = p[0] - q[0];
                 let d1 = p[1] - q[1];
                 let d2 = p[2] - q[2];
-                (d0 * d0 + d1 * d1 + d2 * d2).sqrt()
+                (d0 * d0 + d1 * d1 + d2 * d2).m_sqrt()
             };
             edge(0, 1) / edge(1, 2)
         };
@@ -883,7 +887,7 @@ pub fn run_vel06_all_checks() -> CheckSet {
         let e_len = (along_edge[0] * along_edge[0]
             + along_edge[1] * along_edge[1]
             + along_edge[2] * along_edge[2])
-            .sqrt();
+            .m_sqrt();
         // 半长边沿 X ⇒ X 分量占满；沿 Y ⇒ X 分量为 0。
         let along_is_x = e_len > 0.0 && (along_edge[0] / e_len).abs() > 0.999;
         // 长度 = 2×size×拉伸比(9)：本例是速度拉伸模式，故仍带拉伸——

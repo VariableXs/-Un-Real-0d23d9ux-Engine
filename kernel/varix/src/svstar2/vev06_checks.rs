@@ -31,15 +31,15 @@ use crate::svstar2::vev06_csconv as cs;
 // 判据侧独立实现区（与被测逐字对齐——被测改了这里必红）
 // ---------------------------------------------------------------------------
 
-/// 判据侧独立矩阵乘向量（恒定除 m_scale）。
+/// 判据侧独立矩阵乘向量（恒定除 m_scale；i128 中间量——高精矩阵亿分位 × 向量万位乘积超 i64 上界）。
 fn ref_mul(m: &[[i64; 3]; 3], v: [i64; 3], m_scale: i64) -> [i64; 3] {
     let mut out = [0i64; 3];
     for i in 0..3 {
-        let mut acc = 0i64;
+        let mut acc = 0i128;
         for k in 0..3 {
-            acc += m[i][k] * v[k];
+            acc += m[i][k] as i128 * v[k] as i128;
         }
-        out[i] = acc / m_scale;
+        out[i] = (acc / m_scale as i128) as i64;
     }
     out
 }

@@ -396,7 +396,7 @@ pub fn run_t225_checks() -> crate::checks::CheckSet {
     let mut inj = DdInjector::new();
     inj.inject_all();
     let (ok, msg) = dd.judge();
-    set.add("UNX-F0225-J1", ok && r1 && r2, &msg);
+    set.add_dyn("UNX-F0225-J1", ok && r1 && r2, &msg);
     set.add("DD-12-steps", dd.accepted >= 24, "");
     set.add("DD-record", dd.record_readable(), "");
     set.add("DD-inject-exact", inj.all_exact(), "");

@@ -80,6 +80,10 @@
 //!
 //! 零外部依赖；零 IO；纯确定性函数 + 注入式状态；回归可复现；零 panic 面。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -1552,7 +1556,7 @@ pub fn sample_centroid_offset(level: MsaaLevel) -> f32 {
     }
     let cx = sx / n - 0.5;
     let cy = sy / n - 0.5;
-    (cx * cx + cy * cy).sqrt()
+    (cx * cx + cy * cy).m_sqrt()
 }
 
 /// resolve（盒式滤波：N个样本的平均）。

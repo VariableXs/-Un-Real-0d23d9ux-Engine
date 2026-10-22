@@ -546,7 +546,7 @@ pub fn run_t2181_checks() -> crate::checks::CheckSet {
     );
     // 演练。
     let (ok, rounds, total) = drill(10);
-    set.add(
+    set.add_dyn(
         "RB-drill-10/10",
         ok,
         &format!("扩容 {}/10 轮 执行账={}", rounds, total),
@@ -556,13 +556,13 @@ pub fn run_t2181_checks() -> crate::checks::CheckSet {
         inj: RbInjector::new(),
     };
     gate.inj.inject_all();
-    set.add(
+    set.add_dyn(
         "RB-inject-8/8",
         gate.inj.all_caught(),
         &format!("{}/{}", gate.inj.caught, gate.inj.cases),
     );
     // 判据总门。
     let (jok, msg) = gate.judge(ok, rounds, total);
-    set.add("UNX-F2181-J1", jok, &msg);
+    set.add_dyn("UNX-F2181-J1", jok, &msg);
     set
 }

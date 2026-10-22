@@ -11,6 +11,10 @@
 //!
 //! 零堆纪律：定长几何结构，无 alloc。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -82,10 +86,10 @@ pub fn to_relative(win: WinGeom, src: ScreenRect) -> RelativePos {
 
 /// 落屏适配（主册：保留相对位置与尺寸，超界自动适配 F214）。
 pub fn to_absolute(rel: RelativePos, dst: ScreenRect) -> WinGeom {
-    let mut x = dst.x + (rel.rx * dst.w as f64).round() as i32;
-    let mut y = dst.y + (rel.ry * dst.h as f64).round() as i32;
-    let mut w = (rel.rw * dst.w as f64).round() as u32;
-    let mut h = (rel.rh * dst.h as f64).round() as u32;
+    let mut x = dst.x + (rel.rx * dst.w as f64).m_round() as i32;
+    let mut y = dst.y + (rel.ry * dst.h as f64).m_round() as i32;
+    let mut w = (rel.rw * dst.w as f64).m_round() as u32;
+    let mut h = (rel.rh * dst.h as f64).m_round() as u32;
     // 超界自动适配（F214）：按目标屏钳制。
     w = w.min(dst.w);
     h = h.min(dst.h);

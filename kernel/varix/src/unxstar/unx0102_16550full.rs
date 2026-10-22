@@ -341,7 +341,7 @@ pub fn run_t102_checks() -> crate::checks::CheckSet {
     let mut inj = FtInjector::new();
     inj.inject_all(&mut ch);
     let (ok, msg) = ch.judge();
-    set.add("UNX-F0102-J1", ok, &msg);
+    set.add_dyn("UNX-F0102-J1", ok, &msg);
     set.add("FT-divisor-115200", ch.port.divisor_ok(), "");
     set.add("FT-no-misalign", ch.no_misalign(), "");
     set.add("FT-no-loss-1MB", ch.no_loss(), "");

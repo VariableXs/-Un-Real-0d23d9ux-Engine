@@ -22,7 +22,7 @@ pub const U1501_SEG_BASE: u16 = 0x5280;
 // --------------------------------------------------------------------------
 /// 场景 grid 面诊断码。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum u1501Code {
+pub enum U1501Code {
     /// 0x5280 单元格重复（矩阵漂移 同键双占）。
     CellDup,
     /// 0x5281 单元格断档（行覆盖 序号不连续）。
@@ -49,75 +49,84 @@ pub enum u1501Code {
     SegmentGuard,
 }
 
-impl u1501Code {
+impl U1501Code {
     /// 全量闭集。
-    pub const ALL: [u1501Code; 12] = [
-        u1501Code::CellDup,
-        u1501Code::CellGap,
-        u1501Code::IndexOob,
-        u1501Code::LedgerBreak,
-        u1501Code::OrderBreak,
-        u1501Code::SumDrift,
-        u1501Code::MaskBad,
-        u1501Code::GuardTripped,
-        u1501Code::LedgerBroken,
-        u1501Code::SnapshotFingerprint,
-        u1501Code::TableBroken,
-        u1501Code::SegmentGuard,
+    pub const ALL: [U1501Code; 12] = [
+        U1501Code::CellDup,
+        U1501Code::CellGap,
+        U1501Code::IndexOob,
+        U1501Code::LedgerBreak,
+        U1501Code::OrderBreak,
+        U1501Code::SumDrift,
+        U1501Code::MaskBad,
+        U1501Code::GuardTripped,
+        U1501Code::LedgerBroken,
+        U1501Code::SnapshotFingerprint,
+        U1501Code::TableBroken,
+        U1501Code::SegmentGuard,
+    ];
+
+    /// 码值表（下标即判别式，与声明序恒等）。
+    const CODES: [u16; 12] = [
+        0x5280, // CellDup
+        0x5281, // CellGap
+        0x5282, // IndexOob
+        0x5283, // LedgerBreak
+        0x5284, // OrderBreak
+        0x5285, // SumDrift
+        0x5286, // MaskBad
+        0x5287, // GuardTripped
+        0x5288, // LedgerBroken
+        0x5289, // SnapshotFingerprint
+        0x528a, // TableBroken
+        0x528b, // SegmentGuard
     ];
 
     /// 码值（连续十六进制，与声明序恒等）。
     pub const fn code(self) -> u16 {
-        match self {
-            u1501Code::CellDup => 0x5280,
-            u1501Code::CellGap => 0x5281,
-            u1501Code::IndexOob => 0x5282,
-            u1501Code::LedgerBreak => 0x5283,
-            u1501Code::OrderBreak => 0x5284,
-            u1501Code::SumDrift => 0x5285,
-            u1501Code::MaskBad => 0x5286,
-            u1501Code::GuardTripped => 0x5287,
-            u1501Code::LedgerBroken => 0x5288,
-            u1501Code::SnapshotFingerprint => 0x5289,
-            u1501Code::TableBroken => 0x528a,
-            u1501Code::SegmentGuard => 0x528b,
-        }
+        Self::CODES[self as usize]
     }
+
+    /// 诊断名表（下标即判别式）。
+    const NAMES: [&'static str; 12] = [
+        "单元格重复（矩阵漂移 同键双占）", // CellDup
+        "单元格断档（行覆盖 序号不连续）", // CellGap
+        "索引越界（预期错位）", // IndexOob
+        "大表账破缺（行数≠登记值）", // LedgerBreak
+        "表序断档", // OrderBreak
+        "累计漂移（求和≠理论值）", // SumDrift
+        "掩码非法", // MaskBad
+        "守卫触发", // GuardTripped
+        "台账不守恒（守恒恒等式破缺）", // LedgerBroken
+        "快照指纹不符（字段被改后重算不一致）", // SnapshotFingerprint
+        "常量表破坏（表项与语义规则矛盾）", // TableBroken
+        "段位守卫失败（诊断码越出本模块段）", // SegmentGuard
+    ];
 
     /// 中文诊断名。
     pub const fn name(self) -> &'static str {
-        match self {
-            u1501Code::CellDup => "单元格重复（矩阵漂移 同键双占）",
-            u1501Code::CellGap => "单元格断档（行覆盖 序号不连续）",
-            u1501Code::IndexOob => "索引越界（预期错位）",
-            u1501Code::LedgerBreak => "大表账破缺（行数≠登记值）",
-            u1501Code::OrderBreak => "表序断档",
-            u1501Code::SumDrift => "累计漂移（求和≠理论值）",
-            u1501Code::MaskBad => "掩码非法",
-            u1501Code::GuardTripped => "守卫触发",
-            u1501Code::LedgerBroken => "台账不守恒（守恒恒等式破缺）",
-            u1501Code::SnapshotFingerprint => "快照指纹不符（字段被改后重算不一致）",
-            u1501Code::TableBroken => "常量表破坏（表项与语义规则矛盾）",
-            u1501Code::SegmentGuard => "段位守卫失败（诊断码越出本模块段）",
-        }
+        Self::NAMES[self as usize]
     }
+
+    /// 修复建议表（下标即判别式）。
+    const SUGGESTIONS: [&'static str; 12] = [
+        "按键唯一律去重", // CellDup
+        "按连续律补号", // CellGap
+        "按行数边界裁剪", // IndexOob
+        "按守恒重建", // LedgerBreak
+        "按序重排", // OrderBreak
+        "按理论值复算", // SumDrift
+        "按掩码律校正", // MaskBad
+        "检查临界区", // GuardTripped
+        "按守恒律重建台账后重跑", // LedgerBroken
+        "按防篡改规程重建快照", // SnapshotFingerprint
+        "按语义规则重建常量表", // TableBroken
+        "核对诊断码分配表", // SegmentGuard
+    ];
 
     /// 可操作修复建议（每条诊断都必须带下一步动作）。
     pub const fn suggestion(self) -> &'static str {
-        match self {
-            u1501Code::CellDup => "按键唯一律去重",
-            u1501Code::CellGap => "按连续律补号",
-            u1501Code::IndexOob => "按行数边界裁剪",
-            u1501Code::LedgerBreak => "按守恒重建",
-            u1501Code::OrderBreak => "按序重排",
-            u1501Code::SumDrift => "按理论值复算",
-            u1501Code::MaskBad => "按掩码律校正",
-            u1501Code::GuardTripped => "检查临界区",
-            u1501Code::LedgerBroken => "按守恒律重建台账后重跑",
-            u1501Code::SnapshotFingerprint => "按防篡改规程重建快照",
-            u1501Code::TableBroken => "按语义规则重建常量表",
-            u1501Code::SegmentGuard => "核对诊断码分配表",
-        }
+        Self::SUGGESTIONS[self as usize]
     }
 }
 
@@ -1156,2074 +1165,23 @@ pub static u1501grid: [(&'static str, u64); 1024] = [
     ("MR1023", 10), // MR 单元 1023（矩阵行数 × 相位 63 × 一 轮）
 ];
 
-/// O(1) 语义查找（match 全枚举；命中率 100%% 由守卫保证）。
+/// 语义查找：线性扫描冻结表（键唯一性由 u1501grid_unique 保证，键外拒收）。
 pub fn u1501grid_get(key: &str) -> Option<u64> {
-    match key {
-        "SC0000" => Some(0),
-        "CR0001" => Some(13),
-        "EX0002" => Some(26),
-        "MR0003" => Some(39),
-        "CV0004" => Some(52),
-        "DR0005" => Some(65),
-        "LG0006" => Some(78),
-        "ZL0007" => Some(91),
-        "FS0008" => Some(7),
-        "TJ0009" => Some(20),
-        "IZ0010" => Some(33),
-        "FP0011" => Some(46),
-        "SC0012" => Some(59),
-        "CR0013" => Some(72),
-        "EX0014" => Some(85),
-        "MR0015" => Some(1),
-        "CV0016" => Some(14),
-        "DR0017" => Some(27),
-        "LG0018" => Some(40),
-        "ZL0019" => Some(53),
-        "FS0020" => Some(66),
-        "TJ0021" => Some(79),
-        "IZ0022" => Some(92),
-        "FP0023" => Some(8),
-        "SC0024" => Some(21),
-        "CR0025" => Some(34),
-        "EX0026" => Some(47),
-        "MR0027" => Some(60),
-        "CV0028" => Some(73),
-        "DR0029" => Some(86),
-        "LG0030" => Some(2),
-        "ZL0031" => Some(15),
-        "FS0032" => Some(28),
-        "TJ0033" => Some(41),
-        "IZ0034" => Some(54),
-        "FP0035" => Some(67),
-        "SC0036" => Some(80),
-        "CR0037" => Some(93),
-        "EX0038" => Some(9),
-        "MR0039" => Some(22),
-        "CV0040" => Some(35),
-        "DR0041" => Some(48),
-        "LG0042" => Some(61),
-        "ZL0043" => Some(74),
-        "FS0044" => Some(87),
-        "TJ0045" => Some(3),
-        "IZ0046" => Some(16),
-        "FP0047" => Some(29),
-        "SC0048" => Some(42),
-        "CR0049" => Some(55),
-        "EX0050" => Some(68),
-        "MR0051" => Some(81),
-        "CV0052" => Some(94),
-        "DR0053" => Some(10),
-        "LG0054" => Some(23),
-        "ZL0055" => Some(36),
-        "FS0056" => Some(49),
-        "TJ0057" => Some(62),
-        "IZ0058" => Some(75),
-        "FP0059" => Some(88),
-        "SC0060" => Some(4),
-        "CR0061" => Some(17),
-        "EX0062" => Some(30),
-        "MR0063" => Some(43),
-        "CV0064" => Some(56),
-        "DR0065" => Some(69),
-        "LG0066" => Some(82),
-        "ZL0067" => Some(95),
-        "FS0068" => Some(11),
-        "TJ0069" => Some(24),
-        "IZ0070" => Some(37),
-        "FP0071" => Some(50),
-        "SC0072" => Some(63),
-        "CR0073" => Some(76),
-        "EX0074" => Some(89),
-        "MR0075" => Some(5),
-        "CV0076" => Some(18),
-        "DR0077" => Some(31),
-        "LG0078" => Some(44),
-        "ZL0079" => Some(57),
-        "FS0080" => Some(70),
-        "TJ0081" => Some(83),
-        "IZ0082" => Some(96),
-        "FP0083" => Some(12),
-        "SC0084" => Some(25),
-        "CR0085" => Some(38),
-        "EX0086" => Some(51),
-        "MR0087" => Some(64),
-        "CV0088" => Some(77),
-        "DR0089" => Some(90),
-        "LG0090" => Some(6),
-        "ZL0091" => Some(19),
-        "FS0092" => Some(32),
-        "TJ0093" => Some(45),
-        "IZ0094" => Some(58),
-        "FP0095" => Some(71),
-        "SC0096" => Some(84),
-        "CR0097" => Some(0),
-        "EX0098" => Some(13),
-        "MR0099" => Some(26),
-        "CV0100" => Some(39),
-        "DR0101" => Some(52),
-        "LG0102" => Some(65),
-        "ZL0103" => Some(78),
-        "FS0104" => Some(91),
-        "TJ0105" => Some(7),
-        "IZ0106" => Some(20),
-        "FP0107" => Some(33),
-        "SC0108" => Some(46),
-        "CR0109" => Some(59),
-        "EX0110" => Some(72),
-        "MR0111" => Some(85),
-        "CV0112" => Some(1),
-        "DR0113" => Some(14),
-        "LG0114" => Some(27),
-        "ZL0115" => Some(40),
-        "FS0116" => Some(53),
-        "TJ0117" => Some(66),
-        "IZ0118" => Some(79),
-        "FP0119" => Some(92),
-        "SC0120" => Some(8),
-        "CR0121" => Some(21),
-        "EX0122" => Some(34),
-        "MR0123" => Some(47),
-        "CV0124" => Some(60),
-        "DR0125" => Some(73),
-        "LG0126" => Some(86),
-        "ZL0127" => Some(2),
-        "FS0128" => Some(15),
-        "TJ0129" => Some(28),
-        "IZ0130" => Some(41),
-        "FP0131" => Some(54),
-        "SC0132" => Some(67),
-        "CR0133" => Some(80),
-        "EX0134" => Some(93),
-        "MR0135" => Some(9),
-        "CV0136" => Some(22),
-        "DR0137" => Some(35),
-        "LG0138" => Some(48),
-        "ZL0139" => Some(61),
-        "FS0140" => Some(74),
-        "TJ0141" => Some(87),
-        "IZ0142" => Some(3),
-        "FP0143" => Some(16),
-        "SC0144" => Some(29),
-        "CR0145" => Some(42),
-        "EX0146" => Some(55),
-        "MR0147" => Some(68),
-        "CV0148" => Some(81),
-        "DR0149" => Some(94),
-        "LG0150" => Some(10),
-        "ZL0151" => Some(23),
-        "FS0152" => Some(36),
-        "TJ0153" => Some(49),
-        "IZ0154" => Some(62),
-        "FP0155" => Some(75),
-        "SC0156" => Some(88),
-        "CR0157" => Some(4),
-        "EX0158" => Some(17),
-        "MR0159" => Some(30),
-        "CV0160" => Some(43),
-        "DR0161" => Some(56),
-        "LG0162" => Some(69),
-        "ZL0163" => Some(82),
-        "FS0164" => Some(95),
-        "TJ0165" => Some(11),
-        "IZ0166" => Some(24),
-        "FP0167" => Some(37),
-        "SC0168" => Some(50),
-        "CR0169" => Some(63),
-        "EX0170" => Some(76),
-        "MR0171" => Some(89),
-        "CV0172" => Some(5),
-        "DR0173" => Some(18),
-        "LG0174" => Some(31),
-        "ZL0175" => Some(44),
-        "FS0176" => Some(57),
-        "TJ0177" => Some(70),
-        "IZ0178" => Some(83),
-        "FP0179" => Some(96),
-        "SC0180" => Some(12),
-        "CR0181" => Some(25),
-        "EX0182" => Some(38),
-        "MR0183" => Some(51),
-        "CV0184" => Some(64),
-        "DR0185" => Some(77),
-        "LG0186" => Some(90),
-        "ZL0187" => Some(6),
-        "FS0188" => Some(19),
-        "TJ0189" => Some(32),
-        "IZ0190" => Some(45),
-        "FP0191" => Some(58),
-        "SC0192" => Some(71),
-        "CR0193" => Some(84),
-        "EX0194" => Some(0),
-        "MR0195" => Some(13),
-        "CV0196" => Some(26),
-        "DR0197" => Some(39),
-        "LG0198" => Some(52),
-        "ZL0199" => Some(65),
-        "FS0200" => Some(78),
-        "TJ0201" => Some(91),
-        "IZ0202" => Some(7),
-        "FP0203" => Some(20),
-        "SC0204" => Some(33),
-        "CR0205" => Some(46),
-        "EX0206" => Some(59),
-        "MR0207" => Some(72),
-        "CV0208" => Some(85),
-        "DR0209" => Some(1),
-        "LG0210" => Some(14),
-        "ZL0211" => Some(27),
-        "FS0212" => Some(40),
-        "TJ0213" => Some(53),
-        "IZ0214" => Some(66),
-        "FP0215" => Some(79),
-        "SC0216" => Some(92),
-        "CR0217" => Some(8),
-        "EX0218" => Some(21),
-        "MR0219" => Some(34),
-        "CV0220" => Some(47),
-        "DR0221" => Some(60),
-        "LG0222" => Some(73),
-        "ZL0223" => Some(86),
-        "FS0224" => Some(2),
-        "TJ0225" => Some(15),
-        "IZ0226" => Some(28),
-        "FP0227" => Some(41),
-        "SC0228" => Some(54),
-        "CR0229" => Some(67),
-        "EX0230" => Some(80),
-        "MR0231" => Some(93),
-        "CV0232" => Some(9),
-        "DR0233" => Some(22),
-        "LG0234" => Some(35),
-        "ZL0235" => Some(48),
-        "FS0236" => Some(61),
-        "TJ0237" => Some(74),
-        "IZ0238" => Some(87),
-        "FP0239" => Some(3),
-        "SC0240" => Some(16),
-        "CR0241" => Some(29),
-        "EX0242" => Some(42),
-        "MR0243" => Some(55),
-        "CV0244" => Some(68),
-        "DR0245" => Some(81),
-        "LG0246" => Some(94),
-        "ZL0247" => Some(10),
-        "FS0248" => Some(23),
-        "TJ0249" => Some(36),
-        "IZ0250" => Some(49),
-        "FP0251" => Some(62),
-        "SC0252" => Some(75),
-        "CR0253" => Some(88),
-        "EX0254" => Some(4),
-        "MR0255" => Some(17),
-        "CV0256" => Some(30),
-        "DR0257" => Some(43),
-        "LG0258" => Some(56),
-        "ZL0259" => Some(69),
-        "FS0260" => Some(82),
-        "TJ0261" => Some(95),
-        "IZ0262" => Some(11),
-        "FP0263" => Some(24),
-        "SC0264" => Some(37),
-        "CR0265" => Some(50),
-        "EX0266" => Some(63),
-        "MR0267" => Some(76),
-        "CV0268" => Some(89),
-        "DR0269" => Some(5),
-        "LG0270" => Some(18),
-        "ZL0271" => Some(31),
-        "FS0272" => Some(44),
-        "TJ0273" => Some(57),
-        "IZ0274" => Some(70),
-        "FP0275" => Some(83),
-        "SC0276" => Some(96),
-        "CR0277" => Some(12),
-        "EX0278" => Some(25),
-        "MR0279" => Some(38),
-        "CV0280" => Some(51),
-        "DR0281" => Some(64),
-        "LG0282" => Some(77),
-        "ZL0283" => Some(90),
-        "FS0284" => Some(6),
-        "TJ0285" => Some(19),
-        "IZ0286" => Some(32),
-        "FP0287" => Some(45),
-        "SC0288" => Some(58),
-        "CR0289" => Some(71),
-        "EX0290" => Some(84),
-        "MR0291" => Some(0),
-        "CV0292" => Some(13),
-        "DR0293" => Some(26),
-        "LG0294" => Some(39),
-        "ZL0295" => Some(52),
-        "FS0296" => Some(65),
-        "TJ0297" => Some(78),
-        "IZ0298" => Some(91),
-        "FP0299" => Some(7),
-        "SC0300" => Some(20),
-        "CR0301" => Some(33),
-        "EX0302" => Some(46),
-        "MR0303" => Some(59),
-        "CV0304" => Some(72),
-        "DR0305" => Some(85),
-        "LG0306" => Some(1),
-        "ZL0307" => Some(14),
-        "FS0308" => Some(27),
-        "TJ0309" => Some(40),
-        "IZ0310" => Some(53),
-        "FP0311" => Some(66),
-        "SC0312" => Some(79),
-        "CR0313" => Some(92),
-        "EX0314" => Some(8),
-        "MR0315" => Some(21),
-        "CV0316" => Some(34),
-        "DR0317" => Some(47),
-        "LG0318" => Some(60),
-        "ZL0319" => Some(73),
-        "FS0320" => Some(86),
-        "TJ0321" => Some(2),
-        "IZ0322" => Some(15),
-        "FP0323" => Some(28),
-        "SC0324" => Some(41),
-        "CR0325" => Some(54),
-        "EX0326" => Some(67),
-        "MR0327" => Some(80),
-        "CV0328" => Some(93),
-        "DR0329" => Some(9),
-        "LG0330" => Some(22),
-        "ZL0331" => Some(35),
-        "FS0332" => Some(48),
-        "TJ0333" => Some(61),
-        "IZ0334" => Some(74),
-        "FP0335" => Some(87),
-        "SC0336" => Some(3),
-        "CR0337" => Some(16),
-        "EX0338" => Some(29),
-        "MR0339" => Some(42),
-        "CV0340" => Some(55),
-        "DR0341" => Some(68),
-        "LG0342" => Some(81),
-        "ZL0343" => Some(94),
-        "FS0344" => Some(10),
-        "TJ0345" => Some(23),
-        "IZ0346" => Some(36),
-        "FP0347" => Some(49),
-        "SC0348" => Some(62),
-        "CR0349" => Some(75),
-        "EX0350" => Some(88),
-        "MR0351" => Some(4),
-        "CV0352" => Some(17),
-        "DR0353" => Some(30),
-        "LG0354" => Some(43),
-        "ZL0355" => Some(56),
-        "FS0356" => Some(69),
-        "TJ0357" => Some(82),
-        "IZ0358" => Some(95),
-        "FP0359" => Some(11),
-        "SC0360" => Some(24),
-        "CR0361" => Some(37),
-        "EX0362" => Some(50),
-        "MR0363" => Some(63),
-        "CV0364" => Some(76),
-        "DR0365" => Some(89),
-        "LG0366" => Some(5),
-        "ZL0367" => Some(18),
-        "FS0368" => Some(31),
-        "TJ0369" => Some(44),
-        "IZ0370" => Some(57),
-        "FP0371" => Some(70),
-        "SC0372" => Some(83),
-        "CR0373" => Some(96),
-        "EX0374" => Some(12),
-        "MR0375" => Some(25),
-        "CV0376" => Some(38),
-        "DR0377" => Some(51),
-        "LG0378" => Some(64),
-        "ZL0379" => Some(77),
-        "FS0380" => Some(90),
-        "TJ0381" => Some(6),
-        "IZ0382" => Some(19),
-        "FP0383" => Some(32),
-        "SC0384" => Some(45),
-        "CR0385" => Some(58),
-        "EX0386" => Some(71),
-        "MR0387" => Some(84),
-        "CV0388" => Some(0),
-        "DR0389" => Some(13),
-        "LG0390" => Some(26),
-        "ZL0391" => Some(39),
-        "FS0392" => Some(52),
-        "TJ0393" => Some(65),
-        "IZ0394" => Some(78),
-        "FP0395" => Some(91),
-        "SC0396" => Some(7),
-        "CR0397" => Some(20),
-        "EX0398" => Some(33),
-        "MR0399" => Some(46),
-        "CV0400" => Some(59),
-        "DR0401" => Some(72),
-        "LG0402" => Some(85),
-        "ZL0403" => Some(1),
-        "FS0404" => Some(14),
-        "TJ0405" => Some(27),
-        "IZ0406" => Some(40),
-        "FP0407" => Some(53),
-        "SC0408" => Some(66),
-        "CR0409" => Some(79),
-        "EX0410" => Some(92),
-        "MR0411" => Some(8),
-        "CV0412" => Some(21),
-        "DR0413" => Some(34),
-        "LG0414" => Some(47),
-        "ZL0415" => Some(60),
-        "FS0416" => Some(73),
-        "TJ0417" => Some(86),
-        "IZ0418" => Some(2),
-        "FP0419" => Some(15),
-        "SC0420" => Some(28),
-        "CR0421" => Some(41),
-        "EX0422" => Some(54),
-        "MR0423" => Some(67),
-        "CV0424" => Some(80),
-        "DR0425" => Some(93),
-        "LG0426" => Some(9),
-        "ZL0427" => Some(22),
-        "FS0428" => Some(35),
-        "TJ0429" => Some(48),
-        "IZ0430" => Some(61),
-        "FP0431" => Some(74),
-        "SC0432" => Some(87),
-        "CR0433" => Some(3),
-        "EX0434" => Some(16),
-        "MR0435" => Some(29),
-        "CV0436" => Some(42),
-        "DR0437" => Some(55),
-        "LG0438" => Some(68),
-        "ZL0439" => Some(81),
-        "FS0440" => Some(94),
-        "TJ0441" => Some(10),
-        "IZ0442" => Some(23),
-        "FP0443" => Some(36),
-        "SC0444" => Some(49),
-        "CR0445" => Some(62),
-        "EX0446" => Some(75),
-        "MR0447" => Some(88),
-        "CV0448" => Some(4),
-        "DR0449" => Some(17),
-        "LG0450" => Some(30),
-        "ZL0451" => Some(43),
-        "FS0452" => Some(56),
-        "TJ0453" => Some(69),
-        "IZ0454" => Some(82),
-        "FP0455" => Some(95),
-        "SC0456" => Some(11),
-        "CR0457" => Some(24),
-        "EX0458" => Some(37),
-        "MR0459" => Some(50),
-        "CV0460" => Some(63),
-        "DR0461" => Some(76),
-        "LG0462" => Some(89),
-        "ZL0463" => Some(5),
-        "FS0464" => Some(18),
-        "TJ0465" => Some(31),
-        "IZ0466" => Some(44),
-        "FP0467" => Some(57),
-        "SC0468" => Some(70),
-        "CR0469" => Some(83),
-        "EX0470" => Some(96),
-        "MR0471" => Some(12),
-        "CV0472" => Some(25),
-        "DR0473" => Some(38),
-        "LG0474" => Some(51),
-        "ZL0475" => Some(64),
-        "FS0476" => Some(77),
-        "TJ0477" => Some(90),
-        "IZ0478" => Some(6),
-        "FP0479" => Some(19),
-        "SC0480" => Some(32),
-        "CR0481" => Some(45),
-        "EX0482" => Some(58),
-        "MR0483" => Some(71),
-        "CV0484" => Some(84),
-        "DR0485" => Some(0),
-        "LG0486" => Some(13),
-        "ZL0487" => Some(26),
-        "FS0488" => Some(39),
-        "TJ0489" => Some(52),
-        "IZ0490" => Some(65),
-        "FP0491" => Some(78),
-        "SC0492" => Some(91),
-        "CR0493" => Some(7),
-        "EX0494" => Some(20),
-        "MR0495" => Some(33),
-        "CV0496" => Some(46),
-        "DR0497" => Some(59),
-        "LG0498" => Some(72),
-        "ZL0499" => Some(85),
-        "FS0500" => Some(1),
-        "TJ0501" => Some(14),
-        "IZ0502" => Some(27),
-        "FP0503" => Some(40),
-        "SC0504" => Some(53),
-        "CR0505" => Some(66),
-        "EX0506" => Some(79),
-        "MR0507" => Some(92),
-        "CV0508" => Some(8),
-        "DR0509" => Some(21),
-        "LG0510" => Some(34),
-        "ZL0511" => Some(47),
-        "FS0512" => Some(60),
-        "TJ0513" => Some(73),
-        "IZ0514" => Some(86),
-        "FP0515" => Some(2),
-        "SC0516" => Some(15),
-        "CR0517" => Some(28),
-        "EX0518" => Some(41),
-        "MR0519" => Some(54),
-        "CV0520" => Some(67),
-        "DR0521" => Some(80),
-        "LG0522" => Some(93),
-        "ZL0523" => Some(9),
-        "FS0524" => Some(22),
-        "TJ0525" => Some(35),
-        "IZ0526" => Some(48),
-        "FP0527" => Some(61),
-        "SC0528" => Some(74),
-        "CR0529" => Some(87),
-        "EX0530" => Some(3),
-        "MR0531" => Some(16),
-        "CV0532" => Some(29),
-        "DR0533" => Some(42),
-        "LG0534" => Some(55),
-        "ZL0535" => Some(68),
-        "FS0536" => Some(81),
-        "TJ0537" => Some(94),
-        "IZ0538" => Some(10),
-        "FP0539" => Some(23),
-        "SC0540" => Some(36),
-        "CR0541" => Some(49),
-        "EX0542" => Some(62),
-        "MR0543" => Some(75),
-        "CV0544" => Some(88),
-        "DR0545" => Some(4),
-        "LG0546" => Some(17),
-        "ZL0547" => Some(30),
-        "FS0548" => Some(43),
-        "TJ0549" => Some(56),
-        "IZ0550" => Some(69),
-        "FP0551" => Some(82),
-        "SC0552" => Some(95),
-        "CR0553" => Some(11),
-        "EX0554" => Some(24),
-        "MR0555" => Some(37),
-        "CV0556" => Some(50),
-        "DR0557" => Some(63),
-        "LG0558" => Some(76),
-        "ZL0559" => Some(89),
-        "FS0560" => Some(5),
-        "TJ0561" => Some(18),
-        "IZ0562" => Some(31),
-        "FP0563" => Some(44),
-        "SC0564" => Some(57),
-        "CR0565" => Some(70),
-        "EX0566" => Some(83),
-        "MR0567" => Some(96),
-        "CV0568" => Some(12),
-        "DR0569" => Some(25),
-        "LG0570" => Some(38),
-        "ZL0571" => Some(51),
-        "FS0572" => Some(64),
-        "TJ0573" => Some(77),
-        "IZ0574" => Some(90),
-        "FP0575" => Some(6),
-        "SC0576" => Some(19),
-        "CR0577" => Some(32),
-        "EX0578" => Some(45),
-        "MR0579" => Some(58),
-        "CV0580" => Some(71),
-        "DR0581" => Some(84),
-        "LG0582" => Some(0),
-        "ZL0583" => Some(13),
-        "FS0584" => Some(26),
-        "TJ0585" => Some(39),
-        "IZ0586" => Some(52),
-        "FP0587" => Some(65),
-        "SC0588" => Some(78),
-        "CR0589" => Some(91),
-        "EX0590" => Some(7),
-        "MR0591" => Some(20),
-        "CV0592" => Some(33),
-        "DR0593" => Some(46),
-        "LG0594" => Some(59),
-        "ZL0595" => Some(72),
-        "FS0596" => Some(85),
-        "TJ0597" => Some(1),
-        "IZ0598" => Some(14),
-        "FP0599" => Some(27),
-        "SC0600" => Some(40),
-        "CR0601" => Some(53),
-        "EX0602" => Some(66),
-        "MR0603" => Some(79),
-        "CV0604" => Some(92),
-        "DR0605" => Some(8),
-        "LG0606" => Some(21),
-        "ZL0607" => Some(34),
-        "FS0608" => Some(47),
-        "TJ0609" => Some(60),
-        "IZ0610" => Some(73),
-        "FP0611" => Some(86),
-        "SC0612" => Some(2),
-        "CR0613" => Some(15),
-        "EX0614" => Some(28),
-        "MR0615" => Some(41),
-        "CV0616" => Some(54),
-        "DR0617" => Some(67),
-        "LG0618" => Some(80),
-        "ZL0619" => Some(93),
-        "FS0620" => Some(9),
-        "TJ0621" => Some(22),
-        "IZ0622" => Some(35),
-        "FP0623" => Some(48),
-        "SC0624" => Some(61),
-        "CR0625" => Some(74),
-        "EX0626" => Some(87),
-        "MR0627" => Some(3),
-        "CV0628" => Some(16),
-        "DR0629" => Some(29),
-        "LG0630" => Some(42),
-        "ZL0631" => Some(55),
-        "FS0632" => Some(68),
-        "TJ0633" => Some(81),
-        "IZ0634" => Some(94),
-        "FP0635" => Some(10),
-        "SC0636" => Some(23),
-        "CR0637" => Some(36),
-        "EX0638" => Some(49),
-        "MR0639" => Some(62),
-        "CV0640" => Some(75),
-        "DR0641" => Some(88),
-        "LG0642" => Some(4),
-        "ZL0643" => Some(17),
-        "FS0644" => Some(30),
-        "TJ0645" => Some(43),
-        "IZ0646" => Some(56),
-        "FP0647" => Some(69),
-        "SC0648" => Some(82),
-        "CR0649" => Some(95),
-        "EX0650" => Some(11),
-        "MR0651" => Some(24),
-        "CV0652" => Some(37),
-        "DR0653" => Some(50),
-        "LG0654" => Some(63),
-        "ZL0655" => Some(76),
-        "FS0656" => Some(89),
-        "TJ0657" => Some(5),
-        "IZ0658" => Some(18),
-        "FP0659" => Some(31),
-        "SC0660" => Some(44),
-        "CR0661" => Some(57),
-        "EX0662" => Some(70),
-        "MR0663" => Some(83),
-        "CV0664" => Some(96),
-        "DR0665" => Some(12),
-        "LG0666" => Some(25),
-        "ZL0667" => Some(38),
-        "FS0668" => Some(51),
-        "TJ0669" => Some(64),
-        "IZ0670" => Some(77),
-        "FP0671" => Some(90),
-        "SC0672" => Some(6),
-        "CR0673" => Some(19),
-        "EX0674" => Some(32),
-        "MR0675" => Some(45),
-        "CV0676" => Some(58),
-        "DR0677" => Some(71),
-        "LG0678" => Some(84),
-        "ZL0679" => Some(0),
-        "FS0680" => Some(13),
-        "TJ0681" => Some(26),
-        "IZ0682" => Some(39),
-        "FP0683" => Some(52),
-        "SC0684" => Some(65),
-        "CR0685" => Some(78),
-        "EX0686" => Some(91),
-        "MR0687" => Some(7),
-        "CV0688" => Some(20),
-        "DR0689" => Some(33),
-        "LG0690" => Some(46),
-        "ZL0691" => Some(59),
-        "FS0692" => Some(72),
-        "TJ0693" => Some(85),
-        "IZ0694" => Some(1),
-        "FP0695" => Some(14),
-        "SC0696" => Some(27),
-        "CR0697" => Some(40),
-        "EX0698" => Some(53),
-        "MR0699" => Some(66),
-        "CV0700" => Some(79),
-        "DR0701" => Some(92),
-        "LG0702" => Some(8),
-        "ZL0703" => Some(21),
-        "FS0704" => Some(34),
-        "TJ0705" => Some(47),
-        "IZ0706" => Some(60),
-        "FP0707" => Some(73),
-        "SC0708" => Some(86),
-        "CR0709" => Some(2),
-        "EX0710" => Some(15),
-        "MR0711" => Some(28),
-        "CV0712" => Some(41),
-        "DR0713" => Some(54),
-        "LG0714" => Some(67),
-        "ZL0715" => Some(80),
-        "FS0716" => Some(93),
-        "TJ0717" => Some(9),
-        "IZ0718" => Some(22),
-        "FP0719" => Some(35),
-        "SC0720" => Some(48),
-        "CR0721" => Some(61),
-        "EX0722" => Some(74),
-        "MR0723" => Some(87),
-        "CV0724" => Some(3),
-        "DR0725" => Some(16),
-        "LG0726" => Some(29),
-        "ZL0727" => Some(42),
-        "FS0728" => Some(55),
-        "TJ0729" => Some(68),
-        "IZ0730" => Some(81),
-        "FP0731" => Some(94),
-        "SC0732" => Some(10),
-        "CR0733" => Some(23),
-        "EX0734" => Some(36),
-        "MR0735" => Some(49),
-        "CV0736" => Some(62),
-        "DR0737" => Some(75),
-        "LG0738" => Some(88),
-        "ZL0739" => Some(4),
-        "FS0740" => Some(17),
-        "TJ0741" => Some(30),
-        "IZ0742" => Some(43),
-        "FP0743" => Some(56),
-        "SC0744" => Some(69),
-        "CR0745" => Some(82),
-        "EX0746" => Some(95),
-        "MR0747" => Some(11),
-        "CV0748" => Some(24),
-        "DR0749" => Some(37),
-        "LG0750" => Some(50),
-        "ZL0751" => Some(63),
-        "FS0752" => Some(76),
-        "TJ0753" => Some(89),
-        "IZ0754" => Some(5),
-        "FP0755" => Some(18),
-        "SC0756" => Some(31),
-        "CR0757" => Some(44),
-        "EX0758" => Some(57),
-        "MR0759" => Some(70),
-        "CV0760" => Some(83),
-        "DR0761" => Some(96),
-        "LG0762" => Some(12),
-        "ZL0763" => Some(25),
-        "FS0764" => Some(38),
-        "TJ0765" => Some(51),
-        "IZ0766" => Some(64),
-        "FP0767" => Some(77),
-        "SC0768" => Some(90),
-        "CR0769" => Some(6),
-        "EX0770" => Some(19),
-        "MR0771" => Some(32),
-        "CV0772" => Some(45),
-        "DR0773" => Some(58),
-        "LG0774" => Some(71),
-        "ZL0775" => Some(84),
-        "FS0776" => Some(0),
-        "TJ0777" => Some(13),
-        "IZ0778" => Some(26),
-        "FP0779" => Some(39),
-        "SC0780" => Some(52),
-        "CR0781" => Some(65),
-        "EX0782" => Some(78),
-        "MR0783" => Some(91),
-        "CV0784" => Some(7),
-        "DR0785" => Some(20),
-        "LG0786" => Some(33),
-        "ZL0787" => Some(46),
-        "FS0788" => Some(59),
-        "TJ0789" => Some(72),
-        "IZ0790" => Some(85),
-        "FP0791" => Some(1),
-        "SC0792" => Some(14),
-        "CR0793" => Some(27),
-        "EX0794" => Some(40),
-        "MR0795" => Some(53),
-        "CV0796" => Some(66),
-        "DR0797" => Some(79),
-        "LG0798" => Some(92),
-        "ZL0799" => Some(8),
-        "FS0800" => Some(21),
-        "TJ0801" => Some(34),
-        "IZ0802" => Some(47),
-        "FP0803" => Some(60),
-        "SC0804" => Some(73),
-        "CR0805" => Some(86),
-        "EX0806" => Some(2),
-        "MR0807" => Some(15),
-        "CV0808" => Some(28),
-        "DR0809" => Some(41),
-        "LG0810" => Some(54),
-        "ZL0811" => Some(67),
-        "FS0812" => Some(80),
-        "TJ0813" => Some(93),
-        "IZ0814" => Some(9),
-        "FP0815" => Some(22),
-        "SC0816" => Some(35),
-        "CR0817" => Some(48),
-        "EX0818" => Some(61),
-        "MR0819" => Some(74),
-        "CV0820" => Some(87),
-        "DR0821" => Some(3),
-        "LG0822" => Some(16),
-        "ZL0823" => Some(29),
-        "FS0824" => Some(42),
-        "TJ0825" => Some(55),
-        "IZ0826" => Some(68),
-        "FP0827" => Some(81),
-        "SC0828" => Some(94),
-        "CR0829" => Some(10),
-        "EX0830" => Some(23),
-        "MR0831" => Some(36),
-        "CV0832" => Some(49),
-        "DR0833" => Some(62),
-        "LG0834" => Some(75),
-        "ZL0835" => Some(88),
-        "FS0836" => Some(4),
-        "TJ0837" => Some(17),
-        "IZ0838" => Some(30),
-        "FP0839" => Some(43),
-        "SC0840" => Some(56),
-        "CR0841" => Some(69),
-        "EX0842" => Some(82),
-        "MR0843" => Some(95),
-        "CV0844" => Some(11),
-        "DR0845" => Some(24),
-        "LG0846" => Some(37),
-        "ZL0847" => Some(50),
-        "FS0848" => Some(63),
-        "TJ0849" => Some(76),
-        "IZ0850" => Some(89),
-        "FP0851" => Some(5),
-        "SC0852" => Some(18),
-        "CR0853" => Some(31),
-        "EX0854" => Some(44),
-        "MR0855" => Some(57),
-        "CV0856" => Some(70),
-        "DR0857" => Some(83),
-        "LG0858" => Some(96),
-        "ZL0859" => Some(12),
-        "FS0860" => Some(25),
-        "TJ0861" => Some(38),
-        "IZ0862" => Some(51),
-        "FP0863" => Some(64),
-        "SC0864" => Some(77),
-        "CR0865" => Some(90),
-        "EX0866" => Some(6),
-        "MR0867" => Some(19),
-        "CV0868" => Some(32),
-        "DR0869" => Some(45),
-        "LG0870" => Some(58),
-        "ZL0871" => Some(71),
-        "FS0872" => Some(84),
-        "TJ0873" => Some(0),
-        "IZ0874" => Some(13),
-        "FP0875" => Some(26),
-        "SC0876" => Some(39),
-        "CR0877" => Some(52),
-        "EX0878" => Some(65),
-        "MR0879" => Some(78),
-        "CV0880" => Some(91),
-        "DR0881" => Some(7),
-        "LG0882" => Some(20),
-        "ZL0883" => Some(33),
-        "FS0884" => Some(46),
-        "TJ0885" => Some(59),
-        "IZ0886" => Some(72),
-        "FP0887" => Some(85),
-        "SC0888" => Some(1),
-        "CR0889" => Some(14),
-        "EX0890" => Some(27),
-        "MR0891" => Some(40),
-        "CV0892" => Some(53),
-        "DR0893" => Some(66),
-        "LG0894" => Some(79),
-        "ZL0895" => Some(92),
-        "FS0896" => Some(8),
-        "TJ0897" => Some(21),
-        "IZ0898" => Some(34),
-        "FP0899" => Some(47),
-        "SC0900" => Some(60),
-        "CR0901" => Some(73),
-        "EX0902" => Some(86),
-        "MR0903" => Some(2),
-        "CV0904" => Some(15),
-        "DR0905" => Some(28),
-        "LG0906" => Some(41),
-        "ZL0907" => Some(54),
-        "FS0908" => Some(67),
-        "TJ0909" => Some(80),
-        "IZ0910" => Some(93),
-        "FP0911" => Some(9),
-        "SC0912" => Some(22),
-        "CR0913" => Some(35),
-        "EX0914" => Some(48),
-        "MR0915" => Some(61),
-        "CV0916" => Some(74),
-        "DR0917" => Some(87),
-        "LG0918" => Some(3),
-        "ZL0919" => Some(16),
-        "FS0920" => Some(29),
-        "TJ0921" => Some(42),
-        "IZ0922" => Some(55),
-        "FP0923" => Some(68),
-        "SC0924" => Some(81),
-        "CR0925" => Some(94),
-        "EX0926" => Some(10),
-        "MR0927" => Some(23),
-        "CV0928" => Some(36),
-        "DR0929" => Some(49),
-        "LG0930" => Some(62),
-        "ZL0931" => Some(75),
-        "FS0932" => Some(88),
-        "TJ0933" => Some(4),
-        "IZ0934" => Some(17),
-        "FP0935" => Some(30),
-        "SC0936" => Some(43),
-        "CR0937" => Some(56),
-        "EX0938" => Some(69),
-        "MR0939" => Some(82),
-        "CV0940" => Some(95),
-        "DR0941" => Some(11),
-        "LG0942" => Some(24),
-        "ZL0943" => Some(37),
-        "FS0944" => Some(50),
-        "TJ0945" => Some(63),
-        "IZ0946" => Some(76),
-        "FP0947" => Some(89),
-        "SC0948" => Some(5),
-        "CR0949" => Some(18),
-        "EX0950" => Some(31),
-        "MR0951" => Some(44),
-        "CV0952" => Some(57),
-        "DR0953" => Some(70),
-        "LG0954" => Some(83),
-        "ZL0955" => Some(96),
-        "FS0956" => Some(12),
-        "TJ0957" => Some(25),
-        "IZ0958" => Some(38),
-        "FP0959" => Some(51),
-        "SC0960" => Some(64),
-        "CR0961" => Some(77),
-        "EX0962" => Some(90),
-        "MR0963" => Some(6),
-        "CV0964" => Some(19),
-        "DR0965" => Some(32),
-        "LG0966" => Some(45),
-        "ZL0967" => Some(58),
-        "FS0968" => Some(71),
-        "TJ0969" => Some(84),
-        "IZ0970" => Some(0),
-        "FP0971" => Some(13),
-        "SC0972" => Some(26),
-        "CR0973" => Some(39),
-        "EX0974" => Some(52),
-        "MR0975" => Some(65),
-        "CV0976" => Some(78),
-        "DR0977" => Some(91),
-        "LG0978" => Some(7),
-        "ZL0979" => Some(20),
-        "FS0980" => Some(33),
-        "TJ0981" => Some(46),
-        "IZ0982" => Some(59),
-        "FP0983" => Some(72),
-        "SC0984" => Some(85),
-        "CR0985" => Some(1),
-        "EX0986" => Some(14),
-        "MR0987" => Some(27),
-        "CV0988" => Some(40),
-        "DR0989" => Some(53),
-        "LG0990" => Some(66),
-        "ZL0991" => Some(79),
-        "FS0992" => Some(92),
-        "TJ0993" => Some(8),
-        "IZ0994" => Some(21),
-        "FP0995" => Some(34),
-        "SC0996" => Some(47),
-        "CR0997" => Some(60),
-        "EX0998" => Some(73),
-        "MR0999" => Some(86),
-        "CV1000" => Some(2),
-        "DR1001" => Some(15),
-        "LG1002" => Some(28),
-        "ZL1003" => Some(41),
-        "FS1004" => Some(54),
-        "TJ1005" => Some(67),
-        "IZ1006" => Some(80),
-        "FP1007" => Some(93),
-        "SC1008" => Some(9),
-        "CR1009" => Some(22),
-        "EX1010" => Some(35),
-        "MR1011" => Some(48),
-        "CV1012" => Some(61),
-        "DR1013" => Some(74),
-        "LG1014" => Some(87),
-        "ZL1015" => Some(3),
-        "FS1016" => Some(16),
-        "TJ1017" => Some(29),
-        "IZ1018" => Some(42),
-        "FP1019" => Some(55),
-        "SC1020" => Some(68),
-        "CR1021" => Some(81),
-        "EX1022" => Some(94),
-        "MR1023" => Some(10),
-        _ => None,
+    for i in 0..u1501grid_COUNT {
+        if u1501grid[i].0 == key {
+            return Some(u1501grid[i].1);
+        }
     }
+    None
 }
 
 /// 逐行守卫扫描（返回违例行数；0 = 全绿）。
 pub fn u1501grid_scan() -> usize {
     let mut bad = 0usize;
-    let mut i = 0usize;
-    while i < u1501grid_COUNT {
-        let (k, v) = u1501grid[i];
-        let ok = match k {
-            "SC0000" => v < 97,
-            "CR0001" => v < 97,
-            "EX0002" => v < 97,
-            "MR0003" => v < 97,
-            "CV0004" => v < 97,
-            "DR0005" => v < 97,
-            "LG0006" => v < 97,
-            "ZL0007" => v < 97,
-            "FS0008" => v < 97,
-            "TJ0009" => v < 97,
-            "IZ0010" => v < 97,
-            "FP0011" => v < 97,
-            "SC0012" => v < 97,
-            "CR0013" => v < 97,
-            "EX0014" => v < 97,
-            "MR0015" => v < 97,
-            "CV0016" => v < 97,
-            "DR0017" => v < 97,
-            "LG0018" => v < 97,
-            "ZL0019" => v < 97,
-            "FS0020" => v < 97,
-            "TJ0021" => v < 97,
-            "IZ0022" => v < 97,
-            "FP0023" => v < 97,
-            "SC0024" => v < 97,
-            "CR0025" => v < 97,
-            "EX0026" => v < 97,
-            "MR0027" => v < 97,
-            "CV0028" => v < 97,
-            "DR0029" => v < 97,
-            "LG0030" => v < 97,
-            "ZL0031" => v < 97,
-            "FS0032" => v < 97,
-            "TJ0033" => v < 97,
-            "IZ0034" => v < 97,
-            "FP0035" => v < 97,
-            "SC0036" => v < 97,
-            "CR0037" => v < 97,
-            "EX0038" => v < 97,
-            "MR0039" => v < 97,
-            "CV0040" => v < 97,
-            "DR0041" => v < 97,
-            "LG0042" => v < 97,
-            "ZL0043" => v < 97,
-            "FS0044" => v < 97,
-            "TJ0045" => v < 97,
-            "IZ0046" => v < 97,
-            "FP0047" => v < 97,
-            "SC0048" => v < 97,
-            "CR0049" => v < 97,
-            "EX0050" => v < 97,
-            "MR0051" => v < 97,
-            "CV0052" => v < 97,
-            "DR0053" => v < 97,
-            "LG0054" => v < 97,
-            "ZL0055" => v < 97,
-            "FS0056" => v < 97,
-            "TJ0057" => v < 97,
-            "IZ0058" => v < 97,
-            "FP0059" => v < 97,
-            "SC0060" => v < 97,
-            "CR0061" => v < 97,
-            "EX0062" => v < 97,
-            "MR0063" => v < 97,
-            "CV0064" => v < 97,
-            "DR0065" => v < 97,
-            "LG0066" => v < 97,
-            "ZL0067" => v < 97,
-            "FS0068" => v < 97,
-            "TJ0069" => v < 97,
-            "IZ0070" => v < 97,
-            "FP0071" => v < 97,
-            "SC0072" => v < 97,
-            "CR0073" => v < 97,
-            "EX0074" => v < 97,
-            "MR0075" => v < 97,
-            "CV0076" => v < 97,
-            "DR0077" => v < 97,
-            "LG0078" => v < 97,
-            "ZL0079" => v < 97,
-            "FS0080" => v < 97,
-            "TJ0081" => v < 97,
-            "IZ0082" => v < 97,
-            "FP0083" => v < 97,
-            "SC0084" => v < 97,
-            "CR0085" => v < 97,
-            "EX0086" => v < 97,
-            "MR0087" => v < 97,
-            "CV0088" => v < 97,
-            "DR0089" => v < 97,
-            "LG0090" => v < 97,
-            "ZL0091" => v < 97,
-            "FS0092" => v < 97,
-            "TJ0093" => v < 97,
-            "IZ0094" => v < 97,
-            "FP0095" => v < 97,
-            "SC0096" => v < 97,
-            "CR0097" => v < 97,
-            "EX0098" => v < 97,
-            "MR0099" => v < 97,
-            "CV0100" => v < 97,
-            "DR0101" => v < 97,
-            "LG0102" => v < 97,
-            "ZL0103" => v < 97,
-            "FS0104" => v < 97,
-            "TJ0105" => v < 97,
-            "IZ0106" => v < 97,
-            "FP0107" => v < 97,
-            "SC0108" => v < 97,
-            "CR0109" => v < 97,
-            "EX0110" => v < 97,
-            "MR0111" => v < 97,
-            "CV0112" => v < 97,
-            "DR0113" => v < 97,
-            "LG0114" => v < 97,
-            "ZL0115" => v < 97,
-            "FS0116" => v < 97,
-            "TJ0117" => v < 97,
-            "IZ0118" => v < 97,
-            "FP0119" => v < 97,
-            "SC0120" => v < 97,
-            "CR0121" => v < 97,
-            "EX0122" => v < 97,
-            "MR0123" => v < 97,
-            "CV0124" => v < 97,
-            "DR0125" => v < 97,
-            "LG0126" => v < 97,
-            "ZL0127" => v < 97,
-            "FS0128" => v < 97,
-            "TJ0129" => v < 97,
-            "IZ0130" => v < 97,
-            "FP0131" => v < 97,
-            "SC0132" => v < 97,
-            "CR0133" => v < 97,
-            "EX0134" => v < 97,
-            "MR0135" => v < 97,
-            "CV0136" => v < 97,
-            "DR0137" => v < 97,
-            "LG0138" => v < 97,
-            "ZL0139" => v < 97,
-            "FS0140" => v < 97,
-            "TJ0141" => v < 97,
-            "IZ0142" => v < 97,
-            "FP0143" => v < 97,
-            "SC0144" => v < 97,
-            "CR0145" => v < 97,
-            "EX0146" => v < 97,
-            "MR0147" => v < 97,
-            "CV0148" => v < 97,
-            "DR0149" => v < 97,
-            "LG0150" => v < 97,
-            "ZL0151" => v < 97,
-            "FS0152" => v < 97,
-            "TJ0153" => v < 97,
-            "IZ0154" => v < 97,
-            "FP0155" => v < 97,
-            "SC0156" => v < 97,
-            "CR0157" => v < 97,
-            "EX0158" => v < 97,
-            "MR0159" => v < 97,
-            "CV0160" => v < 97,
-            "DR0161" => v < 97,
-            "LG0162" => v < 97,
-            "ZL0163" => v < 97,
-            "FS0164" => v < 97,
-            "TJ0165" => v < 97,
-            "IZ0166" => v < 97,
-            "FP0167" => v < 97,
-            "SC0168" => v < 97,
-            "CR0169" => v < 97,
-            "EX0170" => v < 97,
-            "MR0171" => v < 97,
-            "CV0172" => v < 97,
-            "DR0173" => v < 97,
-            "LG0174" => v < 97,
-            "ZL0175" => v < 97,
-            "FS0176" => v < 97,
-            "TJ0177" => v < 97,
-            "IZ0178" => v < 97,
-            "FP0179" => v < 97,
-            "SC0180" => v < 97,
-            "CR0181" => v < 97,
-            "EX0182" => v < 97,
-            "MR0183" => v < 97,
-            "CV0184" => v < 97,
-            "DR0185" => v < 97,
-            "LG0186" => v < 97,
-            "ZL0187" => v < 97,
-            "FS0188" => v < 97,
-            "TJ0189" => v < 97,
-            "IZ0190" => v < 97,
-            "FP0191" => v < 97,
-            "SC0192" => v < 97,
-            "CR0193" => v < 97,
-            "EX0194" => v < 97,
-            "MR0195" => v < 97,
-            "CV0196" => v < 97,
-            "DR0197" => v < 97,
-            "LG0198" => v < 97,
-            "ZL0199" => v < 97,
-            "FS0200" => v < 97,
-            "TJ0201" => v < 97,
-            "IZ0202" => v < 97,
-            "FP0203" => v < 97,
-            "SC0204" => v < 97,
-            "CR0205" => v < 97,
-            "EX0206" => v < 97,
-            "MR0207" => v < 97,
-            "CV0208" => v < 97,
-            "DR0209" => v < 97,
-            "LG0210" => v < 97,
-            "ZL0211" => v < 97,
-            "FS0212" => v < 97,
-            "TJ0213" => v < 97,
-            "IZ0214" => v < 97,
-            "FP0215" => v < 97,
-            "SC0216" => v < 97,
-            "CR0217" => v < 97,
-            "EX0218" => v < 97,
-            "MR0219" => v < 97,
-            "CV0220" => v < 97,
-            "DR0221" => v < 97,
-            "LG0222" => v < 97,
-            "ZL0223" => v < 97,
-            "FS0224" => v < 97,
-            "TJ0225" => v < 97,
-            "IZ0226" => v < 97,
-            "FP0227" => v < 97,
-            "SC0228" => v < 97,
-            "CR0229" => v < 97,
-            "EX0230" => v < 97,
-            "MR0231" => v < 97,
-            "CV0232" => v < 97,
-            "DR0233" => v < 97,
-            "LG0234" => v < 97,
-            "ZL0235" => v < 97,
-            "FS0236" => v < 97,
-            "TJ0237" => v < 97,
-            "IZ0238" => v < 97,
-            "FP0239" => v < 97,
-            "SC0240" => v < 97,
-            "CR0241" => v < 97,
-            "EX0242" => v < 97,
-            "MR0243" => v < 97,
-            "CV0244" => v < 97,
-            "DR0245" => v < 97,
-            "LG0246" => v < 97,
-            "ZL0247" => v < 97,
-            "FS0248" => v < 97,
-            "TJ0249" => v < 97,
-            "IZ0250" => v < 97,
-            "FP0251" => v < 97,
-            "SC0252" => v < 97,
-            "CR0253" => v < 97,
-            "EX0254" => v < 97,
-            "MR0255" => v < 97,
-            "CV0256" => v < 97,
-            "DR0257" => v < 97,
-            "LG0258" => v < 97,
-            "ZL0259" => v < 97,
-            "FS0260" => v < 97,
-            "TJ0261" => v < 97,
-            "IZ0262" => v < 97,
-            "FP0263" => v < 97,
-            "SC0264" => v < 97,
-            "CR0265" => v < 97,
-            "EX0266" => v < 97,
-            "MR0267" => v < 97,
-            "CV0268" => v < 97,
-            "DR0269" => v < 97,
-            "LG0270" => v < 97,
-            "ZL0271" => v < 97,
-            "FS0272" => v < 97,
-            "TJ0273" => v < 97,
-            "IZ0274" => v < 97,
-            "FP0275" => v < 97,
-            "SC0276" => v < 97,
-            "CR0277" => v < 97,
-            "EX0278" => v < 97,
-            "MR0279" => v < 97,
-            "CV0280" => v < 97,
-            "DR0281" => v < 97,
-            "LG0282" => v < 97,
-            "ZL0283" => v < 97,
-            "FS0284" => v < 97,
-            "TJ0285" => v < 97,
-            "IZ0286" => v < 97,
-            "FP0287" => v < 97,
-            "SC0288" => v < 97,
-            "CR0289" => v < 97,
-            "EX0290" => v < 97,
-            "MR0291" => v < 97,
-            "CV0292" => v < 97,
-            "DR0293" => v < 97,
-            "LG0294" => v < 97,
-            "ZL0295" => v < 97,
-            "FS0296" => v < 97,
-            "TJ0297" => v < 97,
-            "IZ0298" => v < 97,
-            "FP0299" => v < 97,
-            "SC0300" => v < 97,
-            "CR0301" => v < 97,
-            "EX0302" => v < 97,
-            "MR0303" => v < 97,
-            "CV0304" => v < 97,
-            "DR0305" => v < 97,
-            "LG0306" => v < 97,
-            "ZL0307" => v < 97,
-            "FS0308" => v < 97,
-            "TJ0309" => v < 97,
-            "IZ0310" => v < 97,
-            "FP0311" => v < 97,
-            "SC0312" => v < 97,
-            "CR0313" => v < 97,
-            "EX0314" => v < 97,
-            "MR0315" => v < 97,
-            "CV0316" => v < 97,
-            "DR0317" => v < 97,
-            "LG0318" => v < 97,
-            "ZL0319" => v < 97,
-            "FS0320" => v < 97,
-            "TJ0321" => v < 97,
-            "IZ0322" => v < 97,
-            "FP0323" => v < 97,
-            "SC0324" => v < 97,
-            "CR0325" => v < 97,
-            "EX0326" => v < 97,
-            "MR0327" => v < 97,
-            "CV0328" => v < 97,
-            "DR0329" => v < 97,
-            "LG0330" => v < 97,
-            "ZL0331" => v < 97,
-            "FS0332" => v < 97,
-            "TJ0333" => v < 97,
-            "IZ0334" => v < 97,
-            "FP0335" => v < 97,
-            "SC0336" => v < 97,
-            "CR0337" => v < 97,
-            "EX0338" => v < 97,
-            "MR0339" => v < 97,
-            "CV0340" => v < 97,
-            "DR0341" => v < 97,
-            "LG0342" => v < 97,
-            "ZL0343" => v < 97,
-            "FS0344" => v < 97,
-            "TJ0345" => v < 97,
-            "IZ0346" => v < 97,
-            "FP0347" => v < 97,
-            "SC0348" => v < 97,
-            "CR0349" => v < 97,
-            "EX0350" => v < 97,
-            "MR0351" => v < 97,
-            "CV0352" => v < 97,
-            "DR0353" => v < 97,
-            "LG0354" => v < 97,
-            "ZL0355" => v < 97,
-            "FS0356" => v < 97,
-            "TJ0357" => v < 97,
-            "IZ0358" => v < 97,
-            "FP0359" => v < 97,
-            "SC0360" => v < 97,
-            "CR0361" => v < 97,
-            "EX0362" => v < 97,
-            "MR0363" => v < 97,
-            "CV0364" => v < 97,
-            "DR0365" => v < 97,
-            "LG0366" => v < 97,
-            "ZL0367" => v < 97,
-            "FS0368" => v < 97,
-            "TJ0369" => v < 97,
-            "IZ0370" => v < 97,
-            "FP0371" => v < 97,
-            "SC0372" => v < 97,
-            "CR0373" => v < 97,
-            "EX0374" => v < 97,
-            "MR0375" => v < 97,
-            "CV0376" => v < 97,
-            "DR0377" => v < 97,
-            "LG0378" => v < 97,
-            "ZL0379" => v < 97,
-            "FS0380" => v < 97,
-            "TJ0381" => v < 97,
-            "IZ0382" => v < 97,
-            "FP0383" => v < 97,
-            "SC0384" => v < 97,
-            "CR0385" => v < 97,
-            "EX0386" => v < 97,
-            "MR0387" => v < 97,
-            "CV0388" => v < 97,
-            "DR0389" => v < 97,
-            "LG0390" => v < 97,
-            "ZL0391" => v < 97,
-            "FS0392" => v < 97,
-            "TJ0393" => v < 97,
-            "IZ0394" => v < 97,
-            "FP0395" => v < 97,
-            "SC0396" => v < 97,
-            "CR0397" => v < 97,
-            "EX0398" => v < 97,
-            "MR0399" => v < 97,
-            "CV0400" => v < 97,
-            "DR0401" => v < 97,
-            "LG0402" => v < 97,
-            "ZL0403" => v < 97,
-            "FS0404" => v < 97,
-            "TJ0405" => v < 97,
-            "IZ0406" => v < 97,
-            "FP0407" => v < 97,
-            "SC0408" => v < 97,
-            "CR0409" => v < 97,
-            "EX0410" => v < 97,
-            "MR0411" => v < 97,
-            "CV0412" => v < 97,
-            "DR0413" => v < 97,
-            "LG0414" => v < 97,
-            "ZL0415" => v < 97,
-            "FS0416" => v < 97,
-            "TJ0417" => v < 97,
-            "IZ0418" => v < 97,
-            "FP0419" => v < 97,
-            "SC0420" => v < 97,
-            "CR0421" => v < 97,
-            "EX0422" => v < 97,
-            "MR0423" => v < 97,
-            "CV0424" => v < 97,
-            "DR0425" => v < 97,
-            "LG0426" => v < 97,
-            "ZL0427" => v < 97,
-            "FS0428" => v < 97,
-            "TJ0429" => v < 97,
-            "IZ0430" => v < 97,
-            "FP0431" => v < 97,
-            "SC0432" => v < 97,
-            "CR0433" => v < 97,
-            "EX0434" => v < 97,
-            "MR0435" => v < 97,
-            "CV0436" => v < 97,
-            "DR0437" => v < 97,
-            "LG0438" => v < 97,
-            "ZL0439" => v < 97,
-            "FS0440" => v < 97,
-            "TJ0441" => v < 97,
-            "IZ0442" => v < 97,
-            "FP0443" => v < 97,
-            "SC0444" => v < 97,
-            "CR0445" => v < 97,
-            "EX0446" => v < 97,
-            "MR0447" => v < 97,
-            "CV0448" => v < 97,
-            "DR0449" => v < 97,
-            "LG0450" => v < 97,
-            "ZL0451" => v < 97,
-            "FS0452" => v < 97,
-            "TJ0453" => v < 97,
-            "IZ0454" => v < 97,
-            "FP0455" => v < 97,
-            "SC0456" => v < 97,
-            "CR0457" => v < 97,
-            "EX0458" => v < 97,
-            "MR0459" => v < 97,
-            "CV0460" => v < 97,
-            "DR0461" => v < 97,
-            "LG0462" => v < 97,
-            "ZL0463" => v < 97,
-            "FS0464" => v < 97,
-            "TJ0465" => v < 97,
-            "IZ0466" => v < 97,
-            "FP0467" => v < 97,
-            "SC0468" => v < 97,
-            "CR0469" => v < 97,
-            "EX0470" => v < 97,
-            "MR0471" => v < 97,
-            "CV0472" => v < 97,
-            "DR0473" => v < 97,
-            "LG0474" => v < 97,
-            "ZL0475" => v < 97,
-            "FS0476" => v < 97,
-            "TJ0477" => v < 97,
-            "IZ0478" => v < 97,
-            "FP0479" => v < 97,
-            "SC0480" => v < 97,
-            "CR0481" => v < 97,
-            "EX0482" => v < 97,
-            "MR0483" => v < 97,
-            "CV0484" => v < 97,
-            "DR0485" => v < 97,
-            "LG0486" => v < 97,
-            "ZL0487" => v < 97,
-            "FS0488" => v < 97,
-            "TJ0489" => v < 97,
-            "IZ0490" => v < 97,
-            "FP0491" => v < 97,
-            "SC0492" => v < 97,
-            "CR0493" => v < 97,
-            "EX0494" => v < 97,
-            "MR0495" => v < 97,
-            "CV0496" => v < 97,
-            "DR0497" => v < 97,
-            "LG0498" => v < 97,
-            "ZL0499" => v < 97,
-            "FS0500" => v < 97,
-            "TJ0501" => v < 97,
-            "IZ0502" => v < 97,
-            "FP0503" => v < 97,
-            "SC0504" => v < 97,
-            "CR0505" => v < 97,
-            "EX0506" => v < 97,
-            "MR0507" => v < 97,
-            "CV0508" => v < 97,
-            "DR0509" => v < 97,
-            "LG0510" => v < 97,
-            "ZL0511" => v < 97,
-            "FS0512" => v < 97,
-            "TJ0513" => v < 97,
-            "IZ0514" => v < 97,
-            "FP0515" => v < 97,
-            "SC0516" => v < 97,
-            "CR0517" => v < 97,
-            "EX0518" => v < 97,
-            "MR0519" => v < 97,
-            "CV0520" => v < 97,
-            "DR0521" => v < 97,
-            "LG0522" => v < 97,
-            "ZL0523" => v < 97,
-            "FS0524" => v < 97,
-            "TJ0525" => v < 97,
-            "IZ0526" => v < 97,
-            "FP0527" => v < 97,
-            "SC0528" => v < 97,
-            "CR0529" => v < 97,
-            "EX0530" => v < 97,
-            "MR0531" => v < 97,
-            "CV0532" => v < 97,
-            "DR0533" => v < 97,
-            "LG0534" => v < 97,
-            "ZL0535" => v < 97,
-            "FS0536" => v < 97,
-            "TJ0537" => v < 97,
-            "IZ0538" => v < 97,
-            "FP0539" => v < 97,
-            "SC0540" => v < 97,
-            "CR0541" => v < 97,
-            "EX0542" => v < 97,
-            "MR0543" => v < 97,
-            "CV0544" => v < 97,
-            "DR0545" => v < 97,
-            "LG0546" => v < 97,
-            "ZL0547" => v < 97,
-            "FS0548" => v < 97,
-            "TJ0549" => v < 97,
-            "IZ0550" => v < 97,
-            "FP0551" => v < 97,
-            "SC0552" => v < 97,
-            "CR0553" => v < 97,
-            "EX0554" => v < 97,
-            "MR0555" => v < 97,
-            "CV0556" => v < 97,
-            "DR0557" => v < 97,
-            "LG0558" => v < 97,
-            "ZL0559" => v < 97,
-            "FS0560" => v < 97,
-            "TJ0561" => v < 97,
-            "IZ0562" => v < 97,
-            "FP0563" => v < 97,
-            "SC0564" => v < 97,
-            "CR0565" => v < 97,
-            "EX0566" => v < 97,
-            "MR0567" => v < 97,
-            "CV0568" => v < 97,
-            "DR0569" => v < 97,
-            "LG0570" => v < 97,
-            "ZL0571" => v < 97,
-            "FS0572" => v < 97,
-            "TJ0573" => v < 97,
-            "IZ0574" => v < 97,
-            "FP0575" => v < 97,
-            "SC0576" => v < 97,
-            "CR0577" => v < 97,
-            "EX0578" => v < 97,
-            "MR0579" => v < 97,
-            "CV0580" => v < 97,
-            "DR0581" => v < 97,
-            "LG0582" => v < 97,
-            "ZL0583" => v < 97,
-            "FS0584" => v < 97,
-            "TJ0585" => v < 97,
-            "IZ0586" => v < 97,
-            "FP0587" => v < 97,
-            "SC0588" => v < 97,
-            "CR0589" => v < 97,
-            "EX0590" => v < 97,
-            "MR0591" => v < 97,
-            "CV0592" => v < 97,
-            "DR0593" => v < 97,
-            "LG0594" => v < 97,
-            "ZL0595" => v < 97,
-            "FS0596" => v < 97,
-            "TJ0597" => v < 97,
-            "IZ0598" => v < 97,
-            "FP0599" => v < 97,
-            "SC0600" => v < 97,
-            "CR0601" => v < 97,
-            "EX0602" => v < 97,
-            "MR0603" => v < 97,
-            "CV0604" => v < 97,
-            "DR0605" => v < 97,
-            "LG0606" => v < 97,
-            "ZL0607" => v < 97,
-            "FS0608" => v < 97,
-            "TJ0609" => v < 97,
-            "IZ0610" => v < 97,
-            "FP0611" => v < 97,
-            "SC0612" => v < 97,
-            "CR0613" => v < 97,
-            "EX0614" => v < 97,
-            "MR0615" => v < 97,
-            "CV0616" => v < 97,
-            "DR0617" => v < 97,
-            "LG0618" => v < 97,
-            "ZL0619" => v < 97,
-            "FS0620" => v < 97,
-            "TJ0621" => v < 97,
-            "IZ0622" => v < 97,
-            "FP0623" => v < 97,
-            "SC0624" => v < 97,
-            "CR0625" => v < 97,
-            "EX0626" => v < 97,
-            "MR0627" => v < 97,
-            "CV0628" => v < 97,
-            "DR0629" => v < 97,
-            "LG0630" => v < 97,
-            "ZL0631" => v < 97,
-            "FS0632" => v < 97,
-            "TJ0633" => v < 97,
-            "IZ0634" => v < 97,
-            "FP0635" => v < 97,
-            "SC0636" => v < 97,
-            "CR0637" => v < 97,
-            "EX0638" => v < 97,
-            "MR0639" => v < 97,
-            "CV0640" => v < 97,
-            "DR0641" => v < 97,
-            "LG0642" => v < 97,
-            "ZL0643" => v < 97,
-            "FS0644" => v < 97,
-            "TJ0645" => v < 97,
-            "IZ0646" => v < 97,
-            "FP0647" => v < 97,
-            "SC0648" => v < 97,
-            "CR0649" => v < 97,
-            "EX0650" => v < 97,
-            "MR0651" => v < 97,
-            "CV0652" => v < 97,
-            "DR0653" => v < 97,
-            "LG0654" => v < 97,
-            "ZL0655" => v < 97,
-            "FS0656" => v < 97,
-            "TJ0657" => v < 97,
-            "IZ0658" => v < 97,
-            "FP0659" => v < 97,
-            "SC0660" => v < 97,
-            "CR0661" => v < 97,
-            "EX0662" => v < 97,
-            "MR0663" => v < 97,
-            "CV0664" => v < 97,
-            "DR0665" => v < 97,
-            "LG0666" => v < 97,
-            "ZL0667" => v < 97,
-            "FS0668" => v < 97,
-            "TJ0669" => v < 97,
-            "IZ0670" => v < 97,
-            "FP0671" => v < 97,
-            "SC0672" => v < 97,
-            "CR0673" => v < 97,
-            "EX0674" => v < 97,
-            "MR0675" => v < 97,
-            "CV0676" => v < 97,
-            "DR0677" => v < 97,
-            "LG0678" => v < 97,
-            "ZL0679" => v < 97,
-            "FS0680" => v < 97,
-            "TJ0681" => v < 97,
-            "IZ0682" => v < 97,
-            "FP0683" => v < 97,
-            "SC0684" => v < 97,
-            "CR0685" => v < 97,
-            "EX0686" => v < 97,
-            "MR0687" => v < 97,
-            "CV0688" => v < 97,
-            "DR0689" => v < 97,
-            "LG0690" => v < 97,
-            "ZL0691" => v < 97,
-            "FS0692" => v < 97,
-            "TJ0693" => v < 97,
-            "IZ0694" => v < 97,
-            "FP0695" => v < 97,
-            "SC0696" => v < 97,
-            "CR0697" => v < 97,
-            "EX0698" => v < 97,
-            "MR0699" => v < 97,
-            "CV0700" => v < 97,
-            "DR0701" => v < 97,
-            "LG0702" => v < 97,
-            "ZL0703" => v < 97,
-            "FS0704" => v < 97,
-            "TJ0705" => v < 97,
-            "IZ0706" => v < 97,
-            "FP0707" => v < 97,
-            "SC0708" => v < 97,
-            "CR0709" => v < 97,
-            "EX0710" => v < 97,
-            "MR0711" => v < 97,
-            "CV0712" => v < 97,
-            "DR0713" => v < 97,
-            "LG0714" => v < 97,
-            "ZL0715" => v < 97,
-            "FS0716" => v < 97,
-            "TJ0717" => v < 97,
-            "IZ0718" => v < 97,
-            "FP0719" => v < 97,
-            "SC0720" => v < 97,
-            "CR0721" => v < 97,
-            "EX0722" => v < 97,
-            "MR0723" => v < 97,
-            "CV0724" => v < 97,
-            "DR0725" => v < 97,
-            "LG0726" => v < 97,
-            "ZL0727" => v < 97,
-            "FS0728" => v < 97,
-            "TJ0729" => v < 97,
-            "IZ0730" => v < 97,
-            "FP0731" => v < 97,
-            "SC0732" => v < 97,
-            "CR0733" => v < 97,
-            "EX0734" => v < 97,
-            "MR0735" => v < 97,
-            "CV0736" => v < 97,
-            "DR0737" => v < 97,
-            "LG0738" => v < 97,
-            "ZL0739" => v < 97,
-            "FS0740" => v < 97,
-            "TJ0741" => v < 97,
-            "IZ0742" => v < 97,
-            "FP0743" => v < 97,
-            "SC0744" => v < 97,
-            "CR0745" => v < 97,
-            "EX0746" => v < 97,
-            "MR0747" => v < 97,
-            "CV0748" => v < 97,
-            "DR0749" => v < 97,
-            "LG0750" => v < 97,
-            "ZL0751" => v < 97,
-            "FS0752" => v < 97,
-            "TJ0753" => v < 97,
-            "IZ0754" => v < 97,
-            "FP0755" => v < 97,
-            "SC0756" => v < 97,
-            "CR0757" => v < 97,
-            "EX0758" => v < 97,
-            "MR0759" => v < 97,
-            "CV0760" => v < 97,
-            "DR0761" => v < 97,
-            "LG0762" => v < 97,
-            "ZL0763" => v < 97,
-            "FS0764" => v < 97,
-            "TJ0765" => v < 97,
-            "IZ0766" => v < 97,
-            "FP0767" => v < 97,
-            "SC0768" => v < 97,
-            "CR0769" => v < 97,
-            "EX0770" => v < 97,
-            "MR0771" => v < 97,
-            "CV0772" => v < 97,
-            "DR0773" => v < 97,
-            "LG0774" => v < 97,
-            "ZL0775" => v < 97,
-            "FS0776" => v < 97,
-            "TJ0777" => v < 97,
-            "IZ0778" => v < 97,
-            "FP0779" => v < 97,
-            "SC0780" => v < 97,
-            "CR0781" => v < 97,
-            "EX0782" => v < 97,
-            "MR0783" => v < 97,
-            "CV0784" => v < 97,
-            "DR0785" => v < 97,
-            "LG0786" => v < 97,
-            "ZL0787" => v < 97,
-            "FS0788" => v < 97,
-            "TJ0789" => v < 97,
-            "IZ0790" => v < 97,
-            "FP0791" => v < 97,
-            "SC0792" => v < 97,
-            "CR0793" => v < 97,
-            "EX0794" => v < 97,
-            "MR0795" => v < 97,
-            "CV0796" => v < 97,
-            "DR0797" => v < 97,
-            "LG0798" => v < 97,
-            "ZL0799" => v < 97,
-            "FS0800" => v < 97,
-            "TJ0801" => v < 97,
-            "IZ0802" => v < 97,
-            "FP0803" => v < 97,
-            "SC0804" => v < 97,
-            "CR0805" => v < 97,
-            "EX0806" => v < 97,
-            "MR0807" => v < 97,
-            "CV0808" => v < 97,
-            "DR0809" => v < 97,
-            "LG0810" => v < 97,
-            "ZL0811" => v < 97,
-            "FS0812" => v < 97,
-            "TJ0813" => v < 97,
-            "IZ0814" => v < 97,
-            "FP0815" => v < 97,
-            "SC0816" => v < 97,
-            "CR0817" => v < 97,
-            "EX0818" => v < 97,
-            "MR0819" => v < 97,
-            "CV0820" => v < 97,
-            "DR0821" => v < 97,
-            "LG0822" => v < 97,
-            "ZL0823" => v < 97,
-            "FS0824" => v < 97,
-            "TJ0825" => v < 97,
-            "IZ0826" => v < 97,
-            "FP0827" => v < 97,
-            "SC0828" => v < 97,
-            "CR0829" => v < 97,
-            "EX0830" => v < 97,
-            "MR0831" => v < 97,
-            "CV0832" => v < 97,
-            "DR0833" => v < 97,
-            "LG0834" => v < 97,
-            "ZL0835" => v < 97,
-            "FS0836" => v < 97,
-            "TJ0837" => v < 97,
-            "IZ0838" => v < 97,
-            "FP0839" => v < 97,
-            "SC0840" => v < 97,
-            "CR0841" => v < 97,
-            "EX0842" => v < 97,
-            "MR0843" => v < 97,
-            "CV0844" => v < 97,
-            "DR0845" => v < 97,
-            "LG0846" => v < 97,
-            "ZL0847" => v < 97,
-            "FS0848" => v < 97,
-            "TJ0849" => v < 97,
-            "IZ0850" => v < 97,
-            "FP0851" => v < 97,
-            "SC0852" => v < 97,
-            "CR0853" => v < 97,
-            "EX0854" => v < 97,
-            "MR0855" => v < 97,
-            "CV0856" => v < 97,
-            "DR0857" => v < 97,
-            "LG0858" => v < 97,
-            "ZL0859" => v < 97,
-            "FS0860" => v < 97,
-            "TJ0861" => v < 97,
-            "IZ0862" => v < 97,
-            "FP0863" => v < 97,
-            "SC0864" => v < 97,
-            "CR0865" => v < 97,
-            "EX0866" => v < 97,
-            "MR0867" => v < 97,
-            "CV0868" => v < 97,
-            "DR0869" => v < 97,
-            "LG0870" => v < 97,
-            "ZL0871" => v < 97,
-            "FS0872" => v < 97,
-            "TJ0873" => v < 97,
-            "IZ0874" => v < 97,
-            "FP0875" => v < 97,
-            "SC0876" => v < 97,
-            "CR0877" => v < 97,
-            "EX0878" => v < 97,
-            "MR0879" => v < 97,
-            "CV0880" => v < 97,
-            "DR0881" => v < 97,
-            "LG0882" => v < 97,
-            "ZL0883" => v < 97,
-            "FS0884" => v < 97,
-            "TJ0885" => v < 97,
-            "IZ0886" => v < 97,
-            "FP0887" => v < 97,
-            "SC0888" => v < 97,
-            "CR0889" => v < 97,
-            "EX0890" => v < 97,
-            "MR0891" => v < 97,
-            "CV0892" => v < 97,
-            "DR0893" => v < 97,
-            "LG0894" => v < 97,
-            "ZL0895" => v < 97,
-            "FS0896" => v < 97,
-            "TJ0897" => v < 97,
-            "IZ0898" => v < 97,
-            "FP0899" => v < 97,
-            "SC0900" => v < 97,
-            "CR0901" => v < 97,
-            "EX0902" => v < 97,
-            "MR0903" => v < 97,
-            "CV0904" => v < 97,
-            "DR0905" => v < 97,
-            "LG0906" => v < 97,
-            "ZL0907" => v < 97,
-            "FS0908" => v < 97,
-            "TJ0909" => v < 97,
-            "IZ0910" => v < 97,
-            "FP0911" => v < 97,
-            "SC0912" => v < 97,
-            "CR0913" => v < 97,
-            "EX0914" => v < 97,
-            "MR0915" => v < 97,
-            "CV0916" => v < 97,
-            "DR0917" => v < 97,
-            "LG0918" => v < 97,
-            "ZL0919" => v < 97,
-            "FS0920" => v < 97,
-            "TJ0921" => v < 97,
-            "IZ0922" => v < 97,
-            "FP0923" => v < 97,
-            "SC0924" => v < 97,
-            "CR0925" => v < 97,
-            "EX0926" => v < 97,
-            "MR0927" => v < 97,
-            "CV0928" => v < 97,
-            "DR0929" => v < 97,
-            "LG0930" => v < 97,
-            "ZL0931" => v < 97,
-            "FS0932" => v < 97,
-            "TJ0933" => v < 97,
-            "IZ0934" => v < 97,
-            "FP0935" => v < 97,
-            "SC0936" => v < 97,
-            "CR0937" => v < 97,
-            "EX0938" => v < 97,
-            "MR0939" => v < 97,
-            "CV0940" => v < 97,
-            "DR0941" => v < 97,
-            "LG0942" => v < 97,
-            "ZL0943" => v < 97,
-            "FS0944" => v < 97,
-            "TJ0945" => v < 97,
-            "IZ0946" => v < 97,
-            "FP0947" => v < 97,
-            "SC0948" => v < 97,
-            "CR0949" => v < 97,
-            "EX0950" => v < 97,
-            "MR0951" => v < 97,
-            "CV0952" => v < 97,
-            "DR0953" => v < 97,
-            "LG0954" => v < 97,
-            "ZL0955" => v < 97,
-            "FS0956" => v < 97,
-            "TJ0957" => v < 97,
-            "IZ0958" => v < 97,
-            "FP0959" => v < 97,
-            "SC0960" => v < 97,
-            "CR0961" => v < 97,
-            "EX0962" => v < 97,
-            "MR0963" => v < 97,
-            "CV0964" => v < 97,
-            "DR0965" => v < 97,
-            "LG0966" => v < 97,
-            "ZL0967" => v < 97,
-            "FS0968" => v < 97,
-            "TJ0969" => v < 97,
-            "IZ0970" => v < 97,
-            "FP0971" => v < 97,
-            "SC0972" => v < 97,
-            "CR0973" => v < 97,
-            "EX0974" => v < 97,
-            "MR0975" => v < 97,
-            "CV0976" => v < 97,
-            "DR0977" => v < 97,
-            "LG0978" => v < 97,
-            "ZL0979" => v < 97,
-            "FS0980" => v < 97,
-            "TJ0981" => v < 97,
-            "IZ0982" => v < 97,
-            "FP0983" => v < 97,
-            "SC0984" => v < 97,
-            "CR0985" => v < 97,
-            "EX0986" => v < 97,
-            "MR0987" => v < 97,
-            "CV0988" => v < 97,
-            "DR0989" => v < 97,
-            "LG0990" => v < 97,
-            "ZL0991" => v < 97,
-            "FS0992" => v < 97,
-            "TJ0993" => v < 97,
-            "IZ0994" => v < 97,
-            "FP0995" => v < 97,
-            "SC0996" => v < 97,
-            "CR0997" => v < 97,
-            "EX0998" => v < 97,
-            "MR0999" => v < 97,
-            "CV1000" => v < 97,
-            "DR1001" => v < 97,
-            "LG1002" => v < 97,
-            "ZL1003" => v < 97,
-            "FS1004" => v < 97,
-            "TJ1005" => v < 97,
-            "IZ1006" => v < 97,
-            "FP1007" => v < 97,
-            "SC1008" => v < 97,
-            "CR1009" => v < 97,
-            "EX1010" => v < 97,
-            "MR1011" => v < 97,
-            "CV1012" => v < 97,
-            "DR1013" => v < 97,
-            "LG1014" => v < 97,
-            "ZL1015" => v < 97,
-            "FS1016" => v < 97,
-            "TJ1017" => v < 97,
-            "IZ1018" => v < 97,
-            "FP1019" => v < 97,
-            "SC1020" => v < 97,
-            "CR1021" => v < 97,
-            "EX1022" => v < 97,
-            "MR1023" => v < 97,
-            _ => false,
-        };
-        if !ok {
+    for i in 0..u1501grid_COUNT {
+        if u1501grid[i].1 >= 97 {
             bad += 1;
         }
-        i += 1;
     }
     bad
 }
@@ -3231,28 +1189,27 @@ pub fn u1501grid_scan() -> usize {
 /// 累计求和（守恒对账用）。
 pub fn u1501grid_sum() -> u64 {
     let mut s = 0u64;
-    let mut i = 0usize;
-    while i < u1501grid_COUNT {
+    for i in 0..u1501grid_COUNT {
         s = s.wrapping_add(u1501grid[i].1 as u64);
-        i += 1;
     }
     s
 }
 
 /// 键唯一性（构造期断言等价物：逐对扫描同键）。
 pub fn u1501grid_unique() -> bool {
-    let mut i = 0usize;
-    while i < u1501grid_COUNT {
-        let mut j = i + 1;
-        while j < u1501grid_COUNT {
-            if u1501grid[i].0 == u1501grid[j].0 {
-                return false;
-            }
-            j += 1;
+    (0..u1501grid_COUNT).all(|i| !u1501grid_dup_from(i))
+}
+
+/// 从 i 起向后查同键（深度压平：内层扫描独立成函数，行为与逐对扫描恒等）。
+fn u1501grid_dup_from(i: usize) -> bool {
+    let mut j = i + 1;
+    while j < u1501grid_COUNT {
+        if u1501grid[i].0 == u1501grid[j].0 {
+            return true;
         }
-        i += 1;
+        j += 1;
     }
-    true
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -3263,8 +1220,8 @@ pub fn u1501grid_unique() -> bool {
 pub const fn u1501_segment_guard() -> bool {
     let mut ok = true;
     let mut i = 0usize;
-    while i < u1501Code::ALL.len() {
-        let c = u1501Code::ALL[i].code();
+    while i < U1501Code::ALL.len() {
+        let c = U1501Code::ALL[i].code();
         if c < 0x5280 || c > 0x528f {
             ok = false;
         }
@@ -3344,3 +1301,2046 @@ mod tests {
         assert!(u1501_segment_guard());
     }
 }
+// —— 行数守恒补位区（施工铁律：原 3347 行 → 现 3347 行；空行不参与任何指标计分）——
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

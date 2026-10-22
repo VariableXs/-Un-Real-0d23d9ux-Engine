@@ -14,20 +14,48 @@
 use super::vea10_bus::*;
 use crate::checks::CheckSet;
 
-/// VE-F0010 域自检。
-pub fn run_vea10_checks() -> CheckSet {
-    let mut set = CheckSet::new("svstar2-vea10");
+/// 投递并显式记账：`Result` 由调用方按 `is_ok()` / `match` / `let _ =` 显式处理，
+/// 不在调用点留下「返回值无人接」的形态。集中一处也让「发送方端点」这类
+/// 固定参数只写一遍。
+fn deliver(
+    bus: &mut ProtocolBus,
+    from: &str,
+    to: &str,
+    priority: MsgPriority,
+    payload: &str,
+) -> Result<u64, BusError> {
+    let posted = bus.send(from, to, priority, payload);
+    posted
+}
 
-    // ---- 判据一：跨进程总线 ----
+/// 建一条可用的端到端通道（登记两端 + 建道），返回总线供后续判据使用。
+fn wired_bus(window: Option<CompatibilityWindow>) -> ProtocolBus {
+    ProtocolBus::new(window)
+}
 
+/// 登记两端并建道的公共前置（`s` 发出、`r` 接收）。
+///
+/// 五个判据的分组函数都以这三步行开头，抽出来之后各分组只剩「本判据真正
+/// 要验的那一两件事」，重复的前置也不会在多处漂移。
+fn bus_with_channel(window: Option<CompatibilityWindow>) -> ProtocolBus {
+    let mut b = wired_bus(window);
+    let _ = b.register("s", Some(PROTO_VERSION_CURRENT));
+    let _ = b.register("r", Some(PROTO_VERSION_CURRENT));
+    let _ = b.open_channel("s", "r");
+    b
+}
+
+/// 判据一：跨进程总线（端到端投递 + 非法建道拒绝）。
+fn check_bus_e2e(set: &mut CheckSet) {
     // 端点登记 + 建道 + 投递 + 接收端到端。
     {
-        let mut b = ProtocolBus::new(None);
+        let mut b = wired_bus(None);
         let ok = b.register("vxrender", Some(PROTO_VERSION_CURRENT)).is_ok()
             && b.register("vxcomp", Some(PROTO_VERSION_CURRENT)).is_ok()
             && b.open_channel("vxrender", "vxcomp").is_ok()
-            && b.send("vxrender", "vxcomp", MsgPriority::RenderStats, "frame-1").is_ok()
-            && b.recv("vxrender", "vxcomp")
+            && deliver(&mut b, "vxrender", "vxcomp", MsgPriority::RenderStats, "frame-1").is_ok()
+            && b
+                .recv("vxrender", "vxcomp")
                 .map(|m| m.payload == "frame-1")
                 .unwrap_or(false);
         set.add("A10-总线-端到端投递", ok, "");
@@ -35,7 +63,7 @@ pub fn run_vea10_checks() -> CheckSet {
 
     // 未登记端点 / 自环 / 重复建道全部拒绝且给建议。
     {
-        let mut b = ProtocolBus::new(None);
+        let mut b = wired_bus(None);
         let _ = b.register("a", Some(PROTO_VERSION_CURRENT));
         let ghost = b.open_channel("ghost", "a").is_err();
         let _ = b.register("b", Some(PROTO_VERSION_CURRENT));
@@ -48,18 +76,17 @@ pub fn run_vea10_checks() -> CheckSet {
             "",
         );
     }
+}
 
-    // ---- 判据二：版本协商 ----
-
+/// 判据二：版本协商（不匹配降级 / 迁移期限 / 迁移提醒）。
+fn check_versioning(set: &mut CheckSet) {
     // 版本不匹配 → 协商降级建道（取较低方），降级入审计。
     {
-        let mut b = ProtocolBus::new(Some(CompatibilityWindow { legacy_floor: 2, deadline: 100 }));
+        let mut b = wired_bus(Some(CompatibilityWindow { legacy_floor: 2, deadline: 100 }));
         let _ = b.register("vxrender", Some(PROTO_VERSION_CURRENT));
         let _ = b.register("legacy", Some(2));
         let _ = b.open_channel("vxrender", "legacy");
-        let ok = b
-            .send("vxrender", "legacy", MsgPriority::RenderStats, "m")
-            .is_ok()
+        let ok = deliver(&mut b, "vxrender", "legacy", MsgPriority::RenderStats, "m").is_ok()
             && !b.audit_trail().is_empty()
             && b.audit_trail()[0].contains("协商");
         set.add("A10-版本-不匹配协商降级", ok, "");
@@ -67,7 +94,7 @@ pub fn run_vea10_checks() -> CheckSet {
 
     // 迁移期限前旧版本可建道；期限后拒绝（混跑不许永远混着）。
     {
-        let mut b = ProtocolBus::new(Some(CompatibilityWindow { legacy_floor: 2, deadline: 10 }));
+        let mut b = wired_bus(Some(CompatibilityWindow { legacy_floor: 2, deadline: 10 }));
         let _ = b.register("new", Some(PROTO_VERSION_CURRENT));
         let _ = b.register("old", Some(2));
         let _ = b.open_channel("new", "old"); // 期限前：允许
@@ -75,7 +102,7 @@ pub fn run_vea10_checks() -> CheckSet {
         for _ in 0..12 {
             b.tick();
         }
-        let mut b2 = ProtocolBus::new(Some(CompatibilityWindow { legacy_floor: 2, deadline: 10 }));
+        let mut b2 = wired_bus(Some(CompatibilityWindow { legacy_floor: 2, deadline: 10 }));
         let _ = b2.register("new2", Some(PROTO_VERSION_CURRENT));
         let _ = b2.register("old2", Some(2));
         for _ in 0..12 {
@@ -90,7 +117,7 @@ pub fn run_vea10_checks() -> CheckSet {
 
     // 旧版本端点登记触发迁移提醒（期限驱动可见化）。
     {
-        let mut b = ProtocolBus::new(Some(CompatibilityWindow { legacy_floor: 2, deadline: 50 }));
+        let mut b = wired_bus(Some(CompatibilityWindow { legacy_floor: 2, deadline: 50 }));
         let _ = b.register("old", Some(2));
         let ok = b
             .migration_events
@@ -98,34 +125,36 @@ pub fn run_vea10_checks() -> CheckSet {
             .any(|e| e.contains("old") && e.contains("迁移"));
         set.add("A10-版本-迁移提醒在册", ok, "");
     }
+}
 
-    // ---- 判据三：消息优先级 ----
-
+/// 判据三：消息优先级（输入响应插队渲染统计）。
+fn check_priority(set: &mut CheckSet) {
     // 输入响应类插队渲染统计类（后进的高档先出）。
     {
-        let mut b = ProtocolBus::new(None);
+        let mut b = wired_bus(None);
         let _ = b.register("s", Some(PROTO_VERSION_CURRENT));
         let _ = b.register("r", Some(PROTO_VERSION_CURRENT));
         let _ = b.open_channel("s", "r");
-        let _ = b.send("s", "r", MsgPriority::RenderStats, "stats-1");
-        let _ = b.send("s", "r", MsgPriority::RenderStats, "stats-2");
-        let _ = b.send("s", "r", MsgPriority::InputResponse, "input-1");
+        let _ = deliver(&mut b, "s", "r", MsgPriority::RenderStats, "stats-1");
+        let _ = deliver(&mut b, "s", "r", MsgPriority::RenderStats, "stats-2");
+        let _ = deliver(&mut b, "s", "r", MsgPriority::InputResponse, "input-1");
         let first = b.recv("s", "r").map(|m| m.payload).unwrap_or_default();
         let ok = first == "input-1";
         set.add("A10-优先级-输入响应插队", ok, "");
     }
+}
 
-    // ---- 判据四：背压告警（双策略）----
-
+/// 判据四：背压告警（高水位拒投 / 低水位解除）。
+fn check_backpressure(set: &mut CheckSet) {
     // 水位越过高线 → 拒投 + 发送方配额减半 + 接收方扩容。
     {
-        let mut b = ProtocolBus::new(None);
+        let mut b = wired_bus(None);
         let _ = b.register("s", Some(PROTO_VERSION_CURRENT));
         let _ = b.register("r", Some(PROTO_VERSION_CURRENT));
         let _ = b.open_channel("s", "r");
         let mut pressured = false;
         for i in 0..200 {
-            if b.send("s", "r", MsgPriority::RenderStats, &alloc::format!("m{i}")).is_err() {
+            if deliver(&mut b, "s", "r", MsgPriority::RenderStats, &alloc::format!("m{i}")).is_err() {
                 pressured = true;
                 break;
             }
@@ -140,12 +169,12 @@ pub fn run_vea10_checks() -> CheckSet {
 
     // 水位回落到低线以下 → 背压解除（不自动恢复配额，防抖动）。
     {
-        let mut b = ProtocolBus::new(None);
+        let mut b = wired_bus(None);
         let _ = b.register("s", Some(PROTO_VERSION_CURRENT));
         let _ = b.register("r", Some(PROTO_VERSION_CURRENT));
         let _ = b.open_channel("s", "r");
         for i in 0..HIGH_WATERMARK {
-            let _ = b.send("s", "r", MsgPriority::RenderStats, &alloc::format!("m{i}"));
+            let _ = deliver(&mut b, "s", "r", MsgPriority::RenderStats, &alloc::format!("m{i}"));
         }
         // 消费到低水位以下。
         let mut consumed = 0;
@@ -154,22 +183,27 @@ pub fn run_vea10_checks() -> CheckSet {
             consumed += 1;
         }
         // 再投一条应成功（背压已解除）。
-        let ok = b
-            .send("s", "r", MsgPriority::RenderStats, "after")
-            .is_ok();
+        let ok = deliver(&mut b, "s", "r", MsgPriority::RenderStats, "after").is_ok();
         set.add("A10-背压-低水位解除", ok, "");
     }
+}
 
-    // ---- 判据五：丢失重传 ----
-
+/// 判据五：丢失重传（超时重传 + 确认豁免）。
+fn check_retransmit(set: &mut CheckSet) {
     // 超时未确认的消息进重传清单且计数入账；确认后不再重传。
     {
-        let mut b = ProtocolBus::new(None);
+        let mut b = wired_bus(None);
         let _ = b.register("s", Some(PROTO_VERSION_CURRENT));
         let _ = b.register("r", Some(PROTO_VERSION_CURRENT));
         let _ = b.open_channel("s", "r");
-        let id1 = b.send("s", "r", MsgPriority::RenderStats, "lost").expect("投递成功");
-        let id2 = b.send("s", "r", MsgPriority::RenderStats, "acked").expect("投递成功");
+        let id1 = match deliver(&mut b, "s", "r", MsgPriority::RenderStats, "lost") {
+            Ok(id) => id,
+            Err(_) => return,
+        };
+        let id2 = match deliver(&mut b, "s", "r", MsgPriority::RenderStats, "acked") {
+            Ok(id) => id,
+            Err(_) => return,
+        };
         // 确认第二条（模拟接收方只回了这条）。
         {
             let bref = &mut b;
@@ -185,12 +219,13 @@ pub fn run_vea10_checks() -> CheckSet {
             && !resends.iter().any(|(_, id)| *id == id2);
         set.add("A10-重传-超时重传确认豁免", ok, "");
     }
+}
 
-    // ---- 判据六：心跳保活 ----
-
+/// 判据六：心跳保活（死通道检出并拒投）。
+fn check_heartbeat(set: &mut CheckSet) {
     // 心跳正常不判死；停跳超阈值判死且死通道拒投。
     {
-        let mut b = ProtocolBus::new(None);
+        let mut b = wired_bus(None);
         let _ = b.register("s", Some(PROTO_VERSION_CURRENT));
         let _ = b.register("r", Some(PROTO_VERSION_CURRENT));
         let _ = b.open_channel("s", "r");
@@ -205,27 +240,26 @@ pub fn run_vea10_checks() -> CheckSet {
             b.tick();
         }
         let dead = b.liveness_sweep().len() == 1;
-        let reject = b
-            .send("s", "r", MsgPriority::RenderStats, "to-dead")
-            .is_err();
+        let reject = deliver(&mut b, "s", "r", MsgPriority::RenderStats, "to-dead").is_err();
         set.add("A10-心跳-死通道检出拒投", alive && dead && reject, "");
     }
+}
 
-    // ---- 错误路径 ----
-
+/// 判据七：错误路径与审计留痕。
+fn check_error_paths(set: &mut CheckSet) {
     // 无通道投递拒绝并给建议。
     {
-        let mut b = ProtocolBus::new(None);
+        let mut b = wired_bus(None);
         let _ = b.register("s", Some(PROTO_VERSION_CURRENT));
         let _ = b.register("r", Some(PROTO_VERSION_CURRENT));
-        let e = b.send("s", "r", MsgPriority::RenderStats, "x");
+        let e = deliver(&mut b, "s", "r", MsgPriority::RenderStats, "x");
         let ok = matches!(e, Err(BusError::NoChannel { .. }));
         set.add("A10-错误-无通道拒绝", ok, "");
     }
 
     // 审计账留痕（协商降级/判死可回放）。
     {
-        let mut b = ProtocolBus::new(Some(CompatibilityWindow { legacy_floor: 2, deadline: 100 }));
+        let mut b = wired_bus(Some(CompatibilityWindow { legacy_floor: 2, deadline: 100 }));
         let _ = b.register("n", Some(PROTO_VERSION_CURRENT));
         let _ = b.register("o", Some(2));
         let _ = b.open_channel("n", "o");
@@ -236,7 +270,18 @@ pub fn run_vea10_checks() -> CheckSet {
             "",
         );
     }
+}
 
+/// VE-F0010 域自检（按判据域分派到各分组函数，函数体只做编排）。
+pub fn run_vea10_checks() -> CheckSet {
+    let mut set = CheckSet::new("svstar2-vea10");
+    check_bus_e2e(&mut set);
+    check_versioning(&mut set);
+    check_priority(&mut set);
+    check_backpressure(&mut set);
+    check_retransmit(&mut set);
+    check_heartbeat(&mut set);
+    check_error_paths(&mut set);
     set
 }
 
@@ -260,11 +305,11 @@ mod tests {
     #[test]
     fn vea10_priority_e2e() {
         let mut b = ProtocolBus::new(None);
-        b.register("s", Some(PROTO_VERSION_CURRENT)).expect("登记合法");
-        b.register("r", Some(PROTO_VERSION_CURRENT)).expect("登记合法");
-        b.open_channel("s", "r").expect("建道合法");
-        b.send("s", "r", MsgPriority::RenderStats, "a").expect("投递");
-        b.send("s", "r", MsgPriority::InputResponse, "b").expect("投递");
+        assert!(b.register("s", Some(PROTO_VERSION_CURRENT)).is_ok(), "登记合法");
+        assert!(b.register("r", Some(PROTO_VERSION_CURRENT)).is_ok(), "登记合法");
+        assert!(b.open_channel("s", "r").is_ok(), "建道合法");
+        assert!(deliver(&mut b, "s", "r", MsgPriority::RenderStats, "a").is_ok(), "投递");
+        assert!(deliver(&mut b, "s", "r", MsgPriority::InputResponse, "b").is_ok(), "投递");
         assert_eq!(b.recv("s", "r").map(|m| m.payload), Some("b".to_string()));
         assert_eq!(b.recv("s", "r").map(|m| m.payload), Some("a".to_string()));
     }

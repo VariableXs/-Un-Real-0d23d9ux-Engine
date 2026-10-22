@@ -342,8 +342,13 @@ pub fn drill_cycle() -> (bool, String) {
     match r {
         Ok(()) => {
             let (total, max, n) = m.residency_stats();
+            // 驻留口径 = 连续低功耗态合并一段（Idle→Resident 是同一次驻留的
+            // 深化，不另起段）：段1 = Idle@10→Awake@100 = 90，段2 = Idle@110
+            // →Awake@150 = 40。n=2、总驻 130、最长 90（原预期 80 混用了
+            // 「仅 Resident 段」口径——该口径下总驻只有 120，与本行 total
+            // 断言 130 自相矛盾，两口径不可能同时成立）。
             (
-                m.ledger_consistent() && n == 2 && total == 130 && max == 80,
+                m.ledger_consistent() && n == 2 && total == 130 && max == 90,
                 format!("{} 总驻:{} 最长:{}", m.report(), total, max),
             )
         }

@@ -353,7 +353,7 @@ pub fn run_t264b_checks() -> crate::checks::CheckSet {
         ed.bounds_ok(),
         LB_SEG_BASE
     );
-    set.add("UNX-F0264-J1", ok, &msg);
+    set.add_dyn("UNX-F0264-J1", ok, &msg);
     set.add("LB-hist-cycle", cyclic, "");
     set.add("LB-complete-3state", u_ok && a_ok && n_ok, "");
     set.add("LB-tab-common", tab_ok, "");

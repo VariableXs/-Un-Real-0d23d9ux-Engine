@@ -19,6 +19,10 @@
 //! - 无爆音纪律：节点插入/移除走等增益过渡（equal-power 余弦定律，与
 //!   F1329 参数平滑同核），端点精确、步进无跳变（相邻步差有上界）。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -360,9 +364,9 @@ pub fn equal_power_gain(t: f64, fade_in: bool) -> f64 {
     }
     let t = t.clamp(0.0, 1.0);
     if fade_in {
-        (core::f64::consts::FRAC_PI_2 * t).sin()
+        (core::f64::consts::FRAC_PI_2 * t).m_sin()
     } else {
-        (core::f64::consts::FRAC_PI_2 * t).cos()
+        (core::f64::consts::FRAC_PI_2 * t).m_cos()
     }
 }
 

@@ -95,6 +95,10 @@
 //! 类型、初值、参数域、拒绝原因）；[`PRIVACY_SURFACE`] 显式声明**无隐私面**
 //! ——本段只处理作者写下的声明文本，不采集、不回传任何用户数据。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -1515,7 +1519,7 @@ pub fn parse_font_weight(ctx: &ValueCtx) -> Result<ParsedValue, StyleError> {
     // 只按域钳制会把 `font-weight: 450` 静默夹成 450——规范禁止它。故此处
     // 按规范步进校验，越界即拒而不是夹。
     let in_range = raw >= 100.0 && raw <= 900.0;
-    let on_step = (raw / 100.0) - (raw / 100.0).floor() < 1e-9;
+    let on_step = (raw / 100.0) - (raw / 100.0).m_floor() < 1e-9;
     if !in_range || !on_step {
         return Err(StyleError::new(
             E_VALUE_KIND_MISMATCH,

@@ -13,6 +13,10 @@
 //! 查表+接口冻结+字形缓存。对拍差 ≤1 LSB 判据由 gpu_ref_lane 参考路径兑现。
 //! 诊断码段 0x4Exx。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::vec::Vec;
 
 /// 模块版本（接口冻结标识——判据"接口冻结供 VE-E 调用"）。
@@ -160,7 +164,7 @@ pub fn gamma_table() -> [u8; 256] {
         let lin = if s <= 0.04045 {
             s / 12.92
         } else {
-            ((s + 0.055) / 1.055).powf(2.4)
+            ((s + 0.055) / 1.055).m_powf(2.4)
         };
         t[i] = (lin * 255.0 + 0.5) as u8;
         i += 1;

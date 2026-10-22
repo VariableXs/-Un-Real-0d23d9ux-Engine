@@ -73,6 +73,10 @@
 //!
 //! 零外部依赖；零 IO；纯确定性函数 + 注入式状态；回归可复现。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -717,7 +721,7 @@ pub fn srgb_encode(linear: f32) -> f32 {
     let s = if a <= SRGB_OETF_BREAK {
         SRGB_SLOPE * a
     } else {
-        SRGB_SLOPE_HI * a.powf(1.0 / SRGB_GAMMA) - SRGB_OFFSET
+        SRGB_SLOPE_HI * a.m_powf(1.0 / SRGB_GAMMA) - SRGB_OFFSET
     };
     l.signum() * s
 }
@@ -734,7 +738,7 @@ pub fn srgb_decode(encoded: f32) -> f32 {
     let l = if a <= SRGB_EOTF_BREAK {
         a / SRGB_SLOPE
     } else {
-        ((a + SRGB_OFFSET) / SRGB_SLOPE_HI).powf(SRGB_GAMMA)
+        ((a + SRGB_OFFSET) / SRGB_SLOPE_HI).m_powf(SRGB_GAMMA)
     };
     e.signum() * l
 }
@@ -819,8 +823,8 @@ pub const PQ_ZERO_CODE_VALUE: f32 = 7.31e-7;
 pub fn pq_encode(nits: f32) -> f32 {
     let n = if nits.is_finite() { nits } else { 0.0 };
     let y = clamp(n, 0.0, MAX_PQ_NITS) / MAX_PQ_NITS;
-    let ym = y.powf(PQ_M1);
-    ((PQ_C1 + PQ_C2 * ym) / (1.0 + PQ_C3 * ym)).powf(PQ_M2)
+    let ym = y.m_powf(PQ_M1);
+    ((PQ_C1 + PQ_C2 * ym) / (1.0 + PQ_C3 * ym)).m_powf(PQ_M2)
 }
 
 /// PQ 解码（EOTF：码值 `[0,1]` → 绝对亮度 nit）。
@@ -844,13 +848,13 @@ pub fn pq_encode(nits: f32) -> f32 {
 pub fn pq_decode(code: f32) -> f32 {
     let c = if code.is_finite() { code } else { 0.0 };
     let c = clamp(c, 0.0, 1.0);
-    let p = c.powf(1.0 / PQ_M2);
+    let p = c.m_powf(1.0 / PQ_M2);
     let num = p - PQ_C1;
     let den = PQ_C2 - PQ_C3 * p;
     if num <= 0.0 || den <= 0.0 {
         return 0.0;
     }
-    MAX_PQ_NITS * (num / den).powf(1.0 / PQ_M1)
+    MAX_PQ_NITS * (num / den).m_powf(1.0 / PQ_M1)
 }
 
 /// PQ 越界检测（编码前调用；把钳制事实显性化）。
@@ -929,7 +933,7 @@ fn lab_f(t: f32) -> f32 {
     const DELTA_CUBE: f32 = DELTA * DELTA * DELTA;
     const SLOPE: f32 = 1.0 / (3.0 * DELTA * DELTA);
     if t > DELTA_CUBE {
-        t.powf(1.0 / 3.0)
+        t.m_powf(1.0 / 3.0)
     } else {
         SLOPE * t + 4.0 / 29.0
     }
@@ -952,7 +956,7 @@ pub fn delta_e76(lab1: (f32, f32, f32), lab2: (f32, f32, f32)) -> f32 {
     let dl = lab1.0 - lab2.0;
     let da = lab1.1 - lab2.1;
     let db = lab1.2 - lab2.2;
-    (dl * dl + da * da + db * db).sqrt()
+    (dl * dl + da * da + db * db).m_sqrt()
 }
 
 /// 外部参考表：8bit sRGB 码值 → 公布的标准线性值。

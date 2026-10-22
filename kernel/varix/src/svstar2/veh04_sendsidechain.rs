@@ -23,6 +23,10 @@
 //! - 自动化：参数包络挂接（节点, 参数) → 分段线性求值（F1324 预留求值器
 //!   同核），末点保持语义显性。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -219,8 +223,8 @@ impl Smoother {
     pub fn new(attack_steps: u32, release_steps: u32) -> Smoother {
         Smoother {
             value: 0.0,
-            attack_coef: 1.0 - (-1.0 / attack_steps.max(1) as f64).exp(),
-            release_coef: 1.0 - (-1.0 / release_steps.max(1) as f64).exp(),
+            attack_coef: 1.0 - (-1.0 / attack_steps.max(1) as f64).m_exp(),
+            release_coef: 1.0 - (-1.0 / release_steps.max(1) as f64).m_exp(),
         }
     }
 
@@ -293,7 +297,7 @@ impl TailNode {
         if total_ticks == 0 {
             return 0.0;
         }
-        0.001f64.powf(1.0 / total_ticks as f64)
+        0.001f64.m_powf(1.0 / total_ticks as f64)
     }
 
     /// -60dB 所需总 tick 数 = rt60 · rate。

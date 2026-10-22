@@ -386,7 +386,7 @@ pub fn run_t602_checks() -> crate::checks::CheckSet {
     // 四场注入。
     g.inj.inject_all(&mut g.b);
     let (ok, msg) = g.judge();
-    set.add("UNX-F1602-J1", ok && consumed && smt_ok, &msg);
+    set.add_dyn("UNX-F1602-J1", ok && consumed && smt_ok, &msg);
     set.add("CT-coords-valid", g.b.coords_valid(), "");
     set.add("CT-madt-match", g.b.madt_match(), "");
     set.add("CT-smt-zero-miss", smt_ok && g.smt.missed == 0, "");

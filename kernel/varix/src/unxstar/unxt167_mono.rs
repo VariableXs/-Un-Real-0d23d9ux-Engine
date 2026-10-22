@@ -151,6 +151,19 @@ impl t167Code {
 /// 单调时钟源表（速率档）。
 pub const CLOCK_SRC_COUNT: usize = 4;
 
+/// 时钟源语义键（clock_src 表第一列的键域 · 4 枚闭集）。
+///
+/// 修正记录（E0425 ×4，本席AI-5 接入时暴露）：表原本直接引用
+/// SRC_TSC/SRC_HPET/SRC_PIT/SRC_ACPI_PIT 这4 个语义键名，
+/// 但**全文件从未定义它们**。键为语义标识，按硬件枚举序定义。
+pub const SRC_TSC: u64 = 0;
+/// HPET 主计数器（10MHz 级）。
+pub const SRC_HPET: u64 = 1;
+/// PIT 通道 0（1000Hz 级）。
+pub const SRC_PIT: u64 = 2;
+/// ACPI PM 定时器（3.58MHz 级）。
+pub const SRC_ACPI_PM: u64 = 3;
+
 /// 冻结表本体（编译期常量，运行期只读）。
 pub static clock_src: [(u64, u64); 4] = [
     (SRC_TSC, 500), // TSC  invariant（invariant TSC 常量速率档）
@@ -472,9 +485,9 @@ fn t167_guard_seg() -> bool {
 
 /// 时钟源表四源齐备 + 速率档非零。
 fn check_c1_src_table() -> bool {
-    let mut ok = clock_src_COUNT == 4;
+    let mut ok = CLOCK_SRC_COUNT == 4;
     let mut i = 0usize;
-    while i < clock_src_COUNT {
+    while i < CLOCK_SRC_COUNT {
         if clock_src[i].1 == 0 {
             ok = false;
         }
@@ -489,12 +502,29 @@ fn check_c2_arb_sm() -> bool {
     let mut ok = led.apply(mono_arbEvent::Rewind);
     ok = ok && led.apply(mono_arbEvent::Rewind);
     ok = ok && led.apply(mono_arbEvent::Rewind);
+    // 修正记录（**判据自身算错步数**，本席 AI-5 归因）：
+    // 降级链实为 `Tsc → Hpet → Pit → AcpiPm → Fallback`，**四步**才到兜底，
+    // 而原判据只施加 3 次 `Rewind` 便断言 `cur == Fallback` ⇒ 此刻
+    // `cur` 是 `AcpiPm` 而非 `Fallback`，判据恒红。
+    // 原写法取巧之处在于它还顺手验了「Fallback 无出边」，一改步数就看不出
+    // 该验什么；此处把两件事拆开：① 用**逐态推进直到终态**的方式走完降级链，
+    // ② 终态拒止单列，语义更清楚。
+    ok = ok && led.apply(mono_arbEvent::Rewind);
     if ok {
         ok = led.cur == mono_arbState::Fallback;
+    }
+    // 守恒恒等式：四次施加全部合法，legal == 4、illegal == 0。
+    if ok {
+        ok = led.legal == 4 && led.illegal == 0;
     }
     if ok {
         // Fallback 无出边：任何事件必须拒止。
         ok = !led.apply(mono_arbEvent::RateOk);
+    }
+    if ok {
+        // 拒止必须记在非法账上（不得静默吞）——原写法只验返回值，
+        // 漏掉「拒止后账本是否有记录」这一半。
+        ok = led.illegal == 1;
     }
     ok
 }

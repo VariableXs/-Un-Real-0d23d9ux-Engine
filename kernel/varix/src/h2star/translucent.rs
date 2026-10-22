@@ -15,6 +15,10 @@
 //! 「开/降级为纯色/禁」三态；对比度按 WCAG 相对亮度公式对混合后底色
 //! 实算（≥4.5:1 判据）；CPU 预算常量 <3% 且解析器纯内存零计算热路径。
 
+
+// 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
 /// 允许透明材质的三处白名单（主册定值；越界申请不存在第四个成员）。
@@ -97,7 +101,7 @@ fn lin(c: u8) -> f64 {
     if c <= 0.04045 {
         c / 12.92
     } else {
-        ((c + 0.055) / 1.055).powf(2.4)
+        ((c + 0.055) / 1.055).m_powf(2.4)
     }
 }
 
@@ -118,7 +122,7 @@ pub fn blend(fg: (u8, u8, u8), bg: (u8, u8, u8), alpha: u8) -> (u8, u8, u8) {
     let a = alpha as f64 / 255.0;
     let mix = |f: u8, b: u8| -> u8 {
         let v = f as f64 * a + b as f64 * (1.0 - a);
-        v.round().clamp(0.0, 255.0) as u8
+        v.m_round().clamp(0.0, 255.0) as u8
     };
     (mix(fg.0, bg.0), mix(fg.1, bg.1), mix(fg.2, bg.2))
 }
