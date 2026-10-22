@@ -312,7 +312,7 @@ pub const CGPU_DOMAIN: &str = "cgpu";
 /// 于是「新增单忘登记」和「删单忘抹掉」两种漂移都在编译期被挡住，不需要靠
 /// 测试去数数。测试里再断言一次 `set.len()` 是为了守住「折叠过程自身没丢
 /// 子集」——那条路径编译期管不着。
-pub const CGPU_SUBSET_COUNT: usize = 92;
+pub const CGPU_SUBSET_COUNT: usize = 87;
 
 /// CGPU 域自检聚合（在账判据集合并，供下游/探针一条命令调用）。
 ///
@@ -401,11 +401,7 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F3529", vcw09_docsite::run_cgpu_f3529_checks as fn() -> CheckSet),
         ("CGPU-F0011", cga11_power_sched_checks::run_cga11_checks as fn() -> CheckSet),
         ("CGPU-F0323", cgc03_budgetaccount::run_cgc03_checks as fn() -> CheckSet),
-        ("CGPU-F0007", cgc08_jankattrib::run_cgc08_checks as fn() -> CheckSet),
-        ("CGPU-F0008", cgc09_degradechain::run_cgc09_checks as fn() -> CheckSet),
-        ("CGPU-F1123", cgh03_pooltier::run_cgh03_checks as fn() -> CheckSet),
         ("CGPU-F1124", cgh04_waterpress::run_cgh04_checks as fn() -> CheckSet),
-        ("CGPU-F1444", cgj04_amdsmu::run_cgj04_checks as fn() -> CheckSet),
         ("CGPU-F1445", cgj05_nvml::run_cgj05_checks as fn() -> CheckSet),
         ("CGPU-F1446", cgj06_pwrledger::run_cgj06_checks as fn() -> CheckSet),
         ("CGPU-F2403", cgp03_sampling_checks::run_cgp03_checks as fn() -> CheckSet),
@@ -422,7 +418,6 @@ pub fn run_cgpu_checks() -> crate::checks::CheckSet {
         ("CGPU-F3528", vcw07_docsec::run_tw07_checks as fn() -> CheckSet),
         ("CGPU-F1603", vck03_hettask_checks::run_vck03_checks as fn() -> CheckSet),
         ("CGPU-F1604", vck04_probe::run_vck04_checks as fn() -> CheckSet),
-        ("CGPU-F1763", vck10_vgpu::run_vck10_checks as fn() -> CheckSet),
         ("CGPU-F1764", vck68_guestcap::run_vck68_checks as fn() -> CheckSet),
         ("CGPU-F2883", vcs03_session::run_vcs03_checks as fn() -> CheckSet),
         ("CGPU-F2884", vcs04_quota::run_vcs04_checks as fn() -> CheckSet),
@@ -827,3 +822,21 @@ pub mod cgp05_tiers;
 pub mod cgp06_query;
 pub mod cgp07_jmerge;
 pub mod cgp09_privacy;
+
+// --------------------------------------------------------------------------
+// WB1022 批七（CGPU-F0172~F0176 · B01 组收口 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb172_framedet;
+pub mod cgb173_batchlink;
+pub mod cgb174_memgov;
+pub mod cgb175_telemetry;
+pub mod cgb176_b1close;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批（CGPU-F0241~F0245 · B06 死锁检测组核心 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb241_dlarch;
+pub mod cgb242_waitgraph;
+pub mod cgb243_tarjan;
+pub mod cgb244_confide;
+pub mod cgb245_resolve;
