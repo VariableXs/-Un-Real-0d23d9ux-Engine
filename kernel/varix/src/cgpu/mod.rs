@@ -860,3 +860,148 @@ pub mod cgb252_diagrep;
 pub mod cgb253_staticpv;
 pub mod cgb254_overhead;
 pub mod cgb255_fuzzapi;
+
+// --------------------------------------------------------------------------
+// WB1022 批九（CGPU-F0183~F0188 · B02 依赖解析深化后半 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb183_xservice;
+pub mod cgb184_paropt;
+pub mod cgb185_gpulink;
+pub mod cgb186_diag;
+pub mod cgb187_template;
+pub mod cgb188_regressgate2;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批（CGPU-F0257~F0263 · B07 图持久化组核心 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb257_persistarch;
+pub mod cgb258_serialize;
+pub mod cgb259_snapshot;
+pub mod cgb260_recover;
+pub mod cgb261_replay;
+pub mod cgb262_diffaudit;
+pub mod cgb263_crashlink;
+pub mod cgb264_perfudget;
+pub mod cgb265_telelink;
+pub mod cgb266_security;
+pub mod cgb268_fuzz;
+pub mod cgb269_apifreeze;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批（CGPU-F0273~F0280 · B08 调度遥测组核心 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb273_telearch;
+pub mod cgb275_tsbuffer;
+pub mod cgb276_tasktele;
+pub mod cgb277_frametele;
+pub mod cgb278_health;
+pub mod cgb280_queryapi;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批（CGPU-F0289~F0290 · B09 图可视化组核心 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb289_visarch;
+pub mod cgb290_sugiyama;
+
+// --------------------------------------------------------------------------
+// WB1022 批十（CGPU-F0189~F0192 · B02 组收口 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb189_triplelink;
+pub mod cgb190_apifreeze;
+pub mod cgb191_fuzz;
+pub mod cgb192_b2close;
+pub mod cgb193_parsplit;
+pub mod cgb194_worksteal;
+pub mod cgb195_hybridpar;
+pub mod cgb196_tearguard;
+pub mod cgb197_numasched;
+pub mod cgb198_asynccomp;
+pub mod cgb199_mgpu;
+pub mod cgb200_panel;
+pub mod cgb201_abtest;
+pub mod cgb202_tpl;
+pub mod cgb203_suggest;
+pub mod cgb204_history;
+pub mod cgb205_freeze;
+pub mod cgb206_fuzz;
+pub mod cgb207_docs;
+pub mod cgb208_b03close;
+pub mod cgb209_prio;
+pub mod cgb210_preempt;
+pub mod cgb211_timeslice;
+pub mod cgb212_fastlane;
+pub mod cgb213_balance;
+pub mod cgb214_inversion;
+pub mod cgb215_jitter;
+pub mod cgb216_presentsync;
+pub mod cgb217_jointarb;
+pub mod cgb218_powersave;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批（CGPU-F0274/F0279/F0281/F0282/F0285/F0286 · B08 收口 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb274_schema;
+pub mod cgb279_converge;
+pub mod cgb281_export;
+pub mod cgb282_overhead2;
+pub mod cgb285_fuzz2;
+pub mod cgb286_apiv1;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批（CGPU-F0256/F0267/F0270/F0271/F0272/F0283/F0284/F0287/F0288 · 收口 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb256_b06close;
+pub mod cgb267_persisttele;
+pub mod cgb270_persistbridge;
+pub mod cgb271_persistbench;
+pub mod cgb272_b07close;
+pub mod cgb283_logbus;
+pub mod cgb284_realtime;
+pub mod cgb287_teledocs;
+pub mod cgb288_b08close;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批2（CGPU-F0325~F0343 · C01/C02 帧预算仲裁组 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb325_antifraud;
+pub mod cgb326_arb_v1;
+pub mod cgb327_arb_v2;
+pub mod cgb328_timeout;
+pub mod cgb329_trading;
+pub mod cgb330_globaltable;
+pub mod cgb331_rebalance;
+pub mod cgb338_multidim;
+pub mod cgb339_stagebudget;
+pub mod cgb340_burst;
+pub mod cgb343_fairness;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批2（CGPU-F0291/F0292 · B09 可视化续 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb291_rendercontract;
+pub mod cgb292_coloring;
+pub mod cgb294_timeline;
+pub mod cgb337_arbbench;
+pub mod cgb344_arbselfprot;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批2续（CGPU-F0295~F0312 · B09可视化续+B域收口 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb295_interact;
+pub mod cgb296_dlviz;
+pub mod cgb297_replayviz;
+pub mod cgb298_diffviz;
+pub mod cgb299_perf;
+pub mod cgb300_export;
+pub mod cgb301_stable;
+pub mod cgb302_vizfuzz;
+pub mod cgb303_apifreeze;
+pub mod cgb304_b09close;
+pub mod cgb305_ifaceledger;
+pub mod cgb306_invariants;
+pub mod cgb307_fuzzgate;
+pub mod cgb308_perfgate;
+pub mod cgb309_determ;
+pub mod cgb310_secaudit;
+pub mod cgb311_consistency;
+pub mod cgb312_dashmodel;
