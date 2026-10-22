@@ -14,6 +14,7 @@
 //! 诊断码段 0x08B0（本模块独占：0x08B0~0x08BF）。
 //! no_std + alloc 零 unwrap（测试除外），全部 Result 化。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 /// 诊断码段基址。
@@ -126,17 +127,17 @@ impl AccountSplit {
 /// 帧预算；预算缩水时按「音频保底优先、解码渲染等比」的次序裁剪。
 pub fn split_accounts(input: &RecipeInput) -> Result<AccountSplit, u16> {
     input.validate()?;
-    let budget = input.budget_permille as u64;
-    // 第一步：音频先取保底与基准权重的较小者。
-    let audio = (AUDIO_FLOOR_PERMILLE as u64).min(AUDIO_WEIGHT_PERMILLE as u64);
+    let budget = input.budget_permille;
+    // 第一步：音频先取保底与基准权重的较小者（全程 u32——千分比域内无溢出）。
+    let audio = AUDIO_FLOOR_PERMILLE.min(AUDIO_WEIGHT_PERMILLE);
     let rest = budget - audio;
     // 第二步：解码/渲染按 1:1 分余量（权重对半）。
-    let decode = rest * DECODE_WEIGHT_PERMILLE as u64
-        / (DECODE_WEIGHT_PERMILLE + RENDER_WEIGHT_PERMILLE) as u64;
+    let decode = rest * DECODE_WEIGHT_PERMILLE
+        / (DECODE_WEIGHT_PERMILLE + RENDER_WEIGHT_PERMILLE);
     let render = rest - decode;
     let out = AccountSplit {
-        decode: decode as u32,
-        render: render as u32,
+        decode,
+        render,
         audio: audio as u32,
     };
     if out.sum() != input.budget_permille {
@@ -185,7 +186,7 @@ pub fn lane_quota_table(input: &RecipeInput) -> Result<Vec<LaneQuota>, u16> {
         out.push(LaneQuota { lane: 0, share_permille: 1000, is_main: true });
         return Ok(out);
     }
-    let (main, _pip_total) = MAIN_VS_PIP_RATIO_PERMILLE;
+    let (main, _) = MAIN_VS_PIP_RATIO_PERMILLE;
     // 主画面按比例表取整，画中画等分余量——余量全部派完保证守恒。
     let per_pip = (1000 - main) / input.pip_lanes;
     let assigned_pip = per_pip * input.pip_lanes;

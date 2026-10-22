@@ -11,6 +11,7 @@
 //! 诊断码段 0x0940（本模块独占：0x0940~0x094F）。
 //! no_std + alloc 零 unwrap（测试除外），全部 Result 化。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 /// 诊断码段基址。
@@ -308,11 +309,11 @@ mod tests {
         assert!(h.conserved());
         assert_eq!(h.pushed, 6);
         assert_eq!(h.overflow, 1);
-        // 桶分布 [1,1,1,0,0,1,0,1,...]：累计第 3 个落在桶 2（≤4ms）。
+        // 中位数 3（1,2,3,17,100 的中位）→ 桶 2（2^2=4 > 3 ≥ 2^1）。
         assert_eq!(h.p50_bucket(), Some(2));
         assert_eq!(LatencyHist::bucket_of(2048), Some(11));
-        // 边界闭区间：0 落桶 0（推送侧另行拒零）。
-        assert!(LatencyHist::bucket_of(0).is_some());
+        // 纯映射语义：0 落首桶（拒绝闸在 push，不在映射）。
+        assert_eq!(LatencyHist::bucket_of(0), Some(0));
         assert_eq!(h.push(0).unwrap_err(), SEG_BASE + 1);
     }
 

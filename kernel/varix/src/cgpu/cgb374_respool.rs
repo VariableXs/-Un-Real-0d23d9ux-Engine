@@ -13,6 +13,7 @@
 //! 诊断码段 0x09E0（本模块独占：0x09E0~0x09EF）。
 //! no_std + alloc 零 unwrap（测试除外），全部 Result 化。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 /// 诊断码段基址。
@@ -239,7 +240,7 @@ mod tests {
         assert_eq!(pool.held_permille, 0);
         assert_eq!(pool.expires, 1);
         assert_eq!(pool.wasted_permille, 150);
-        // 过期后不可再消费（终态闸先于过期明细——归因到「已终态」）。
+        // 过期后不可再消费（非在持态闸在过期闸之前）。
         assert_eq!(pool.consume(id2, 9).unwrap_err(), SEG_BASE + 8);
         // 全链守恒：消费 200 + 浪费 150 = 预占 350。
         assert!(lifecycle_conservation(200, 150, 350).is_ok());

@@ -13,6 +13,8 @@
 //! 诊断码段 0x09C0（本模块独占：0x09C0~0x09CF）。
 //! no_std + alloc 零 unwrap（测试除外），全部 Result 化。
 
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// 诊断码段基址。
 pub const SEG_BASE: u16 = 0x09C0;

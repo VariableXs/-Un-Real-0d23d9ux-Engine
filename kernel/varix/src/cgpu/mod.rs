@@ -616,11 +616,6 @@ pub fn run_cgpu20_g06c() -> crate::checks::CheckSet {
 pub mod vcw07b_docsec_deep;
 // vcw09_docsite — CGPU-F3529 文档站（路由归一双射+路径穿越拒+静态幂等零动态零外链+增量最小重建传递闭包+拓扑环拒+三账守恒/0x7700 段十二码）
 pub mod vcw09_docsite;
-        ("CGPU-F3528-DEEP", vcw07b_docsec_deep::run_cgpu_f3528_deep_checks()),
-        ("CGPU-F3529", vcw09_docsite::run_cgpu_f3529_checks()),
-// --------------------------------------------------------------------------
-// WorkBuddy-1022 批（CGPU-F0357~F0376 · C03 场景配方组 + C04 预测仲裁组前段 · 纯功能）
-// --------------------------------------------------------------------------
 pub mod cgb357_vrecipe;
 pub mod cgb358_webrecipe;
 pub mod cgb359_fullscreen;
@@ -641,9 +636,6 @@ pub mod cgb373_confback;
 pub mod cgb374_respool;
 pub mod cgb375_warmup;
 pub mod cgb376_feedback;
-// --------------------------------------------------------------------------
-// WorkBuddy-1022 批二（CGPU-F0377~F0396 · C04 收尾组 + C05 预算治理组 · 纯功能）
-// --------------------------------------------------------------------------
 pub mod cgb377_ptelem;
 pub mod cgb378_npuresv;
 pub mod cgb379_overhead;
@@ -664,3 +656,25 @@ pub mod cgb393_kbase;
 pub mod cgb394_multiuser;
 pub mod cgb395_selfcheck;
 pub mod cgb396_ultfuzz;
+pub mod cgb397_capifreeze;
+pub mod cgb398_budgetdoc;
+pub mod cgb399_benchall;
+pub mod cgb400_c05close;
+pub mod cgb401_intopen;
+pub mod cgb402_dframe;
+pub mod cgb403_esurface;
+pub mod cgb404_hmem;
+pub mod cgb405_ibw;
+pub mod cgb406_jpower;
+pub mod cgb407_khetero;
+pub mod cgb408_tve;
+pub mod cgb409_regmatrix;
+pub mod cgb410_fisolat;
+pub mod cgb411_inttelem;
+pub mod cgb412_intfuzz;
+pub mod cgb413_intapi;
+pub mod cgb414_intdoc;
+pub mod cgb415_intbench;
+pub mod cgb416_c06close;
+        ("CGPU-F3528-DEEP", vcw07b_docsec_deep::run_cgpu_f3528_deep_checks()),
+        ("CGPU-F3529", vcw09_docsite::run_cgpu_f3529_checks()),

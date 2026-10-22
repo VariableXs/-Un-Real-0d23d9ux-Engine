@@ -15,6 +15,8 @@
 //! 诊断码段 0x0990（本模块独占：0x0990~0x099F）。
 //! no_std + alloc 零 unwrap（测试除外），全部 Result 化。
 
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// 诊断码段基址。
 pub const SEG_BASE: u16 = 0x0990;
@@ -191,10 +193,6 @@ pub struct FallbackLedger {
 }
 
 impl FallbackLedger {
-    /// 空账。
-    pub fn new() -> Self {
-        FallbackLedger { failures: 0, fallback_steps: 0 }
-    }
     /// 记一次失效（判据「零悬挂」硬闸：回退步数必须=1）。
     pub fn record_failure(&mut self) -> Result<(), u16> {
         self.failures += 1;
@@ -215,7 +213,7 @@ impl FallbackLedger {
 
 impl Default for FallbackLedger {
     fn default() -> Self {
-        Self::new()
+        FallbackLedger { failures: 0, fallback_steps: 0 }
     }
 }
 
