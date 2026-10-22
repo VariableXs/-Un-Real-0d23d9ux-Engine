@@ -1005,3 +1005,26 @@ pub mod cgb309_determ;
 pub mod cgb310_secaudit;
 pub mod cgb311_consistency;
 pub mod cgb312_dashmodel;
+// --------------------------------------------------------------------------
+// WorkBuddy-1022 批（CGPU-F0357~F0376 · C03 场景配方组 + C04 预测仲裁组前段 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb357_vrecipe;
+pub mod cgb358_webrecipe;
+pub mod cgb359_fullscreen;
+pub mod cgb360_switcharb;
+pub mod cgb361_conflict;
+pub mod cgb362_openfmt;
+pub mod cgb363_validator;
+pub mod cgb364_rectele;
+pub mod cgb365_recfuzz;
+pub mod cgb366_apifreeze;
+pub mod cgb367_docbench;
+pub mod cgb368_c03close;
+pub mod cgb369_predarch;
+pub mod cgb370_loadprof;
+pub mod cgb371_cycledetect;
+pub mod cgb372_shortpred;
+pub mod cgb373_confback;
+pub mod cgb374_respool;
+pub mod cgb375_warmup;
+pub mod cgb376_feedback;
