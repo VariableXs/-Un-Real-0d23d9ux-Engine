@@ -641,3 +641,26 @@ pub mod cgb373_confback;
 pub mod cgb374_respool;
 pub mod cgb375_warmup;
 pub mod cgb376_feedback;
+// --------------------------------------------------------------------------
+// WorkBuddy-1022 批二（CGPU-F0377~F0396 · C04 收尾组 + C05 预算治理组 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod cgb377_ptelem;
+pub mod cgb378_npuresv;
+pub mod cgb379_overhead;
+pub mod cgb380_predtele;
+pub mod cgb381_predfuzz;
+pub mod cgb382_predapi;
+pub mod cgb383_preddoc;
+pub mod cgb384_c04close;
+pub mod cgb385_budgetdata;
+pub mod cgb386_probe;
+pub mod cgb387_timetravel;
+pub mod cgb388_abtest;
+pub mod cgb389_report;
+pub mod cgb390_quotaapi;
+pub mod cgb391_alerts;
+pub mod cgb392_thirdproto;
+pub mod cgb393_kbase;
+pub mod cgb394_multiuser;
+pub mod cgb395_selfcheck;
+pub mod cgb396_ultfuzz;
