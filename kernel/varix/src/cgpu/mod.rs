@@ -839,6 +839,15 @@ pub mod vck11_hettel;
 pub mod cgd18_frameeq;
 // cgd19_timedoc — CGPU-F0493 帧计时文档（80帧合同条款三要素定义-测量方法-判定规则缺一即歧义0x7802条款数缺0x7801/计时方法论四段定义+校准方法锚cgd09段缺0x7803/账本查询手册键-形状条目重复键拒0x7804/新鲜度实现指纹对拍过期0x7805/端到端四件全链/五组自检/0x78xx 五码）
 pub mod cgd19_timedoc;
+pub mod cgd20_awin;
+pub mod cgd21_linkage;
+pub mod cgd22_shortspot;
+pub mod cgd23_selfcal;
+pub mod cgd24_verif;
+pub mod cgd25_modefit;
+pub mod cgd26_telemetry;
+pub mod cgd27_jfuzz;
+pub mod cgd28_apifreeze;
 // cgg11_nvdoc — CGPU-F0971 NVIDIA适配文档（白皮书三节六代覆盖-特性矩阵-双驱动线节缺0x7901/已知问题清单复现条件+影响面双锚纪律缺一0x7902空清单不健全/认证指南NVIDIA侧四步探测→差异→媒体标签→提交步缺0x7903/对拍漂移0x7904过期0x7905/端到端全链/五组自检/0x79xx 五码）
 pub mod cgg11_nvdoc;
 // cgf15_certbench — CGPU-F0813 认证基准（三基准闭集全流程耗时5000ms红线0x7A01+探测吞吐100/s红线0x7A02+判定延迟2000µs红线0x7A03阈值显性入册/口径版本防挑参作弊0x7A05/入册回归三样本同口径复跑漂移>10%立案0x7A04/口径指纹const稳定/四组自检/0x7Axx 五码）
@@ -1523,3 +1532,18 @@ pub mod vcv17_march;
 pub mod vcv18_devmt;
 // //! CGPU-F3379 · 驱动版本矩阵（vcv19_drvmt）
 pub mod vcv19_drvmt;
+
+// ---- AI-VX-1024（2026-10-24）：CGPU-F1449/F1765 深度实现（隔离探针全绿后入库）----
+// cgj07_pwrring — CGPU-F1449 功耗历史与环形缓冲（三粒度定长无分配环+单写者直写+seqlock 无锁读+切片降采样保峰+持久化 CRC 预留+P 域 schema 冻结/0x12A 段）
+pub mod cgj07_pwrring;
+// vck69_vmdetect — CGPU-F1765 虚拟化环境检测（hypervisor 签名识别表+平台矩阵版本化+WSL/容器路径登记+版本差异区间表+五步单向流水+注入测试面/0x12B 段）
+pub mod vck69_vmdetect;
+// ---- AI-VX-1024（2026-10-24）第二批八单：F1927/F2085/F2249/F2564/F2726/F2886/F3047/F3207（隔离探针全绿后入库）----
+pub mod cgm08_displayrot;
+pub mod vcn05_effmap;
+pub mod cgo02_degradetel;
+pub mod cgp10_faultarch;
+pub mod cgr06_framecontract;
+pub mod vcs06_usersched;
+pub mod vct07_linktel;
+pub mod vcu07_anticheat;
