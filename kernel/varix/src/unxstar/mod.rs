@@ -5986,3 +5986,7 @@ pub mod unx0825_cr8tpr;
 pub mod unx0844_ipieoi;
 pub mod unx0862_rterw;
 pub mod unx0885_irqbal;
+// ---- AI-VX-1024（2026-10-24）第十三波三单：F0939/F0944/F0962（隔离探针全绿后入库）----
+pub mod unx0939_bootseq;
+pub mod unx0944_bhtrig;
+pub mod unx0962_pollprof;
