@@ -4270,15 +4270,12 @@ pub fn run_svstar2_checks() -> CheckSet {
     // 增长到 1024 行以上，`run_svstar2_checks` 会在下方显式记账一条红项
     // （见「容量自检」段），而不是继续静默漏跑。
     const GROUP: usize = 32;
-    const GROUP_TAGS: [&'static str; 32] = [
-        "VE-G01", "VE-G02", "VE-G03", "VE-G04", "VE-G05", "VE-G06", "VE-G07", "VE-G08",
-        "VE-G09", "VE-G10", "VE-G11", "VE-G12", "VE-G13", "VE-G14", "VE-G15", "VE-G16",
-        "VE-G17", "VE-G18", "VE-G19", "VE-G20", "VE-G21", "VE-G22", "VE-G23", "VE-G24",
-        "VE-G25", "VE-G26", "VE-G27", "VE-G28", "VE-G29", "VE-G30", "VE-G31", "VE-G32",
+    const GROUP_TAGS: [&'static str; 64] = [
+        "VE-G01", "VE-G02", "VE-G03", "VE-G04", "VE-G05", "VE-G06", "VE-G07", "VE-G08", "VE-G09", "VE-G10", "VE-G11", "VE-G12", "VE-G13", "VE-G14", "VE-G15", "VE-G16", "VE-G17", "VE-G18", "VE-G19", "VE-G20", "VE-G21", "VE-G22", "VE-G23", "VE-G24", "VE-G25", "VE-G26", "VE-G27", "VE-G28", "VE-G29", "VE-G30", "VE-G31", "VE-G32", "VE-G33", "VE-G34", "VE-G35", "VE-G36", "VE-G37", "VE-G38", "VE-G39", "VE-G40", "VE-G41", "VE-G42", "VE-G43", "VE-G44", "VE-G45", "VE-G46", "VE-G47", "VE-G48", "VE-G49", "VE-G50", "VE-G51", "VE-G52", "VE-G53", "VE-G54", "VE-G55", "VE-G56", "VE-G57", "VE-G58", "VE-G59", "VE-G60", "VE-G61", "VE-G62", "VE-G63", "VE-G64",
     ];
     let group_count = (blocks.len() + GROUP - 1) / GROUP;
     // 容量自检：组数超出标签表容量必须**显式报红**，绝不静默截断。
-    // （`CheckSet` 本身容量 112，32 组 + 若干单条判据仍在界内。）
+    // （`CheckSet` 本身容量 112，64 组 + 若干单条判据仍在界内。）
     if group_count > GROUP_TAGS.len() {
         set.add(
             "VE-GROUP-OVERFLOW",

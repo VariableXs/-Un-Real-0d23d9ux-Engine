@@ -57,6 +57,7 @@
 // 引入（no_std 内核侧；alloc 三件套自查：vec 宏 / Vec 类型 / String+ToString）
 // ---------------------------------------------------------------------------
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -343,6 +344,8 @@ impl HandoverPack {
             return Err(CODE_VERSION_REGRESS);
         }
         let prev = self.entries[idx].state;
+        // 旧偏差先存快照再覆写：退账要按「旧判定」退，读了新值会退错桶。
+        let old_dev = self.entries[idx].deviation;
         self.entries[idx].state = state;
         self.entries[idx].deviation = deviation;
         // 统计账按「增量差」记账：从旧态迁移到新态，两边各退一进一，
@@ -353,7 +356,7 @@ impl HandoverPack {
             }
             Conformance::Deviation => {
                 self.stats.deviations = self.stats.deviations.saturating_sub(1);
-                if let Some(d) = self.entries[idx].deviation {
+                if let Some(d) = old_dev {
                     // 旧偏差已随本次覆写退场：从对应判定桶退出。
                     match d.verdict {
                         DeviationVerdict::Blocking => {
@@ -515,7 +518,7 @@ pub fn run_veb00_checks() -> CheckSet {
         );
         s.add(
             "B00-五件套-缺件装配显性拒绝不静默补空",
-            hole == Err(CODE_PACK_INCOMPLETE),
+            hole.err() == Some(CODE_PACK_INCOMPLETE),
             "任一件文案为空即 CODE_PACK_INCOMPLETE，缺件没有「补个空串」的降级形态",
         );
     }
@@ -528,7 +531,7 @@ pub fn run_veb00_checks() -> CheckSet {
         );
         s.add(
             "B00-五件套-空冻结清单拒绝",
-            empty == Err(CODE_IFACE_UNKNOWN),
+            empty.err() == Some(CODE_IFACE_UNKNOWN),
             "冻结接口清单为空的移交包没有意义，装配期就拒绝",
         );
     }
@@ -860,8 +863,8 @@ mod tests {
         let lines: Vec<&str> = text.split('\n').collect();
         // 首行 + 五件 + 三接口 = 9 行
         assert_eq!(lines.len(), 9, "读屏行数 = 1 总行 + 5 件 + 3 接口");
-        assert!(lines[6].contains("偏差"), "偏差接口行带态名：{}", lines[6]);
-        assert!(lines[6].contains("随行"), "偏差行带判定：{}", lines[6]);
+        assert!(lines[7].contains("偏差"), "偏差接口行带态名：{}", lines[7]);
+        assert!(lines[7].contains("随行"), "偏差行带判定：{}", lines[7]);
     }
 
     #[test]
