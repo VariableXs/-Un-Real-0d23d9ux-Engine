@@ -5978,3 +5978,7 @@ pub mod unx0687_succrate;
 pub mod unx0705_assert70;
 pub mod unx0725_resptree;
 pub mod unx745_valgrade;
+// ---- AI-VX-1024（2026-10-24）第十一波三单：F0763/F0805/F0825（隔离探针全绿后入库）----
+pub mod unx0763_finalsweep;
+pub mod unx0805_spurious;
+pub mod unx0825_cr8tpr;
