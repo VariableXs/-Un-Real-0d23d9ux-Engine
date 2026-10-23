@@ -1547,3 +1547,8 @@ pub mod cgr06_framecontract;
 pub mod vcs06_usersched;
 pub mod vct07_linktel;
 pub mod vcu07_anticheat;
+// ---- AI-VX-1024（2026-10-24）第三批四单：F1450/F1766/F1928/F2086（隔离探针全绿后入库）----
+pub mod cgj09_pwranomaly;
+pub mod vck70_passthrough;
+pub mod cgm09_outsec;
+pub mod vcn06_effbench;
