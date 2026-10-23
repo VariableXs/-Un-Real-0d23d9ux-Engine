@@ -5959,3 +5959,10 @@ pub mod unx1283_ps2map;
 pub mod unx1263_irqreverse;
 pub mod unx1304_ps2retire;
 pub mod unx1323_serequiv;
+// ---- AI-VX-1024（2026-10-24）六/七波六单：F0344/F1044/F1083/F1063/F0328/F0586（隔离探针全绿后入库）----
+pub mod unx0344_percpu;
+pub mod unx1044_dlineacc;
+pub mod unx1083_timcoales;
+pub mod unx1063_nohz;
+pub mod unx0328_apstack;
+pub mod unx0586_valdom;
