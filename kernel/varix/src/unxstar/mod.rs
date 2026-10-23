@@ -5974,3 +5974,7 @@ pub mod unx0644_failredo;
 pub mod unx0305_hugesel;
 pub mod unx0663_tsccross;
 pub mod unx0687_succrate;
+// ---- AI-VX-1024（2026-10-24）第十波三单：F0705/F0725/F0745（隔离探针全绿后入库）----
+pub mod unx0705_assert70;
+pub mod unx0725_resptree;
+pub mod unx745_valgrade;
