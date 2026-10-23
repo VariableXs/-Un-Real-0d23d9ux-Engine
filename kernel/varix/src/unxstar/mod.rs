@@ -5982,3 +5982,7 @@ pub mod unx745_valgrade;
 pub mod unx0763_finalsweep;
 pub mod unx0805_spurious;
 pub mod unx0825_cr8tpr;
+// ---- AI-VX-1024（2026-10-24）第十二波三单：F0844/F0862/F0885（隔离探针全绿后入库）----
+pub mod unx0844_ipieoi;
+pub mod unx0862_rterw;
+pub mod unx0885_irqbal;
