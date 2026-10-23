@@ -5970,3 +5970,7 @@ pub mod unx0586_valdom;
 pub mod unx604_cpioiter;
 pub mod unx0622_pkgindex;
 pub mod unx0644_failredo;
+// ---- AI-VX-1024（2026-10-24）第九波三单：F0305/F0663/F0687（隔离探针全绿后入库）----
+pub mod unx0305_hugesel;
+pub mod unx0663_tsccross;
+pub mod unx0687_succrate;
