@@ -5966,3 +5966,7 @@ pub mod unx1083_timcoales;
 pub mod unx1063_nohz;
 pub mod unx0328_apstack;
 pub mod unx0586_valdom;
+// ---- AI-VX-1024（2026-10-24）第八波三单：F0604/F0622/F0644（隔离探针全绿后入库）----
+pub mod unx604_cpioiter;
+pub mod unx0622_pkgindex;
+pub mod unx0644_failredo;
