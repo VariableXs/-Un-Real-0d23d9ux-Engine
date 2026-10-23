@@ -5990,3 +5990,7 @@ pub mod unx0885_irqbal;
 pub mod unx0939_bootseq;
 pub mod unx0944_bhtrig;
 pub mod unx0962_pollprof;
+// ---- AI-VX-1024（2026-10-24）第十四波三单：F0785/F1003/F1028（隔离探针全绿后入库）----
+pub mod unx0785_domenroll;
+pub mod unx1003_tsccal;
+pub mod unx1028_tmoacc;
