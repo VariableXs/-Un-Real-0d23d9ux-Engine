@@ -862,7 +862,7 @@ pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 353] {
 /// 属「为治一域而劳师动众」。二级折叠是局部解，且本域已有先例
 /// （`run_wb21_unx20` / `run_wb22_unx22` / `run_unx21_batch` 本身就是
 /// 二级折叠族）。
-pub fn unxstar_secondary_blocks() -> [(&'static str, fn() -> CheckSet); 203] {
+pub fn unxstar_secondary_blocks() -> [(&'static str, fn() -> CheckSet); 294] {
     [
         ("UNX-F0082", run_unx20_t082 as fn() -> CheckSet),
         ("UNX-F0123", run_unx20_t126 as fn() -> CheckSet),
@@ -6002,3 +6002,6 @@ pub mod unx0587_dupkey2;
 // ---- AI-VX-1024B（2026-10-24）：F0605/F0664 深度实现（隔离探针全绿后入库）----
 pub mod unx605_cpiocheck;
 pub mod unx0664_bootth;
+// ---- AI-VX-1024B（2026-10-24）：F0688/F0706 深度实现（隔离探针全绿后入库）----
+pub mod unx0688_failarc;
+pub mod unx0706_assert40;
