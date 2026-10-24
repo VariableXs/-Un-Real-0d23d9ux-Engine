@@ -4912,3 +4912,7 @@ pub mod vec265_gdither; // 渐变dither防banding
 
 // ---- AI-VX-1024（2026-10-24）：VE-F2810 计算样式树与共享结构（隔离探针全绿后入库，0x13B 段）----
 pub mod veo10_styletree;
+// ---- AI-VX-1024（2026-10-24）末波三单：F4607/F5003/F6012（隔离探针全绿后入库）----
+pub mod vev09_apifreeze;
+pub mod vez52_langlaw;
+pub mod vead12_phystest;
