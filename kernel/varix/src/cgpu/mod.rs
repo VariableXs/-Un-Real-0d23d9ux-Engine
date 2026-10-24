@@ -1552,3 +1552,7 @@ pub mod cgj09_pwranomaly;
 pub mod vck70_passthrough;
 pub mod cgm09_outsec;
 pub mod vcn06_effbench;
+// ---- AI-VX-1024B（2026-10-24）：F1451/F1767/F1929 深度实现（隔离探针全绿后入库）----
+pub mod cgj10_jointsample;
+pub mod vck71_partgpu;
+pub mod cgm10_disppwr;

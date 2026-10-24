@@ -4916,3 +4916,5 @@ pub mod veo10_styletree;
 pub mod vev09_apifreeze;
 pub mod vez52_langlaw;
 pub mod vead12_phystest;
+// ---- AI-VX-1024B（2026-10-24）：VE-F4608 插件事件总线（隔离探针全绿后入库，0x1C1 段）----
+pub mod vev10_evtbus;
