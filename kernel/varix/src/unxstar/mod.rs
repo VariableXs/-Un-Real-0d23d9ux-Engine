@@ -6011,3 +6011,16 @@ pub mod unx0726_panicreg;
 pub mod unx0786_verdict1;
 // ---- AI-VX-1024B（2026-10-24）：F0746 深度实现（隔离探针全绿后入库，0x279 段）----
 pub mod unx746_fmtspec;
+// ---- AI-VX-1024B（2026-10-24）：F0806 深度实现（残件 12 处双重借用修复后探针 26/26 全绿，0x27F 段；iststack2 为姊妹残件未入库）----
+pub mod unx0806_iststack;
+// ---- AI-WB-1024（2026-10-24）：F0588~F0597 参数账十单（0x4A/0x4C 段，引号→行长→缺省→互斥→消费→封账→复扫→注入→五数→对冲链）----
+pub mod unx0588_quote;
+pub mod unx0589_linelen;
+pub mod unx0590_defaults;
+pub mod unx0591_conflict;
+pub mod unx0592_consume;
+pub mod unx0593_snapshot;
+pub mod unx0594_rescan;
+pub mod unx0595_inject;
+pub mod unx0596_fivestat;
+pub mod unx0597_hedge;
