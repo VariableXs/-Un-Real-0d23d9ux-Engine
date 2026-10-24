@@ -6007,3 +6007,5 @@ pub mod unx0688_failarc;
 pub mod unx0706_assert40;
 // ---- AI-VX-1024B（2026-10-24）：F0726 深度实现（隔离探针全绿后入库，0x273 段）----
 pub mod unx0726_panicreg;
+// ---- AI-VX-1024B（2026-10-24）：F0786 深度实现（隔离探针全绿后入库，0x277 段）----
+pub mod unx0786_verdict1;
