@@ -5994,3 +5994,5 @@ pub mod unx0962_pollprof;
 pub mod unx0785_domenroll;
 pub mod unx1003_tsccal;
 pub mod unx1028_tmoacc;
+// ---- AI-VX-1024B（2026-10-24）：UNX-F0329 AP 端 GDT/TSS/MSR 装载序列（隔离探针全绿后入库，0x1E1 段）----
+pub mod unx0329_apgdt;
