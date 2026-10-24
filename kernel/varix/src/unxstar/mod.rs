@@ -5996,3 +5996,6 @@ pub mod unx1003_tsccal;
 pub mod unx1028_tmoacc;
 // ---- AI-VX-1024B（2026-10-24）：UNX-F0329 AP 端 GDT/TSS/MSR 装载序列（隔离探针全绿后入库，0x1E1 段）----
 pub mod unx0329_apgdt;
+// ---- AI-VX-1024B（2026-10-24）：F0306/F0587 深度实现（隔离探针全绿后入库；wxmatrix/dupkey 无后缀名为并行姊妹件互不引用）----
+pub mod unx0306_wxmatrix2;
+pub mod unx0587_dupkey2;
