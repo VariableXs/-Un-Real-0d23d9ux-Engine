@@ -1,0 +1,22 @@
+[package]
+name = "varix-std"
+version = "0.1.0"
+edition = "2021"
+description = "libc-free Rust user library for the Varix system-call ABI (F051~F075)"
+license = "MIT"
+
+# 自带 workspace，避免被 kernel/ 的 workspace 误认为成员。
+[workspace]
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true

@@ -28,6 +28,7 @@
 //!
 //! 诊断段：0xE89B 基址（全域核查无占用）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

@@ -10,6 +10,7 @@
 //! ③「用户可调序（清单拖拽=启动序）」的**调序持久化对账**——调序
 //!   后队列稳定复现（同账重读同序，不许读一次变一次）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 use crate::istar::staggerboot::{StaggerBoot, STAGGER_MS};

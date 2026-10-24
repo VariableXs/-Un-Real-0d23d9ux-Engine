@@ -15,6 +15,7 @@
 //! 中断显性化（指示立刻灭、录制拒、草稿保留）；恢复新会话账；回放
 //! 游标（可中段起播、stop 归零有账）；指示-录制一致性审计。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

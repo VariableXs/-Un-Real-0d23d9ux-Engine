@@ -15,8 +15,8 @@
 //! 纪律：no_std；零 unwrap 零 expect；零 IO；零墙钟（tick 注入）；零浮
 //! 点；错误全带可操作建议；码段 0x86。
 
-use alloc::string::String;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

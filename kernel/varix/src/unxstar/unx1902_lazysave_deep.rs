@@ -1,137 +1,137 @@
-//! unx1902 ↔ UNX-F1902 惰性保存策略（TS 标志与首次使用陷阱）
-//!
-//! 单号：UNX-F1902
-//! 标题：惰性保存策略（TS 标志与首次使用陷阱）
-//! 域：CoRun · UNX-A3-B16 段「扩展状态」
-//! 目标行数：2200 ~ 3000（硬指标）
-//!
-//! 判据原文（CoRun Unxreal 主册 UNX-F1902-J1）：
-//! `UNX-F1902-J1 惰性保存决策路径断言全过（TS 置位→首次使用 #NM 陷阱→
-//!  恢复/清位闭环），保存时机三态（切出必存/惰性/永存）逐态正确 10/10`
-//!
-//! ## 组件清单（本单交付的纯功能件）
-//! 1. `ExtState` / `SaveArea` / `SaveTicket`：x87、SSE、AVX(YMM)、AVX-512 四类
-//!    扩展状态区的建模，各带 XCR0 使能位、脏标记、保存区偏移/大小/对齐。
-//! 2. `Cleanliness` 闭集：`Clean / Dirty / Saved / LazyPending / Restored`。
-//! 3. 保存原语 `save()` / `restore()`：模拟 fxsave64 / fxrstor64 语义，
-//!    64 字节对齐断言 + 往返保真指纹断言（`ROUNDTRIP_SAMPLES` 组样本矩阵）。
-//! 4. `SavePolicy` 三态 `AlwaysOnSwitchOut / Lazy / Never`，`decide()` 决策
-//!    函数与 3×2×2 = 12 格全穷举判定表。
-//! 5. `TsCell`：CR0.TS 延迟使能状态机 Clear→Set→Trap→Restore→Clear。
-//! 6. `LazySaveEngine`：切出 / 切入 / 执行浮点 / #NM 陷入四段协同，
-//!    扩展状态账守恒（F1908 消费口径）。
-//! 7. 摊销窗接口 `AmortWindow`（F1903 预告）：窗内 LazyPending 不得误判丢失。
-//! 8. 注入核 `inject_all()`：十形态注入 + 独立检出。
-//! 9. 观测导出 `export_kv()` / `export_tlv()`（含长度自洽断言）。
-//!
-//! ## 职责定位
-//! 本单**只做纯功能决策建模与断言**：不碰真实 CR0/XCR0、不做真实 fxsave、
-//! 不注册真实 IDT 项、不产生真实 IO 与墙钟时间。寄存器内容是 `u64` 载荷
-//! 数组，时间是逻辑 `tick: u64`。本单是 F1901（保存区裁断布局）的策略侧
-//! 消费者，是 F1903（深度状态摊销保存）的上游接口提供者。
-//!
-//! ## 与册内其他单的显式对齐点
-//! - **F1827 浮点使能位纪律（本单核心上游）**：F1827 定「延迟使能」——
-//!   浮点单元不是切内即开，而是切出后置 CR0.TS，首次真正触碰时由 #NM
-//!   代偿开路。本单把该纪律落到决策层：TS 何时置、#NM 由谁消费、消费后
-//!   必须清 TS，三动作由 `TsCell` 状态机保证闭环。
-//! - **F1901 XSAVE 区按 XCR0 位图逐位裁断布局**：`Region::xcr0_bit()` 与
-//!   `Region::aligned_size()` 沿用 F1901 逐位裁断口径，XCR0 未置位的区域
-//!   不占保存区，本单 `enabled` 即该裁断结果的镜像。
-//! - **F1824 FPU 切换策略（默认 eager / lazy 预留）**：`Lazy` 与
-//!   `AlwaysOnSwitchOut` 是 F1824 已启用开关的落地；`Never` 是 F1824 未
-//!   启用时的诚实占位（承诺全程不触碰浮点）。
-//! - **F1825 FPU 保存恢复原语**：`save()` / `restore()` 是 fxsave64 /
-//!   fxrstor64 的语义替身，含对齐断言与往返保真断言。
-//! - **F1826 SIMD 向量状态**：`Region::Sse` / `Region::Avx` 的载荷宽度与
-//!   F1826 的 XMM / YMM 一一对应。
-//! - **F1805 切出路径 / F1806 切入路径**：`switch_out()` / `switch_in()`
-//!   是两条路径在本域内的收窄实现，只负责扩展状态侧。
-//! - **F1903 AVX-512 深度状态摊销保存**：本单留 `AmortWindow` 接口与账，
-//!   窗内延迟落盘与窗闭强制落盘由 F1903 接管。
-//! - **F1908 扩展状态账**：本单产出
-//!   `save_count == restore_count + lazy_pending_count（+ evicted_count）`
-//!   的守恒式，由 F1908 汇总对账。
-//!
-//! ## 扩展状态区与描述符布局（文件头声明，本单契约）
-//! ```text
-//! 描述符（每线程一份，静态区，非保存区本体，共 EXTDESC_LEN = 0x28 字节）：
-//!   +0x00  magic        u64  = EXTDESC_MAGIC
-//!   +0x08  version      u64  = V1902_VERSION_ID
-//!   +0x10  xcr0         u64  XCR0 位图模拟（x87/SSE/AVX/AVX-512 使能）
-//!   +0x18  cr0          u64  CR0 快照（仅 TS 位有意义）
-//!   +0x20  ts_state     u64  TsState 闭集序号
-//!
-//! RegionDesc（每区 REGION_DESC_LEN = 0x40 = 64 字节，区内亦 64 对齐）：
-//!   +0x00  enabled      u64  来自 XCR0 位图（镜像 F1901 裁断结果）
-//!   +0x08  dirty        u64  0 / 1 脏标记
-//!   +0x10  cleanliness  u64  Cleanliness 闭集序号
-//!   +0x18  save_off     u64  保存区偏移（相对保存区基址，必 64 对齐）
-//!   +0x20  save_size    u64  保存区字节数（必 64 对齐）
-//!   +0x28  align        u64  对齐要求，本单恒为 SAVE_ALIGN = 64
-//!   +0x30  policy       u64  SavePolicy 闭集序号
-//!   +0x38  payload_words u64  活动载荷字数（各区不同）
-//!
-//! 保存区本体（每线程一片，按 save_off 逐区排布，基址 64 对齐）：
-//!   x87     区 [ 基础区  64B | 预留 0 ]
-//!   SSE     区 [ XMM 组 128B | 预留 0 ]
-//!   AVX     区 [ XMM 组 128B | YMM 组 128B ]
-//!   AVX-512 区 [ XMM 组 128B | YMM 组 128B | ZMM 组 256B ]
-//!   各区占位 = aligned_size(Region)，即 payload_words*8 向上取整到 64。
-//!
-//! 布局不变量（layout_check 逐条断言）：
-//!   L1 save_off % 64 == 0；L2 save_size % 64 == 0；
-//!   L3 save_size == aligned_size(region)；
-//!   L4 同线程相邻使能区 save_off 无重叠且首区 off == 0；
-//!   L5 未使能区（enabled = 0）不参与排布（size = 0、off = 0）。
-//! ```
-//!
-//! ## 性能逐项分解（模型侧成本，非真实硬件时序）
-//! - **切出一次** `switch_out`：`O(REGION_COUNT)` = 4 次决策表查询 +
-//!   至多 4 次 `save()`（各 `O(payload_words)` 拷贝）+ 1 次 TS 迁移。
-//! - **切入一次** `switch_in`：`O(REGION_COUNT)` 判定 + 至多 4 次
-//!   `restore()`（`O(payload_words)` 指纹对拍）；缺区拒绝 `O(1)` 短路。
-//! - **一次 #NM 陷入** `enter_nm`：`O(pending_records)` ≤ `O(REGION_COUNT)`，
-//!   含 pending 扫描 + 保存 + 指纹对拍 + TS 双迁移 + 重启计数自增，
-//!   恒定小常数，无循环上界风险。
-//! - **注入核十形态**：造证 `O(1)` 定向，检出 `O(FORM_COUNT + threads×regions)`。
-//! - **观测导出**：`export_kv` `O(metric_count)`；`export_tlv`
-//!   `O(metric_count + FORM_COUNT)`，附一遍长度回读自洽校验 `tlv_len_ok`。
-//! - **决策表全穷举**：`3×2×2 = 12` 格构造期一次性求值并冻结；运行期
-//!   `decide()` 是纯 `match`，可落成跳转表，无查表开销。
-//! - **往返保真样本矩阵**：`ROUNDTRIP_SAMPLES = 16` 组，构造期一次性核验。
-//!
-//! ## 诊断码段
-//! 独占段 `0xB140 ~ 0xB14F`（16 码），主码 `0xB140`：
-//! - `0xB140` 凭空 #NM（无待存惰性记录）
-//! - `0xB141` #NM 重入
-//! - `0xB142` 陷阱后未清 TS
-//! - `0xB143` 惰性记录未被消费（闭环断裂）
-//! - `0xB144` Never 策略却执行保存
-//! - `0xB145` AlwaysOnSwitchOut 却跳过保存
-//! - `0xB146` 切入缺有效保存区仍放行
-//! - `0xB147` 保存区未 64 字节对齐
-//! - `0xB148` 往返保真破坏
-//! - `0xB149` 扩展状态账不守恒
-//! - `0xB14A` 线程未登记 / 属主错配
-//! - `0xB14B` 序号越界
-//! - `0xB14C` 策略赋值非法
-//! - `0xB14D` 摊销窗状态机非法迁移
-//! - `0xB14E` TS 状态机非法迁移
-//! - `0xB14F` 布局不变量破坏
-//!
-//! ## 纯功能线
-//! `no_std + alloc`，零 `unwrap` / `expect` / `panic!`、零浮点、零真实 IO、
-//! 零墙钟；确定性 LCG（`LCG_A = 6364136223846793005`、
-//! `LCG_C = 1442695040888963407`、模 `2^64`）保证同种子同轨迹；自定义
-//! `LzResult<T>`；无 `#[cfg(test)]`。
+#![allow(dead_code)] extern crate alloc;
+// unx1902 ↔ UNX-F1902 惰性保存策略（TS 标志与首次使用陷阱）
+//
+// 单号：UNX-F1902
+// 标题：惰性保存策略（TS 标志与首次使用陷阱）
+// 域：CoRun · UNX-A3-B16 段「扩展状态」
+// 目标行数：2200 ~ 3000（硬指标）
+//
+// 判据原文（CoRun Unxreal 主册 UNX-F1902-J1）：
+// `UNX-F1902-J1 惰性保存决策路径断言全过（TS 置位→首次使用 #NM 陷阱→
+//  恢复/清位闭环），保存时机三态（切出必存/惰性/永存）逐态正确 10/10`
+//
+// ## 组件清单（本单交付的纯功能件）
+// 1. `ExtState` / `SaveArea` / `SaveTicket`：x87、SSE、AVX(YMM)、AVX-512 四类
+//    扩展状态区的建模，各带 XCR0 使能位、脏标记、保存区偏移/大小/对齐。
+// 2. `Cleanliness` 闭集：`Clean / Dirty / Saved / LazyPending / Restored`。
+// 3. 保存原语 `save()` / `restore()`：模拟 fxsave64 / fxrstor64 语义，
+//    64 字节对齐断言 + 往返保真指纹断言（`ROUNDTRIP_SAMPLES` 组样本矩阵）。
+// 4. `SavePolicy` 三态 `AlwaysOnSwitchOut / Lazy / Never`，`decide()` 决策
+//    函数与 3×2×2 = 12 格全穷举判定表。
+// 5. `TsCell`：CR0.TS 延迟使能状态机 Clear→Set→Trap→Restore→Clear。
+// 6. `LazySaveEngine`：切出 / 切入 / 执行浮点 / #NM 陷入四段协同，
+//    扩展状态账守恒（F1908 消费口径）。
+// 7. 摊销窗接口 `AmortWindow`（F1903 预告）：窗内 LazyPending 不得误判丢失。
+// 8. 注入核 `inject_all()`：十形态注入 + 独立检出。
+// 9. 观测导出 `export_kv()` / `export_tlv()`（含长度自洽断言）。
+//
+// ## 职责定位
+// 本单**只做纯功能决策建模与断言**：不碰真实 CR0/XCR0、不做真实 fxsave、
+// 不注册真实 IDT 项、不产生真实 IO 与墙钟时间。寄存器内容是 `u64` 载荷
+// 数组，时间是逻辑 `tick: u64`。本单是 F1901（保存区裁断布局）的策略侧
+// 消费者，是 F1903（深度状态摊销保存）的上游接口提供者。
+//
+// ## 与册内其他单的显式对齐点
+// - **F1827 浮点使能位纪律（本单核心上游）**：F1827 定「延迟使能」——
+//   浮点单元不是切内即开，而是切出后置 CR0.TS，首次真正触碰时由 #NM
+//   代偿开路。本单把该纪律落到决策层：TS 何时置、#NM 由谁消费、消费后
+//   必须清 TS，三动作由 `TsCell` 状态机保证闭环。
+// - **F1901 XSAVE 区按 XCR0 位图逐位裁断布局**：`Region::xcr0_bit()` 与
+//   `Region::aligned_size()` 沿用 F1901 逐位裁断口径，XCR0 未置位的区域
+//   不占保存区，本单 `enabled` 即该裁断结果的镜像。
+// - **F1824 FPU 切换策略（默认 eager / lazy 预留）**：`Lazy` 与
+//   `AlwaysOnSwitchOut` 是 F1824 已启用开关的落地；`Never` 是 F1824 未
+//   启用时的诚实占位（承诺全程不触碰浮点）。
+// - **F1825 FPU 保存恢复原语**：`save()` / `restore()` 是 fxsave64 /
+//   fxrstor64 的语义替身，含对齐断言与往返保真断言。
+// - **F1826 SIMD 向量状态**：`Region::Sse` / `Region::Avx` 的载荷宽度与
+//   F1826 的 XMM / YMM 一一对应。
+// - **F1805 切出路径 / F1806 切入路径**：`switch_out()` / `switch_in()`
+//   是两条路径在本域内的收窄实现，只负责扩展状态侧。
+// - **F1903 AVX-512 深度状态摊销保存**：本单留 `AmortWindow` 接口与账，
+//   窗内延迟落盘与窗闭强制落盘由 F1903 接管。
+// - **F1908 扩展状态账**：本单产出
+//   `save_count == restore_count + lazy_pending_count（+ evicted_count）`
+//   的守恒式，由 F1908 汇总对账。
+//
+// ## 扩展状态区与描述符布局（文件头声明，本单契约）
+// ```text
+// 描述符（每线程一份，静态区，非保存区本体，共 EXTDESC_LEN = 0x28 字节）：
+//   +0x00  magic        u64  = EXTDESC_MAGIC
+//   +0x08  version      u64  = V1902_VERSION_ID
+//   +0x10  xcr0         u64  XCR0 位图模拟（x87/SSE/AVX/AVX-512 使能）
+//   +0x18  cr0          u64  CR0 快照（仅 TS 位有意义）
+//   +0x20  ts_state     u64  TsState 闭集序号
+//
+// RegionDesc（每区 REGION_DESC_LEN = 0x40 = 64 字节，区内亦 64 对齐）：
+//   +0x00  enabled      u64  来自 XCR0 位图（镜像 F1901 裁断结果）
+//   +0x08  dirty        u64  0 / 1 脏标记
+//   +0x10  cleanliness  u64  Cleanliness 闭集序号
+//   +0x18  save_off     u64  保存区偏移（相对保存区基址，必 64 对齐）
+//   +0x20  save_size    u64  保存区字节数（必 64 对齐）
+//   +0x28  align        u64  对齐要求，本单恒为 SAVE_ALIGN = 64
+//   +0x30  policy       u64  SavePolicy 闭集序号
+//   +0x38  payload_words u64  活动载荷字数（各区不同）
+//
+// 保存区本体（每线程一片，按 save_off 逐区排布，基址 64 对齐）：
+//   x87     区 [ 基础区  64B | 预留 0 ]
+//   SSE     区 [ XMM 组 128B | 预留 0 ]
+//   AVX     区 [ XMM 组 128B | YMM 组 128B ]
+//   AVX-512 区 [ XMM 组 128B | YMM 组 128B | ZMM 组 256B ]
+//   各区占位 = aligned_size(Region)，即 payload_words*8 向上取整到 64。
+//
+// 布局不变量（layout_check 逐条断言）：
+//   L1 save_off % 64 == 0；L2 save_size % 64 == 0；
+//   L3 save_size == aligned_size(region)；
+//   L4 同线程相邻使能区 save_off 无重叠且首区 off == 0；
+//   L5 未使能区（enabled = 0）不参与排布（size = 0、off = 0）。
+// ```
+//
+// ## 性能逐项分解（模型侧成本，非真实硬件时序）
+// - **切出一次** `switch_out`：`O(REGION_COUNT)` = 4 次决策表查询 +
+//   至多 4 次 `save()`（各 `O(payload_words)` 拷贝）+ 1 次 TS 迁移。
+// - **切入一次** `switch_in`：`O(REGION_COUNT)` 判定 + 至多 4 次
+//   `restore()`（`O(payload_words)` 指纹对拍）；缺区拒绝 `O(1)` 短路。
+// - **一次 #NM 陷入** `enter_nm`：`O(pending_records)` ≤ `O(REGION_COUNT)`，
+//   含 pending 扫描 + 保存 + 指纹对拍 + TS 双迁移 + 重启计数自增，
+//   恒定小常数，无循环上界风险。
+// - **注入核十形态**：造证 `O(1)` 定向，检出 `O(FORM_COUNT + threads×regions)`。
+// - **观测导出**：`export_kv` `O(metric_count)`；`export_tlv`
+//   `O(metric_count + FORM_COUNT)`，附一遍长度回读自洽校验 `tlv_len_ok`。
+// - **决策表全穷举**：`3×2×2 = 12` 格构造期一次性求值并冻结；运行期
+//   `decide()` 是纯 `match`，可落成跳转表，无查表开销。
+// - **往返保真样本矩阵**：`ROUNDTRIP_SAMPLES = 16` 组，构造期一次性核验。
+//
+// ## 诊断码段
+// 独占段 `0xB140 ~ 0xB14F`（16 码），主码 `0xB140`：
+// - `0xB140` 凭空 #NM（无待存惰性记录）
+// - `0xB141` #NM 重入
+// - `0xB142` 陷阱后未清 TS
+// - `0xB143` 惰性记录未被消费（闭环断裂）
+// - `0xB144` Never 策略却执行保存
+// - `0xB145` AlwaysOnSwitchOut 却跳过保存
+// - `0xB146` 切入缺有效保存区仍放行
+// - `0xB147` 保存区未 64 字节对齐
+// - `0xB148` 往返保真破坏
+// - `0xB149` 扩展状态账不守恒
+// - `0xB14A` 线程未登记 / 属主错配
+// - `0xB14B` 序号越界
+// - `0xB14C` 策略赋值非法
+// - `0xB14D` 摊销窗状态机非法迁移
+// - `0xB14E` TS 状态机非法迁移
+// - `0xB14F` 布局不变量破坏
+//
+// ## 纯功能线
+// `no_std + alloc`，零 `unwrap` / `expect` / `panic!`、零浮点、零真实 IO、
+// 零墙钟；确定性 LCG（`LCG_A = 6364136223846793005`、
+// `LCG_C = 1442695040888963407`、模 `2^64`）保证同种子同轨迹；自定义
+// `LzResult<T>`；无 `#[cfg(test)]`。
+use alloc::vec;
 // 本单为「册内自足模块」：在探针 crate 中以私有 `mod m;` 引入时，全部
 // `pub` 项都会被判为未可达；这是引入方式使然，不是本单死代码。
-#![allow(dead_code)] extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 // ===========================================================================
 // 0. 常量、标量与确定性 LCG

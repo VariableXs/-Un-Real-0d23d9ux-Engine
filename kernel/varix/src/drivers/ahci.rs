@@ -23,6 +23,10 @@
 //!   在 byte12/13（EXT 双字节）；
 //! - D2H FIS 0x34 落在 PxFB+0x40（RFIS）：status byte2 / error byte3。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+use alloc::vec;
 use super::blk::{BlockDevice, BlockError};
 use super::nvme::{BarAccess, DmaMem};
 
@@ -443,7 +447,6 @@ pub mod target {
     use super::*;
     use super::super::nvme::target::{now_ns, BarMmio};
     use crate::drivers::blk::loopback_probe;
-    use alloc::vec;
 
     /// 全局实例（与 NVMe/xHCI 同一手工 Once 范式）。
     static mut GLOBAL: Option<AhciCtrl<BarMmio, super::super::nvme::target::DmaBuckets>> = None;

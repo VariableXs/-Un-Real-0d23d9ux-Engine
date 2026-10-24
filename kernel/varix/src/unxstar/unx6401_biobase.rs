@@ -8,10 +8,11 @@
 //! 结构：接管台账（三字段闭集）+ bio 向量提交面（BioVec + 提交器）
 //! + 兼容薄层（旧 read_block/write_block 走 bio 面）+ 回归核 + 注入核
 //! （空 bio/越界 LBA/封账提交/薄层漂移）。
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use alloc::format;
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC680 独占 0x80）。

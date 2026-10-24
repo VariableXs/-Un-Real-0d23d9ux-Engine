@@ -25,11 +25,11 @@
 //! 逻辑 tick 注入，零墙钟；零 IO；类型自持（不 import 未注册兄弟模块——平行会话
 //! 的 `ve*` 族尚在施工，编译期硬耦合会让本条因别人的进度而红）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

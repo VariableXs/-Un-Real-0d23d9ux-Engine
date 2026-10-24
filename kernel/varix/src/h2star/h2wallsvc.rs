@@ -14,11 +14,11 @@
 //!
 //! 时间纪律：轮换调度以分钟戳注入；无时钟。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 多屏配置模型（F286 三模式）

@@ -10,6 +10,7 @@
 //!
 //! 零堆纪律：定长哈希 + 定长词条，无 alloc。
 
+use alloc::vec;
 use super::panicscreen::REBOOT_COUNTDOWN_MS;
 use crate::checks::CheckSet;
 

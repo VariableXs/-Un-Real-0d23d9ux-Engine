@@ -11,6 +11,8 @@
 //!
 //! 零堆纪律：定长缓冲，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

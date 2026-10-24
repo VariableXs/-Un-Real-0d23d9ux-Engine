@@ -67,9 +67,9 @@
 //! 零时钟、零 IO、零环境依赖；输入是 `&str`，输出是纯数据结构。同一输入必得
 //! 同一结果（含诊断序列的顺序），保证回归可复现、对拍可重现。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

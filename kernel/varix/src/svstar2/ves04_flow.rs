@@ -120,11 +120,11 @@
 //!
 //! 分工登记见 [`DOWNSTREAM_OWNERSHIP`]。
 
+use alloc::vec;
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

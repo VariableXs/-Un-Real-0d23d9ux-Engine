@@ -94,14 +94,16 @@ pub fn serialize_theme(t: &TokenSet, out: &mut [u8; 24]) {
 
 /// 反序列化。
 pub fn deserialize_theme(buf: &[u8; 24]) -> TokenSet {
+    // 定长 24 字节布局：直接下标展开（总量、零 panic——原 try_into().unwrap()
+    // 在定长数组上永不失败，属纯语法性 panic 点）。
     TokenSet {
         color: (buf[0], buf[1], buf[2]),
         accent: (buf[3], buf[4], buf[5]),
-        spacing: u32::from_le_bytes(buf[6..10].try_into().unwrap()),
-        radius: u32::from_le_bytes(buf[10..14].try_into().unwrap()),
-        shadow: u32::from_le_bytes(buf[14..18].try_into().unwrap()),
-        motion_ms: u32::from_le_bytes(buf[18..22].try_into().unwrap()),
-        font_size: u16::from_le_bytes(buf[22..24].try_into().unwrap()) as u32,
+        spacing: u32::from_le_bytes([buf[6], buf[7], buf[8], buf[9]]),
+        radius: u32::from_le_bytes([buf[10], buf[11], buf[12], buf[13]]),
+        shadow: u32::from_le_bytes([buf[14], buf[15], buf[16], buf[17]]),
+        motion_ms: u32::from_le_bytes([buf[18], buf[19], buf[20], buf[21]]),
+        font_size: u16::from_le_bytes([buf[22], buf[23]]) as u32,
     }
 }
 

@@ -91,6 +91,7 @@
 //!
 //! 零外部依赖，只用 `alloc` 与 `crate::checks`（自检侧）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

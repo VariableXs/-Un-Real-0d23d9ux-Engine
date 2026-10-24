@@ -11,6 +11,7 @@
 //! ③确认卡**字面合同**——卡面三要素（操作方/要做什么/两钮文案）与
 //!   白名单文案的唯一源对账（渲染层不得私改一个字）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 use crate::istar::privconfirm::{AuditEntry, Channel, OpKind, PrivGate, Verdict};

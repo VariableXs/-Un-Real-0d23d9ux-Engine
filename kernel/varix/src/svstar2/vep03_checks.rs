@@ -48,6 +48,7 @@
 //!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 

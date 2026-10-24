@@ -273,3 +273,62 @@ pub fn non_pledge_closed(l: &CompatFinalLedger) -> Result<(), u16> {
     }
     Ok(())
 }
+
+
+// ===== 深化块（cga148_compatfin · 兼容终审深化）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_compatfin {
+    //! 兼容终审深化 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 兼容矩阵格：三态（1 兼容 / 0 不兼容 / 2 未测），未测不得放行。
+    pub const UNTESTED: u8 = 2;
+    pub const COMPAT: u8 = 1;
+    pub const INCOMPAT: u8 = 0;
+
+    /// 矩阵放行审计：任一未测格存在即拒（未测不算兼容）。
+    pub fn compat_all_tested(m: &[u8]) -> Result<(), u16> {
+        if m.is_empty() {
+            return Err(1);
+        }
+        for (i, &c) in m.iter().enumerate() {
+            if c == UNTESTED {
+                return Err(2 + i as u16);
+            }
+            if c > UNTESTED {
+                return Err(32 + i as u16);
+            }
+        }
+        Ok(())
+    }
+
+    /// 版本区间覆盖：请求版本必须落在已测区间内，落外 = 未测兼容。
+    pub fn version_in_range(v: u32, lo: u32, hi: u32) -> Result<(), u16> {
+        if lo > hi {
+            return Err(1);
+        }
+        if v < lo || v > hi {
+            return Err(2);
+        }
+        Ok(())
+    }
+
+    /// 前向兼容承诺：新读旧必须支持，旧读新显性不支持（单向承诺）。
+    pub fn forward_compat(reader: u32, writer: u32) -> Result<(), u16> {
+        if writer > reader {
+            return Err(1);
+        }
+        Ok(())
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0148-深化");
+        cs.add("全测放行", compat_all_tested(&[COMPAT, INCOMPAT, COMPAT]).is_ok(), "");
+        cs.add("未测检出", compat_all_tested(&[COMPAT, UNTESTED]).is_err(), "");
+        cs.add("版本区间", version_in_range(5, 1, 9).is_ok() && version_in_range(11, 1, 9).is_err(), "");
+        cs.add("单向承诺", forward_compat(2, 1).is_ok() && forward_compat(1, 2).is_err(), "");
+        cs
+    }
+}

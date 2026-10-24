@@ -15,10 +15,10 @@
 //! 实现形态：空闲驱动的索引器（busy 时零进展——纪律面）+ 行片段命中
 //! 高亮 + 校验和损坏自重建。文件源由调用方注入口供给（不依赖真实 VFS）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

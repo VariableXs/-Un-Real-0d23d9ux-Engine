@@ -4,7 +4,10 @@
 //! 最差分级出动作（正常→无动作 / 注意→预警记录 / 降级→标记 degraded /
 //! 危急→热备替换+重建）；③ 动作段：动作枚举可执行可回账，重建占位逐轮推进。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xAF80;
 

@@ -6,6 +6,7 @@
 //! 23999 拒）；序列状态机做**全链 + 四向违约**；码段 0x5419~0x541E 独占
 //! 防自判死；零 panic 双面自扫；聚合守恒防自调。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::cgpu::cgm01_display::VmCode;
 use crate::cgpu::cgm03_edid::{project, projection_honest, EdidCaps, Mode};
@@ -16,7 +17,6 @@ use crate::cgpu::cgm05_modes::{
 use crate::cgpu::cgm05_modes::{ModeManager, SwitchState};
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 const EXPECT_A_COUNT: usize = 11;

@@ -40,9 +40,9 @@
 //! vch01 占 0x5001-0x5006、vch02 占 0x5007-0x500A，本域续编
 //! 0x500B-0x500F，与已占用段不重叠（码段判据用 `!=` 防自判死）。
 
+use alloc::vec;
 use crate::svstar2::vch01_budgetpool::{BudgetPool, PoolKind, PoolSet, WaterLevel};
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

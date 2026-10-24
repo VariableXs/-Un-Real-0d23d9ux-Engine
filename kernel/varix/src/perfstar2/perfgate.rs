@@ -18,6 +18,8 @@
 //!
 //! 零堆纪律：定长层表 + 定长攻坚名单，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

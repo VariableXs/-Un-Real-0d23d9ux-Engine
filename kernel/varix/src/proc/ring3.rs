@@ -24,6 +24,7 @@
 //! 诚实边界：内核目标之外汇编路径不编译；宿主单测覆盖决策函数、缓冲
 //! 校验、装载计划校验、退出回收复用与 blob 可解析性。
 
+use alloc::vec::Vec;
 use super::uspace::{ProcState, ProcTable};
 // elf 解析与进入计划只被 run_demo（内核目标）与宿主测试使用——宿主
 // lib 编译（非 test cfg）下两者都不在场，不门控会挂 unused 告警。

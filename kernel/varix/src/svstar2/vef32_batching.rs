@@ -89,6 +89,7 @@
 //!
 //! 零 panic 面、零 IO、零墙钟、无全局可变状态、no_std 零 std 依赖。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cmp::Ordering;

@@ -120,10 +120,10 @@
 //! 逻辑tick 注入，零墙钟；零外部依赖，只依赖 `crate::checks`（自检侧）。
 //! 不抛异常、不吞诊断、无静默分支、无全局可变状态。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ===========================================================================
 // §0 诊断层（零静默的物质基础：错误与告警分两条独立通道）

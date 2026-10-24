@@ -9,10 +9,9 @@
 //! 属性页）+ 构成对照账（140 条 = btrfs 70 + squashfs 70 分面配额）
 //! + 总纲导出 + 注入核（分面缺项/魔数漂移/压缩位失真/封账导出）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC580 独占 0x80）。

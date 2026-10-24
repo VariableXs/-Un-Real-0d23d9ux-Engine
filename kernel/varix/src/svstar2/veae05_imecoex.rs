@@ -24,10 +24,11 @@
 //! 诊断码五码互异：`E_ICE_LEAK` / `E_ICE_CAND_MISALIGN` /
 //! `E_ICE_ARBITER_STALL` / `E_ICE_ROUTE_UNKNOWN` /
 //! `E_ICE_ANNOUNCE_SINK_LOST`。
+use alloc::string::String;
+use alloc::string::ToString;
 
 use crate::checks::CheckSet;
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

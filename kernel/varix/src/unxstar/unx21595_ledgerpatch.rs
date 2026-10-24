@@ -25,8 +25,8 @@
 //! 指纹按行内容算、不含行号：行号随插入整体漂移，指纹若含行号，插一行就全变，等于
 //! 无法回答「到底哪一行被改过」。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 /// 单字段字节上限（AI-30 体例的一行台账要能塞进一屏）。

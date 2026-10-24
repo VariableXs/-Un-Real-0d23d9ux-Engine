@@ -5,6 +5,8 @@
 //!
 //! 纪律：纯逻辑 + 固定容量数组；无 `Vec`/`String`/`Box`/`alloc`/外部 crate。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::srv::{Initfs, InitfsKind, VfsErr, VfsUser, VFS_MAX_FD, VFS_READ_BUF};
 use crate::vport::render::{StateStore, CAP_FS_WRITE, STATE_KEY_MAX};

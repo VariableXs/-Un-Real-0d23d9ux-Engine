@@ -9,12 +9,13 @@
 //! 缓存 / dead 冻结分配）+ 动作留痕核 + 注入核（越级动作/水位回退
 //! 后不解除/分配死锁/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAE00 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAE00;
 pub const XC_OOM_LEVEL: u32 = SEG_BASE + 0x01;
 pub const XC_OOM_DEAD: u32 = SEG_BASE + 0x02;

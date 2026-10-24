@@ -14,6 +14,8 @@
 //!
 //! 零堆纪律：无 Vec/String/Box/format!，定长数组 + 字节串。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -161,6 +163,7 @@ pub fn adversarial_100(seed: u64) -> (usize, usize) {
                 denied: true,
                 reason: Some(reason),
             }),
+            // G2-ALLOW: 安全不变量守门——对抗性调用拿到 Allowed 即能力子系统已破，fail-fast 是唯一正确处置。
             CallVerdict::Allowed => panic!("adversarial call must never succeed"),
         }
         i += 1;

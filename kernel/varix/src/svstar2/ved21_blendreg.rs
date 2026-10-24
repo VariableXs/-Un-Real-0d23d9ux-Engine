@@ -115,10 +115,10 @@
 //! 逻辑 tick 注入，零墙钟；零 IO；全部语料由本文件内构造器生成，
 //! 跨平台逐位可复现。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

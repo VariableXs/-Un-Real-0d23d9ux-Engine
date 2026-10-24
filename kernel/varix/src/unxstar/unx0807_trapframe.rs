@@ -1,8 +1,9 @@
 //! UNX-F0807 · TrapFrame 统一寄存器现场与错误码分型账 · 诊断段 0xB870
 //! 验收锚点：UNX-F0807-J1 现场结构 64 字节对齐固定布局（异常/中断/
 //! IPI 三入口同构），错误码有无分型零错位（10 万次注入），双判据缺一即批内红灯。
+use alloc::vec::Vec;
+use alloc::string::String;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 /// 确定性 LCG（本册本地副本，同仓惯例）。
 pub struct Lcg(u64);

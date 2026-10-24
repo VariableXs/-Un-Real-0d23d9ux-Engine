@@ -7,10 +7,12 @@
 //! - 缺省链 → `H06-缺省-*`
 //! - 唯一来源 → `H06-唯一-*`
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::veh06_audiotoken::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
+use alloc::format;
 use alloc::string::ToString;
 
 /// VE-F1406 域自检。
@@ -192,7 +194,6 @@ pub fn run_veh06_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::{format, vec};
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

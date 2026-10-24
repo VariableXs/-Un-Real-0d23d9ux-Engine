@@ -21,11 +21,11 @@
 //! - C5201-承接-缺源回溯到源头件号
 //! - C5201-诊断-带源信息与可操作建议
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vez01_vfxarch::*;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 把一个特效登记到标准子系统的标准类别上（判据语料helper）。

@@ -27,6 +27,7 @@
 //! `crate::star::sbase::RingLog`（决策账本）。
 //! 时间纪律：一切时间由调用方注入毫秒戳，模块不持时钟。
 
+use alloc::vec::Vec;
 use crate::checks::{push_str, CheckSet};
 use crate::star::sbase::RingLog;
 

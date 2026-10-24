@@ -8,6 +8,7 @@
 //! 两项合模块：F349 的专注态通知按 F341 四档智能降——通知面共用一个降
 //! 档决策点（联动审计在一起才审得动）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use super::hbase::PersistKv;

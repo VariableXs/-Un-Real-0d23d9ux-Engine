@@ -8,6 +8,8 @@
 //!
 //! 零堆纪律：定长树表，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 特性树容量。
@@ -64,7 +66,7 @@ impl FeatureTree {
                     touched += 1;
                 }
             }
-            cur = self.nodes[cur as usize].unwrap().parent;
+            cur = self.nodes[cur as usize].as_ref().map_or(u16::MAX, |n| n.parent);
         }
         touched
     }

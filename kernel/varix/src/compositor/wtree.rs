@@ -81,7 +81,14 @@ impl WindowTree {
         if parent != ROOT && (parent >= MAX_NODES || self.nodes[parent].is_none()) {
             return (None, E_NOT_FOUND);
         }
-        let depth = if parent == ROOT { 0 } else { self.nodes[parent].unwrap().depth + 1 };
+        let depth = if parent == ROOT {
+            0
+        } else {
+            match self.nodes[parent].as_ref() {
+                Some(p) => p.depth + 1,
+                None => return (None, E_NOT_FOUND),
+            }
+        };
         if depth >= MAX_DEPTH {
             return (None, E_DEPTH);
         }
@@ -116,7 +123,10 @@ impl WindowTree {
         if slot >= MAX_NODES || self.nodes[slot].is_none() {
             return E_NOT_FOUND;
         }
-        let parent = self.nodes[slot].unwrap().parent;
+        let parent = match self.nodes[slot].as_ref() {
+            Some(n) => n.parent,
+            None => return E_NOT_FOUND,
+        };
         if parent != ROOT {
             if let Some(p) = self.nodes[parent].as_mut() {
                 for c in 0..p.child_n {
@@ -151,7 +161,10 @@ impl WindowTree {
         if slot >= MAX_NODES || self.nodes[slot].is_none() {
             return E_NOT_FOUND;
         }
-        let id = self.nodes[slot].unwrap().id;
+        let id = match self.nodes[slot].as_ref() {
+            Some(n) => n.id,
+            None => return E_NOT_FOUND,
+        };
         self.detach(slot);
         let (res, code) = self.attach(id, new_parent);
         if res.is_none() {

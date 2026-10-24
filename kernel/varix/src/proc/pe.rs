@@ -18,6 +18,8 @@
 //!
 //! W^X 口径与 ElfSource 一致：可写节强制 NX（映射层 executable=false）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::loader::SegmentView;
 
 /// DOS 头最小长度（e_lfanew@0x3C 需要 4 字节）。

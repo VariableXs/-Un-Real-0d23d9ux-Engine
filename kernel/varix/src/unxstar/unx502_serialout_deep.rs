@@ -30,13 +30,10 @@
 //!    0x99xx 无诊断段声明；0x9999 测试噪声与本闭集 0x9901..0x9910
 //!    互异）。不用 unwrap/expect/panic，错误一律 Err + 中文诊断。
 
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
 
+use alloc::vec;
+use alloc::string::{String, ToString};
+use alloc::format;
 // ---------------------------------------------------------------------------
 // 一、诊断码闭集（独占 0x99xx 段——16 码互异）
 // ---------------------------------------------------------------------------
@@ -1797,6 +1794,7 @@ pub fn verify_all() -> VerifierReport {
 // 十一、真机落账槽（单次提交——回环核报告引导后可查不可改）
 // ---------------------------------------------------------------------------
 
+use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 

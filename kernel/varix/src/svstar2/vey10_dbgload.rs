@@ -9,6 +9,7 @@
 //! （热载前后状态无缝迁移）——三件共用 X03 会话模型；调试数据与脚本源码不出
 //! 机；会话失稳→看门狗复位；越界→权限拦截。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

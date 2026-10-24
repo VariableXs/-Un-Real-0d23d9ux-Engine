@@ -27,6 +27,7 @@
 //! 3. 十四诊断码逐个**真跑造出来**（有短码 ≠ 可达）；
 //! 4. 判据区零 panic 面：越界一律 match / `.get()` / 直接比较记红。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vew04_sandbox::{Facet, SandboxHost};
 use crate::svstar2::ver01_arch::TokenDef;
@@ -34,7 +35,6 @@ use crate::svstar2::ver01n_exttoken::*;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 判据侧常量（独立字面量，不从被测推导）

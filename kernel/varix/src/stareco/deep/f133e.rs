@@ -4,6 +4,8 @@
 //! 位深校验、四族类别表（系统/文件夹/文件类型/托盘）、命名法深化
 //! （版本后缀语义）、导入向导分步状态机。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::iconpack::PackReport;
 

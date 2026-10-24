@@ -11,12 +11,13 @@
 //! 且 2 幂）+ 双判据红灯闸 + 注入核（溢出/零对齐/非 2 幂对齐/空段/
 //! 封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA400 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA400;
 pub const XC_TL_EINVAL: u32 = SEG_BASE + 0x01; // memsz<filesz
 pub const XC_TL_ALIGN: u32 = SEG_BASE + 0x02; // 对齐非法

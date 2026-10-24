@@ -42,9 +42,9 @@
 //!   **正确的解码器判红**。故 A09 / B12 的基准统一改为「与 `vef01` 全量逐字节
 //!   一致」——这既是锚点「增量=全量」的字面要求，也让本单只考自己的语义。
 
+use alloc::vec;
 extern crate alloc;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::{CheckSet, MAX_CHECKS};

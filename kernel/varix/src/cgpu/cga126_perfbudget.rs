@@ -296,3 +296,73 @@ impl PerfLedger {
         self.sealed
     }
 }
+
+
+// ===== 深化块（cga126_perfbudget · 性能预算深化审计）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_perfbudget {
+    //! 性能预算深化审计 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 预算桶：16 桶固定直方图，越界样本计入溢出桶。
+    pub struct BudgetHistogram {
+        buckets: [u32; 16],
+        overflow: u32,
+        total: u64,
+    }
+
+    impl BudgetHistogram {
+        pub fn new() -> Self {
+            BudgetHistogram { buckets: [0; 16], overflow: 0, total: 0 }
+        }
+
+        /// 记录一个样本；width 为 0 拒收（除零防线）。
+        pub fn record(&mut self, value: u32, width: u32) -> Result<(), u16> {
+            if width == 0 {
+                return Err(1);
+            }
+            let idx = (value / width) as usize;
+            self.total += 1;
+            if idx >= 16 {
+                self.overflow += 1;
+            } else {
+                self.buckets[idx] += 1;
+            }
+            Ok(())
+        }
+
+        /// 守恒：桶内 + 溢出 == 总样本。
+        pub fn conserve(&self) -> bool {
+            let inside: u64 = self.buckets.iter().map(|&b| b as u64).sum();
+            inside + self.overflow as u64 == self.total
+        }
+
+        /// 超支率（千分比）：溢出桶占比；空账显性 None 不谎报。
+        pub fn overrun_permille(&self) -> Option<u32> {
+            if self.total == 0 {
+                return None;
+            }
+            Some(((self.overflow as u64 * 1000) / self.total) as u32)
+        }
+    }
+
+    /// 预算修正建议：超支率分档给建议，档位闭集不静默。
+    pub fn budget_advice(overrun_permille: u32) -> u8 {
+        if overrun_permille >= 200 { 3 } else if overrun_permille >= 100 { 2 } else if overrun_permille >= 50 { 1 } else { 0 }
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0126-深化");
+        let mut h = BudgetHistogram::new();
+        for i in 0..100u32 {
+            let _ = h.record(i * 10, 100);
+        }
+        let _ = h.record(99999, 100);
+        cs.add("直方图守恒", h.conserve(), "");
+        cs.add("超支率有值", h.overrun_permille().is_some(), "");
+        cs.add("建议分档闭集", budget_advice(0) <= 3 && budget_advice(u32::MAX) == 3, "");
+        cs
+    }
+}

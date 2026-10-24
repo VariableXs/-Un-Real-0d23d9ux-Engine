@@ -1,8 +1,9 @@
 //! UNX-F2744 · 目标水位推进与达成判定账 · 诊断段 0xB990
 //! 验收锚点：UNX-F2744-J1 推进至 high 水位达成即休眠 10/10 轮，
 //! 未达成不提前休眠断言，双判据缺一即批内红灯。
+use alloc::vec::Vec;
+use alloc::string::String;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB990;
 

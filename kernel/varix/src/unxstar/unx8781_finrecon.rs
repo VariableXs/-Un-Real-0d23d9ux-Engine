@@ -2,8 +2,10 @@
 //! 验收锚点：UNX-F8781-J1 收官总对账——全期行账 240,000 按分段
 //! 账本拆分（16 段 × 15,000），分段和 = 总账、跨段行号连续、零差
 //! 容断（任何一段错账即全账红灯），双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB7A0;
 

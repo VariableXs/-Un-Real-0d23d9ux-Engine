@@ -8,10 +8,10 @@
 //! command/device + LBA48 六字节 + count 两字节 + icc/control + 填充）
 //! + 措辞器（五字段构造）+ 全命令位图单测（读/写/识别/flush/packet）
 //! + 注入核（type 漂移/LBA48 越界/计数零/封账措辞）。
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use alloc::format;
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC780 独占 0x80）。

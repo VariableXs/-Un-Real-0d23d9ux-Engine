@@ -24,11 +24,11 @@
 //!   本端 = 不兼容拒绝（诚实：不猜未来协议）；
 //! - 黄金流比对：同命令序列 → 同编码字流 → 同 FNV 指纹；重组回读逐字一致。
 
+use alloc::vec;
 use super::vea01_probe::fnv1a64;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

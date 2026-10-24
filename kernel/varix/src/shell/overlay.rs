@@ -9,6 +9,8 @@
 //! * 同级后到者赢（raise）；Esc 等退出路径走 `pop_overlay` 恢复栈；
 //! * 非法优先级/未知层钳制回默认，不 panic（越界回默认红线）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 浮层层别（z 序从低到高）。

@@ -56,6 +56,7 @@
 // 引入（no_std 内核侧；alloc 三件套自查：vec 宏 / Vec 类型 / String+ToString）
 // ---------------------------------------------------------------------------
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -238,7 +239,11 @@ impl DsvMgr {
     /// 注册条目（三段之一）：键校验 → 同键同模式共享 / 同键异模式冲突 /
     /// 新建。模式在注册期声明，注册后经本接口不可变。
     pub fn register(&mut self, key: DsvKey, mode: DsvMode) -> Result<u32, u16> {
-        key.validate()?;
+        // 注册期第一道红线：键非法记入拒绝账（显性拒绝不静默）。
+        if let Err(e) = key.validate() {
+            self.stats.rejects = self.stats.rejects.saturating_add(1);
+            return Err(e);
+        }
         if let Some(e) = self.entries.iter().find(|e| e.key == key) {
             if e.mode == mode {
                 // 同键同模式：共享同一 id（去重共享，与 F0036 同口径）
@@ -371,14 +376,12 @@ impl DsvMgr {
         )
     }
 
-    /// 查条目模式（内部工具：并发判定的取数路径）。
+    /// 查条目模式（内部工具：并发判定的取数路径，纯查询不记统计——
+    /// 统计写入留给持有 `&mut self` 的拒绝路径）。
     fn mode_of(&self, id: u32) -> Result<DsvMode, u16> {
         match self.entries.iter().find(|e| e.id == id) {
             Some(e) => Ok(e.mode),
-            None => {
-                self.stats.rejects = self.stats.rejects.saturating_add(1);
-                Err(self.stale_code_for(id, CODE_DSV_ENTRY_UNKNOWN))
-            }
+            None => Err(self.stale_code_for(id, CODE_DSV_ENTRY_UNKNOWN)),
         }
     }
 

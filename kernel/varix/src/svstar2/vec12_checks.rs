@@ -6,6 +6,8 @@
 //! - 双侧定位 → `C12-定位-*`（参数个数不符给定义处+调用处）
 //! - 深度上限 → `C12-深度-*`（互递归截断、上限可配）
 
+use alloc::format;
+use alloc::vec::Vec;
 use super::vec12_macro::*;
 use crate::checks::CheckSet;
 use alloc::string::ToString;

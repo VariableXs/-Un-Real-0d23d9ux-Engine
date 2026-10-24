@@ -14,9 +14,9 @@
 //! 必须报；合批块数必须与条数吻合（万项=40 块）；基准锚定对孤儿 covers 必须
 //! 拒绝——正向恒绿不构成证据。每族都配反向样本（超阈/崩坏/全互异/未达）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

@@ -1,0 +1,33 @@
+# Varix kernel workspace build configuration.
+# Kernel ELF:  cargo kbuild            (alias, see below)
+# Host tests: cargo ktest              (alias, builds lib for the host triple)
+[alias]
+kbuild = "build --target x86_64-unknown-none --release --features kernel-image"
+ktest = "test --target x86_64-pc-windows-msvc"
+kcheck = "check --target x86_64-unknown-none --features kernel-image"
+
+# 测试线程栈预算（结构面不进良心）：KernelCheckup 是栈上定长数组
+# （[Option<CheckSet>; MAX_DOMAINS]，WP-301 后 128 容量 ≈ 331KB），且
+# F475 leaf 条目与闭环嵌套两份 ≈ 662KB——默认 2MiB 测试栈在域数增长后
+# 触底（f475 STATUS_STACK_OVERFLOW）。16MiB 只影响宿主测试进程，
+# kbuild 内核镜像路径不读此变量。
+#
+# 2026-10-22 上调 16MiB → 64MiB（实测归因）：本变量**同时**控制 rustc
+# 自身的主线程栈（rustc 用 RUST_MIN_STACK 初始化内部线程）。仓内模块数
+# 突破 5,300 后，`cargo check --lib` 在 MIR 构建阶段直接
+# `STATUS_STACK_BUFFER_OVERRUN (0xc0000409)` 崩掉——**不是代码错，是编译器
+# 自己撑爆了**，报错停在 rustc_mir_build::build_mir_inner_impl。16MiB 时
+# 仍偶发（约三成概率），64MiB 实测稳定。此项只放大宿主侧进程栈，不影响
+# 内核镜像的运行时栈预算，也不改变任何产物的代码生成结果。
+[env]
+RUST_MIN_STACK = "67108864"
+
+[target.x86_64-unknown-none]
+linker = "rust-lld"
+rustflags = [
+    "-C", "link-arg=-Tvarix/linker.ld",
+    "-C", "code-model=kernel",
+    "-C", "relocation-model=static",
+    "-C", "panic=abort",
+    "-C", "force-frame-pointers=yes",
+]

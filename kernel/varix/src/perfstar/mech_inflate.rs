@@ -22,13 +22,13 @@
 //!   不进内核启动检查栈）；编码器↔解码器全链对拍在宿主单测（3897 套件
 //!   同样在册），口径见本件与 mech_deflate 的 tests。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::perfstar::imgsimd_ext::{row_filter, Filter};
 use crate::perfstar::mech_deflate::{DIST_BASE, DIST_EXTRA, LEN_BASE, LEN_EXTRA};
 // CheckSet 判例组装需要块缓冲：alloc 在内核 lib.rs 无条件 extern（宿主
 // std 构建与 kernel-image 构建均可解析）；判定数据流本身仍零堆（定长数组）。
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// LZ77 距离上限（与编码器同源口径）。
 pub const WSIZE: usize = 32768;

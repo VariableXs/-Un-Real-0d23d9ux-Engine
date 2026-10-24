@@ -4,6 +4,7 @@
 //! theirs 冲突裁决）、版本向量比较（前/后/相等/分叉四态）、传输分块
 //! 校验（逐块指纹链 + 首坏块定位）、传输进度模型（确认块推进）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase;
 

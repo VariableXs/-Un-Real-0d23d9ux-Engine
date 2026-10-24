@@ -22,11 +22,13 @@
 //! 复用其理念而非依赖其实现（域间不交叉依赖）。与 F2001/F2002 的 RtSpec：
 //! TS 版独立声明同构结构以免跨条 import 副作用，Rust 版保持同构独立
 //! （`vek02_dagexec::RtSpec` 带槽名，本池规格无槽名——分桶键不含槽）。
+use alloc::vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
 use super::vek02_dagexec;
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 // ===========================================================================

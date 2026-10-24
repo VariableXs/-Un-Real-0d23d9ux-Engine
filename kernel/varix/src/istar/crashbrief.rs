@@ -10,6 +10,7 @@
 //! - 同类崩溃 24h 内重复发生时升级提示；
 //! - 简报不是甩锅（不说「你的操作有问题」）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

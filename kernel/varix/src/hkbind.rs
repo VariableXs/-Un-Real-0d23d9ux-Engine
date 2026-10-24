@@ -134,19 +134,19 @@ impl HotkeyDict {
         // 应用表内部无重复主键（app_bind 冲突拒绝保证）——对账面复核
         for i in 0..self.n_app {
             for j in (i + 1)..self.n_app {
-                let a = self.app_binds[i].unwrap();
-                let b = self.app_binds[j].unwrap();
-                if a.scancode == b.scancode && a.mods == b.mods {
-                    return false;
+                if let (Some(a), Some(b)) = (self.app_binds[i], self.app_binds[j]) {
+                    if a.scancode == b.scancode && a.mods == b.mods {
+                        return false;
+                    }
                 }
             }
         }
         for i in 0..self.n_user {
             for j in (i + 1)..self.n_user {
-                let a = self.user_binds[i].unwrap();
-                let b = self.user_binds[j].unwrap();
-                if a.scancode == b.scancode && a.mods == b.mods {
-                    return false;
+                if let (Some(a), Some(b)) = (self.user_binds[i], self.user_binds[j]) {
+                    if a.scancode == b.scancode && a.mods == b.mods {
+                        return false;
+                    }
                 }
             }
         }

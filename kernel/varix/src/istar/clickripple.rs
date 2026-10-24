@@ -10,6 +10,7 @@
 //! - 涟漪颜色走主题令牌（F151）；涟漪是录制时叠加不进系统交互（只在
 //!   视频里出现）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

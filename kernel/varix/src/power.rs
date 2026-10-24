@@ -1021,10 +1021,13 @@ impl FanCurve {
         let mut hi: Option<FanCurvePoint> = None;
         for i in 0..self.count {
             let p = self.points[i];
-            if p.temp_c <= temp_c && (lo.is_none() || p.temp_c > lo.unwrap().temp_c) {
+            // 保守比较：基准缺位视为边界无穷（不 panic）。
+            let lo_bound = lo.as_ref().map_or(i8::MIN, |l| l.temp_c);
+            let hi_bound = hi.as_ref().map_or(i8::MAX, |h| h.temp_c);
+            if p.temp_c <= temp_c && p.temp_c > lo_bound {
                 lo = Some(p);
             }
-            if p.temp_c >= temp_c && (hi.is_none() || p.temp_c < hi.unwrap().temp_c) {
+            if p.temp_c >= temp_c && p.temp_c < hi_bound {
                 hi = Some(p);
             }
         }

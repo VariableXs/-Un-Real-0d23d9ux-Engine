@@ -624,8 +624,9 @@ pub mod target {
 
         // ① 三方全占满：份额 ≈ targets（±80‰），每方 ≥ min − 80‰（保底不丢）。
         let mut quota = CpuQuota::new();
-        quota.assign_tid(11, Party::Engine).unwrap();
-        quota.assign_tid(12, Party::Wine).unwrap();
+        if quota.assign_tid(11, Party::Engine).is_err() || quota.assign_tid(12, Party::Wine).is_err() {
+            return false; // 新表指派必成；失败 = 配额实现退化（探针诚实转红）
+        }
         let targets = quota.targets();
         let floors = [
             quota.quota(Party::Front).min_permil,

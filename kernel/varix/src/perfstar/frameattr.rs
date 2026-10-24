@@ -17,6 +17,7 @@
 //!
 //! 零堆纪律：定长事件环，无 alloc。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::perfstar::frameledger::RawFrame;
 
@@ -324,15 +325,18 @@ impl Attributor {
         let verdict;
         if suf_n > 0 {
             // 主因 = 回线者中贡献最大者（自证：扣掉它帧就回线）。
-            let mut best = sufficient[0];
-            for i in 1..suf_n {
+            let mut best: Option<(Suspicion, u32)> = None;
+            for i in 0..suf_n {
                 if let Some((s, c)) = sufficient[i] {
-                    if c > best.unwrap_or((s, 0)).1 {
+                    if best.map_or(true, |b| c > b.1) {
                         best = Some((s, c));
                     }
                 }
             }
-            out[0] = Some(best.unwrap().0);
+            let Some(bs) = best else {
+                return None; // 充分集空（不变量兜底）：本帧无可归因
+            };
+            out[0] = Some(bs.0);
             // 其余达阈嫌疑按贡献降序随后（证据完整呈现，不只给主因）。
             let mut rest: [Option<(Suspicion, u32)>; 4] = [None; 4];
             let mut rn = 0;
@@ -346,15 +350,15 @@ impl Attributor {
             }
             for i in 1..rn {
                 let mut j = i;
-                while j > 0 && rest[j].unwrap().1 > rest[j - 1].unwrap().1 {
+                while j > 0 && rest[j].map_or(0, |p| p.1) > rest[j - 1].map_or(0, |p| p.1) {
                     rest.swap(j, j - 1);
                     j -= 1;
                 }
             }
             for i in 1..rn + 1 {
-                out[i] = Some(rest[i - 1].unwrap().0);
+                out[i] = rest[i - 1].map(|p| p.0);
             }
-            verdict = Verdict::Single(best.unwrap().0);
+            verdict = Verdict::Single(bs.0);
             return Some(AttrEvent {
                 frame_seq: ctx.frame_seq,
                 timestamp_ms: ctx.timestamp_ms,
@@ -368,13 +372,13 @@ impl Attributor {
         // 混合归因：按占比（贡献/超预算量）降序，不硬编主因。
         for i in 1..n {
             let mut j = i;
-            while j > 0 && ranked[j].unwrap().1 > ranked[j - 1].unwrap().1 {
+            while j > 0 && ranked[j].map_or(0, |p| p.1) > ranked[j - 1].map_or(0, |p| p.1) {
                 ranked.swap(j, j - 1);
                 j -= 1;
             }
         }
         for i in 0..n {
-            out[i] = Some(ranked[i].unwrap().0);
+            out[i] = ranked[i].map(|p| p.0);
         }
         verdict = Verdict::Mixed;
         Some(AttrEvent {

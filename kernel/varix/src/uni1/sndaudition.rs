@@ -14,6 +14,7 @@
 //! 导入 round-trip（开放性：方案是用户数据，可带走）；导入拒收野
 //! 事件（清单外事件名不收）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

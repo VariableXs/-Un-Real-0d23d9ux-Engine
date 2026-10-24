@@ -11,6 +11,8 @@
 //! 并发上限（每用户 2——超限显性拒不静默挤掉旧会话）；超时回收（扫描式
 //! sweep，idle 超时单向终态 Expired——回收是终态不是删除，账目可审计）。
 //! 时间戳上游注入（零墙钟——同 P 域纪律）。诊断码段 0x52（字符串码）。
+use alloc::format;
+use alloc::string::String;
 
 use alloc::vec::Vec;
 

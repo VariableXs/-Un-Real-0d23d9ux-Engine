@@ -35,6 +35,7 @@
 //! （场景分类——场景维的语义分册）；F3204（计分体系——Scored 格的
 //! 分数语义下游）。零 panic 面、零 IO、零墙钟、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

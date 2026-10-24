@@ -12,10 +12,10 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::vek04_bloom::*;
 use crate::checks::CheckSet;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 近似相等。

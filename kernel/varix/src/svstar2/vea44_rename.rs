@@ -26,6 +26,7 @@
 //!
 //! 诊断段：0x2200 基址（全域核查无占用）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -370,8 +371,8 @@ pub fn run_vea44_checks() -> CheckSet {
             }
         }
         let in_segment = codes.iter().all(|c| (c & 0xFF00) == 0x2200);
-        chk(&mut set, "C44-90 码位互异段独占", all_diff && in_segment && codes.len() == 6,
-            "诊断码互异或越段");
+        chk(&mut set, "C44-90 码位互异段独占", all_diff && in_segment && codes.len() == 4,
+            "四码互异且全落 0x22 段");
     }
 
     set

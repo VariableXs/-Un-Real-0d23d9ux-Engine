@@ -3,6 +3,9 @@
 //! 补深：资产版本清单（包随品牌版本更新）、LOGO 用法图解规范
 //! （间距/底色常量）、滥用分类、资产包导出清单（vxtheme 容器清单）。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::brandkit::{BrandKit, MonoVariant, LOGO_SIZES, NATIVE_4K_MIN_W};
 

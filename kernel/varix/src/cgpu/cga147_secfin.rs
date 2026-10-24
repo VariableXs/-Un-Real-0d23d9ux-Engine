@@ -302,3 +302,57 @@ impl SecFinalLedger {
         self.waiver_hygiene()
     }
 }
+
+
+// ===== 深化块（cga147_secfin · 安全终审深化）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_secfin {
+    //! 安全终审深化 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 高危模式签名表：终审扫描器逐条比对，命中即立案。
+    pub const HIGH_RISK_SIGS: [(&str, u16); 6] = [
+        ("unwrap(", 1),
+        ("expect(", 2),
+        ("panic!", 3),
+        ("unsafe {", 4),
+        ("transmute", 5),
+        ("static mut", 6),
+    ];
+
+    /// 扫描正文：返回首个命中签名与位置，无命中显性 None。
+    pub fn scan_high_risk(text: &str) -> Option<(u16, usize)> {
+        for (sig, code) in HIGH_RISK_SIGS.iter() {
+            if let Some(pos) = text.find(sig) {
+                return Some((*code, pos));
+            }
+        }
+        None
+    }
+
+    /// 扫描报告：命中数 = 立案数，零命中才可签发安全终审章。
+    pub fn sec_sign_off(texts: &[&str]) -> Result<(), u16> {
+        for (i, t) in texts.iter().enumerate() {
+            if scan_high_risk(t).is_some() {
+                return Err(1 + i as u16);
+            }
+        }
+        Ok(())
+    }
+
+    /// 权限面闭集：终审涉及的权限档只允许 0~3（读/写/管/特）。
+    pub fn perm_in_closed_set(p: u8) -> bool {
+        p <= 3
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0147-深化");
+        cs.add("命中检出", scan_high_risk("let x = y.unwrap();").is_some(), "");
+        cs.add("净文放行", scan_high_risk("let x = ok_path();").is_none(), "");
+        cs.add("签发闸", sec_sign_off(&["a()", "b()"]).is_ok() && sec_sign_off(&["a()", "panic!()"]).is_err(), "");
+        cs.add("权限闭集", perm_in_closed_set(3) && !perm_in_closed_set(4), "");
+        cs
+    }
+}

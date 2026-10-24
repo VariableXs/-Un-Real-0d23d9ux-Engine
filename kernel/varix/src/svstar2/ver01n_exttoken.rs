@@ -55,6 +55,7 @@
 //! `[i]` / `unwrap()` / `expect()` 只出现在 `#[cfg(test)]`；判据区与
 //! 实现区一律 match 记红。
 
+use alloc::vec;
 use crate::svstar2::vew04_sandbox::{Facet, SandboxHost};
 use crate::svstar2::ver01_arch::{ChangeAction, ChangeLedger, ChangeRequest, KindId, TokenDef};
 

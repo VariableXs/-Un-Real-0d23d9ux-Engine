@@ -8,6 +8,7 @@
 //!   再点 = 恢复；悬停半透明预览（Aero Peek——F537 按住键的同款效果）；
 //! - 细带小到不误点（6px 视觉 + 鼠标吸附 2px 扩展热区）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

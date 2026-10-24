@@ -14,6 +14,7 @@
 //! - 交叉引用防悬空：手册引用的模块/判据号必须在引用表中存在。
 //! - no_std + alloc；零 unwrap/expect 于运行路径；诊断段 0x1020 独占。
 
+use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 

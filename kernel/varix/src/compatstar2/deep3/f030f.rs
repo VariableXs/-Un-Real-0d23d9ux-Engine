@@ -11,6 +11,8 @@
 //! 域内口径）。零堆纪律：定长指令池 + 定长日志 + 定长变量表，无
 //! Vec/String/Box/format!，错误一律 Err 或计数账面，零静默。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 指令池容量（定长 24）。
@@ -177,7 +179,10 @@ impl Interp {
         let mut failed = 0usize;
         let mut pc = 0usize;
         while pc < self.n && !self.halted {
-            let instr = self.pool[pc].unwrap();
+            let Some(instr) = self.pool[pc] else {
+                self.halted = true;
+                break;
+            };
             let cond_on = instr.cond_bit == NO_COND || (instr.cond_bit < 16 && (self.cond >> instr.cond_bit) & 1 == 1);
             if cond_on && instr.jump >= 0 {
                 let t = instr.jump as usize;

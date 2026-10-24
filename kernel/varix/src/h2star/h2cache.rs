@@ -15,6 +15,8 @@
 //! LRU：命中/插入/淘汰三条路径全部常数步，万级条目最坏路径不退化。
 //! FNV-1a 64 散列复用 [`h2persist::fnv1a64`]（一处一事实）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h2star::h2persist::fnv1a64;
 

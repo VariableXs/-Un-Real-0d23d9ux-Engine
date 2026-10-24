@@ -8,6 +8,7 @@
 //!   组内磁贴独立开关、组整体可拖可删；组折叠（只显示组名条）；
 //!   组内容持久化（与 F417 磁贴布局语义兼容）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

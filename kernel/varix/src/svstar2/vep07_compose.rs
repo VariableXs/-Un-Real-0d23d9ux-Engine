@@ -61,6 +61,7 @@
 //! 仅依赖同册 [`vep05_orch`]（图单源，锚点跨批对接点"组合=图变换"）、[`vep03_token`]
 //! （reduce 泳道与三段式错误）、`alloc`。零 IO、零墙钟、零浮点。
 
+use alloc::vec;
 use crate::svstar2::vep03_token::{Lane, MotionTokenError};
 use crate::svstar2::vep04_stack::P_NAMESPACE_OWNER;
 use crate::svstar2::vep05_orch::{
@@ -70,7 +71,6 @@ use crate::svstar2::vep05_orch::{
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

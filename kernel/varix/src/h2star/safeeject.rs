@@ -14,6 +14,8 @@
 //! 强拔登记（写入中断电 → 受影响文件标注损坏——下次访问可发现）；
 //! 恢复协作口（F066 日志保证卷可恢复——本层只登记不越权修复）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

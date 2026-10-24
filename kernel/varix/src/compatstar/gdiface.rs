@@ -1167,8 +1167,13 @@ pub fn raster_polygon_fill(s: &mut RasterSurface, pts: &[(i32, i32)], c: u32) ->
     if pts.len() < 3 || pts.len() > POLY_VERT_CAP {
         return false;
     }
-    let ymin = pts.iter().map(|p| p.1).min().unwrap();
-    let ymax = pts.iter().map(|p| p.1).max().unwrap();
+    // pts.len() >= 3 已前置校验；折叠求界，零 panic 点。
+    let mut ymin = pts[0].1;
+    let mut ymax = pts[0].1;
+    for p in pts {
+        ymin = ymin.min(p.1);
+        ymax = ymax.max(p.1);
+    }
     let mut xs = [0i32; POLY_VERT_CAP * 2];
     for y in ymin..=ymax {
         let mut n = 0usize;

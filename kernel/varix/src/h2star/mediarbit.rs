@@ -13,6 +13,7 @@
 //! 下一首）经仲裁器路由；每次键击回填 OSD 快照（应用+曲名）并记录
 //! 响应耗时进环形账（<50ms 硬线判定）。时间全注入，六态用例宿主可复现。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

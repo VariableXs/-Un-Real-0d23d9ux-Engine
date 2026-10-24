@@ -42,11 +42,11 @@
 //! 逻辑版本序注入，零墙钟；零 IO；类型自持（本条不 import 未注册的兄弟模块——平行
 //! 会话的 `ve*` 族尚在施工，编译期硬耦合会让本条因别人的进度而红）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 

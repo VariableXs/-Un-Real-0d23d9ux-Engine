@@ -66,6 +66,7 @@
 //! 故 [`ExportBundle`] **必带** [`ExportBundle::thresholds`]（本次体检
 //! 实际用的阈值表）与生成时刻的判定版本号：报告离开本模块后仍自解释。
 
+use alloc::vec;
 extern crate alloc;
 
 use alloc::format;

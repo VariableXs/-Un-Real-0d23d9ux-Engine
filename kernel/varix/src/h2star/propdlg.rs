@@ -14,6 +14,7 @@
 //! 账）；文件夹异步统计（分批计数器——进度=已扫/总量，空闲切片由调用
 //! 方驱动）；符号链接字段如实标注（不追成目标——审计需要链接本身）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

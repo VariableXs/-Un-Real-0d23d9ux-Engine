@@ -29,6 +29,7 @@
 //! `crate::star::sbase::RingLog`（审计环）、`alloc::vec::Vec`（诊断快照面，
 //! 非热路径）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::RingLog;
 
@@ -350,7 +351,7 @@ impl WinLayerMgr {
     /// 未注册窗口返回 None。
     pub fn promote(&mut self, id: u32, entry: PromotionEntry, ts_ms: u64) -> Option<WinLayer> {
         let slot = self.wins.iter_mut().find(|w| matches!(w, Some(r) if r.id == id))?;
-        let rec = slot.as_mut().unwrap();
+        let Some(rec) = slot.as_mut() else { return None };
         let target = entry.target_layer();
         if entry.same_layer() {
             // 同层置顶：层不变，深度序号刷新到最新。
@@ -390,7 +391,10 @@ impl WinLayerMgr {
             Some(s) => s,
             None => return false,
         };
-        let rec = slot.as_mut().unwrap();
+        let rec = match slot.as_mut() {
+            Some(r) => r,
+            None => return false,
+        };
         rec.always_top = true;
         rec.seq = self.seq_next;
         self.seq_next = self.seq_next.wrapping_add(1).max(1);
@@ -570,7 +574,10 @@ impl WinLayerMgr {
             Some(s) => s,
             None => return false,
         };
-        let rec = slot.as_mut().unwrap();
+        let rec = match slot.as_mut() {
+            Some(r) => r,
+            None => return false,
+        };
         if rec.layer == WinLayer::Normal {
             return false; // 已在普通层，无需降。
         }

@@ -21,9 +21,11 @@
 //! Rust 版为避免把 F2001 整体拖进迁移面，**能力上限 16 与 RtRef 结构按
 //! f2001 TS 源单源转录**（`MAX_LIVE_EFFECTS`/`RtRef`），并注明转录来源——
 //! F2001 自己的 Rust 迁移由其归属任务负责。
+use alloc::vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 // ===========================================================================

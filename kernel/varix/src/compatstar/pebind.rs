@@ -655,8 +655,14 @@ pub fn validate_cache(buf: &[u8]) -> Result<(u32, u32, u32), &'static str> {
     if buf[0..4] != PBND_MAGIC {
         return Err("pebind: bad magic");
     }
-    let rd32 = |o: usize| u32::from_le_bytes(buf[o..o + 4].try_into().unwrap());
-    let rd64 = |o: usize| u64::from_le_bytes(buf[o..o + 8].try_into().unwrap());
+    // 读取点受 PBND_HEADER+8 与 body+8 前置校验保护；get 兜底 0 仅防御
+    // ——不可达路径退化为版本/校验和不符拒绝，不 panic。
+    let rd32 = |o: usize| -> u32 {
+        buf.get(o..o + 4).and_then(|s| s.try_into().ok()).map_or(0, u32::from_le_bytes)
+    };
+    let rd64 = |o: usize| -> u64 {
+        buf.get(o..o + 8).and_then(|s| s.try_into().ok()).map_or(0, u64::from_le_bytes)
+    };
     if rd32(4) != PBND_VERSION {
         return Err("pebind: unsupported version");
     }

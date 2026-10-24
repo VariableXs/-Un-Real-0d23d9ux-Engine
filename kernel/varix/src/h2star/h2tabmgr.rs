@@ -14,11 +14,12 @@
 //!
 //! 时间纪律：无时钟；几何纯函数。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 标签模型与宽度三档

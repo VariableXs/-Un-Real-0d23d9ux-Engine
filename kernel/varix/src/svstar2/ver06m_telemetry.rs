@@ -36,10 +36,10 @@
 //!
 //! `VecDeque` 操作无索引；排序用 `sort_unstable`。测试区除外。
 
+use alloc::vec::Vec;
 use alloc::collections::VecDeque;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 一、诊断码（E18 段续：5505 起）

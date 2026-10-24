@@ -31,6 +31,8 @@
 //! 掉电一致性：`append` 的持久化点 = 槽写 + flush 返回（tier≥2）；
 //! flush 返回后掉电，条目必须可恢复（×10 注入回归逐点验证）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::drivers::blk::{BlockDevice, BlockError};
 use crate::fs::fs23_journal::{crc23, LogOp, JOURNAL_DEFAULT, JOURNAL_TIERS};
 

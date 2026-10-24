@@ -3,7 +3,11 @@
 //! 输入 → 输出缓冲）/错误通道（不支持/损坏/输出不足三分账）/输出缓冲三段；
 //! 未知算法 10/10 次按不支持拒止；门面清单可导出（算法 ID→名称）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9880;
 

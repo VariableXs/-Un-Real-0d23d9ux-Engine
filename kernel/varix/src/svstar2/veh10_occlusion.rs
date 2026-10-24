@@ -99,6 +99,7 @@
 //! 二期接真几何时**只需新增一个 trait 实现**——分类、材质加权、平滑三段
 //! 全部复用，不动本模块任何一行。声明见 [`GEOMETRY_PHASE1_DECLARATION`]。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -843,7 +844,6 @@ pub fn capability_declaration() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     fn seg(len: f32) -> (Cartesian, Cartesian) {
         (Cartesian::ORIGIN, Cartesian::new(0.0, 0.0, len))

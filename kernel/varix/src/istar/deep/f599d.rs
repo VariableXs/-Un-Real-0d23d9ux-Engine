@@ -8,6 +8,7 @@
 //! ③「恢复动作逐项可查」的**回执账**——恢复后逐项回执（哪些项被
 //!   恢复、哪些项本就没有漂移，一项一明确）。
 
+use alloc::vec::Vec;
 use alloc::string::ToString;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;

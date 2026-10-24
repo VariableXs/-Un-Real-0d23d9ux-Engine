@@ -12,6 +12,9 @@
 //!
 //! 铁律对齐：零堆热路径约束按模块自持；本底盘提供的都是定长/纯函数件。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

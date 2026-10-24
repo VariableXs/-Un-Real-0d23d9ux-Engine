@@ -9,12 +9,13 @@
 //! 双跑一致性核（每样本同环境双解析全等）+ Linux 对照期望表（冻结
 //! 期望串）+ 注入核（空段/$ORIGIN 裸前缀/超长/相对回溯越界/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA280 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA280;
 pub const XC_PI_NOENT: u32 = SEG_BASE + 0x01; // 空段
 pub const XC_PI_BARE: u32 = SEG_BASE + 0x02; // $ORIGIN 裸前缀

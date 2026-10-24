@@ -7,14 +7,15 @@
 //! - 限速策略 → `B04-限速-*`
 //! - 4K 桌面滚动场景带宽实测 → `B04-带宽-*`
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::veb01_device::DisplayCfg;
 use super::veb02_proto::{CtrlCommand, Rect, ReferenceDevice, CtrlResponse};
 use super::veb03_resource::{Create2d, FMT_B8G8R8A8_UNORM, ResourceTable};
 use super::veb04_2dupdate::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
-use alloc::vec::Vec;
+use alloc::format;
 
 fn r(x: u32, y: u32, w: u32, h: u32) -> Rect {
     Rect { x, y, width: w, height: h }
@@ -419,7 +420,6 @@ pub fn run_veb04_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

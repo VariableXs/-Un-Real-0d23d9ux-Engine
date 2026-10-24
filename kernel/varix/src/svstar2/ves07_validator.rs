@@ -53,9 +53,9 @@
 //!
 //! 零 panic 面、零 IO、零墙钟；无全局可变状态（状态由调用方持有）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::veq01_pipeline::Outcome;

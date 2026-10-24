@@ -22,6 +22,8 @@
 //!
 //! 时间戳无关（配额无时钟面）；零 panic（余量运算 saturating + 除法
 //! 仅常量非零）；诊断码段 0x53（字符串码）。
+use alloc::format;
+use alloc::string::String;
 
 use alloc::vec::Vec;
 

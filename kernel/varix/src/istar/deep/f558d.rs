@@ -9,6 +9,8 @@
 //!   计数摘要 / 无冲结论 / 幽灵明细三段式，逐行确定文本（换机凭证
 //!   要能打印能归档）。
 
+use alloc::format;
+use alloc::vec::Vec;
 use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;

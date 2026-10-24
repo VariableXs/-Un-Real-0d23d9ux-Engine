@@ -44,8 +44,8 @@
 //!
 //! 网格几何数据不含用户内容；报告仅含计数与坐标，无文本无标识。
 
-use alloc::string::String;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::format;
 

@@ -46,6 +46,7 @@
 //! 申请方——rank 消费者）；F0645（合成对接——排程完成的下游）。
 //! 零 panic 面、零 IO、零墙钟（tick 注入）、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

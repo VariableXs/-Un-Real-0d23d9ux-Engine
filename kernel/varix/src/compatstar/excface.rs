@@ -24,7 +24,6 @@
 
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 异常码（winnt.h）
@@ -675,8 +674,14 @@ pub fn deserialize_dump(buf: &[u8]) -> Result<MiniDump, &'static str> {
     if buf[0..4] != VDMP_MAGIC {
         return Err("vdmp: bad magic");
     }
-    let rd32 = |o: usize| u32::from_le_bytes(buf[o..o + 4].try_into().unwrap());
-    let rd64 = |o: usize| u64::from_le_bytes(buf[o..o + 8].try_into().unwrap());
+    // 全部读取点偏移都受 VDMP_SERIAL_SIZE 前置校验保护；get 兜底 0 仅
+    // 防御性——不可达路径退化为版本/校验和不符拒绝，不 panic。
+    let rd32 = |o: usize| -> u32 {
+        buf.get(o..o + 4).and_then(|s| s.try_into().ok()).map_or(0, u32::from_le_bytes)
+    };
+    let rd64 = |o: usize| -> u64 {
+        buf.get(o..o + 8).and_then(|s| s.try_into().ok()).map_or(0, u64::from_le_bytes)
+    };
     if rd32(4) != VDMP_VERSION {
         return Err("vdmp: unsupported version");
     }

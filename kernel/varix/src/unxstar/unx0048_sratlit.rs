@@ -2,7 +2,8 @@
 //! 验收锚点：UNX-F0048-J1 SRAT 处理器/内存亲和条目与 SLIT 延迟矩阵
 //! 联合解析，节点闭集自洽判据通过；纯功能代码 ≥260 行。
 
-use crate::alloc::vec::Vec;
+
+use crate::alloc::{vec::Vec};
 
 pub const SEG_BASE: u16 = 0x2010;
 

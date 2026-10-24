@@ -2,8 +2,11 @@
 //! 验收锚点：UNX-F8681-J1 LTP（Linux Test Project）用例到内核判据
 //! 的映射表 ≥60 行——行号连续、用例名唯一、判据号非空、未映射用例
 //! 显式落账，双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB6C0;
 

@@ -69,9 +69,9 @@
 //!
 //! 零 panic 面、零 IO、无全局可变状态（所有状态由调用方持有并显式传入）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vem03_interp::Interp;

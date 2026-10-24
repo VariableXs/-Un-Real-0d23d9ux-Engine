@@ -46,6 +46,7 @@
 // 导入（no_std 三件套）
 // ---------------------------------------------------------------------------
 
+use alloc::vec;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

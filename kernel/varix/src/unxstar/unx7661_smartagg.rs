@@ -3,7 +3,8 @@
 //! B22 阈值引擎 / B23 呈现契约）各留账；族表 F7561–F7660 共 100 槽，按注册序可索引、
 //! 可枚举、可计数；总聚合对账：五批各绿 + 族表 100 槽满员即总绿。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7B80;
 

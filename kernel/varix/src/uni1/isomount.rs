@@ -24,6 +24,7 @@
 //! - 余量提示 [`IsoMounter::slots_hint`]：诊断面的人话余量
 //!   （「还能挂 N 个」/「已满——请先弹出」）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

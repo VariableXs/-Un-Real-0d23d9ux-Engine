@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! VE-F3804 · 焦点渲染强化（VE-T 域 · 无障碍渲染 · 目标 360 行）
 //!
 //! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F3804`
@@ -168,13 +169,12 @@
 //!     恰好产出 3 条分支理由（多一条就说明有分支在按集合内容分流）。
 //! **没有一项是 O(场景节点数)**：这是架构约束，不是巧合。
 
-#![allow(clippy::needless_range_loop)]
+use alloc::vec;
 
 use super::vet01_a11y_render_pipeline as f3802;
 use super::vet02_highcontrast_engine as f3803;
 use alloc::format;
 use alloc::string::ToString;
-use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

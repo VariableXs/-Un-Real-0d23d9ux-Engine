@@ -36,6 +36,7 @@
 //!
 //! `VecDeque` + `retain`，无索引。测试区除外。
 
+use alloc::vec;
 use alloc::collections::VecDeque;
 use alloc::format;
 use alloc::string::{String, ToString};

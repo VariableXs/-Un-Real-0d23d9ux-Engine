@@ -27,12 +27,13 @@
 //! 唯一源；签名面为 ed25519 替换点登记的 SHA-256 双轮参考实现——
 //! 算法位诚实标注，替换接缝登记 F130）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use crate::svstar::vbase;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源）

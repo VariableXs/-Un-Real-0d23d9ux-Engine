@@ -2,8 +2,12 @@
 //! 验收锚点：UNX-F8641-J1 样本库从 30 扩额至 40——旧 30 条零变动
 //! （指纹逐一比对），新 10 条增量登记，扩额后总量对账 40 自洽，
 //! 每样本加载模拟全过，双判据缺一即批内红灯。
+use alloc::vec;
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB660;
 

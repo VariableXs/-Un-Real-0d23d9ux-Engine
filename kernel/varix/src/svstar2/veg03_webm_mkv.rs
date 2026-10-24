@@ -114,11 +114,11 @@
 //!
 //! 零 IO、零墙钟、类型自持（不 import 未注册的兄弟模块）；跨平台逐位可复现。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ════════════════════════════════════════════════════════════════════════════

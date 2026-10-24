@@ -10,6 +10,8 @@
 //!   的是本体）；
 //! - 与 F292 断链自愈衔接（目标丢失时此处给诊断）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

@@ -35,11 +35,11 @@
 //! 模块——平行会话的 `ved*` 族尚在施工，注册次序不定，编译期硬耦合会让本条
 //! 因别人的进度而红）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

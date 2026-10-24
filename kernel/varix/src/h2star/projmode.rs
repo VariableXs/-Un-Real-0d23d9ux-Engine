@@ -13,6 +13,7 @@
 //! 跨屏判据）；黑屏恢复（仅第二屏模式下主屏交互入口保留——恢复路径
 /// 的机制保证）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

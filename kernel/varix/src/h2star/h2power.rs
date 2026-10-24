@@ -15,6 +15,7 @@
 //! 时间纪律：分钟戳由调用方注入；时区偏移以分钟为单位（含半小时
 //! 时区：5.5h = 330）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

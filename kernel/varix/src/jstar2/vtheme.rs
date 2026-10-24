@@ -20,6 +20,8 @@
 //! 同步范围目录（两处登记同一 section 名——一处一事实对账）；
 //! **回退链**：导入前快照 → 应用失败/用户反悔 → 整段还原（快照回放）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::fnv1a64;
 use alloc::string::String;

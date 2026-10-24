@@ -823,6 +823,40 @@ pub fn run_full_loop() -> FullLoop {
     lp.register(crate::shell::taskbar::run_taskbar_checks());
     // TRINITY-500 AI-12~AI-19
     lp.register(crate::entry::run_uspace_checks());
+    // AI-4 · Win32 内存/文件/错误码服务（Wine 前置件，W701~W705 产线判据）
+    lp.register(crate::proc::winmem::run_winmem_checks());
+    // —— 死判据回活（2026-10-22 体检：定义了但全仓零调用的判据面，冷区批）——
+    // AI-11 显示八族
+    for cs in crate::display::run_ai11_display_checks() {
+        lp.register(cs);
+    }
+    // AI-36/38/39 安全执法三面
+    for cs in crate::sec::run_ai36_sec_checks() {
+        lp.register(cs);
+    }
+    for cs in crate::sec::run_ai38_sec_checks() {
+        lp.register(cs);
+    }
+    for cs in crate::sec::run_ai39_sec_checks() {
+        lp.register(cs);
+    }
+    // FS23 文件系统八检
+    for cs in crate::fs::run_fs23_checks() {
+        lp.register(cs);
+    }
+    // AI-28 工具内核十族（250 检按族保真登记）
+    for cs in crate::task::run_task_all_checks() {
+        lp.register(cs);
+    }
+    // 终门 / 公共对话框扩展 / 复制路径深浅两核 / M700 虚拟内存域
+    lp.register(crate::galaxy::finalgate::run_finalgate_checks());
+    lp.register(crate::compatstar::comdlg::run_comdlg_ext_checks());
+    lp.register(crate::h3star::copypath::run_copypath_checks());
+    lp.register(crate::h3star::copypath::run_copypath_deep_checks());
+    lp.register(crate::m700vm::run_m700vm_checks());
+    // VEI-11 网格流 / Galaxy 全量复核
+    lp.register(crate::gfx::meshstream::run_vei11_checks());
+    lp.register(crate::galaxy::verifyall::run_verifyall_checks());
     lp.register(crate::app_write::run_write_checks());
     lp.register(crate::app_mind::run_mind_checks());
     lp.register(crate::app_code::run_code_checks());

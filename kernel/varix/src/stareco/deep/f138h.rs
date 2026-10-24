@@ -3,6 +3,10 @@
 //! 装配与跨域接口件：发布日历 → 关于本机页数据行、更新体验面（F122）
 //! 的预约可用判定、渠道公告装配（各渠道取各自内容子集）。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f138g::{channel_allows, render_notes, NoteKind};
 use crate::checks::CheckSet;
 

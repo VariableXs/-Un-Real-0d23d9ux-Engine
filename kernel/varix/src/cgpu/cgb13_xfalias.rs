@@ -56,7 +56,7 @@ pub const CONSERVATIVE_ON_UNKNOWN: bool = true;
 // ---------------------------------------------------------------------------
 
 /// 逻辑资源：帧内视角的名字（生产者起的名，随帧走）。
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LogicalRes {
     /// 所属帧号。
     pub frame: u64,
@@ -67,9 +67,9 @@ pub struct LogicalRes {
 impl LogicalRes {
     pub fn key(&self) -> String {
         let mut s = String::from("f");
-        s.push_str(itoa(self.frame));
+        s.push_str(&itoa(self.frame));
         s.push_str("s");
-        s.push_str(itoa(self.slot as u64));
+        s.push_str(&itoa(self.slot as u64));
         s
     }
 }
@@ -403,9 +403,9 @@ impl AliasEngine {
         for e in self.edges.iter() {
             if e.b.frame == frame && e.a.frame < frame {
                 let mut s = String::from("等待 f");
-                s.push_str(itoa(e.a.frame));
+                s.push_str(&itoa(e.a.frame));
                 s.push_str("s");
-                s.push_str(itoa(e.a.slot as u64));
+                s.push_str(&itoa(e.a.slot as u64));
                 s.push_str(" 别名来源=");
                 s.push_str(e.via.zh());
                 if e.conservative {
@@ -463,17 +463,17 @@ impl AliasSnap {
         let mut s = String::from("[别名 ");
         s.push_str(&self.engine);
         s.push_str(" 池=");
-        s.push_str(itoa(self.pools));
+        s.push_str(&itoa(self.pools));
         s.push_str(" 绑定=");
-        s.push_str(itoa(self.bindings));
+        s.push_str(&itoa(self.bindings));
         s.push_str(" 边=");
-        s.push_str(itoa(self.edges));
+        s.push_str(&itoa(self.edges));
         s.push_str(" 推导=");
-        s.push_str(itoa(self.derived));
+        s.push_str(&itoa(self.derived));
         s.push_str(" 保守=");
-        s.push_str(itoa(self.conservative));
+        s.push_str(&itoa(self.conservative));
         s.push_str(" 拒绝=");
-        s.push_str(itoa(self.rejects));
+        s.push_str(&itoa(self.rejects));
         s.push_str("]");
         s
     }
@@ -511,7 +511,7 @@ pub fn scenario_ring_alias() -> Result<AliasSnap, u32> {
     // 帧号布局绑定：f1..f8 的写槽位绑定物理缓冲 100+槽。
     let mut f = 1;
     while f <= 8 {
-        let slot = f % 4;
+        let slot = (f % 4) as u32;
         e.bind(LogicalRes { frame: f, slot }, 100 + slot as u64)?;
         f += 1;
     }

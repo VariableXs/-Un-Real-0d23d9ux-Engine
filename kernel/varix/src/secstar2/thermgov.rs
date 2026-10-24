@@ -19,9 +19,10 @@
 //!
 //! 依赖锚点：F048（手动档叠加）、F060（曲线账本）、F069（性能档联动）、F196（冲刷管线）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::MinuteBook;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

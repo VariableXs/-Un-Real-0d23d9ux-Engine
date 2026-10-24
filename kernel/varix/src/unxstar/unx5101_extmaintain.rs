@@ -4,7 +4,11 @@
 //! 回滚 rollback），与 B09 段判据交叉引用零悬空（六操作名均可在分界表索引到，
 //! 引用表空缺即红），总纲可导出。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x8000;
 

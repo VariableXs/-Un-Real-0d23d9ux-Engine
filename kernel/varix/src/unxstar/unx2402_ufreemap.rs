@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! =====================================================================================
 //! 任务单：UNX-F2402 · 可用区间位图初始化与页对齐裁边
 //! 域/批：A4/B01（可用区间位图初始化 · 页对齐裁边）
@@ -57,9 +58,11 @@
 //! `no_std + alloc`；零 `unwrap` / `expect` / `panic!` / `todo!`；零浮点；
 //! 零真实 IO、零墙钟——时间一律为注入的逻辑 `tick: u64`；确定性 LCG 保证同种子
 //! 同轨迹；错误为自定义 `Result<T, BmErr>` 闭集。
-#![allow(dead_code)]
+use alloc::vec;
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 extern crate alloc;
-use alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 // ===========================================================================
 // 1. 常量表

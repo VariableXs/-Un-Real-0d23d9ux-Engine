@@ -34,13 +34,13 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::ver01c_cascade::*;
 use super::ver01b_parser::{parse_and_build, SourceFormat, TokenDag, TokenSet};
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::string::ToString;
 

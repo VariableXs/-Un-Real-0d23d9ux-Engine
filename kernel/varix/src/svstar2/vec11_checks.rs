@@ -6,6 +6,7 @@
 //! - 单一实现 → `C11-复用-*`（指令体记号来自主词法 vec03）
 //! - 双流分离 → `C11-双流-*`（指令流×代码流、位置保真、行中井号裁定）
 
+use alloc::vec::Vec;
 use super::vec03_lexer::TokenKind;
 use super::vec11_prepro::*;
 use crate::checks::CheckSet;

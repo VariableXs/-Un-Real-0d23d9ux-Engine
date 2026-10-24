@@ -15,6 +15,7 @@
 //! 时间全部由调用方注入（分钟戳/微秒戳）；空闲批量压缩窗口由上层给
 //! 入口（F048 低频档窗口），本模块不持调度器。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::{pct_near, RingLog};
 
@@ -621,7 +622,10 @@ impl CompressPool {
                 return Ok(PoolVerdict::Miss);
             }
         };
-        let entry = self.slots[idx].entry.unwrap();
+        let Some(entry) = self.slots[idx].entry else {
+            self.stats.decomp_miss += 1;
+            return Ok(PoolVerdict::Miss);
+        };
         if entry.len == 0 {
             out.fill(0);
         } else {
@@ -629,7 +633,9 @@ impl CompressPool {
             let src = &self.slots[idx].data[..clen];
             lz4_decompress(src, out)?;
         }
-        self.slots[idx].entry.as_mut().unwrap().decomps += 1;
+        if let Some(e) = self.slots[idx].entry.as_mut() {
+            e.decomps += 1;
+        }
         self.stats.decomp_ok += 1;
         self.stats.decompress_bytes += PAGE_SIZE as u64;
         self.record_decomp_us(elapsed_us);
@@ -640,7 +646,9 @@ impl CompressPool {
     pub fn touch(&mut self, frame: u64, now_sec: u64) -> bool {
         match self.slots.iter_mut().find(|s| s.entry.map(|e| e.frame) == Some(frame)) {
             Some(slot) => {
-                slot.entry.as_mut().unwrap().last_touch_sec = now_sec;
+                if let Some(e) = slot.entry.as_mut() {
+                    e.last_touch_sec = now_sec;
+                }
                 true
             }
             None => false,
@@ -924,7 +932,6 @@ pub fn run_memcomp_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     fn xorshift(x: &mut u32) -> u32 {
         *x ^= *x << 13;

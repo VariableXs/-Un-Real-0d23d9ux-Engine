@@ -15,6 +15,7 @@
 //! 实现形态：30s 恢复点调度器（注入钟）+ 双写账（内存/临时区一致性）
 //! + 恢复条状态机（恢复/拒绝都走清理闭环）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

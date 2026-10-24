@@ -107,9 +107,9 @@
 //!
 //! 零外部依赖；逻辑 tick 注入，零墙钟；确定性算法、零 IO、回归可复现。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::svstar2::ven02_tree::{ControlTree, MAX_TREE_DEPTH, PropertyKey};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! =====================================================================================
 //! 任务单：UNX-F2361 · 收官轴总控（宣告编排三段）
 //! 域/批：CoRun·UNX-A3-B39（域收官宣告与封账 · 交接收官轴三）
@@ -49,11 +50,10 @@
 //! `no_std + alloc`；零 `unwrap` / `expect` / `panic!` / `todo!`；零浮点；
 //! 零真实 IO、零墙钟——时间一律为注入的逻辑 `tick: u64`；确定性 LCG 保证同种子
 //! 同轨迹；错误为自定义 `Result<T, DecErr>` 闭集。
-#![allow(dead_code)]
+use alloc::vec;
 extern crate alloc;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ===========================================================================

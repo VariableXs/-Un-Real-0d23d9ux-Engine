@@ -8,6 +8,7 @@
 //! 执核验）；主题映射终审：X 域二十主题→落条唯一性断言——一主题一落条不缺不
 //! 重；O-W 八域映射家族对拍——第二十一位域入族对齐；回执未达→催办限期。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

@@ -14,6 +14,8 @@
 //! 归档台账（append-only——借 ebase::SeqLedger）、iCal 导出、偏差
 //! 如实登记。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::SeqLedger;
 

@@ -48,6 +48,7 @@
 //! 表里写错时它照样全绿。故凡涉及「某个特征该选什么」的判据，期望值都抄一份在
 //! 本文件里，两处不一致时判据变红（这是我们要的：规格改了要有人看见）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

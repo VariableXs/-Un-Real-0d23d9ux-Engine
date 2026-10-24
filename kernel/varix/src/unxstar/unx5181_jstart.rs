@@ -3,7 +3,8 @@
 //! 零 credits 调用 10/10 次拒止（credits=0 → 拒）；与 F5171 结构账联账一致
 //! （句柄 tid 与 journal 当前 tid 序列对拍一致）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x8280;
 

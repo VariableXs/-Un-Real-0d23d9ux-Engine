@@ -19,8 +19,8 @@
 //! **依赖锚点**：F151（令牌全集）、F124（Emphasis200 曲线）。
 //! 时间纪律：一切时间由调用方注入毫秒戳，模块不持时钟。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 use crate::h1star::h1base::{Curve, MotionPolicy};
 use alloc::vec::Vec;
 

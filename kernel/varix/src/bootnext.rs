@@ -13,6 +13,9 @@
 //! 运行期调用约定为 Microsoft x64（Rust `extern "win64"`）；Limine 不调用
 //! ExitBootServices、以 HHDM 提供运行期区域访问，物理地址可直接调用。
 
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::limine;
 
 /// EFI_STATUS 成功码。

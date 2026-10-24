@@ -16,6 +16,8 @@
 //! - 异常：便签文件被外部改 → 重载提示；数量上限 20 张（超出提示整理）；
 //!   磁盘异常自动草稿保命。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

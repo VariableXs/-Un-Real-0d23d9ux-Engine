@@ -33,10 +33,10 @@
 //! - **升级看窗口不看累计**：窗口滑动，旧事件自然过期。
 //! - **零 panic 面**：无 `unwrap`、无切片越界、计数 `saturating_*`。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::string::ToString;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

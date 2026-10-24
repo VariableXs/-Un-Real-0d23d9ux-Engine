@@ -5,6 +5,8 @@
 //! 存储模型（编号生成 + 状态审计链）、查询引擎（编号查/状态过滤/
 //! 版本指纹回链）、聚类桶管理、滑动窗限频、季度最佳报告评选。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::{fnv1a64, State5, TraceId};
 

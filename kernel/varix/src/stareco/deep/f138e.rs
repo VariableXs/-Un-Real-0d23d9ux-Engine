@@ -5,6 +5,8 @@
 //! 紧急安全窗插入模型、iCal VALARM 提醒行、订阅通知队列、滑动
 //! 归因深化（天数+原因+更晚日期三件齐）。
 
+use alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::fnv1a64;
 use crate::stareco::releasecal::WindowOutcome;

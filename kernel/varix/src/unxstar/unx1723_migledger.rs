@@ -769,7 +769,7 @@ pub fn run_f1723_checks() -> CheckSet {
             _ => false,
         }
     });
-    cs.add("F1723-04 出入投影一致", proj_ok, "24 组 (src,dst,fp,tid) 出入账逐位相同");
+    cs.add_dyn("F1723-04 出入投影一致", proj_ok, "24 组 (src,dst,fp,tid) 出入账逐位相同");
 
     // ---- F1723-05 三缺一各自被定位 ----
     // 分别造三本缺一账的账本，期望各自命中对应诊断码。

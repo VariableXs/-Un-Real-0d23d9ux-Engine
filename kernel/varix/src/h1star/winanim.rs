@@ -28,6 +28,7 @@
 //! **依赖锚点**：`crate::checks::CheckSet`、
 //! `crate::h1star::h1base::{Curve, MotionPolicy, Rect}`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h1star::h1base::{Curve, MotionPolicy, Rect};
 use crate::star::sbase::RingLog;

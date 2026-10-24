@@ -12,6 +12,8 @@
 //! （29/30/31 判据）；空闲闸（busy 标志注入——前台重载时不执行）；
 //! 事后账条目（项数+释放字节——通知中心文案直读）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h2star::h2base::days_between;
 

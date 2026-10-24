@@ -3,7 +3,8 @@
 //! 条目逐条解析入账，处理器闭集与极性/触发模式枚举判据通过；
 //! 纯功能代码 ≥240 行。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use crate::alloc::{vec::Vec};
 
 pub const SEG_BASE: u16 = 0x2070;
 
@@ -399,7 +400,7 @@ pub fn drill() -> Result<u32, u16> {
     // I1：签名注入 → E_SIG。
     let mut b = synth_madt(&[]);
     b[0] = 0x58;
-    if parse_madt(&b) != Err(E_SIG) {
+    if !matches!(parse_madt(&b), Err(E_SIG)) {
         return Err(E_SIG);
     }
     hits += 1;
@@ -430,7 +431,7 @@ pub fn drill() -> Result<u32, u16> {
         MadtEntry::Lapic(LapicEntry { uid: 0, apic_id: 0, flags: 1 }),
         MadtEntry::Nmi(LapicNmi { processor_id: 7, lint: 1, polarity: POL_DEFAULT, trigger: TRIG_EDGE }),
     ]))?;
-    if IrqTopology::build(&badnmi) != Err(E_NMI_CPU) {
+    if !matches!(IrqTopology::build(&badnmi), Err(E_NMI_CPU)) {
         return Err(E_NMI_CPU);
     }
     hits += 1;

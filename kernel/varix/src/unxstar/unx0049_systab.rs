@@ -3,7 +3,9 @@
 //! 逐字段快照落账，CRC32 一致性判据通过；纯功能代码 ≥280 行。
 //! 纪律：本模块只读——不持有任何可写别名，不回写固件内存。
 
-use crate::alloc::{string::String, vec::Vec};
+
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 
 pub const SEG_BASE: u16 = 0x2020;
 

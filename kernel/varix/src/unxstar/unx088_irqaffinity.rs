@@ -33,10 +33,10 @@
 //! LCG 确定性对拍；错误全显性带建议；FNV 快照往返。诊断码段 0x39
 //! （0x38 为 F0841 所取）。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

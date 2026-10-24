@@ -17,10 +17,10 @@
 //! 诊断码段：0x55（本单独占，0x5501~0x550F）。
 //! 施工：AI-WB2 · 2026-10-11。
 
+use alloc::vec;
 use alloc::collections::VecDeque;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

@@ -9,12 +9,13 @@
 //! minimal → recovery 四档冻结）+ 降级后成功率恢复账（降级前后
 //! N 次引导成败对比）+ 注入核（跨阶段混计/降级越梯/恢复漏账/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA800 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA800;
 pub const XC_BF_MIX: u32 = SEG_BASE + 0x01; // 跨阶段混计
 pub const XC_BF_LADDER: u32 = SEG_BASE + 0x02; // 降级越梯

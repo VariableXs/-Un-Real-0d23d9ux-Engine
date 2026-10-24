@@ -39,8 +39,8 @@
 //! ——漂移即拒收（M 域契约链首环）。收口后契约变更必须 ADR+M02
 //! 知会（[`post_closeout_change`]）。
 
-use alloc::format;
 use alloc::vec;
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

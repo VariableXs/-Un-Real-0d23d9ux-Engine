@@ -44,6 +44,11 @@
 //! 4. **"门禁挂接"**。模型-实测闭环**真调 F1811 单源**：偏差小 WithinGate、
 //!    偏差大 RevisionCase → mark_stale → rebaseline 无 ADR 拒、有 ADR
 //!    落账（0x3904 拒绝语义真触发）。
+use alloc::format;
+use alloc::vec::Vec;
+use crate::float::FloatExt;
+use alloc::string::String;
+use alloc::string::ToString;
 
 use super::vej08_probe::ShCoeffs;
 use super::vej11_lightbudget::{
@@ -215,7 +220,7 @@ pub fn bench_probe_interp() -> ProbeBench {
             // 每探针 4 个方向（真调 irradiance——SH2 卷积）
             for d in 0..DIRS_PER_PROBE {
                 let theta = (i as f32 + d as f32) * 0.01;
-                let dir = (theta.sin(), theta.cos(), 0.5);
+                let dir = (theta.m_sin(), theta.m_cos(), 0.5);
                 let (r, g, bl) = sc.irradiance(dir);
                 if !(r.is_finite() && g.is_finite() && bl.is_finite()) {
                     finite = false;

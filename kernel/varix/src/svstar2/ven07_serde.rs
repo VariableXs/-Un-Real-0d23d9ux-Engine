@@ -253,9 +253,9 @@
 //! 无关；解析器顺序敏感且无随机。同输入同输出，回归可复现。
 //! 生产面零 `panic!`、零 `unsafe`、零 `unwrap`/`expect`、零裸下标。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::svstar2::ven02_tree::{

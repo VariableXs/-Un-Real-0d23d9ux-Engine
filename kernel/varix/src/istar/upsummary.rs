@@ -9,6 +9,8 @@
 //!   （不是更新前吓你）；要点来自更新日志的人话转译（F132 差异表同源）；
 //! - 「不再显示」此卡一键。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

@@ -34,6 +34,7 @@
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64 算术，
 //! 零 IO 零墙钟零浮点；逐条定制数据结构/状态机/错误路径，零模板复述。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

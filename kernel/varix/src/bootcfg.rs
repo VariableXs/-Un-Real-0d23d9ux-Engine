@@ -636,6 +636,8 @@ pub fn effective(cmdline: crate::bootopt::BootOptions, cfg: &BootCfg, src: CfgSo
 
 #[cfg(test)]
 mod tests {
+use alloc::format;
+use alloc::vec;
     use super::*;
     use std::string::String;
     use std::vec::Vec;

@@ -21,11 +21,12 @@
 //! 时间注入式（毫秒戳），宿主测试确定复现。无外部依赖（TTS 引擎面以
 //! 显式接口承接——合成字节流模拟，真引擎替换点登记 F130）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源）

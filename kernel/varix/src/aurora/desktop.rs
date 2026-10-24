@@ -8,6 +8,8 @@
 //! 计数、名称用定长字节数组 `[u8; 32] + len`。禁止 unsafe / 宏 / 泛型 /
 //! Vec / String / Box / format! / dyn。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ===========================================================================

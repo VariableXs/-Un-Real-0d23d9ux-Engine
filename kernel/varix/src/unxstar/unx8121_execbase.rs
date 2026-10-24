@@ -3,7 +3,11 @@
 //! Linux 装载位图一致，不扰动不重排——ET_EXEC 不做基址随机化，段按 p_vaddr
 //! 原样映射；落位结果（段序+地址）与 Linux 位图逐段对拍。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB2A0;
 

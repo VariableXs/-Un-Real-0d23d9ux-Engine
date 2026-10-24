@@ -2,12 +2,12 @@
 //!
 //! **判据（锚点原文）**：统一 schema、v3 升级、维度复用、三组、判据。
 
+use alloc::vec;
 use super::cgp02_unifiedmodel::{
     is_readable_by, upgrade_chain_intact, DimensionKind, DimensionRegistry, Metric, MetricValue,
     PrivacyLevel, SCHEMA_UPGRADES, SCHEMA_VERSION, UNIFIED_MODEL_VERSION,
 };
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 判据侧独立重排的锚点判据五条。

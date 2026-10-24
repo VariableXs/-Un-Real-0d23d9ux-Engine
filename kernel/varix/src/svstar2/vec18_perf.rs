@@ -56,9 +56,9 @@
 //!   产出的记号流供其恢复游标推进）。下游 F0419 fuzz 复用本模块的基准与
 //!   arena 判据作为不变量断言集。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

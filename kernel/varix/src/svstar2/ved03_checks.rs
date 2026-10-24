@@ -11,6 +11,7 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec::Vec;
 use super::ved03_alpha::*;
 use crate::checks::CheckSet;
 

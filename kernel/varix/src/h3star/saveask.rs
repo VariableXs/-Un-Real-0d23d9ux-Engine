@@ -14,6 +14,7 @@
 //! 实现形态：未保存账（dirty 判定唯一源）+ 三问状态机 + 批量勾选面。
 //! 时间注入式；对话框触发时机记账（<100ms 判线）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

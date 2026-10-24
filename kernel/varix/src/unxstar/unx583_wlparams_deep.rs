@@ -35,8 +35,8 @@
 //! **纪律**：零 unwrap/expect/panic、零 IO、零墙钟、零浮点——逻辑 tick
 //! 由调用方 u64 传入，全确定性可重放。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::format;
 

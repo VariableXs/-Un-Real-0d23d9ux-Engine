@@ -9,12 +9,13 @@
 //! 事件型未结算窗口内只入账一次）+ 双路一致性核（轮询必补事件路漏）
 //! + 注入核（未知事件型/去重误放/轮询假事件/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0x9100 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0x9100;
 pub const XC_HP_UNKEV: u32 = SEG_BASE + 0x01; // 未知事件型
 pub const XC_HP_DUP: u32 = SEG_BASE + 0x02; // 去重窗口内重复

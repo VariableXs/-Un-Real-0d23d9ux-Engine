@@ -552,6 +552,7 @@ impl A11yKit {
 
 #[cfg(test)]
 mod tests {
+use alloc::string::String;
     use super::*;
 
     #[test]

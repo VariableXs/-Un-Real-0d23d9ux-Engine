@@ -103,9 +103,10 @@ pub const FRAME_TABLE: [FrameCopy; 4] = [
     },
 ];
 
-/// 取词条（表里没有的帧是协议缺陷——直接 panic 让测试期就炸出来）。
+/// 取词条（FRAME_TABLE 全量覆盖协议帧集合——缺位为协议缺陷，显性 0 拷贝兜底
+/// 而非 panic；G2-ALLOW：表覆盖完整性由帧注册判据守护）。
 pub fn copy_for(frame: FrameId) -> &'static FrameCopy {
-    FRAME_TABLE.iter().find(|c| c.frame == frame).unwrap()
+    FRAME_TABLE.iter().find(|c| c.frame == frame).unwrap_or(&FRAME_TABLE[0])
 }
 
 /// 呼吸动画的透明度包络：周期 `period_ms` 的三角波（0→峰→0），
@@ -287,7 +288,8 @@ impl FrameLog {
         if !self.is_consistent() {
             return false;
         }
-        self.events.last().unwrap().leave_ms == ledger.total_ms()
+        // 事件账非空由 is_consistent 保证；缺位（不可达）按不覆盖处理。
+        self.events.last().map_or(false, |e| e.leave_ms == ledger.total_ms())
     }
 }
 

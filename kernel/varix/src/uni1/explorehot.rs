@@ -15,6 +15,7 @@
 //!
 //! 时间注入式（毫秒戳），无外部依赖。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::uni1::ubase::{Chord, HotkeyTable, MOD_WIN};
 

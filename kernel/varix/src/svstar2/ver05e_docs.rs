@@ -42,6 +42,7 @@
 //!
 //! 全部遍历用 `iter()` / `get()`，无索引；`format!` 不失败。测试区除外。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

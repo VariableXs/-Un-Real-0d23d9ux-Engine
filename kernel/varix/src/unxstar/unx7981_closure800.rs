@@ -3,7 +3,10 @@
 //! vs F7800 锚体例同构 diff ×1 一致（锚：批数/条数/域名字段全等）；B40 十项前置
 //! （F7978）全过为宣告前提断言 ×1（十项有任一未过即不得宣告）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9F80;
 

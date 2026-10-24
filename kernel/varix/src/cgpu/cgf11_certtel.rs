@@ -13,6 +13,7 @@
 //! 核率（复核≠改判，复核率本身是考卷质量的观察窗）。空族不发零值（诚实空
 //! 态）。诊断码段 0x5601~0x5605。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

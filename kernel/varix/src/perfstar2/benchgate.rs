@@ -1041,11 +1041,12 @@ impl BenchScheduler {
 
     /// 跑一晚：按优先级排序后逐个装箱；放不下的顺延（留在队列）。
     pub fn run_night(&mut self) -> (u32, u32) {
-        // 优先级插入排序。
+        // 优先级插入排序（缺槽键按 0 沉底，不 panic）。
         for i in 1..self.n {
             let key = self.queue[i];
+            let key_prio = key.as_ref().map_or(0, |k| k.prio);
             let mut j = i;
-            while j > 0 && self.queue[j - 1].unwrap().prio > key.unwrap().prio {
+            while j > 0 && self.queue[j - 1].as_ref().map_or(0, |k| k.prio) > key_prio {
                 self.queue[j] = self.queue[j - 1];
                 j -= 1;
             }
@@ -1056,7 +1057,7 @@ impl BenchScheduler {
         let mut deferred = 0u32;
         let mut write = 0usize;
         for k in 0..self.n {
-            let job = self.queue[k].unwrap();
+            let Some(job) = self.queue[k] else { continue };
             self.queue[k] = None;
             if self.used_ms + job.cost_ms <= NIGHT_BUDGET_MS {
                 self.used_ms += job.cost_ms;

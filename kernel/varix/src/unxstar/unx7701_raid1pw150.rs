@@ -5,7 +5,8 @@
 //! ③ 收口：150 轮全账对齐——105/45 恰数、结论二态无第四态、位图重放后零丢失轮
 //! （Pass 轮）在两通道分别留账可对。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7C80;
 

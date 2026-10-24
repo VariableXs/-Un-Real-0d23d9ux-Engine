@@ -28,6 +28,8 @@
 //! - 删除的 active 语义：删掉在用方案时 `active_name` 如实清空
 //!   （E4 前柜不留幽灵指针——回退默认由 E4/设置页决定，库房只诚实）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::checker::HealthReport;
 use crate::jstar2::jbase::{

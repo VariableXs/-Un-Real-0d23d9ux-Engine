@@ -7,10 +7,11 @@
 //! 结构：inode 旗位模型（ro_compat inline_data 位）+ 内联区布局账
 //! （i_block 60B + xattr 前 4B ref 计数 + 布局表）+ F4805 解码联动 +
 //! 容量语义（内联满/溢出转换）+ 注入核（旗漂移/布局越界/容量失真/封账写）。
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use alloc::format;
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC280 独占 0x80）。

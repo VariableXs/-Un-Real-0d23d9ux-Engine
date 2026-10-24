@@ -87,9 +87,9 @@
 //! ——后者尤其危险，因为它让破坏性内容改动蒙混过版。
 //! 故 [`ModelVersion`] 与 [`entity_version`] 分列，对版只比结构项。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::veu01_arch::{fnv1a64_hex, ConsistencyError, Severity};

@@ -34,9 +34,9 @@
 //! - 所有 `get()` 访问，无切片索引；无 `unwrap` / `expect`。
 //! - 哈希全 `wrapping_*`；代数计数器 `saturating_add`。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 派生链深度上限。三层派生足够（基准 → 中间态 → 极端态），

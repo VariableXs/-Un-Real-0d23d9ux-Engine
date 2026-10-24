@@ -48,10 +48,10 @@
 //! 确定性：全部静态注册表 + 纯函数校验，耗时以逻辑 tick 注入（不用墙钟），
 //! 无 IO、可回放对拍。零外部依赖，只依赖 `crate::checks`（自检侧）与 `alloc`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 

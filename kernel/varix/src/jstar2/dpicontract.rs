@@ -26,6 +26,8 @@
 //! - **档位边界诚实**：契约只覆盖四档——0（未上报）与 >200 的档位
 //!   显式拒绝，不静默按 200 处理（超契约的请求不配得到假装的答案）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::{
     resample_lanczos3, vxcur_fingerprint, CursorFrame, CursorSchemeModel, PixBuf, PointerState,

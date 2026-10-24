@@ -22,6 +22,8 @@
 //! 接缝纪律：F191 自查结果由调用方显式注入（`set_hash_state`），不反向制造
 //! 对未落地模块的编译依赖。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
 

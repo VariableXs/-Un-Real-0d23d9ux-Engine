@@ -4,6 +4,10 @@
 //! 与归因（主册 G-D-24）：四指标环比引擎、8 季趋势斜率、PDF 分页
 //! 结构模型、JSON round-trip（F128 开放数据版）、下滑归因强制字段。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::fnv1a64;
 use crate::stareco::ecoreport::{Metrics, QuarterlyReport, TREND_SEASONS};

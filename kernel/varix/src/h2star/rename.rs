@@ -15,6 +15,8 @@
 //! 空名）失败返回行内错误——无任何弹窗出口（类型层面就没有对话框
 //! 交互，审计=代码结构本身）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::h2star::h2base::{ext_split, has_invalid_char};
 

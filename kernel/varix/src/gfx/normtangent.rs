@@ -23,6 +23,7 @@
 //! - 切线正交化在 `T` 与 `N` 精确平行时完全退化（`|T⊥|` 严格为 0），必须走
 //!   **确定性 fallback 轴**，否则出NaN——而 NaN 会静默污染整张法线贴图。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
@@ -1549,7 +1550,6 @@ pub fn run_normtangent_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     // ---- 判据一：两种加权 ----
 

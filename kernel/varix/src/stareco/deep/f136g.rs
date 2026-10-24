@@ -7,6 +7,10 @@
 //! 行数门禁（≤200）、教学注释密度带（30-60%）、README 四件、先修链
 //! 方向性四类审计复用批次三 f136f 的机器面（一处一事实，不重写判据）。
 
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::vec;
+use alloc::string::{String, ToString};
 use super::f136f;
 use crate::checks::CheckSet;
 

@@ -302,3 +302,57 @@ pub fn declare_fingerprint(
     }
     Ok(acc)
 }
+
+
+// ===== 深化块（cga149_declfin · 声明终审深化）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_declfin {
+    //! 声明终审深化 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 声明槽位：四槽（域/接口/权限/资源）逐槽必须有值，缺槽即拒。
+    pub const SLOTS: usize = 4;
+
+    pub fn decl_slots_complete(decls: &[Option<u64>; SLOTS]) -> Result<(), u16> {
+        for (i, d) in decls.iter().enumerate() {
+            if d.is_none() {
+                return Err(1 + i as u16);
+            }
+        }
+        Ok(())
+    }
+
+    /// 声明与实测对账：声明值必须 ≥ 实测值（声明不足 = 隐患），超出容差立案。
+    pub fn decl_meets_actual(declared: u64, actual: u64) -> Result<(), u16> {
+        if declared < actual {
+            return Err(1);
+        }
+        Ok(())
+    }
+
+    /// 重复声明检测：同槽同值出现两次 = 冗余声明，账面不干净。
+    pub fn no_dup_decl(decls: &[u64]) -> Result<(), u16> {
+        for i in 0..decls.len() {
+            for j in (i + 1)..decls.len() {
+                if decls[i] == decls[j] {
+                    return Err(1 + j as u16);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0149-深化");
+        let full: [Option<u64>; SLOTS] = [Some(1), Some(2), Some(3), Some(4)];
+        let mut hole = full;
+        hole[2] = None;
+        cs.add("四槽齐备", decl_slots_complete(&full).is_ok(), "");
+        cs.add("缺槽检出", decl_slots_complete(&hole).is_err(), "");
+        cs.add("声明足额", decl_meets_actual(100, 90).is_ok() && decl_meets_actual(80, 90).is_err(), "");
+        cs.add("无重复声明", no_dup_decl(&[1, 2, 3]).is_ok() && no_dup_decl(&[1, 2, 1]).is_err(), "");
+        cs
+    }
+}

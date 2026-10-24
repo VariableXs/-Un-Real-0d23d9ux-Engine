@@ -9,6 +9,7 @@
 //!      + 纪律文档冻结（三节 FNV 指纹，篡改即显性）
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64 整数算术，确定性（逻辑 tick）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

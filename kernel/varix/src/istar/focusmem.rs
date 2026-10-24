@@ -9,6 +9,8 @@
 //! - 多控件窗口焦点恢复到上次交互控件；焦点恢复带 F206 焦点环即时显示；
 //! - 重启后的首次打开按 F206 默认序（会话内记忆不跨重启）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

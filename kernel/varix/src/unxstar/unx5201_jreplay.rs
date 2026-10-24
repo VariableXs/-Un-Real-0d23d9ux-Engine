@@ -3,7 +3,10 @@
 //! （candidate）/重放（replay）/复位（reset）五段；F5020 锚语义承接声明一致率
 //! 100%（五段逐段与锚声明对拍），总纲可导出；未提交事务（无 commit 标记）不得重放。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x8300;
 

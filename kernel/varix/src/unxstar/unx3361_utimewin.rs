@@ -1,45 +1,48 @@
-//! UNX-F3361 · 时间窗模型：TSC 时钟基准与窗口定义（微/秒/分三级嵌套）
-//!
-//! 任务单号: UNX-F3361
-//! 标题: 时间窗模型：TSC 时钟基准与窗口定义
-//! 域/批: A4/G8（CoRun·UNX-A5 段｜ktest/框架/测试基建域）
-//! 册目标: 320 行（判据 J1 时间窗模型文档 + M-120 窗口边界行为验证）
-//!
-//! 判据原文（逐字摘抄，来源《CoRun Varix STAR II · Unxreal》任务书表格）:
-//! 「UNX-F3361 | 时间窗模型：TSC 时钟基准与窗口定义 | 320 | 骨架 |
-//!   J1：时间窗模型文档（基准钟/窗口长度/三级窗口微/秒/分）交付；M-120 窗口边界行为验证。」
-//!
-//! 说明（锚点目录同名文件的辨析）:
-//! `_attic/.../anchors/UNX-F3361.md` 内实为 **UNX-F33610 · 路由表变更事件广播地基（I1 消费）**，
-//! 与本单无关（编号差一位的同书他人条目）。本单判据以任务书表格 `| UNX-F3361 |` 行为准。
-//!
-//! 本单核心语义（三层，逐层落地）:
-//! - **基准钟（TSC 语义）**：`BenchClock` 只保证**单调非减**，并对「回退」显性留痕
-//!   （`rewind_marks`），因为时间窗的一切正确性都建立在「钟不回退」之上。
-//! - **三级窗口嵌套**：`微 → 秒 → 分` 长度严格倍比 `NEST_RATIO = 16`，
-//!   即 `w_min = w_sec * 16 = w_micro * 256`。非嵌套即 `LevelNotNested`。
-//! - **左闭右开区间**：窗口 `w` 覆盖 `[w*len, (w+1)*len)`；右端点**归下一窗**，
-//!   边界行为由 `BoundaryRule` 显式建模并在 `boundary_probe()` 中点验（M-120 落点）。
-//!
-//! 深度骨架（对应批次通用要求）:
-//! 常量表 / 4 核心结构（BenchClock、WindowSpec、WindowBank、Histogram）/
-//! 14 错误变体 / 6 辅助码 / 主状态机（合法边闭集 + 非法转换拒记）/
-//! 守恒账 `reconcile()` / append-only 环形账（`dropped` 显性）/
-//! 注入核 14/14 全拒留痕 / 冻结指纹 `fingerprint() + verify()` /
-//! `export_kv() + export_tlv()` / 确定性 `replay(seed)` / `observe(seed)` /
-//! `complexity()` 逐项性能分解（对标 Windows 同类能力写「深在哪」）。
-//!
-//! 码段声明:
-//! 本单独占诊断码段 `0x2780 ..= 0x27BF`（`SEG_BASE = 0x2780`，`SEG_MASK = 0x003F`）。
-//! 错误变体一码一段，逐个占段内偏移 `0x00..=0x0D`；辅助码占 `0x1C..=0x21`，
-//! 最大占用 `0x27A1`，未触及段上界 `0x27BF`。
-
 #![allow(dead_code)]
 #![allow(unused_imports)]
+use alloc::vec;
+// UNX-F3361 · 时间窗模型：TSC 时钟基准与窗口定义（微/秒/分三级嵌套）
+//
+// 任务单号: UNX-F3361
+// 标题: 时间窗模型：TSC 时钟基准与窗口定义
+// 域/批: A4/G8（CoRun·UNX-A5 段｜ktest/框架/测试基建域）
+// 册目标: 320 行（判据 J1 时间窗模型文档 + M-120 窗口边界行为验证）
+//
+// 判据原文（逐字摘抄，来源《CoRun Varix STAR II · Unxreal》任务书表格）:
+// 「UNX-F3361 | 时间窗模型：TSC 时钟基准与窗口定义 | 320 | 骨架 |
+//   J1：时间窗模型文档（基准钟/窗口长度/三级窗口微/秒/分）交付；M-120 窗口边界行为验证。」
+//
+// 说明（锚点目录同名文件的辨析）:
+// `_attic/.../anchors/UNX-F3361.md` 内实为 **UNX-F33610 · 路由表变更事件广播地基（I1 消费）**，
+// 与本单无关（编号差一位的同书他人条目）。本单判据以任务书表格 `| UNX-F3361 |` 行为准。
+//
+// 本单核心语义（三层，逐层落地）:
+// - **基准钟（TSC 语义）**：`BenchClock` 只保证**单调非减**，并对「回退」显性留痕
+//   （`rewind_marks`），因为时间窗的一切正确性都建立在「钟不回退」之上。
+// - **三级窗口嵌套**：`微 → 秒 → 分` 长度严格倍比 `NEST_RATIO = 16`，
+//   即 `w_min = w_sec * 16 = w_micro * 256`。非嵌套即 `LevelNotNested`。
+// - **左闭右开区间**：窗口 `w` 覆盖 `[w*len, (w+1)*len)`；右端点**归下一窗**，
+//   边界行为由 `BoundaryRule` 显式建模并在 `boundary_probe()` 中点验（M-120 落点）。
+//
+// 深度骨架（对应批次通用要求）:
+// 常量表 / 4 核心结构（BenchClock、WindowSpec、WindowBank、Histogram）/
+// 14 错误变体 / 6 辅助码 / 主状态机（合法边闭集 + 非法转换拒记）/
+// 守恒账 `reconcile()` / append-only 环形账（`dropped` 显性）/
+// 注入核 14/14 全拒留痕 / 冻结指纹 `fingerprint() + verify()` /
+// `export_kv() + export_tlv()` / 确定性 `replay(seed)` / `observe(seed)` /
+// `complexity()` 逐项性能分解（对标 Windows 同类能力写「深在哪」）。
+//
+// 码段声明:
+// 本单独占诊断码段 `0x2780 ..= 0x27BF`（`SEG_BASE = 0x2780`，`SEG_MASK = 0x003F`）。
+// 错误变体一码一段，逐个占段内偏移 `0x00..=0x0D`；辅助码占 `0x1C..=0x21`，
+// 最大占用 `0x27A1`，未触及段上界 `0x27BF`。
+
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 
 extern crate alloc;
 
-use alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 // ===========================================================================
 // 1. 常量表

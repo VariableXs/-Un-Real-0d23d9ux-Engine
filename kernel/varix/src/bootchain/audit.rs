@@ -9,6 +9,8 @@
 //! - 非法/越界输入一律钳制回默认，绝不 panic；
 //! - 链路中断支持「半成品标记 + 续跑」，不丢已有采样。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::bootchain::hash_bytes;
 use crate::checks::CheckSet;
 

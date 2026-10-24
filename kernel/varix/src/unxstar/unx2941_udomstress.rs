@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
 //! UNX-F2941 · 域级压力矩阵方案冻结（三轴）
 //!
 //! 任务单号: UNX-F2941
@@ -39,14 +41,12 @@
 //! 故本单强制携带 `basis`（配比依据，逐一对照 F2938 七批）与
 //! `distortion`（失真声明，自认账面预演非真机等价）两条在档文本。
 
-#![allow(dead_code)]
-#![allow(unused_imports)]
+use alloc::vec;
 
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ===========================================================================

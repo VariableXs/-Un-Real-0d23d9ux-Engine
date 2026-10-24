@@ -30,6 +30,7 @@
 //!   解除阻断）/ Runtime（生成/校验/回归/导出）。mount 唯一入口。
 //! ============================================================
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

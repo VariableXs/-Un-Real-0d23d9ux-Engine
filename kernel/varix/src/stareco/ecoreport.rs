@@ -13,6 +13,7 @@
 //! 本模块是季报的**汇总核**：四指标引用账本快照、按期判定（发布日
 //! 窗口）、交叉校验引擎、8 季趋势、归因与「数据待修」标注。
 
+use alloc::vec::Vec;
 use alloc::vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::fnv1a64;
@@ -124,9 +125,10 @@ impl EcoReportLedger {
         }
         // 季度序号必须连续递增（不许跳季/倒序归档——时间诚实）
         if self.count > 0 {
-            let prev = self.seasons[self.count - 1].as_ref().unwrap();
-            if r.season != prev.season + 1 {
-                return Err("季度必须连续递增");
+            if let Some(prev) = self.seasons[self.count - 1].as_ref() {
+                if r.season != prev.season + 1 {
+                    return Err("季度必须连续递增");
+                }
             }
         }
         self.seasons[self.count] = Some(r);
@@ -152,8 +154,13 @@ impl EcoReportLedger {
         if self.count < 2 {
             return 0;
         }
-        let cur = self.seasons[self.count - 1].as_ref().unwrap();
-        let prev = self.seasons[self.count - 2].as_ref().unwrap();
+        // 占用槽由 count 保证；缺槽保守返回 0（如实呈现面不炸内核）。
+        let (Some(cur), Some(prev)) = (
+            self.seasons[self.count - 1].as_ref(),
+            self.seasons[self.count - 2].as_ref(),
+        ) else {
+            return 0;
+        };
         let picks: [fn(&Metrics) -> u32; 4] = [
             |m| m.compat_count,
             |m| m.community_submissions,

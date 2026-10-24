@@ -3,7 +3,10 @@
 //! B5 层为唯一判定层（只消费 B4 输出，产出健康分级），K2/K5 为呈现层（只消费 B5 输出）；
 //! 全链零寄存器直读断言：任何一层不得绕开读通道直取端口/寄存器。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xD080;
 

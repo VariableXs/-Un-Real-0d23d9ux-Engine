@@ -18,6 +18,7 @@
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64 算术，确定性
 //! （逻辑 tick 注入，零墙钟，零 IO），零浮点。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

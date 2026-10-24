@@ -26,8 +26,8 @@
 //! 错误路径（0xD1 段）：`E_LB_EMPTY` 空负载/零线程 / `E_LB_SHAPE` 长度不符 /
 //! `E_LB_RANGE` 参数越界。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
 /// 诊断码段基址。
@@ -159,8 +159,9 @@ impl Predictor {
         let w = self.w_new as u32;
         let mut v = Vec::with_capacity(n);
         for i in 0..n {
-            let a = *self.prev.get(i).unwrap_or(&1) as u32;
-            let b = *self.prev2.get(i).unwrap_or(&a) as u32;
+            let a16 = *self.prev.get(i).unwrap_or(&1);
+            let a = a16 as u32;
+            let b = *self.prev2.get(i).unwrap_or(&a16) as u32;
             let p = (w * a + (4 - w) * b) / 4;
             v.push(if p == 0 { 1 } else { p.min(65_535) as u16 });
         }

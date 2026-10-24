@@ -214,7 +214,7 @@ pub const FNV_OFFSET: u64 = 0xcbf29ce484222325;
 pub const FNV_PRIME: u64 = 0x100000001b3;
 
 /// u64 混入。
-pub const fn fnv1a_u64(mut s: u64, v: u64) -> u64 {
+pub const fn fnv1a_u64(mut s: u64, mut v: u64) -> u64 {
     let mut i = 0;
     while i < 8 {
         s = (s ^ (v & 0xFF)) * FNV_PRIME;
@@ -273,7 +273,9 @@ impl BudgetAlloc {
     /// 重分配（显性调参——新分配过闸才生效，旧分配留审计）。
     pub const fn reallocate(&self, new_layers: [u64; 7]) -> Result<BudgetAlloc, BdgCode> {
         let cand = BudgetAlloc { layers_ns: new_layers };
-        cand.valid()?;
+        if let Err(e) = cand.valid() {
+            return Err(e);
+        }
         Ok(cand)
     }
 
@@ -419,7 +421,9 @@ impl BatchParams {
 
     /// 摊销恰值：批大小 B 的每件摊销 = (fixed + B×per_item) / B（u128 中间域）。
     pub const fn amortized_per_item_ns(&self, batch: u32) -> Result<u64, BdgCode> {
-        self.valid()?;
+        if let Err(e) = self.valid() {
+            return Err(e);
+        }
         if batch == 0 || batch > self.batch_max {
             return Err(BdgCode::BgBatchRange);
         }

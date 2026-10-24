@@ -20,6 +20,8 @@
 //!
 //! 零堆纪律：定长参数表 + 定长切换账，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::perfstar::cpufreq::{ManualMode, MANUAL_PERF_FLOOR, MANUAL_SILENT_CAP, PSTATE_LEVELS};
 use crate::perfstar::wcoalesce::Tier;

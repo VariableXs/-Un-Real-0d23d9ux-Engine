@@ -14,6 +14,8 @@
 //! （F0805）分工——彼是考卷、此是档案与认证流程。virtio-gpu 首发档案为内置
 /// 基线。诊断码段 0x4Cxx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

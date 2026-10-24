@@ -3,7 +3,9 @@
 //! （pct 0/99 两个极端）/叠加（RAID+LUKS 叠加面）/复测（同轮重测一致性）四段；
 //! 与 B23 上账衔接清单零悬空（四段各自引用上账判据 ID 非空且全命中）；总纲可导出。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9680;
 

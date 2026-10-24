@@ -1,8 +1,10 @@
 //! UNX-F1724 · 迁移失败回退（暂存滞留回收联动）账 · 诊断段 0xB930
 //! 验收锚点：UNX-F1724-J1 回退路径（滞留回收→源核归队→三账回冲）
 //! 闭合断言全过，回退注入 10/10 次正确归位，双判据缺一即批内红灯。
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB930;
 

@@ -3,6 +3,7 @@
 //! 与 `vea03_sync` 同属一项功能（VE-F0003），拆文件只为避开超长单文件。
 //! 本文件只放自检构造与 `#[cfg(test)]` 用例，逻辑全在 `vea03_sync`。
 
+use alloc::vec;
 use super::vea03_sync::{
     DEADLOCK_STALL_TICKS, MAX_PRIMITIVES, PrimitiveKind, SyncManager, WaitEdge, WaitOutcome,
     WaitRequest, WaiterIdentity, default_timeout, detect_deadlock, new_event, new_fence,

@@ -20,6 +20,7 @@
 //!   减少、插值段不摊薄如实、批内二分数 == 批数、步数非自证式常数）
 
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use super::vem07_perf::*;

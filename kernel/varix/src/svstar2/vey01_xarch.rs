@@ -31,10 +31,11 @@
 //! 无隐私面。
 //!
 //! **诊断码**：X 域独占 `0x3Axx` 段十码，显性映射禁 `as` 直转。
+use alloc::string::String;
+use alloc::string::ToString;
 
 use crate::checks::CheckSet;
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 

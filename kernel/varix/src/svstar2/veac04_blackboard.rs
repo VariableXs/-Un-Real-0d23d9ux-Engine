@@ -25,11 +25,11 @@
 //! 诊断码 0xE3 段五码互异：`E_BB_STALE` / `E_BB_CONFLICT` /
 //! `E_BB_FORBID` / `E_BB_NO_KEY` / `E_BB_REDACT`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

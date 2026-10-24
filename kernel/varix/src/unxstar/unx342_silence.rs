@@ -9,12 +9,13 @@
 //! 事件 → 检出 100%）+ 交接闸（A2 接管前中断使能位恒关）+ 注入核
 //! （提前开中断/交接前事件/状态跳迁/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAD00 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAD00;
 pub const XC_SI_STATE: u32 = SEG_BASE + 0x01; // 状态跳迁
 pub const XC_SI_VIOL: u32 = SEG_BASE + 0x02; // 静默违规

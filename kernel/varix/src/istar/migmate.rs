@@ -15,6 +15,8 @@
 //! 「文件/设置/词库/主题/还原点」五类 + 剪贴板历史（F109）凑六；
 //! 本模块以六枚举钉死，不静默加第七类。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

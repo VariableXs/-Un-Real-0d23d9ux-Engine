@@ -27,9 +27,9 @@
 //! 纯功能线：no_std + alloc，零 unwrap/expect/panic，全整数算术（无浮点），逻辑 tick
 //! 注入零墙钟，FNV-1a 指纹，诊断码 0xB4 段闭集（0xB401~0xB40C 十二码两两互异）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 use core::result::Result;
 

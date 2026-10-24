@@ -15,11 +15,25 @@
 // Host-side non-test builds (integration tests like tests/fuzz.rs) run on the
 // host triple: keep std reachable while the real kernel image stays no_std.
 #[cfg(all(not(test), not(feature = "kernel-image")))]
+use alloc::vec::Vec;
+#[cfg(all(not(test), not(feature = "kernel-image")))]
+use alloc::format;
+#[cfg(all(not(test), not(feature = "kernel-image")))]
+use alloc::string::String;
+// std 只在宿主侧可达：kernel-image 目标（x86_64-unknown-none）无 std，
+// 裸 `extern crate std;` 在 kcheck 下必炸 E0463（2026-10-22 实证）。
+#[cfg(all(not(test), not(feature = "kernel-image")))]
 extern crate std;
 
 // 内核镜像目标是 no_std：显式接入 alloc，让 Vec/String/format!/to_vec/to_string
 // 在 kernel-image 下同样可解析（宿主侧继续走 std）。
-extern crate alloc;
+//
+// 以 `pub extern crate` 形式接入的用意：`extern crate alloc as alloc` 在 2018 edition
+// 下会把 `alloc` 这个**名字**重新绑定到 crate 根作用域，使任意子模块都能直接写
+// `use alloc::vec;` / `alloc::format!(..)`，不必再逐文件从 `crate::` 反查路径。
+// 这与 `use alloc::…` 的重名合并语义一致（同一 crate 的两种写法视为同一项），
+// 因此历史上批量注入产生的「两套写法并存」不会再触发 E0252。
+pub extern crate alloc;
 
 // kernel-image 目标登记全局分配器：mem::heap::VarixAllocator 已实现 GlobalAlloc 契约
 // （可失败、对齐感知、泄漏记账）。自检注册表 run_*_checks 只在宿主测试侧调用，
@@ -68,6 +82,10 @@ pub mod compatstar;
 /// 文本截断/窗口置顶/热角/指针精度，五十项判据实装层。
 pub mod h1star;
 pub mod float;
+/// 移植层 · bitflags 标志位类型内核（上游 bitflags 2.13.2，移植算法层非宏层）。
+pub mod bfport;
+/// 移植层 · bytemuck 类型双关内核（上游 bytemuck 1.25.2，移植 POD 语义层）。
+pub mod ckport;
 pub mod banner;
 pub mod bootopt;
 pub mod bootcfg;
@@ -77,6 +95,13 @@ pub mod bootselect;
 pub mod handoff;
 pub mod oneshot;
 pub mod checks;
+/// 域总账（跨子集不截断的判据聚合容器）。
+///
+/// 存在理由：`CheckSet` 是定容 112 条的栈容器，而域级聚合要收 277 个子集
+/// ≈8,548 条判据，会静默丢弃 98.7%（详见模块头注实测表）。本模块提供
+/// `DomainLedger`——计数全量累加、红项优先留存、截断显性暴露，作为域聚合
+/// 的旁路容器，不改变任何既有 `CheckSet` 调用点。
+pub mod domledger;
 pub mod cmdline;
 pub mod deploy;
 pub mod deveco;
@@ -646,6 +671,9 @@ pub mod cgpu;
 // 引导基座/文件存储/Linux 人格/Win 人格等十六部八十域的分域模块树；
 // 域聚合 run_unxstar_checks 挂 CheckSet 域标签 unxstar。
 pub mod unxstar;
+// VE Varix STAR II · VE-A 调试/遥测域（VE-F0174~F0194）：崩溃最小化/
+// 命令流压缩/日志采样/时间旅行/性能计数器/多实例调试等二十一项判据实装层。
+pub mod vestar;
 // Varix STAR I · 泳道二 A 应用兼容域·后段（AI-C2 · F021-F040）：二十项功能。
 // 目录名 compatstar2：compatstar/ 已被 AI-C1（F001-F020，在途）占用，按
 // secstar → secstar2 先例顺延，两包互不重叠。
@@ -741,6 +769,9 @@ pub mod m6deliver;
 // --- （F001~F025，进程与线程域）。符号全部落在新模块避免编号冲突。
 pub mod m600boot;
 pub mod m700proc;
+/// VARIX-M700 AI-02 虚拟内存域（F026~F050，K1）：账本、缺页分类、大页阶梯、
+/// COW 稽核、反向映射、压力谱线、TLB 击落、对账与年报（纯逻辑 + 固定容量数组）。
+pub mod m700vm;
 
 // --- VARIX-M700 AI-21~AI-28（F501~F700，内核成熟化收口波次）-------------------
 // 调度器（m7sched）、容器隔离（m7cgroup）、时间日志（m7timelog）、

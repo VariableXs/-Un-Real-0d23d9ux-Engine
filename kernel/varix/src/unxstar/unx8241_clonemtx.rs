@@ -2,7 +2,9 @@
 //! 验收锚点：UNX-F8241-J1 全标志逐位登记（含义/组合约束/挂点三列），与
 //! Linux sched.h 标志表逐项对照无缺漏，组合非法集（VM 无 SIGHAND 类）判据在册。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB3A0;
 

@@ -9,6 +9,7 @@
 //! 层（效果编排与顺序）→参数层（统一参数 schema——F5207 框架复用）；语义缺失
 //! →评审拦截；越权编排→归位 Z01。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

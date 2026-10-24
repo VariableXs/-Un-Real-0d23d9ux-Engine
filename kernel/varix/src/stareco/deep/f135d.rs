@@ -3,6 +3,7 @@
 //! 补深：五区跨区搜索引擎（F071 引擎接入面）、轻量代码着色器、
 //! 「本页对应源码」直链校验、API 页版本史单调性校验、覆盖报告生成。
 
+use alloc::vec::Vec;
 use alloc::vec;
 use crate::checks::CheckSet;
 use crate::stareco::devportal::{ApiPage, DevPortal, SECTIONS};

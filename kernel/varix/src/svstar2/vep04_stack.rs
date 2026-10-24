@@ -72,6 +72,8 @@
 //! 零 IO、零墙钟、零浮点（时间偏移用整型毫秒，方向/优先级用枚举），
 //! 回归可复现（对拍红线）。
 
+use alloc::string::ToString;
+use alloc::vec;
 use crate::svstar2::vep03_token::{Lane, MotionTokenError, TokenFamily};
 
 use alloc::format;

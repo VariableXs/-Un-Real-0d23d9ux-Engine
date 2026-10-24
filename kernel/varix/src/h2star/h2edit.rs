@@ -17,6 +17,7 @@
 //! 字节偏移用于字符串切分（UTF-8 边界安全），显示单元用于水平
 //! 几何（CJK=2、ASCII=1）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h2star::h2base::ext_split;
 

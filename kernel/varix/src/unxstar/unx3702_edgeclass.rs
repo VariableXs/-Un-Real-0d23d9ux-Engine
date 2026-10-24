@@ -17,11 +17,12 @@
 //!   - 注入核 5 项。
 //! ═══════════════════════════════════════════════════════════════════════
 
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段基址。
+
 pub const SEG_BASE: u16 = 0xD500;
 
 /// 语义标注词表（const 封闭）。

@@ -9,12 +9,13 @@
 //! + 边界不崩溃核（全部边界输入安全返回）+ 注入核（历史越位/补全
 //! 破缺/退格越界/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAB00 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAB00;
 pub const XC_LE_HIST: u32 = SEG_BASE + 0x01;
 pub const XC_LE_AMBIG: u32 = SEG_BASE + 0x02;

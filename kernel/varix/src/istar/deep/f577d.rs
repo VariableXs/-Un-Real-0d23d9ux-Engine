@@ -13,6 +13,7 @@
 //!   精化搜索（新词以旧词为前缀）保留过滤态（新结果注入后按原片重
 //!   选）；全新搜索重置（与基础件 new_search 的会话重置对齐）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 use crate::istar::searchchips::{CHIP_ORDER, FILTER_BUDGET_MS, ResItem, ResKind, SearchChips};

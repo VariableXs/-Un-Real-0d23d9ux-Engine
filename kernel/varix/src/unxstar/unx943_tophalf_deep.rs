@@ -17,12 +17,11 @@
 //!   十、契约白名单（允许向量集）+ 越界向量拦截 + 全审计闭集一次性核。
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64 整数算术，确定性（逻辑 tick）。
 
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use alloc::string::String;
+use alloc::format;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 一、模块常量（全部写死并注释来源，判据预算断言硬线）
@@ -221,7 +220,6 @@ impl TdGrade {
         }
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // 四、最小化清单·白名单操作（八类闭集 + 每类步数成本表）

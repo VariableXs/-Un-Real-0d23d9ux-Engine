@@ -172,12 +172,17 @@ pub fn run_fd_drills(seed: u64, rounds: u32) -> FdDrillSummary {
         sum.closes += round_closes;
         // poll 聚合跨类型：File fd + Socket fd 各一，双就绪 → 都上报
         let mut t2 = FdTable::new();
-        let f = t2.alloc(FdKind::File).unwrap();
-        let s = t2.alloc(FdKind::Socket).unwrap();
-        let _ = t2.mark_ready(f);
-        let _ = t2.mark_ready(s);
-        let (r, n) = t2.poll(&[f, s]);
-        if !(r[f] && r[s] && n == 2) {
+        let f = t2.alloc(FdKind::File);
+        let s = t2.alloc(FdKind::Socket);
+        if let (Some(f), Some(s)) = (f, s) {
+            let _ = t2.mark_ready(f);
+            let _ = t2.mark_ready(s);
+            let (r, n) = t2.poll(&[f, s]);
+            if !(r[f] && r[s] && n == 2) {
+                sum.poll_correct = false;
+            }
+        } else {
+            // 新表 alloc 必成；失败 = 表实现退化（诚实入账）。
             sum.poll_correct = false;
         }
         // 边缘触发只报一次

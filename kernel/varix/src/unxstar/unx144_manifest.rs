@@ -8,12 +8,13 @@
 //! （单字节翻转 → 检出 100%）+ 注入核（缺项/哈希漂移/签名漂移/
 //! 顺序破缺/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA880 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA880;
 pub const XC_MF_MISS: u32 = SEG_BASE + 0x01; // 缺项
 pub const XC_MF_HASH: u32 = SEG_BASE + 0x02; // 哈希漂移

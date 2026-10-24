@@ -10,6 +10,8 @@
 //! ③「万目录性能」的**打点账**——排序耗时入环按峰值判预算（用户
 //!   只记得最卡那次，均值会骗人）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::istar::dirsize::{Entry, SizeSort, SortDir, SORT_BUDGET_MS};

@@ -3,6 +3,8 @@
 //! 调度从"公平"到"聪明"：画像、亲和、预测、仿真、卡顿归零。
 //! 全部为纯逻辑 + 固定容量数组（无 Vec/String/Box），no_std 安全。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

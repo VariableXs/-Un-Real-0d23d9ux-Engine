@@ -45,10 +45,10 @@
 //! - **零 panic 面**：查表走索引/match、计数全 `saturating_add`、无
 //!   `unwrap`/`expect`，判据区同样约束。
 
+use alloc::vec;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vea53_hotplug::{Slot, TopologySnapshot, MAX_SCREENS};

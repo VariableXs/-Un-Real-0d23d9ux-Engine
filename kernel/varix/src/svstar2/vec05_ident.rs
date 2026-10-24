@@ -17,11 +17,11 @@
 //! - 关键字冲突查表 O(1)：256 槽线性探测哈希表（探测步数有上界机检）；
 //!   冲突报错带换名建议（追加下划线/加前缀，建议名本身要过规则校验）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

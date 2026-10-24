@@ -32,6 +32,7 @@
 //! 诊断枚举 KaslrCode 十六码（0x30 段 0x3000..=0x300F 互异 +
 //! [`segment_guard`] 对账）。no_std 零 unwrap 零 panic 面。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

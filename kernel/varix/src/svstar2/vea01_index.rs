@@ -7,6 +7,7 @@
 //! 这里任何失败都必须显性化——要么降级并告知，要么返回 Err，绝不静默吞掉。
 
 
+use alloc::vec;
 // 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
 // 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
 use crate::float::FloatExt;
@@ -21,7 +22,6 @@ use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 探测报告——V01 显示协商的对接口。
 ///

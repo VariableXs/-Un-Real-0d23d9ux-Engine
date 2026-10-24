@@ -33,6 +33,7 @@
 //! 冲突不是吞掉就完了：账本供 F0062 保留区白名单、F0065 E820 桥接
 //! 降级路径回查「当时为何如此裁决」。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -297,7 +298,7 @@ pub fn merge_three_sources(
         participants.sort();
         ledger.record(ArbitrationRecord {
             from: entries[i].base.min(group.iter().map(|g| g.base).min().unwrap_or(entries[i].base)),
-            to: entries[i].end().max(group.iter().map(|g| g.end()).max().unwrap_or(entries[i].end)),
+            to: entries[i].end().max(group.iter().map(|g| g.end()).max().unwrap_or(entries[i].end())),
             participants,
             winner,
             reason,
@@ -413,9 +414,18 @@ pub fn run_unx06_checks() -> CheckSet {
 
     // -- UNX06-ARB-01 同区间仲裁必胜最高段位 ------------------------------
     {
-        let efi = SourceEntry::new(0x1000, 0x1000, Kind::Usable, SourceKind::Efi);
-        let e820 = SourceEntry::new(0x1000, 0x800, Kind::Reserved, SourceKind::E820);
-        let acpi = SourceEntry::new(0x1000, 0x400, Kind::AcpiNvs, SourceKind::Acpi);
+        let efi = match SourceEntry::new(0x1000, 0x1000, Kind::Usable, SourceKind::Efi) {
+            Ok(e) => e,
+            Err(_) => { s.add("UNX06 常量构造失败", false, "常量参数构造失败——不可能分支"); return s; }
+        };
+        let e820 = match SourceEntry::new(0x1000, 0x800, Kind::Reserved, SourceKind::E820) {
+            Ok(e) => e,
+            Err(_) => { s.add("UNX06 常量构造失败", false, "常量参数构造失败——不可能分支"); return s; }
+        };
+        let acpi = match SourceEntry::new(0x1000, 0x400, Kind::AcpiNvs, SourceKind::Acpi) {
+            Ok(e) => e,
+            Err(_) => { s.add("UNX06 常量构造失败", false, "常量参数构造失败——不可能分支"); return s; }
+        };
         let group = [&efi, &e820, &acpi];
         let r = arbitrate_span(&group);
         s.add(
@@ -428,8 +438,14 @@ pub fn run_unx06_checks() -> CheckSet {
     // -- UNX06-ARB-02 平级规约确定（短区间→基址低者）---------------------
     {
         // 同源两区间重叠：短区间胜。
-        let long = SourceEntry::new(0x2000, 0x1000, Kind::Usable, SourceKind::Efi);
-        let short = SourceEntry::new(0x2000, 0x800, Kind::Usable, SourceKind::Efi);
+        let long = match SourceEntry::new(0x2000, 0x1000, Kind::Usable, SourceKind::Efi) {
+            Ok(e) => e,
+            Err(_) => { s.add("UNX06 常量构造失败", false, "常量参数构造失败——不可能分支"); return s; }
+        };
+        let short = match SourceEntry::new(0x2000, 0x800, Kind::Usable, SourceKind::Efi) {
+            Ok(e) => e,
+            Err(_) => { s.add("UNX06 常量构造失败", false, "常量参数构造失败——不可能分支"); return s; }
+        };
         let r1 = arbitrate_span(&[&long, &short]);
         let r2 = arbitrate_span(&[&short, &long]);
         // 输入序无关（两次都短者胜——确定性）。
@@ -444,8 +460,14 @@ pub fn run_unx06_checks() -> CheckSet {
 
     // -- UNX06-ARB-03 冲突有账（每次仲裁落账+可回读）---------------------
     {
-        let efi = SourceEntry::new(0x1000, 0x1000, Kind::Usable, SourceKind::Efi);
-        let acpi = SourceEntry::new(0x1000, 0x400, Kind::AcpiNvs, SourceKind::Acpi);
+        let efi = match SourceEntry::new(0x1000, 0x1000, Kind::Usable, SourceKind::Efi) {
+            Ok(e) => e,
+            Err(_) => { s.add("UNX06 常量构造失败", false, "常量参数构造失败——不可能分支"); return s; }
+        };
+        let acpi = match SourceEntry::new(0x1000, 0x400, Kind::AcpiNvs, SourceKind::Acpi) {
+            Ok(e) => e,
+            Err(_) => { s.add("UNX06 常量构造失败", false, "常量参数构造失败——不可能分支"); return s; }
+        };
         let mut ledger = ArbLedger::new();
         let regions = merge_three_sources(&[efi.clone(), acpi.clone()], &mut ledger);
         s.add(
@@ -494,8 +516,14 @@ pub fn run_unx06_checks() -> CheckSet {
 
     // -- UNX06-IN-01 输入重叠自检（源条目两两重叠即拒）-------------------
     {
-        let a = SourceEntry::new(0x1000, 0x1000, Kind::Usable, SourceKind::Efi);
-        let b = SourceEntry::new(0x1800, 0x1000, Kind::Usable, SourceKind::Efi);
+        let a = match SourceEntry::new(0x1000, 0x1000, Kind::Usable, SourceKind::Efi) {
+            Ok(e) => e,
+            Err(_) => { s.add("UNX06 常量构造失败", false, "常量参数构造失败——不可能分支"); return s; }
+        };
+        let b = match SourceEntry::new(0x1800, 0x1000, Kind::Usable, SourceKind::Efi) {
+            Ok(e) => e,
+            Err(_) => { s.add("UNX06 常量构造失败", false, "常量参数构造失败——不可能分支"); return s; }
+        };
         let mut ledger = ArbLedger::new();
         let r = merge_three_sources(&[a, b], &mut ledger);
         s.add(

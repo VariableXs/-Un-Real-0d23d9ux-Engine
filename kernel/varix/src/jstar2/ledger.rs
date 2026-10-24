@@ -14,6 +14,8 @@
 //!    规范 / F335 渲染平面 / 本域分发与兼容——五处一页账（`BOUNDARY_DOCS`
 //!    常量表），防概念漂移。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::vxcur_fingerprint;
 use alloc::string::String;

@@ -62,6 +62,8 @@
 //!   绕过路径不存在」这层**安全核验**，不重写池；
 //! - **VE-F2219** 是 API 冻结移交包，本条是它的一个移交面，不改冻结簿。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 use super::vel03_emitter::{clamp_emit_rate, is_finite, DiagBag, EMIT_RATE_MAX_PER_SEC};

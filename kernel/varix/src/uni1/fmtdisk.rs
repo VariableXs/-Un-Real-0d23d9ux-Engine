@@ -22,6 +22,7 @@
 //! - 中止清理 [`FormatSession::abort`]：取消后状态回到干净空闲位
 //!   （无半悬状态——「操作到一半打断，状态不许留在半空」）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

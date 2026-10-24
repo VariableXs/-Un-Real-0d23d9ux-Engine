@@ -46,8 +46,10 @@ impl ClockCache {
     /// 查询（命中置 reference bit）。
     pub fn get(&mut self, key: u64) -> bool {
         if let Some(i) = self.find(key) {
-            self.slots[i].as_mut().unwrap().ref_bit = true;
-            self.slots[i].as_mut().unwrap().used = true;
+            if let Some(s) = self.slots[i].as_mut() {
+                s.ref_bit = true;
+                s.used = true;
+            }
             self.hits += 1;
             true
         } else {
@@ -59,9 +61,10 @@ impl ClockCache {
     /// 插入（已存在则视为命中刷新）。容量满 → CLOCK 扫描驱逐。
     pub fn put(&mut self, key: u64) {
         if let Some(i) = self.find(key) {
-            let s = self.slots[i].as_mut().unwrap();
-            s.ref_bit = true;
-            s.used = true;
+            if let Some(s) = self.slots[i].as_mut() {
+                s.ref_bit = true;
+                s.used = true;
+            }
             self.hits += 1;
             return;
         }
@@ -105,10 +108,13 @@ impl ClockCache {
     /// 钉住/解除（F055 当前帧：钉住即不参选驱逐）。
     pub fn set_pinned(&mut self, key: u64, pin: bool) -> bool {
         match self.find(key) {
-            Some(i) => {
-                self.slots[i].as_mut().unwrap().pinned = pin;
-                true
-            }
+            Some(i) => match self.slots[i].as_mut() {
+                Some(s) => {
+                    s.pinned = pin;
+                    true
+                }
+                None => false,
+            },
             None => false,
         }
     }
@@ -186,7 +192,7 @@ impl LruK {
             let mut fallback: Option<usize> = None;
             let mut fallback_first: u64 = u64::MAX;
             for (i, s) in self.slots.iter().enumerate() {
-                let s = s.as_ref().unwrap();
+                let Some(s) = s.as_ref() else { continue };
                 if (s.hist_n as usize) >= LRUK_K {
                     let back = s.hist[0] - s.hist[1]; // K=2 后历史间隔
                     if back as i128 > best_back {
@@ -198,8 +204,12 @@ impl LruK {
                     fallback = Some(i);
                 }
             }
-            let v = fallback.or(victim).unwrap();
-            if (self.slots[v].as_ref().unwrap().hist_n as usize) < LRUK_K {
+            // 到此必有占用槽（无空槽分支），但缺槽仍保守退出（不 panic）。
+            let Some(v) = fallback.or(victim) else { return false };
+            if self.slots[v]
+                .as_ref()
+                .map_or(false, |s| (s.hist_n as usize) < LRUK_K)
+            {
                 self.young_evictions += 1;
             }
             self.slots[v] = Some(LruSlot { key, used: true, hist: [t; LRUK_K], hist_n: 1 });

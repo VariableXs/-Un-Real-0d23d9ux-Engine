@@ -36,6 +36,7 @@
 //! **对接**：F1122（显存账本——总量与占用来源）；F1124（水位联动
 //! 回收/换页/降质——告警消费方与回收执行位）；F0323（C 域账户树——
 //! 复用对象）。零 panic 面、零 IO、零墙钟（tick 注入）、零浮点、no_std。
+use alloc::format;
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -2363,3 +2364,17 @@ pub fn run_cgh03_checks() -> Vec<(&'static str, bool)> {
     out.push(("诊断码带建议", !XcCode::RebalanceDenied.detail().is_empty() && XcCode::RebalanceDenied.code_hex() == 0x6505));
     out
 }
+
+// ---------------------------------------------------------------------------
+// 旧式判据桥接（2026-10-22 接线轮补）：run_cgh03_checks 返回 CheckSet 之前的旧式
+// Vec<(&'static str, bool)>，不能直接进 CheckSet 函数指针表；此桥逐项转入
+// CheckSetBuilder（语义等价：判据名/通过位一一对应，零信息丢失）。
+// ---------------------------------------------------------------------------
+pub fn run_cgh03_checks_cs() -> crate::checks::CheckSet {
+    let mut b = crate::checks::CheckSetBuilder::new("CGPU-F1123", "旧式判据桥接");
+    for (name, ok) in run_cgh03_checks() {
+        b.ok(name, ok, "");
+    }
+    b.done()
+}
+

@@ -12,12 +12,12 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::ver01_arch::*;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 标准注册表（四个令牌，跨三个类别）：

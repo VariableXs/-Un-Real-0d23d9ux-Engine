@@ -22,8 +22,9 @@
 //!    其余插件绑定仍生效（扫描继续）三处同时断——只断一处会让
 //!    「隔离了但扫描也停了」这类伪实现溜过去。
 
-use alloc::string::{String, ToString};
+use alloc::format;
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use super::veu01_arch::Severity;

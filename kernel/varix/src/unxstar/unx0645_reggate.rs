@@ -1,8 +1,13 @@
 //! UNX-F0645 · 域回归门禁（全绿放行与拦截）账 · 诊断段 0xB850
 //! 验收锚点：UNX-F0645-J1 全绿放行/有红拦截二态正确，拦截时红项
 //! 批级定位准确率 100%，双判据缺一即批内红灯。
+use alloc::vec;
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::boxed::Box;
 
-use crate::alloc::{boxed::Box, format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB850;
 
@@ -107,7 +112,7 @@ impl RegGate {
             Verdict::Block(reds) => injected.iter().all(|n| {
                 let item = self.items.iter().find(|i| i.name == *n);
                 match item {
-                    Some(it) => reds.iter().any(|(b, nm)| nm == it.name && b == &it.batch),
+                    Some(it) => reds.iter().any(|(b, nm)| nm == &it.name && b == &it.batch),
                     None => false,
                 }
             }) && reds.len() == injected.len(),

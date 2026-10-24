@@ -40,6 +40,7 @@
 //!
 //! 无索引、无 `unwrap`；所有状态迁移走 `match` 并返回错误。测试区除外。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

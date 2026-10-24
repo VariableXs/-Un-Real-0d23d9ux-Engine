@@ -19,6 +19,7 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::string::{String, ToString};
 use alloc::format;
 use alloc::vec::Vec;
 

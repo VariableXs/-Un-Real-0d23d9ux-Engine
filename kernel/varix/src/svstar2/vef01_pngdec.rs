@@ -70,6 +70,8 @@
 //! **确定性**：同输入同输出（纯函数，无时钟无 IO，遍历序固定）。零外部依赖，
 //! 只用 `alloc` 与 `crate::checks`（自检侧）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::perfstar::imgsimd::{self, Isa};
 use crate::perfstar::mech_inflate::{self, PngError};
 

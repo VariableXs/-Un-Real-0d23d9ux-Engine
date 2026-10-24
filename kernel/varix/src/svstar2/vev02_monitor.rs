@@ -36,13 +36,15 @@
 //!
 //! **错误五元组齐发**：本模块所有失败路径统一走 [`MonitorIssue`]（现象 / 根因 / 建议 /
 //! 严重度 / 问题码五项齐），**零静默**——包括降级态本身也要有码。
-
 #![allow(clippy::needless_range_loop)]
+
+use alloc::string::String;
+use alloc::string::ToString;
+
 
 extern crate alloc;
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 

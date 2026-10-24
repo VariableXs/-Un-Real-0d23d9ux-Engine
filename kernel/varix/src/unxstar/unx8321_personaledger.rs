@@ -3,7 +3,10 @@
 //! 账本行含 persona 列（F8283 子结构承接），跨账取数注入 10/10 零逃逸
 //! （linux 账取不到 win32 行，反之亦然），账本结构对照机检。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB440;
 

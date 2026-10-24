@@ -3,7 +3,10 @@
 //! B37 策略五批回顾（vs 各批头注主题 diff ×5 一致）；收官判据框架三面
 //! （判据兑现 / 工具冻结 / 零遗留）落账 ×1。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9D80;
 

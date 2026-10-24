@@ -121,7 +121,9 @@ impl GlyphAtlas {
             s.map_or(false, |s| s.glyph_id == glyph_id && s.size_px == size_px)
         }) {
             Some(i) => {
-                self.slots[i].as_mut().unwrap().last_use = self.clock;
+                if let Some(s) = self.slots[i].as_mut() {
+                    s.last_use = self.clock;
+                }
                 self.clock += 1;
                 self.hits += 1;
                 Lookup::Hit(i)
@@ -136,7 +138,9 @@ impl GlyphAtlas {
             s.map_or(false, |s| s.glyph_id == glyph_id && s.size_px == size_px)
         }) {
             Some(i) => {
-                self.slots[i].as_mut().unwrap().pinned = true;
+                if let Some(s) = self.slots[i].as_mut() {
+                    s.pinned = true;
+                }
                 self.pin_registered += 1;
                 E_OK
             }

@@ -11,6 +11,8 @@
 //! 实装：批量执行器（逐项推进、失败入清单不中断）；三选一动作；计数
 //! 账（完成/失败/总数）；导出文本格式（文件名+人话原因，行式清单）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

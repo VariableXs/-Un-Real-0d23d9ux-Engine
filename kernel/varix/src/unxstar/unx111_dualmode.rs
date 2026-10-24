@@ -19,10 +19,10 @@
 //! 诊断码段：0x4F（本单独占，0x4F01~0x4F0F）。
 //! 施工：AI-WB2 · 2026-10-11。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

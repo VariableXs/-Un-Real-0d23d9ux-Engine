@@ -11,12 +11,12 @@
 //! - 深度上限 → `C14-深-*`（超限报错、报错指向链顶、链快照非空）
 //! - 零静默 → `C14-显性-*`（三要素齐备、找不到带明细、错误码不合并）
 
+use alloc::vec;
 // no_std 下 std prelude 不存在：`String` 与 `format!`/`vec!` 都得显式引入。
 // 宿主 `cargo test` 有std prelude 会掩盖这一点，整树 `cargo check --lib`
 // 才暴露——两处都写上，两条链路都成立。
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 
 use super::vec14_include::*;
 use crate::checks::CheckSet;

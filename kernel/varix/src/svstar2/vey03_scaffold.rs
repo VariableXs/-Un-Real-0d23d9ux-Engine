@@ -33,9 +33,9 @@
 //!
 //! **诊断码**：X 域 `0x3A1x` 续编（0x3A20..0x3A2A），与 F4801/F4802 不重号。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

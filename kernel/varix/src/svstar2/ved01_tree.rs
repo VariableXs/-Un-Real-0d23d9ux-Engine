@@ -35,13 +35,13 @@
 //!
 //! 零外部依赖，只依赖 `crate::checks`（测试侧）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 一、规格常量（参数唯一源）

@@ -11,6 +11,8 @@
 //! VirtualQuery/PAGE_* 文档语义对拍（保护位取 MS 真实值）。零堆纪律：定长
 //! 区域表（16 槽），无 Vec/String/Box/format!，错误一律 Err 或计数账面。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 分配粒度 64KB（主册 G-A-21；MS dwAllocationGranularity）。

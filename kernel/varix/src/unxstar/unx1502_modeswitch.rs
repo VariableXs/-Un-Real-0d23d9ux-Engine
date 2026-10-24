@@ -42,13 +42,11 @@
 //! 确认 0x97 段空闲，与 0x2E/0x2F/0x30/0x36/0x39 等既有段互不重叠）。
 //! 本模块零 panic 面：无 unwrap/expect/panic!，所有错误走 Err+中文诊断。
 
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
 
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
+use alloc::format;
 // ---------------------------------------------------------------------------
 // 一、诊断码闭集（独占 0x97 段，grep 全目录确认 0x9700..=0x970F 空闲）
 // ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@
 
 // 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
 // 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use alloc::vec;
 use crate::float::FloatExt;
 use crate::checks::CheckSet;
 
@@ -142,7 +143,7 @@ pub fn resample(pts: &[Pt], n: usize) -> Vec<Pt> {
     }
     let total = path_len(pts);
     if total <= f32::EPSILON {
-        return alloc::vec![pts[0], *pts.last().unwrap()];
+        return alloc::vec![pts[0], pts[pts.len() - 1]];
     }
     let step = total / (n - 1) as f32;
     let mut out = Vec::with_capacity(n);
@@ -173,7 +174,7 @@ pub fn resample(pts: &[Pt], n: usize) -> Vec<Pt> {
             break;
         }
     }
-    out.push(*pts.last().unwrap());
+    out.push(pts[pts.len() - 1]);
     out
 }
 
@@ -188,7 +189,7 @@ pub fn recognize_path(pts: &[Pt], fingers: u8) -> Option<Gesture> {
         return None;
     }
     let first = pts[0];
-    let last = *pts.last().unwrap();
+    let last = pts[pts.len() - 1];
     let net_x = last.x - first.x;
     let net_y = last.y - first.y;
     let net = (net_x * net_x + net_y * net_y).m_sqrt();

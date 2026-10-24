@@ -3,6 +3,10 @@
 //! 装配与跨域接口件：差异表 → F036 星卡自动草稿的数据馈送、迁移
 //! 横幅三要素文案生成、消费方通知行的确定性渲染。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f132f::{DiffRow, DiffStatus, Impact3};
 use crate::checks::CheckSet;
 

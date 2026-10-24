@@ -1,0 +1,39 @@
+[package]
+name = "varix"
+version = "0.1.0"
+edition = "2021"
+description = "Varix kernel — AI-01 boot & platform domain (F001~F025)"
+
+[lib]
+name = "varix"
+test = true
+
+# The kernel image target; unit tests live in the lib and run on the host,
+# so the bin is excluded from the test/bench profiles.
+[[bin]]
+name = "varix"
+path = "src/main.rs"
+required-features = ["kernel-image"]
+test = false
+doctest = false
+bench = false
+
+[features]
+kernel-image = []
+
+[dependencies]
+# 内核浮点层依赖：musl 数学库的纯 Rust 移植（零依赖、no_std、编译期产物）。
+#
+# 为什么内核需要它：`x86_64-unknown-none` 无 libc，core 不提供任何浮点
+# transcendentals（sqrt/round/sin/powf 等 19 种全缺）。libm 是唯一同时满足
+# 「真机 target 可编译」与「数值可信」的方案——`extern "C"` 方案链接期不报错
+# 但反汇编是 GOT 间接调用（运行时必崩），自研则精度风险过高。
+#
+# 这不违背「内核镜像零依赖」纪律：该纪律的实质是「不引入需要 C 运行时的东西」，
+# libm 是纯 Rust，不需要任何 C 运行时。实测与 std 最大 1 ULP（仅 powf/exp），
+# 其余 16 种方法逐位一致。见 src/float.rs 模块文档。
+libm = "0.2"
+
+# 任务35 测试交叉验证：官方 BLAKE3（仅宿主测试链路，内核镜像零依赖不变）。
+[dev-dependencies]
+blake3 = "1"

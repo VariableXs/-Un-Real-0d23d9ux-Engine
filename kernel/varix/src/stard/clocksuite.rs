@@ -20,6 +20,8 @@
 //! 时间全由调用方注入（unix ms），tz 表内建 12 城标准偏移（DST 城市
 //! 如实标注——按 tzdata 同源偏移，夏令时切换由 F187 守护联动）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

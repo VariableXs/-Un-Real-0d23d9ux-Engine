@@ -17,6 +17,8 @@
 //!
 //! 零堆纪律：定长白名单 + 定长事件账本，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 //! 判据覆盖锚点五要素：同源生成（2~4、5~8 双写对拍）/ 三律解释（6）/
 //! CI 防漂移（9、15、16）/ 样本库与失效检测（11~14）/ 判据面（17~20）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::svstar2::vead11_docgen::*;
 use alloc::string::String;

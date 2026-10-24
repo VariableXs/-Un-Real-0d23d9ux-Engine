@@ -10,6 +10,7 @@
 //!   候删五项登记在案/F200 终版，五件齐才过闸；
 //! ④「F200 条款终版」的**登记账**——修订号与范围双锚对表基础件。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 use crate::istar::iregistry::{IRegistry, LedgerLine, I_DOMAIN_ITEMS, TOTAL_ITEMS};

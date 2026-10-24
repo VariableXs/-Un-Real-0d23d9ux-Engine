@@ -324,3 +324,68 @@ impl AggCheckLedger {
         self.sealed
     }
 }
+
+
+// ===== 深化块（cga141_aggcheck · 聚合判据深化审计）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_aggcheck {
+    //! 聚合判据深化审计 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 分桶聚合器：8 桶定长，聚合值必须与明细和一致（聚合不撒谎）。
+    pub struct AggBuckets {
+        pub buckets: [u64; 8],
+    }
+
+    impl AggBuckets {
+        pub fn new() -> Self {
+            AggBuckets { buckets: [0; 8] }
+        }
+        pub fn add(&mut self, bucket: usize, v: u64) -> Result<(), u16> {
+            if bucket >= 8 {
+                return Err(1);
+            }
+            self.buckets[bucket] = self.buckets[bucket].wrapping_add(v);
+            Ok(())
+        }
+        pub fn sum(&self) -> u64 {
+            self.buckets.iter().fold(0u64, |a, &b| a.wrapping_add(b))
+        }
+    }
+
+    /// 双源对拍：两路独立聚合的总额差在容差内才可信。
+    pub fn dual_source_match(a: u64, b: u64, tol: u64) -> Result<(), u16> {
+        let diff = if a > b { a - b } else { b - a };
+        if diff > tol {
+            return Err(1);
+        }
+        Ok(())
+    }
+
+    /// 加权聚合：权重和为 0 拒绝（除零防线），结果 = Σ值×权 / Σ权。
+    pub fn weighted(values: &[u64], weights: &[u64]) -> Result<u64, u16> {
+        if values.len() != weights.len() || weights.is_empty() {
+            return Err(1);
+        }
+        let wsum: u128 = weights.iter().map(|&w| w as u128).sum();
+        if wsum == 0 {
+            return Err(2);
+        }
+        let acc: u128 = values.iter().zip(weights.iter()).map(|(&v, &w)| v as u128 * w as u128).sum();
+        Ok((acc / wsum) as u64)
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0141-深化");
+        let mut b = AggBuckets::new();
+        let _ = b.add(0, 10);
+        let _ = b.add(7, 32);
+        cs.add("桶越界拒", b.add(8, 1).is_err(), "");
+        cs.add("聚合守恒", b.sum() == 42, "");
+        cs.add("双源对拍", dual_source_match(100, 105, 10).is_ok() && dual_source_match(100, 200, 10).is_err(), "");
+        cs.add("加权聚合", weighted(&[10, 20], &[1, 3]) == Ok(17), "");
+        cs
+    }
+}

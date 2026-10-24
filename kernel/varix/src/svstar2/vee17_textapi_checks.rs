@@ -5,6 +5,7 @@
 //! 只做 [`CheckSet::merge`]，签名冻结断言用 tally 合计对比而非自调全域
 //! 入口（F2806 无限递归教训）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 use super::vee08_fontmetric::{LineHeightMode, MetricKey, MetricSnapshot, MetricSource};

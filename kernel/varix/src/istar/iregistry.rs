@@ -14,6 +14,8 @@
 //! - 账册检三处对齐（F400 纪律贯彻到底）；全书从此进入「冻结-审视-
 //!   精炼」节奏（v1.0 冻结的前置条件达成）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

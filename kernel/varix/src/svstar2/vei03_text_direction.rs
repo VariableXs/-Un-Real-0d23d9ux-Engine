@@ -93,6 +93,7 @@
 //! 零时钟、零 IO、零环境依赖；输入是 `&str` 与显式声明列表，输出是纯数据
 //! 结构。同一输入必得同一结果（含诊断序列顺序），保证回归可复现、对拍可重现。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

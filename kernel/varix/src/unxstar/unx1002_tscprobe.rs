@@ -59,9 +59,9 @@
 //! 已被 F008/F080/F081/F084/F088/F090..F099/F1021/F402/F403 等占用，
 //! 0x4cf0 段空闲，先入库者占段）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

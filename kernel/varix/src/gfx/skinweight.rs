@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! VE-F1610 · 骨骼权重数据容器（VE-I 域 · I01 网格格式与几何基础组 · 目标 320 行）
 //!
 //! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F1610`
@@ -77,9 +78,8 @@
 //!
 //! 纯数据变换，无外部 I/O、无遥测、无网络。
 
-#![allow(clippy::needless_range_loop)]
-
 use alloc::vec;
+
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

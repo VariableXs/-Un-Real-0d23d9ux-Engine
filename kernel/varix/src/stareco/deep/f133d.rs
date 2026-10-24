@@ -4,6 +4,9 @@
 //! 必备图标、重采样计划执行器（输出明确的重采样工单）、校验报告
 //! 本地化文案、manifest 与目录一致性对拍。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::iconpack::{validate, Manifest, PackReport, CATEGORIES, MANDATORY_SIZE, SIZE_STEPS};
 

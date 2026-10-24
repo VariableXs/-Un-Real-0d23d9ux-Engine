@@ -1,3 +1,4 @@
+#![cfg_attr(not(test), no_std)]
 //! # VE-F0813 · 文字渲染示例域自检
 //!
 //! 锚点判据原文：**4 例、三步跑通、金样同源、CI 冒烟复用、漂移即红**。
@@ -23,14 +24,13 @@
 //!    仍被计入 pass，就会出现「pass=4 但 ci_open=false」，排查时不知信哪个。
 //! 5. 分 a/b/c 三族规避 `MAX_CHECKS = 112` 截断。
 
-#![cfg_attr(not(test), no_std)]
+use alloc::vec;
 
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::String;
 use alloc::string::ToString;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

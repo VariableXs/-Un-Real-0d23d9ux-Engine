@@ -33,6 +33,9 @@
 //! 且判据真调示例函数证明示例可用。F1802 的 Rust 单源模块尚未施工（vej02
 //! 缺位）——其对账钩子**显性标注预留**（预留不静默：标注「待 vej02 落地接
 //! 钩子」而不是假装对上了）。
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use super::vej07_lightmgr::{LightKind, LIGHT_KINDS, MAX_LIGHTS};
 use super::vej08_probe::{BYTES_PER_PROBE, ShCoeffs};

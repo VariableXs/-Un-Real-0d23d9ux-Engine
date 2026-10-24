@@ -186,17 +186,26 @@ impl BuildCache {
         let mut any = usize::MAX;
         for i in 0..SLOTS {
             if let Some(e) = self.entries[i] {
-                if e.hits < HOT_HITS && (victim == usize::MAX || colder(e, self.entries[victim].unwrap())) {
+                // 保守比较：比较基准槽缺位时按「更冷」处理（不 panic）。
+                let v_colder = match victim {
+                    usize::MAX => true,
+                    v => self.entries[v].as_ref().map_or(true, |ve| colder(e, *ve)),
+                };
+                if e.hits < HOT_HITS && v_colder {
                     victim = i;
                 }
-                if any == usize::MAX || colder(e, self.entries[any].unwrap()) {
+                let a_colder = match any {
+                    usize::MAX => true,
+                    a => self.entries[a].as_ref().map_or(true, |ae| colder(e, *ae)),
+                };
+                if a_colder {
                     any = i;
                 }
             }
         }
         let v = if victim != usize::MAX { victim } else { any };
         if v == usize::MAX { return false; }
-        let e = self.entries[v].unwrap();
+        let Some(e) = self.entries[v] else { return false };
         self.entries[v] = None;
         self.used_bytes -= e.bytes as u64;
         self.evictions += 1;

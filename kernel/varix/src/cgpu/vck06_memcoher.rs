@@ -23,6 +23,7 @@
 //! 性行为回归面）+违规检测器（位置违规+一致性违规双查——显性诊断不静默
 //! 透支）。诊断码段 0x56xx 四码。前置 vck05（fence/交接面）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

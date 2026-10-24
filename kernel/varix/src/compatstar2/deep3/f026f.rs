@@ -12,6 +12,8 @@
 //! pan -10000~10000、16 位 PCM 满幅）。零堆纪律：定长通道表，无
 //! Vec/String/Box/format!，错误一律 Err 或计数账面，零静默。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

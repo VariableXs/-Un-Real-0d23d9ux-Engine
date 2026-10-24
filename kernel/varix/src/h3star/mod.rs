@@ -65,8 +65,8 @@
 //! 落位先后排布，非编号序）；行数对账与判据对照一律以
 //! `_attic/aih3-f301-f350/行数对账与缺陷账本.md` 为准。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 
 pub mod hbase;
 

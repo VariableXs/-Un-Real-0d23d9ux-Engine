@@ -168,6 +168,15 @@ impl FmtGpuTier {
     pub const ALL: [FmtGpuTier; TEX_TIER_COUNT] =
         [FmtGpuTier::Low, FmtGpuTier::Mid, FmtGpuTier::High];
 
+    /// 档位短名（读屏口径）。
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            FmtGpuTier::Low => "低端",
+            FmtGpuTier::Mid => "中端",
+            FmtGpuTier::High => "高端",
+        }
+    }
+
     /// 档位 id（1..=3）。
     pub const fn id(self) -> u8 {
         match self {

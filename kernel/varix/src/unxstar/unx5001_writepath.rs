@@ -7,10 +7,11 @@
 //! 结构：写分派器（偏移+长度 → 全块写/部分块写 RMW 分派）+ 块缓存 +
 //! 分派账（逐次留痕：类型/偏移/长度/RMW 读次数）+ 上游 write_iter 语义
 //! 对照 + 10 例分派断言 + 注入核（零长写/越 EOF 语义/封账写/RMW 计数失真）。
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use alloc::format;
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC380 独占 0x80）。

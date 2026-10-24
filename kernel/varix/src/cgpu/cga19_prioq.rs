@@ -25,6 +25,7 @@
 //! O(promoted)。入队到出队的路径只有「一次数组索引 + 一次比较」，3GHz 下
 //! 远低于 5µs 预算——判据按操作数记账（`enqueue_ops`），不用墙钟。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec::Vec;

@@ -6,6 +6,8 @@
 //! 判据纪律：零 panic 面（无 unwrap/expect，裁决用 == 于 PartialEq 闭集
 //! 枚举）；预期常量独立给定；审计红线（账不含值）以结构形态断言。
 //! 手算锚：四计数对账 sum == 总导出条数；脱敏 kept+stripped == 原维度数。
+use alloc::vec::Vec;
+use alloc::format;
 
 use crate::checks::CheckSet;
 use crate::cgpu::cgp02_unifiedmodel::{Metric, MetricValue, PrivacyLevel};

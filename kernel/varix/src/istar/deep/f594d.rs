@@ -11,6 +11,7 @@
 //! ④「颜色走主题令牌（F151）」的**令牌注入账**——令牌名唯一源不动，
 //!   换主题解析值跟随（涟漪颜色随主题走）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::clickripple::{ClickRipple, RIPPLE_MS, RIPPLE_TOKEN};
 use crate::istar::ibase::ISTAR_DOMAIN;

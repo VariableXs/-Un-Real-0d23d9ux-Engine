@@ -9,6 +9,9 @@
 //! monotonic sequence numbers so a crash dump can tell whether lines were
 //! lost when the ring wrapped.
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::sync::atomic::{AtomicU32, Ordering};

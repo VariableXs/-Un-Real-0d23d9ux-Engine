@@ -12,8 +12,8 @@
 //! 双模式语义分账（Σ 恰边界双向）；量化往返误差界与稀疏账判据侧重算；
 //! 码段判据 `!=` 防自判死（0x4x 全段除 0x44 排除）。
 
-use alloc::string::String;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

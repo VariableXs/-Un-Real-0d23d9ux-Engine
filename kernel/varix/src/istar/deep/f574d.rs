@@ -10,6 +10,7 @@
 //! ④「要点挂差异表条目号」的 **同源对账账本**——挂号不重复、卡上要点
 //!   全挂号且全在差异表内（一处一事实，漂移即红）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 use crate::istar::upsummary::{SUMMARY_MAX, SUMMARY_MIN, Bullet, SummaryCard};

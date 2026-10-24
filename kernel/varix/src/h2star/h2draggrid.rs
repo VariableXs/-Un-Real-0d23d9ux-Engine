@@ -14,10 +14,10 @@
 //!
 //! 几何纪律：格坐标 ↔ 像素换算走 h2geo::GridSpec（单一定义点）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
-use alloc::vec;
 
 use crate::h2star::h2geo::GridSpec;
 

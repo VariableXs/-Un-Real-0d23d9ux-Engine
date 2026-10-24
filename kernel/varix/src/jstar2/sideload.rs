@@ -26,6 +26,8 @@
 //!   禁管两样货，不另造规则）；逐条目门审结论进审计面（拦在哪条、
 //!   为什么拦——审计不是一行"拒绝"了事）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::{OriginKind, VXCUR_MAX_BYTES};
 use crate::jstar2::library::{AddOutcome, SchemeLibrary};

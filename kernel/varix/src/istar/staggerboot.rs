@@ -10,6 +10,7 @@
 //! - 用户可调序（清单拖拽 = 启动序）；被延后的应用无感知（后台起、
 //!   就绪即用 F283 骨架先行）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

@@ -405,6 +405,7 @@ fn seed_scores(reg: &mut HealthRegistry, scores: &[u32]) {
 
 #[cfg(test)]
 mod tests {
+use alloc::string::String;
     use super::*;
 
     #[test]

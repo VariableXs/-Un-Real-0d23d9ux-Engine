@@ -12,6 +12,7 @@
 //!
 //! 逻辑时钟注入、无墙钟，回归可复现。
 
+use alloc::vec::Vec;
 use super::vea04_ring::*;
 use crate::checks::CheckSet;
 

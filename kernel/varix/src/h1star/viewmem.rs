@@ -24,6 +24,8 @@
 //! **依赖锚点**：crate::checks::CheckSet；时间注入式（毫秒戳驱动 LRU
 //! 续期与淘汰）；alloc Vec/String 仅用于记忆表与序列化面（有容量上限）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

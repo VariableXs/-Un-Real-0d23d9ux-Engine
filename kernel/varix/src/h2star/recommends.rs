@@ -12,6 +12,8 @@
 //! 混合排序（新装 > 近期文件 > 上下文，同级按时间）；7 天徽标（分钟戳
 //! 判定）；× 降权持久化（键 = 来源+条目）；Top6 稳定输出。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

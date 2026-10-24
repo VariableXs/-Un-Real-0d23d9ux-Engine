@@ -463,11 +463,12 @@ impl IoMergeQueue {
 
     /// 排空并合并（偏移序插入排序 + 相邻/重叠吸收，≤64KB 上限）。
     pub fn flush(&mut self) -> u64 {
-        // 1) 插入排序按偏移。
+        // 1) 插入排序按偏移（缺槽键视作 +∞ 沉底，不 panic）。
         for i in 1..self.n {
             let key = self.segs[i];
+            let key_off = key.as_ref().map_or(u64::MAX, |k| k.0);
             let mut j = i;
-            while j > 0 && self.segs[j - 1].unwrap().0 > key.unwrap().0 {
+            while j > 0 && self.segs[j - 1].as_ref().map_or(u64::MAX, |p| p.0) > key_off {
                 self.segs[j] = self.segs[j - 1];
                 j -= 1;
             }
@@ -476,9 +477,9 @@ impl IoMergeQueue {
         // 2) 原地吸收合并。
         let mut out = 0usize;
         for k in 0..self.n {
-            let (off, len) = self.segs[k].unwrap();
+            let Some((off, len)) = self.segs[k] else { continue };
             if out > 0 {
-                let (p_off, p_len) = self.segs[out - 1].unwrap();
+                let Some((p_off, p_len)) = self.segs[out - 1] else { continue };
                 let p_end = p_off + p_len;
                 if off <= p_end {
                     // 相邻或重叠：可合并（合计 ≤64KB 才并——超限拆段保上限）。
@@ -1088,11 +1089,12 @@ impl PrefetchPlanner {
 
     /// 构建预取清单：偏移排序，按清单容量截断（容量诚实）。
     pub fn build(&mut self) -> usize {
-        // 插入排序偏移。
+        // 插入排序偏移（缺槽键视作最大值沉底，不 panic）。
         for i in 1..self.log_n {
             let key = self.log[i];
+            let key_v = key.unwrap_or(u64::MAX);
             let mut j = i;
-            while j > 0 && self.log[j - 1].unwrap() > key.unwrap() {
+            while j > 0 && self.log[j - 1].unwrap_or(u64::MAX) > key_v {
                 self.log[j] = self.log[j - 1];
                 j -= 1;
             }

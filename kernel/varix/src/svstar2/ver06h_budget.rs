@@ -37,6 +37,7 @@
 //!
 //! 固定四段用数组 + `get()`，无索引 panic。测试区除外。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

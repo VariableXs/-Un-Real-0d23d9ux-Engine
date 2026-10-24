@@ -3,6 +3,9 @@
 //! 补深：学习时长预估模型、知识递进图谱（示例间知识点账）、CI 夜跑
 //! 排程器、冒烟判据（示例窗口出现即绿的判定核）、README 索引生成。
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::stareco::examples::{Example, EXAMPLE_COUNT};
 

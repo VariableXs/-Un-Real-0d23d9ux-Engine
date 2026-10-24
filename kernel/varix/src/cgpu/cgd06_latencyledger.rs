@@ -10,6 +10,8 @@
 //! 与卡顿关联视图+目标线判定（<50ms 依赖硬件诚实标注）。与 cgd04（帧间隔）
 //! 分工——彼是帧到帧节奏、此是输入到像素的端到端链。诊断码段 0x49xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

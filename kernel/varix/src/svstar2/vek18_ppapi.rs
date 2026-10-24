@@ -47,9 +47,11 @@
 //!    （篡改一条 → 指纹变 → CI 拦截语义）。
 //! 4. **"衔接核验"**。断逐行核验：曝光注入域与 F1812 单源常量**数值相等**
 //!    （不是注释说一致）；LUT 预留位被调 → 显性报错（预留不静默）。
+use alloc::vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use super::vek02_dagexec::{compile_graph, CompileOptions, EffectGraph, GraphSpec};

@@ -10,6 +10,9 @@
 //! 口径定容）。零堆纪律：定长槽表 + 定长学习账，无 Vec/String/Box/
 //! format!，错误一律 Err 或计数账面，零静默。
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 词典表容量（64 槽 = 2^6，槽位取哈希低 6 位——域内口径）。
@@ -202,8 +205,13 @@ impl LearnLedger {
             }
         }
         let mut oldest = 0usize;
+        let mut oldest_stamp = self.words[0].as_ref().map_or(u64::MAX, |w| w.stamp);
         for i in 1..LRU_CAPACITY {
-            if self.words[i].unwrap().stamp < self.words[oldest].unwrap().stamp { oldest = i; }
+            let st = self.words[i].as_ref().map_or(u64::MAX, |w| w.stamp);
+            if st < oldest_stamp {
+                oldest = i;
+                oldest_stamp = st;
+            }
         }
         self.words[oldest] = Some(LearnedWord { word, freq: 1, stamp: self.clock });
         self.evictions += 1;

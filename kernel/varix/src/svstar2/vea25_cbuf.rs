@@ -48,11 +48,11 @@
 //!   缓冲已冻结（冻结期写入会破坏正在进行的窗口）都按拒绝返回，且**不改脏标记**
 //!   ——拒绝却把脏标留下，等于下一次合法写入时会多写一次。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,11 @@
 //! 全过（readpage(pg)->i32 / writepage(pg)->i32 均返回 0 成功/负 errno 失败），
 //! 契约差异显式入账零静默（差异登记表非空时判据红）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7F00;
 

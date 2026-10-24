@@ -20,6 +20,8 @@
 //! 解码面以闭包注入口承接（F054 SIMD 面就绪后直挂），宿主测试确定复现。
 //! 哈希一律 FNV-1a 64（与 F072 recenteng 同源算法，一处一事实）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::sat_sub;
 

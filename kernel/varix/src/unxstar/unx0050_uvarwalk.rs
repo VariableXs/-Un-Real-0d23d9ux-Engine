@@ -3,6 +3,7 @@
 //! 名称/GUID/属性三元登记无缺项，环形陷阱（链环）必检必拒；
 //! 纯功能代码 ≥300 行。纪律：只读——零写入路径。
 
+
 use crate::alloc::{format, string::{String, ToString}, vec::Vec};
 
 pub const SEG_BASE: u16 = 0x2030;

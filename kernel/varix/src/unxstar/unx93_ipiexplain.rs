@@ -11,6 +11,7 @@
 //!   一句可读中文且逐字可复现，供运维核对与日志对齐。
 //! 诊断码段：0xEC80（0xEC81~0xEC88 闭集；本段为 mod.rs 段位图核验空闲独占）。
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，整数算术，确定性。
+use alloc::string::String;
 
 use alloc::vec;
 use alloc::vec::Vec;

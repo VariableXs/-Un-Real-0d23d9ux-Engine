@@ -2,8 +2,9 @@
 //! 验收锚点：UNX-F0968-J1 全链迁移正确（完整四态迁移 10/10 次账平），
 //! 各态停留时长账（Draining/Arming 窗口时长上限断言），违序迁移全拦截
 //! （六种违序注入 10/10 次），双判据缺一即批内红灯。
+use alloc::vec::Vec;
+use alloc::string::String;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB8B0;
 
@@ -88,7 +89,7 @@ impl MigChain {
                 return Err(E_ORDER);
             }
         }
-        self.recs.push(MigRec { from, to, t });
+        self.recs.push(MigRec { from, to, t_us: t });
         Ok(())
     }
     /// 全链闭合：Polling 起三步到 Irq。

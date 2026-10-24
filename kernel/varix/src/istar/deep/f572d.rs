@@ -11,6 +11,8 @@
 //!   要素，出路要素由深化层补齐合成（主册「一键反馈预填 + 建议查看
 //!   更新或反馈」的字面落地）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::istar::crashbrief::{CrashBrief, CrashCause, ESCALATE_AT};

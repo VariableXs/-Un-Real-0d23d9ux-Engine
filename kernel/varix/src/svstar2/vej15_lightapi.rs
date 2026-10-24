@@ -33,6 +33,10 @@
 //! 十五签名数目钉死 + 四要素齐 + 负例真走拒绝路径 + 指纹篡改必检 +
 //! v1 闭集/v2 追加分型 + **实现面真调**（十五签名每条指到 F1803-F1812 的
 //! Rust 单源函数，签名不是纸面）。
+use alloc::vec::Vec;
+use alloc::vec;
+use alloc::string::{String, ToString};
+use alloc::format;
 
 use super::vej07_lightmgr::{LightDesc, LightKind, LightManager};
 use super::vej08_probe::ShCoeffs;

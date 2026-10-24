@@ -11,12 +11,13 @@
 //! glibc 渐进探顶序列（10/10 正确响应账）+ 注入核（下越/上越/零页/
 //! 封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA500 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA500;
 pub const XC_BRK_UNDER: u32 = SEG_BASE + 0x01; // 下越 min_brk
 pub const XC_BRK_OVER: u32 = SEG_BASE + 0x02; // 上越 heap_max

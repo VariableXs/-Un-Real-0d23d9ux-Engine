@@ -8,6 +8,8 @@
 //! 分层：纯函数面宿主可测（ktest）；target 薄分发在 usrshell
 //! （SHIM_WINE_RUN 命令块）。零堆纪律：无 Vec/String/Box/format!。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::winecare::SessionCard;
 use crate::winepfx::{instantiate, PrefixInstance, TEMPLATE_V1, TEMPLATE_VER_FIRST};

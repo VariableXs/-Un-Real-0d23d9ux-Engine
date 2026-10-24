@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! # UNX-F1862 · 地址空间活跃核追踪（mm 活跃 mask）
 //!
 //! ## 单号
@@ -115,12 +116,11 @@
 //! 自定义 `Result<T, MaskErr>`；确定性 LCG（`A=6364136223846793005`, `C=1442695040888963407`）；
 //! 逻辑 `tick: u64` 单调推进。全部数值面为整数，无 `f32/f64`。
 
-#![allow(dead_code)]
+use alloc::vec;
 
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

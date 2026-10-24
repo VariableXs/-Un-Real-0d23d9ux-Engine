@@ -9,6 +9,7 @@
 //! 缩放 1.03——一套触感谱全系统统一（参数表入册），性能模式下全部降为
 //! 瞬时（F331 纪律）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

@@ -11,6 +11,8 @@
 //!
 //! 12 色唯一源：[`crate::istar::ibase::Tint12`]（令牌名 + 缺省语义）。
 
+use alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::{Tint12, ISTAR_DOMAIN};
 

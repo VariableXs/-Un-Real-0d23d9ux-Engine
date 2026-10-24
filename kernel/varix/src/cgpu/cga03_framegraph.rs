@@ -96,8 +96,8 @@
 //! （下标走 `get`、算术饱和、循环而非递归）、零 IO、零墙钟（tick 上游
 //! 注入）、无全局可变状态、no_std + alloc。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

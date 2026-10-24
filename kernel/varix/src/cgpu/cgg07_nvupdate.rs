@@ -13,6 +13,7 @@
 //! 预检只能基于差异表已知事实，不确定处显性"未知"不猜（诚实纪律）；暂缓建
 //! 议必须给理由，不给"建议暂缓"四个字了事。诊断码段 0x5701~0x5705。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

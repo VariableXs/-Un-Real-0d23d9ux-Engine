@@ -9,13 +9,14 @@
 //!
 //! 全部确定性：参考设备应答 + 逻辑 tick，无墙钟、零 IO。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::veb01_device::DisplayCfg;
 use super::veb02_proto::*;
 use super::veb02_queue::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
-use alloc::vec::Vec;
+use alloc::format;
 
 /// 代表性命令族（每条命令至少一个实例；AttachBacking 带两条内存条目）。
 fn family() -> Vec<CtrlCommand> {
@@ -551,7 +552,6 @@ pub fn run_veb02_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

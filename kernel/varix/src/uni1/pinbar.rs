@@ -10,6 +10,7 @@
 //! 运行皆可）、快照恢复 round-trip（重启还原序）、临时图标追加在尾
 //! （不打扰钉选区）、再固定回位账、取消两路对账。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

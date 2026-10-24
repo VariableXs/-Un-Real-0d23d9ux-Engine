@@ -3,6 +3,8 @@
 //! 装配与跨域接口件：文档站 ↔ F119 帮助中心的锚点映射（死锚检出）、
 //! 上下文帮助查询接口、站内搜索结果的页面卡片装配。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f135g::LinkGraph;
 use crate::checks::CheckSet;
 

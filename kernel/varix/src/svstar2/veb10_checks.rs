@@ -6,6 +6,7 @@
 //! - 软件兜底 → `C210-兜底-*`（cursorq 不可用降级、切换显性通知、回切通知）
 //! - 热点保留 → `C210-热点-*`（图像内热点 + 消息随行 + 读屏换算读数）
 
+use alloc::vec::Vec;
 use super::veb02_proto::CMD_UPDATE_CURSOR;
 use super::veb10_cursor::*;
 use crate::checks::CheckSet;

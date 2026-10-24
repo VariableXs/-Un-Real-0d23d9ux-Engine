@@ -296,6 +296,8 @@ pub fn find_mcfg_in_xsdt(root: &[u8], is_xsdt: bool, sig_at: &dyn Fn(u64) -> u32
 // ---------------------------------------------------------------------------
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub mod target {
+use alloc::vec;
+use alloc::vec::Vec;
     use super::*;
 
     /// 物理地址 → HHDM 虚拟地址。addr 已落在 HHDM 窗口（≥hhdm）时

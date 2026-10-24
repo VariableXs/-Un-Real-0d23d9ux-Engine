@@ -183,7 +183,9 @@ impl FlowTable {
     pub fn observe(&mut self, key: FlowKey, len: usize, now_us: u64) -> (FlowClass, bool) {
         self.clock = self.clock.max(now_us);
         if let Some(idx) = self.find_slot(&key) {
-            let rec = self.slots[idx].as_mut().unwrap();
+            let Some(rec) = self.slots[idx].as_mut() else {
+                return (FlowClass::Interactive, false);
+            };
             let old_class = rec.class;
             rec.note_pkt(len, now_us);
             // 分类判定：均值包 ≤512B 且双向小包 → 交互；均值 >1024B → 批量。

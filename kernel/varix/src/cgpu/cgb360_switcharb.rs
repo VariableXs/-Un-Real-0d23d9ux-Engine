@@ -293,6 +293,7 @@ pub fn diagnose(code: u16) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+use alloc::vec;
     use super::*;
 
     #[test]

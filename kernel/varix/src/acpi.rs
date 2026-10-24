@@ -389,6 +389,8 @@ pub struct AcpiState {
     pub has_madt: bool,
 }
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::once::OnceLock;
 
 /// MADT discovery result for the IRQ/SMP domains (set by `init`).

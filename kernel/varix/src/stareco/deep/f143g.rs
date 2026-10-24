@@ -3,6 +3,10 @@
 //! 资产打包清单规划（按用途选集）、明暗配对校验、第三方使用审批
 //! 流状态机、违例工单生命周期、品牌色板 token 导出。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,8 @@
 //! 数据从"存得住"到"零损坏"：快照、校验、去重、温层、演练。
 //! 全部为纯逻辑 + 固定容量数组（无 Vec/String/Box），no_std 安全。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

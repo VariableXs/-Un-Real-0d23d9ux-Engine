@@ -101,6 +101,8 @@
 //! 自检入口 run_f5XX_checks 返回 CheckSet（MAX_CHECKS=64，cs.add(name,
 //! passed, detail)，detail 为 &'static str），经 robust.rs 域函数指针表注册。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ===========================================================================

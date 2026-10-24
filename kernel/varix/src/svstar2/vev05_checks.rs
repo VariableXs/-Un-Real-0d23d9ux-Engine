@@ -20,8 +20,8 @@
 //! 常量改了判据必须红。开放格式以「导出→回导→逐字段相等」往返口径
 //! 断言，不逐字符比文本（分隔风格不是契约，语义无损才是）。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

@@ -14,10 +14,10 @@
 //!
 //! 逻辑时钟注入、零墙钟，回归可复现。
 
+use alloc::vec;
 use super::vea11_hotplug::*;
 use crate::checks::CheckSet;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 标准环境：0=物理A（当前）、1=物理B、2=虚拟卡。

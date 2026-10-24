@@ -114,6 +114,7 @@
 //! | [`C23-KEY-OUT-OF-RANGE-NONE`] | 越界键静默变合法模式 |
 //! | [`C23-LEDGER-EXACT`] | 记账被吞（幽灵记账 / 漏记） |
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 // no_std 导入三件套 + format!：三件套齐备以与全仓其它 no_std 模块一致。

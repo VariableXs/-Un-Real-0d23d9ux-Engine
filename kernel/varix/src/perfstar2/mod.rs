@@ -36,6 +36,8 @@
 //!   逐条实摆；十二查叠加执行。
 //! - **诚实降级**：电池计不可读/索引未就绪/表满等一律显式呈现，不静默吞。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 pub mod assetload;

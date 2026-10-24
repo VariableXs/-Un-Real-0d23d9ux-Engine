@@ -3,6 +3,10 @@
 //! 补深：指标健康检查（数据源异常 → 「数据待修」判定核）、JSON 导出
 //! schema 校验、F150 第五指标接入（外部人耗时曲线）、报告导出渲染。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ecoreport::{report_fp, Metrics, QuarterlyReport, EcoReportLedger, TREND_SEASONS};
 

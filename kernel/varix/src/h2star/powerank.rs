@@ -12,6 +12,8 @@
 //! （同应用历史均值 × 3——判据定值）；归因文案表（Top10 覆盖——每条
 //! 有说法）；只展示纪律（输出只有建议——无杀进程动作可调用）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

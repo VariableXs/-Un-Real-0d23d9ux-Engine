@@ -2,7 +2,10 @@
 //! 验收锚点：UNX-F8281-J1 分流点按人格标签路由（Top10 接口⑤ C 侧半边实装），
 //! 错误路由注入 10/10 显性暴露（错误标签 → 拒 + 留账），路由账可导出。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB3E0;
 

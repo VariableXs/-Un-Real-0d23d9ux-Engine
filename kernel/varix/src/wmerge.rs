@@ -16,6 +16,7 @@
 //! - 元数据区集中写（ext4 inode 表/位图相邻是事实）排序归并后平均段长
 //!   轻松 ≥ 5——收益来源明确，不是模型美化。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 // no_std 态走 alloc 的 Vec/vec!（kvsrv/power_shutdown 同范式，两态通吃）。
 use alloc::vec::Vec;

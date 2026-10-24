@@ -12,6 +12,8 @@
 //!
 //! 命名语义源：[`crate::istar::ibase::dedupe_name`]（重名递增唯一实现）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::{dedupe_name, ISTAR_DOMAIN};
 

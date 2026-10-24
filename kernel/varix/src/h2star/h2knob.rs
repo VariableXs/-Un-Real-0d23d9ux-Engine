@@ -6,6 +6,8 @@
 //! 变更走 [`crate::star::sbase::KnobReg`] 的既有留痕管道（钳制入档、
 //! 变更日志），本模块提供域级登记表与校验/导出。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -30,8 +30,9 @@
 //! 壁纸每日一换——以上五项判定为「锦上添花但非日常」，冻结后不再投入
 //! 工时，季度审视时决定去留。
 
-use crate::checks::CheckSet;
+use alloc::format;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec::Vec;
 

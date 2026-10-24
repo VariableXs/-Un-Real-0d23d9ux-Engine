@@ -11,6 +11,9 @@
 //!   「只留当前」执行后其余标签清账（精简是一个真实的删数动作，
 //!   不是把提示条关掉了事）。
 
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;

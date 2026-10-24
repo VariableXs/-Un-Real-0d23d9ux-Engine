@@ -9,6 +9,7 @@
 //!   （F247）相反因为标题的识别信息在前；
 //! - 任务栏按钮标题同步策略；Alt+Tab 列表（F082）显示宽裕可少截。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

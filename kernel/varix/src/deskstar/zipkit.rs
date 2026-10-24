@@ -26,10 +26,10 @@
 //! 解析 + 本地头扫描抢救（损坏归因 N/M）、路径穿越拦截（F176 纪律）、
 //! 码页检测注入口（F034 接缝）。零外部依赖，宿主/内核双可编译。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 

@@ -5,6 +5,9 @@
 //! 等义审查器（占位符序列+标签对称）、区域格式规则表（F187 联动）、
 //! RTL 影响面评估、两级覆盖率矩阵、补翻清单优先级排序。
 
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::l10nopen::{context_ok, key_parts, placeholders_match};
 use alloc::string::ToString;

@@ -32,6 +32,7 @@
 //! **依赖锚点**：`crate::checks::CheckSet`、
 //! `crate::h1star::h1base::Rgb8`。
 
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::h1star::h1base::Rgb8;
 

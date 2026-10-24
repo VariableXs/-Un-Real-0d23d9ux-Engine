@@ -25,6 +25,8 @@
 //! 冲刷执行由调用方回报进度；关机账目（原因=低电）注出到 B-2902 链。
 //! 依赖锚点：F046（全量冲刷）、F060（剩余时长）、F077（toast）、F189（修复族）、F173（视觉族区分）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::RingLog;
 use alloc::vec::Vec;
@@ -154,8 +156,8 @@ impl BatteryGuard {
         // 滑动平均（窗内样本）。
         let win = self.samples.newest_first();
         let sum: u64 = win.iter().sum();
-        self.filtered_permille = Some(sum / win.len() as u64);
-        let level = self.filtered_permille.unwrap();
+        let level = sum / win.len() as u64;
+        self.filtered_permille = Some(level);
 
         // 相位推进。
         match self.phase {
@@ -1287,7 +1289,6 @@ mod deep3_tests {
 // 全生命周期文档化。
 // ------
 
-use alloc::vec;
 // -------------------------------------------------------------------
 
 /// 电量历史环（60 点滑动窗——趋势与斜率的数据面）。

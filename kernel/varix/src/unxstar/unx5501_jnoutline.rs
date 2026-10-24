@@ -9,10 +9,9 @@
 //! 不变量/B24 极端窗口/B25 清理/B26 样本）+ 分面配额账 + 重放序闸
 //! + 总纲导出 + 注入核（批次缺项/乱序重放/配额漂移/封账重放）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC600 独占 0x80）。

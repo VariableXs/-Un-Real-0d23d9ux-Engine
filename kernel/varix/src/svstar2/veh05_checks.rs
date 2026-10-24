@@ -7,6 +7,7 @@
 //! - 计量（归属透明，最耗可查）→ `H05-计量-*`
 //! - 模板库 → `H05-模板-*`
 
+use alloc::vec::Vec;
 use super::veh03_mixgraph::{Edge, MixGraph, NodeKind, Port};
 use super::veh05_submix::*;
 use crate::checks::CheckSet;

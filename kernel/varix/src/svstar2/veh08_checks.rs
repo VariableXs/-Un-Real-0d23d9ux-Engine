@@ -7,6 +7,8 @@
 //! - 优先级 → `H08-优先级-*`
 //! - 解耦（语义映射的发布订阅面）→ `H08-解耦-*`
 
+use alloc::vec;
+use alloc::string::ToString;
 use super::veh08_eventbus::*;
 use crate::checks::CheckSet;
 

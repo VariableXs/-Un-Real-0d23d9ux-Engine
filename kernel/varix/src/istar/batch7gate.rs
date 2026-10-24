@@ -16,6 +16,8 @@
 //! 本模块即「脚本」：锚点表 = (锚点名 → 承载模块自检函数) 的注册表；
 //! 全绿基线 = 逐项跑子域自检并核对该子域 CheckSet 全过 + 未截断。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

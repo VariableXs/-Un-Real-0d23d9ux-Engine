@@ -15,11 +15,11 @@
 //!   - 注入核 5 项。
 //! ═══════════════════════════════════════════════════════════════════════
 
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段基址。
+
 pub const SEG_BASE: u16 = 0xC980;
 
 /// M-040 概念验证轮数。
@@ -286,7 +286,7 @@ pub fn run_unx3281_checks() -> CheckSet {
         if decl.hash() != 0 { "" } else { "哈希空" },
     );
     let (j1, pass) = j1_main();
-    s.add(
+    s.add_dyn(
         "M-040概念验证用例可重复通过",
         j1,
         if j1 { "" } else { "M-040轮次不齐" },

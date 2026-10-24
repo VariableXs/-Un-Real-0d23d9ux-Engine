@@ -18,6 +18,7 @@
 //! 开关（`ClickAnimPrefs` 与 `rec_highlight` 分立字段），联动用例验证
 //! 互不牵动。
 
+use alloc::format;
 use crate::checks::CheckSet;
 use alloc::string::String;
 

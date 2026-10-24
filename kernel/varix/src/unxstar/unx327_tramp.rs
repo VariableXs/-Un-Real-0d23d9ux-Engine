@@ -8,12 +8,13 @@
 //! 1MB 恒等 + 跳板页 + 主表入口三区）+ AP 开页断言（AP 首页可译）
 //! + 注入核（缺区/双映射/槽位漂移/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAC80 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAC80;
 pub const XC_TR_MISS: u32 = SEG_BASE + 0x01; // 缺区
 pub const XC_TR_DUP: u32 = SEG_BASE + 0x02; // 双映射

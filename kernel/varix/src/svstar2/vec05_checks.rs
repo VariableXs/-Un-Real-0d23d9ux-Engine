@@ -6,10 +6,11 @@
 //! - 区分大小写（不折叠）→ `C05-大小写-*`
 //! - 冲突提示（换名建议）→ `C05-冲突-*`
 
+use alloc::string::ToString;
+use alloc::format;
+use alloc::vec::Vec;
 use super::vec05_ident::*;
 use crate::checks::CheckSet;
-
-use alloc::{format, vec};
 
 /// VE-F0405 域自检。
 pub fn run_vec05_checks() -> CheckSet {

@@ -33,6 +33,7 @@
 //! （必然经过，不是可选优化）；无设备 → 静音态 + 提示（不是错误是状态，
 //! [`screen_status`] 如实读屏）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

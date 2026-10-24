@@ -36,6 +36,7 @@
 // ---------------------------------------------------------------------------
 
 pub use crate::cgpu::vcw03_genpipeline::AUTO_BANNER;
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

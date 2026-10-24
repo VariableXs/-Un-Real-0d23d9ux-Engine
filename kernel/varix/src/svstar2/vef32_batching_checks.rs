@@ -27,9 +27,9 @@
 //!   也合」即伪造管线状态），恰预算必须不告警，未触顶的同 PSO 相邻
 //!   批必须被拦（拒「留白送调用」）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vef32_batching as bt;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

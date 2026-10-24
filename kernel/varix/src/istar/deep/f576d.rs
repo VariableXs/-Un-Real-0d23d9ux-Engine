@@ -8,6 +8,8 @@
 //! ③折叠态的**容量合同**——折叠只藏内容不销账（组内 12 枚上限在
 //!   折叠态依旧有效，防「折起来偷偷塞爆」）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 use crate::istar::tilegroup::{TileBoard, GROUP_CAP};

@@ -79,11 +79,11 @@
 //!
 //! 零墙钟、零 IO、零外部依赖、零全局可变状态；时间用 `u32` tick 注入。
 
+use alloc::vec;
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::svstar2::vem02_track::{

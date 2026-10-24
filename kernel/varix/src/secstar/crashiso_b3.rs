@@ -64,39 +64,44 @@ impl ContainmentRegistry {
     /// 记一次崩溃：计数+1、状态转 Crashed（返回是否仍在重启配额内）。
     /// 隔离态应用不参与（冻结等待人工——隔离的意义就在这里）。
     pub fn on_crash(&mut self, app_id: u32) -> bool {
-        match self.slot_of(app_id) {
-            Some(i) if self.slots[i].as_ref().unwrap().state == SlotState::Quarantined => false,
-            Some(i) => {
-                let sl = self.slots[i].as_mut().unwrap();
-                sl.crash_count += 1;
-                sl.state = SlotState::Crashed;
-                sl.crash_count <= RestartPolicy::MAX_RESTARTS + 1
-            }
-            None => false, // 未注册应用崩溃 = 注册表纪律缺口（诚实拒）
+        let Some(i) = self.slot_of(app_id) else {
+            return false; // 未注册应用崩溃 = 注册表纪律缺口（诚实拒）
+        };
+        let Some(sl) = self.slots[i].as_mut() else {
+            return false; // 槽已清（不变量兜底）：不参与
+        };
+        if sl.state == SlotState::Quarantined {
+            return false; // 隔离态冻结等待人工
         }
+        sl.crash_count += 1;
+        sl.state = SlotState::Crashed;
+        sl.crash_count <= RestartPolicy::MAX_RESTARTS + 1
     }
 
     /// 重启：转 Running、重启计数+1（策略允许时）。
     pub fn on_restart(&mut self, app_id: u32) -> bool {
-        match self.slot_of(app_id) {
-            Some(i) => {
-                let sl = self.slots[i].as_mut().unwrap();
-                if sl.state != SlotState::Crashed || sl.restart_count >= RestartPolicy::MAX_RESTARTS {
-                    return false;
-                }
-                sl.restart_count += 1;
-                sl.state = SlotState::Running;
-                true
-            }
-            None => false,
+        let Some(i) = self.slot_of(app_id) else {
+            return false;
+        };
+        let Some(sl) = self.slots[i].as_mut() else {
+            return false;
+        };
+        if sl.state != SlotState::Crashed || sl.restart_count >= RestartPolicy::MAX_RESTARTS {
+            return false;
         }
+        sl.restart_count += 1;
+        sl.state = SlotState::Running;
+        true
     }
 
     /// 转隔离：超限应用定格（人工介入前不再自动动作）。
     pub fn quarantine(&mut self, app_id: u32) -> bool {
-        match self.slot_of(app_id) {
-            Some(i) => {
-                self.slots[i].as_mut().unwrap().state = SlotState::Quarantined;
+        let Some(i) = self.slot_of(app_id) else {
+            return false;
+        };
+        match self.slots[i].as_mut() {
+            Some(sl) => {
+                sl.state = SlotState::Quarantined;
                 true
             }
             None => false,
@@ -104,11 +109,13 @@ impl ContainmentRegistry {
     }
 
     pub fn state_of(&self, app_id: u32) -> Option<SlotState> {
-        self.slot_of(app_id).map(|i| self.slots[i].unwrap().state)
+        self.slot_of(app_id).and_then(|i| self.slots[i].as_ref().map(|sl| sl.state))
     }
 
     pub fn crash_count(&self, app_id: u32) -> u32 {
-        self.slot_of(app_id).map(|i| self.slots[i].unwrap().crash_count).unwrap_or(0)
+        self.slot_of(app_id)
+            .and_then(|i| self.slots[i].as_ref().map(|sl| sl.crash_count))
+            .unwrap_or(0)
     }
 
     /// 隔离计数：Quarantined 槽数（判据「隔离 10/10」的账面读数）。
@@ -158,7 +165,7 @@ pub fn mask_timeline_ok(frame_ms: &[u64]) -> bool {
     frame_ms.len() == MASK_ANIM_FRAMES
         && frame_ms.windows(2).all(|w| w[1] > w[0])
         && frame_ms[0] < MASK_ANIM_MS
-        && *frame_ms.last().unwrap() <= MASK_ANIM_MS
+        && frame_ms[MASK_ANIM_FRAMES - 1] <= MASK_ANIM_MS
 }
 
 /// 预算分解自洽：三段和恰等预算线（一处一事实的算术面）。

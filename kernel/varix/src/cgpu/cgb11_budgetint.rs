@@ -34,8 +34,8 @@
 //! 判据总入口 [`run_f0171_checks`]，五族三十条，全部零 panic 面，
 //! 预期常量独立给定不从被测反推。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

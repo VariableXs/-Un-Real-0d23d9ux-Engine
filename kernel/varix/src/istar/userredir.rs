@@ -146,7 +146,12 @@ impl RedirMgr {
             Some(i) => i,
             None => return false,
         };
-        let d = self.dirs[idx].as_ref().unwrap();
+        let d = match self.dirs[idx].as_ref() {
+            Some(d) => d,
+            // 不可达：idx 来自上方 position 命中处，槽位必有目录。
+            // 保守拒绝而非 panic（铁律 1：内核路径零 unwrap）。
+            None => return false,
+        };
         if d.location == target {
             return false;
         }
@@ -172,39 +177,36 @@ impl RedirMgr {
 
     /// 推进一步搬移（MoveContent 才有意义；步进返回 false 当迁移不在途/已完成）。
     pub fn step(&mut self) -> bool {
-        let (idx, done, total) = match &self.active {
-            Some(m) if !m.done => (m.dir_idx, m.done_files, m.total_files),
+        let (idx, done, total, target) = match &self.active {
+            Some(m) if !m.done => (m.dir_idx, m.done_files, m.total_files, m.target.clone()),
             _ => return false,
         };
         if done >= total {
             return false;
         }
-        if let Some(d) = self.dirs[idx].as_mut() {
-            d.location = {
-                let m = self.active.as_ref().unwrap();
-                m.target.clone()
-            };
-            // 文件账整体随址（模型级：搬移即账面归属变化，逐文件步进由
-            // done_files 表达进度）。
-            self.active.as_mut().unwrap().done_files += 1;
-            self.active
-                .as_mut()
-                .unwrap()
-                .steps
-                .push(MoveStep::Moved { idx });
-            if self.active.as_ref().unwrap().done_files == self.active.as_ref().unwrap().total_files {
-                self.active.as_mut().unwrap().done = true;
-                let m = self.active.as_ref().unwrap();
-                let name = self.dirs[idx].as_ref().unwrap().name.clone();
+        let Some(d) = self.dirs[idx].as_mut() else { return false; };
+        d.location = target;
+        // 文件账整体随址（模型级：搬移即账面归属变化，逐文件步进由
+        // done_files 表达进度）。
+        let m = match self.active.as_mut() {
+            Some(m) => m,
+            // 不可达：上方 match 已确认 active 为 Some。
+            None => return false,
+        };
+        m.done_files += 1;
+        m.steps.push(MoveStep::Moved { idx });
+        if m.done_files == m.total_files {
+            m.done = true;
+            if let Some(d) = self.dirs[idx].as_ref() {
+                let name = d.name.clone();
+                let tgt = m.target.clone();
                 self.state
                     .iter_mut()
                     .find(|(n, _)| *n == name)
-                    .map(|(_, l)| *l = m.target.clone());
+                    .map(|(_, l)| *l = tgt);
             }
-            true
-        } else {
-            false
         }
+        true
     }
 
     /// RepointOnly 落位（一步指向切换 + 可撤销账）。
@@ -215,15 +217,22 @@ impl RedirMgr {
             }
             _ => return false,
         };
-        let from = self.dirs[idx].as_ref().unwrap().location.clone();
-        self.dirs[idx].as_mut().unwrap().location = target.clone();
-        let name = self.dirs[idx].as_ref().unwrap().name.clone();
+        let Some(d) = self.dirs[idx].as_ref() else { return false; };
+        let from = d.location.clone();
+        let name = d.name.clone();
+        let Some(dm) = self.dirs[idx].as_mut() else { return false; };
+        dm.location = target.clone();
         self.state
             .iter_mut()
             .find(|(n, _)| *n == name)
             .map(|(_, l)| *l = target);
-        self.active.as_mut().unwrap().steps.push(MoveStep::Repointed { idx, from });
-        self.active.as_mut().unwrap().done = true;
+        let m = match self.active.as_mut() {
+            Some(m) => m,
+            // 不可达：上方 match 已确认 active 为 Some。
+            None => return false,
+        };
+        m.steps.push(MoveStep::Repointed { idx, from });
+        m.done = true;
         true
     }
 
@@ -238,22 +247,29 @@ impl RedirMgr {
             Some(m) => m.dir_idx,
             None => return None,
         };
-        while let Some(step) = self.active.as_mut().unwrap().steps.pop() {
+        let Some(m) = self.active.as_mut() else { return None; };
+        while let Some(step) = m.steps.pop() {
             match step {
                 MoveStep::Moved { idx: i, .. } => {
                     idx = i;
                     // 文件账随址回滚：位置指回原位。
-                    let d = self.dirs[i].as_mut().unwrap();
-                    d.location = d.original.clone();
+                    if let Some(d) = self.dirs[i].as_mut() {
+                        d.location = d.original.clone();
+                    }
                 }
                 MoveStep::Repointed { idx: i, from } => {
                     idx = i;
-                    self.dirs[i].as_mut().unwrap().location = from.clone();
+                    if let Some(dm) = self.dirs[i].as_mut() {
+                        dm.location = from.clone();
+                    }
                 }
             }
         }
-        let name = self.dirs[idx].as_ref().unwrap().name.clone();
-        let loc = self.dirs[idx].as_ref().unwrap().location.clone();
+        let (name, loc) = match self.dirs[idx].as_ref() {
+            Some(d) => (d.name.clone(), d.location.clone()),
+            // 不可达：dir_idx 只会由 begin() 命中处写入，槽位必有目录。
+            None => return None,
+        };
         self.state
             .iter_mut()
             .find(|(n, _)| *n == name)

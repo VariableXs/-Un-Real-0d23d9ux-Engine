@@ -5,6 +5,8 @@
 //! 差量同步幂等合并、缓存配额与过期清理、健康历史序列与可用率、
 //! 回退事件审计、镜像元数据格式兼容判定。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::fnv1a64;
 use crate::stareco::starmapprov::{SourceHealth, SourceKind, HEALTH_CHECK_INTERVAL_MS};
@@ -130,15 +132,16 @@ impl CacheQuota {
             return Ok(());
         }
         if self.entries.len() >= self.max_entries {
-            // LRU 淘汰：最后命中日最旧者出（并列取先登记——确定性）
+            // LRU 淘汰：最后命中日最旧者出（并列取先登记——确定性）。
             let victim = self
                 .entries
                 .iter()
                 .enumerate()
                 .min_by_key(|(i, (_, _, d))| (*d, *i as u32))
-                .map(|(i, _)| i)
-                .expect("non-empty");
-            self.entries.remove(victim);
+                .map(|(i, _)| i);
+            if let Some(v) = victim {
+                self.entries.remove(v);
+            }
         }
         self.entries.push((key, fp, today));
         Ok(())

@@ -23,6 +23,7 @@
 //! **依赖锚点**：动画曲线取自 [`crate::h1star::h1base::MotionPolicy`]；
 //! 事件环复用 [`crate::star::sbase::RingLog`]；时间一律注入毫秒戳。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::h1star::h1base::{Curve, MotionPolicy};
 use crate::star::sbase::RingLog;

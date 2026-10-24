@@ -15,9 +15,9 @@
 //! 挂在上面的第一张实体表——F3206 依赖解析、F3203 生命周期 GC、F3211 热更新都
 //! 以本模块的图为唯一数据源，**不许各自建图**（四用途单源红线的由来）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::veq01_pipeline::{adjudicate_capability, CapabilityVerdict};

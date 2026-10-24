@@ -35,6 +35,7 @@
 //!
 //! 逻辑 tick 注入，零墙钟；零外部依赖，只依赖 `crate::checks`（自检侧）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
@@ -426,7 +427,6 @@ pub fn run_vea14_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     fn state() -> Vec<(&'static str, &'static str)> {
         vec![

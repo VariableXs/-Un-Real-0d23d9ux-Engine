@@ -21,12 +21,12 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::ver01b_parser::*;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::string::ToString;
 

@@ -15,6 +15,8 @@
 //! 实现形态：输入分类器 + 别名表（登记制）+ 建议排序（匹配度×历史
 //! 权重）+ 键盘会话状态机（开→输入→建议→执行/取消，全程注入钟）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
@@ -516,7 +518,6 @@ impl SuggestRanker {
 
 /// 深化层二自检（建议排序核）。
 pub fn run_runbox_deep2_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F308-deep2");
 
     // 布景：别名/历史/目录三源。

@@ -25,6 +25,8 @@
 //! `crate::star::sbase::RingLog`（移动/请求账本）。
 //! 时间纪律：一切时间由调用方注入毫秒戳，模块不持时钟。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::h1star::h1base::{Rect, Rgb8};
 use crate::star::sbase::RingLog;

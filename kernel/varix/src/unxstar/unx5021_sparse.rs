@@ -7,10 +7,11 @@
 //! 结构：逻辑块→物理块映射表（None=洞）+ 读路径（洞→零填充，零 IO）
 //! + IO 计数账（洞区读必须 0 次）+ seek 洞/数据语义（SEEK_HOLE/SEEK_DATA
 //! 冻结语义）+ 注入核（洞区 IO/读零失真/封账写/seek 语义漂移）。
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use alloc::format;
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC400 独占 0x80）。

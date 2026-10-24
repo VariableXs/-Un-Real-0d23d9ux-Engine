@@ -155,6 +155,9 @@ pub fn parse_u64(v: &str) -> Option<u64> {
 // Target adapter — parse the Limine cmdline once at boot
 // ---------------------------------------------------------------------------
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use crate::once::OnceLock;
 
 static CMDLINE: OnceLock<Cmdline<'static>> = OnceLock::new();

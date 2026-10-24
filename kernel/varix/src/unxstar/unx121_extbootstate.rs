@@ -31,8 +31,9 @@
 //! 诊断枚举 BootExtCode 十六码（0x32 段 0x3200..=0x320F 互异 +
 //! [`segment_guard`]）。no_std 零 unwrap 零 panic 面。
 
-use alloc::string::String;
+use alloc::format;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

@@ -9,13 +9,13 @@
 //! V01 规定：生效类别为 software 时 winner 必须为 null（无真实硬件胜出）。
 //! 故此处把 software 排除在候选之外，由 `resolve_effective_class` 统一决定回退。
 
+use alloc::vec;
 use super::vea01_probe::{AdapterClass, AdapterProbeResult};
 use super::vea01_engine::{TRUST_WINNER_FLOOR, probe_all};
 
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 单条仲裁规则的判定结果——规则表逐条留痕。
 #[derive(Clone, Debug)]

@@ -18,8 +18,8 @@
 //! 纪律：no_std + alloc；零 unwrap 零 expect 零浮点；DFS 用显式栈不用
 //! 递归（内核栈金丝雀红线）；错误一律 Err(u16) 中文诊断。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 /// 模块版本。
@@ -91,16 +91,16 @@ impl CycleReport {
             if i > 0 {
                 s.push_str(" → ");
             }
-            s.push_str(itoa(*f).as_str());
+            s.push_str(&itoa(*f).as_str());
         }
         s.push_str(" → 回到 ");
-        s.push_str(itoa(self.path[0]).as_str());
+        s.push_str(&itoa(self.path[0]).as_str());
         s.push_str("（成因边：帧 ");
-        s.push_str(itoa(self.cause.waiter).as_str());
+        s.push_str(&itoa(self.cause.waiter).as_str());
         s.push_str(" 依赖 帧 ");
-        s.push_str(itoa(self.cause.producer).as_str());
+        s.push_str(&itoa(self.cause.producer).as_str());
         s.push_str("，深度 ");
-        s.push_str(itoa(self.cause.depth as u64).as_str());
+        s.push_str(&itoa(self.cause.depth as u64).as_str());
         s.push_str("；提交前拦截，B06 只收图源不做裁决）");
         s
     }

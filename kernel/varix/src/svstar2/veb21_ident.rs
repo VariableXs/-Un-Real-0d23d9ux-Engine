@@ -58,6 +58,7 @@
 // `use alloc::vec::Vec;` 不导入 `vec!`）
 // ---------------------------------------------------------------------------
 
+use alloc::vec;
 use alloc::string::String;
 use alloc::string::ToString;
 

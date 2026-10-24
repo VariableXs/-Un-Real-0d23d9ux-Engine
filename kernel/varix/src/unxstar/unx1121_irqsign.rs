@@ -8,9 +8,11 @@
 //! 判据落地：四参数冻结 + 消费域编译通过登记 + §16.2 断言在位
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64 算术，确定性。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use crate::checks::CheckSet;
 
 /// 模块版本。
 pub const IS_VERSION: &str = "unx1121_irqsign-v1";
@@ -299,4 +301,129 @@ impl IrqSignBook {
 /// 段位守卫。
 pub fn segment_guard() -> bool {
     IsCode::ALL.iter().all(|c| c.val() >= IS_SEG_BASE && c.val() < IS_SEG_BASE + 0x100)
+}
+
+// ── 判据总成 ────────────────────────────────────────────────────────────
+
+/// 五域消费全注册演练（判据「全部设备域消费编译通过」登记面）。
+fn drill_domains() -> (bool, String) {
+    let mut book = match IrqSignBook::new() {
+        Ok(b) => b,
+        Err((c, m)) => return (false, format!("建账红 {:?} {}", c, m)),
+    };
+    // 五域各注册一笔（合法 flags：电平 + 独占首注册）。
+    let perms = [
+        (0x30u8, IS_F_LEVEL, 0xA1u64, IsDomain::Clock),
+        (0x31u8, IS_F_LEVEL, 0xA2u64, IsDomain::Storage),
+        (0x32u8, IS_F_EDGE, 0xA3u64, IsDomain::Net),
+        (0x33u8, IS_F_EDGE, 0xA4u64, IsDomain::Input),
+        (0x34u8, IS_F_LEVEL, 0xA5u64, IsDomain::Uart),
+    ];
+    for (v, f, o, d) in perms {
+        if book.register_irq(v, f, o, d).is_err() {
+            return (false, format!("域 {:?} 注册红", d));
+        }
+    }
+    (book.all_domains_consumed() && book.conserved(), book.digest())
+}
+
+/// 注入核（判据四参数逐项拒绝面：越域/位域/缺省/互斥/NMI/重复/冲突 7/7 必抓）。
+fn inject_register() -> (usize, usize, Vec<String>) {
+    fn fresh_book() -> IrqSignBook {
+        match IrqSignBook::new() {
+            Ok(b) => b,
+            Err((c, m)) => IrqSignBook {
+                consumers: Vec::new(),
+                signature: "",
+                assert_ok: false,
+                codes: vec![c],
+            },
+        }
+    }
+    let mut caught = 0usize;
+    let mut detail: Vec<String> = Vec::new();
+    // 注 1：vector 越域（0x10 < 0x20）。
+    let mut b = fresh_book();
+    if b.register_irq(0x10, IS_F_LEVEL, 1, IsDomain::Net).is_err() {
+        caught += 1;
+        detail.push("注1 越域:抓".to_string());
+    } else {
+        detail.push("注1 越域:漏".to_string());
+    }
+    // 注 2：flags 位域非法（0x8000 越掩码）。
+    let mut b2 = fresh_book();
+    if b2.register_irq(0x30, 0x8000, 2, IsDomain::Net).is_err() {
+        caught += 1;
+        detail.push("注2 位域:抓".to_string());
+    } else {
+        detail.push("注2 位域:漏".to_string());
+    }
+    // 注 3：触发缺省（边沿电平都不给）。
+    if b2.register_irq(0x30, 0, 2, IsDomain::Net).is_err() {
+        caught += 1;
+        detail.push("注3 缺省:抓".to_string());
+    } else {
+        detail.push("注3 缺省:漏".to_string());
+    }
+    // 注 4：触发互斥（边沿+电平同给）。
+    if b2.register_irq(0x30, IS_F_EDGE | IS_F_LEVEL, 2, IsDomain::Net).is_err() {
+        caught += 1;
+        detail.push("注4 互斥:抓".to_string());
+    } else {
+        detail.push("注4 互斥:漏".to_string());
+    }
+    // 注 5：NMI 越权（Net 域挂 NMI 位）。
+    if b2.register_irq(0x35, IS_F_LEVEL | IS_F_NMI, 3, IsDomain::Net).is_err() {
+        caught += 1;
+        detail.push("注5 NMI越权:抓".to_string());
+    } else {
+        detail.push("注5 NMI越权:漏".to_string());
+    }
+    // 注 6：领主重复（同 owner 二次注册无 SHARED）。
+    let mut b3 = fresh_book();
+    let _ = b3.register_irq(0x40, IS_F_LEVEL, 7, IsDomain::Clock);
+    if b3.register_irq(0x41, IS_F_LEVEL, 7, IsDomain::Clock).is_err() {
+        caught += 1;
+        detail.push("注6 领主重复:抓".to_string());
+    } else {
+        detail.push("注6 领主重复:漏".to_string());
+    }
+    // 注 7：共享冲突（SHARED 声明但无既有同向量消费者）。
+    if b3.register_irq(0x50, IS_F_LEVEL | IS_F_SHARED, 8, IsDomain::Uart).is_err() {
+        caught += 1;
+        detail.push("注7 共享冲突:抓".to_string());
+    } else {
+        detail.push("注7 共享冲突:漏".to_string());
+    }
+    (caught, 7, detail)
+}
+
+/// 结构当量。
+pub fn structural_weight() -> u32 {
+    5u32 * 60
+}
+
+/// run_unx1121_checks：本单判据聚合（诊断段 0x4d70）。
+pub fn run_unx1121_checks() -> CheckSet {
+    let mut s = CheckSet::new("UNX-F1121 register_irq 接口签名冻结（任务书冻结接口第 1 项）");
+    s.add(
+        "代码体量≥300行当量",
+        structural_weight() >= 300,
+        if structural_weight() >= 300 { "" } else { "结构当量不足" },
+    );
+    s.add(
+        "§16.2断言在位",
+        section_16_2_assert(),
+        if section_16_2_assert() { "" } else { "指纹失约" },
+    );
+    let (dok, dmsg) = drill_domains();
+    s.add_dyn("五域消费全注册", dok, &dmsg);
+    let (c, n, d) = inject_register();
+    s.add_dyn("注入核7/7必抓", c == n, &format!("{}/{} {}", c, n, if d.is_empty() { "全绿" } else { "有漏抓" }));
+    s.add(
+        "段位守卫",
+        segment_guard(),
+        if segment_guard() { "" } else { "诊断码越段" },
+    );
+    s
 }

@@ -4,7 +4,11 @@
 //! 语义与上游对照一致率 100%，状态枚举账（Clean/Deferred/Delay/Allocated/
 //! Written）可导出，状态迁移全合法路径可枚举。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7E00;
 

@@ -19,9 +19,9 @@
 //!
 //! 代码落点：kernel/varix/src/unxstar/（CoRun 册 A1-B19）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

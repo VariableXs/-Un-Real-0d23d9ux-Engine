@@ -3,7 +3,8 @@
 //! 摘要长度闭集核验，PCR 索引账与度量链完整性判据通过；
 //! 纯功能代码 ≥260 行。只读导出——零写入、零回放副作用。
 
-use crate::alloc::{format, string::{String, ToString}, vec::Vec};
+
+use crate::alloc::{vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0x2090;
 
@@ -206,9 +207,10 @@ impl EventLogExport {
             self.rejected.push((rec.pcr, E_DUP));
             return Ok((rec.pcr, next));
         }
+        let pcr = rec.pcr;
         self.records.push(rec);
         self.bytes_consumed += next - off;
-        Ok((rec.pcr, next))
+        Ok((pcr, next))
     }
 
     /// 收链：字节账对平。
@@ -287,8 +289,8 @@ pub fn drill() -> Result<u32, u16> {
     // R1：头 + 三事件全链导出，账平，完整性指纹可复算。
     let mut led = EventLogExport::new();
     led.feed_header(&stream)?;
-    let (_, n1) = led.absorb(&stream, e1_off)?;
-    let (_, n2) = led.absorb(&stream, e2_off)?;
+    let (_, _n1) = led.absorb(&stream, e1_off)?;
+    let (_, _n2) = led.absorb(&stream, e2_off)?;
     let (_, n3) = led.absorb(&stream, e3_off)?;
     led.close(n3)?;
     if led.records.len() != 3 || led.bytes_consumed != n3 - e1_off {

@@ -40,8 +40,8 @@ impl ReviewQueue {
         if self.n >= REVIEW_CAP {
             return false;
         }
-        for i in 0..self.n {
-            if self.entries[i].unwrap().app_id == e.app_id {
+        for slot in self.entries.iter().take(self.n) {
+            if slot.as_ref().map_or(false, |x| x.app_id == e.app_id) {
                 return false; // 已在审查中不重复收
             }
         }
@@ -67,7 +67,7 @@ impl ReviewQueue {
     /// 无复发用 quarantine_day 起算。
     pub fn quiet_nights(&self, app_id: u32, today: u32) -> Option<u32> {
         for e in self.entries.iter().take(self.n) {
-            let x = e.unwrap();
+            let Some(x) = e else { continue };
             if x.app_id == app_id {
                 // 无复发哨兵不参与锚点（0xFFFFFFFF 当天数会算出 0——语义错误）。
                 let anchor = if x.last_relapse_day == NO_RELAPSE {
@@ -84,7 +84,7 @@ impl ReviewQueue {
     /// 解除出队（真移除——不是打标记让死数据烂在环里）。
     pub fn release(&mut self, app_id: u32) -> bool {
         for i in 0..self.n {
-            if self.entries[i].unwrap().app_id == app_id {
+            if self.entries[i].as_ref().map_or(false, |x| x.app_id == app_id) {
                 for j in i..self.n - 1 {
                     self.entries[j] = self.entries[j + 1];
                 }
@@ -100,7 +100,7 @@ impl ReviewQueue {
     pub fn due_for_release(&self, today: u32, out: &mut [u32]) -> usize {
         let mut k = 0;
         for e in self.entries.iter().take(self.n) {
-            let x = e.unwrap();
+            let Some(x) = e else { continue };
             if let Some(q) = self.quiet_nights(x.app_id, today) {
                 if q >= UNQUARANTINE_QUIET_NIGHTS && k < out.len() {
                     out[k] = x.app_id;

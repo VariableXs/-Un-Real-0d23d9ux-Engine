@@ -220,15 +220,15 @@ impl XfBudgetEngine {
             self.streak += 1;
             if self.streak == OVERSPEND_DOWNGRADE_AT {
                 let mut s = String::from("连续超支 ");
-                s.push_str(itoa(OVERSPEND_DOWNGRADE_AT as u64));
+                s.push_str(&itoa(OVERSPEND_DOWNGRADE_AT as u64));
                 s.push_str(" 帧——建议上游降档一档（B03/B04 消费）");
                 self.advices.push((frame, s));
             }
             if self.streak == OVERSPEND_LIMIT_AT {
                 let mut s = String::from("连续超支 ");
-                s.push_str(itoa(OVERSPEND_LIMIT_AT as u64));
+                s.push_str(&itoa(OVERSPEND_LIMIT_AT as u64));
                 s.push_str(" 帧——立案限流：上游减供，欠账 ");
-                s.push_str(itoa(self.debt));
+                s.push_str(&itoa(self.debt));
                 self.limits.push((frame, s));
             }
         } else {
@@ -245,7 +245,7 @@ impl XfBudgetEngine {
     }
 
     /// 滚动窗聚合（最近 win 帧的分配/消费/欠账总和——8 章资源透明口径）。
-    pub fn window_summary(&self, win: usize) -> Result<(u64, u64, u64), u32> {
+    pub fn window_summary(&mut self, win: usize) -> Result<(u64, u64, u64), u32> {
         if win == 0 || win > WINDOW_CAP {
             return Err(self.reject(XC_WINDOW_BAD, "滚动窗长非法"));
         }
@@ -339,17 +339,17 @@ impl BudgetSnap {
         let mut s = String::from("[跨帧预算 ");
         s.push_str(&self.engine);
         s.push_str(" 基线=");
-        s.push_str(itoa(self.base));
+        s.push_str(&itoa(self.base));
         s.push_str(" 欠账=");
-        s.push_str(itoa(self.debt));
+        s.push_str(&itoa(self.debt));
         s.push_str(" 帧=");
-        s.push_str(itoa(self.frames));
+        s.push_str(&itoa(self.frames));
         s.push_str(" 超支=");
-        s.push_str(itoa(self.overspent_frames));
+        s.push_str(&itoa(self.overspent_frames));
         s.push_str(" 建议=");
-        s.push_str(itoa(self.advices));
+        s.push_str(&itoa(self.advices));
         s.push_str(" 限流=");
-        s.push_str(itoa(self.limits));
+        s.push_str(&itoa(self.limits));
         s.push_str("]");
         s
     }

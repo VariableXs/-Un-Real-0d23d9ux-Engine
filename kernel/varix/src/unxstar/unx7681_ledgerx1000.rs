@@ -4,7 +4,8 @@
 //! ② 轮账结构：每轮留（通道、结果码、指纹），结果码 Pass/Fail/Abort 三态；
 //! ③ 总收口：1000 轮全账可对——双通道计数恰 700/300，三态无第四态，指纹链闭合。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7C00;
 

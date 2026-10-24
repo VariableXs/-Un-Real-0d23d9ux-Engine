@@ -68,6 +68,7 @@
 //! 编译目标选型表——本项按锚点「跨批对接点」消费之）、`alloc`。
 //! 零IO、零墙钟、零浮点（时序全用整型毫秒），编译与打断回归可复现。
 
+use alloc::vec;
 use crate::svstar2::vep03_token::{Lane, MotionTokenError};
 use crate::svstar2::vep04_stack::{
     select_target, CompileTarget, ControlDirection, ControlPriority, ControlScope, ControlV1,
@@ -76,7 +77,6 @@ use crate::svstar2::vep04_stack::{
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

@@ -283,6 +283,8 @@ pub fn run_h1_checks() -> crate::checks::CheckSet {
 
 #[cfg(test)]
 mod tests {
+use alloc::format;
+use alloc::string::String;
     use super::*;
 
     #[test]

@@ -3,6 +3,7 @@
 //! 判据侧独立重算主题计数、组号连续性、量化手算值——同源恒绿的弱门禁比没有
 //! 门禁更坏。聚合防自调：A/B 两族 + tally 守恒（F2806/F0817 首版无限递归教训）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 use super::vcf01_gpucompat as api;

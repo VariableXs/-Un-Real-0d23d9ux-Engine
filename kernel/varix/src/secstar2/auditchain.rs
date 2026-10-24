@@ -22,9 +22,10 @@
 //! 哈希原语：crate::ksha256::sha256（内核自实现，FIPS 180-4 向量锁定）。
 //! 依赖锚点：F057（IO 最高级）、F120（审计页签）、F121（每日锚定）、F126（校验器开源）、F142（P0 工单）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::ksha256;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -185,11 +186,12 @@ impl AuditChain {
         // 攻击三：插一条（插入伪造节点并重排序号——链仍须断）。
         let mut i = self.clone_shallow();
         if !i.nodes.is_empty() {
-            let forged = AuditNode::new(0, 999, b"forged").unwrap();
-            i.nodes.insert(1, forged);
-            i.hashes.insert(1, forged.hash_with(&GENESIS));
-            for (k, n) in i.nodes.iter_mut().enumerate() {
-                n.seq = k as u64 + 1;
+            if let Ok(forged) = AuditNode::new(0, 999, b"forged") {
+                i.nodes.insert(1, forged);
+                i.hashes.insert(1, forged.hash_with(&GENESIS));
+                for (k, n) in i.nodes.iter_mut().enumerate() {
+                    n.seq = k as u64 + 1;
+                }
             }
         }
         let insert = i.verify(None);

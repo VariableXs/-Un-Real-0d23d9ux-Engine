@@ -3,6 +3,8 @@
 //! 内存从"够用"到"透明聪明"：画像、去重、整理、演练。
 //! 全部为纯逻辑 + 固定容量数组（无 Vec/String/Box），no_std 安全。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

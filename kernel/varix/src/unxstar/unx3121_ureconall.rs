@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
 //! UNX-F3121 · 域级总对账方案（对账键清单与十面勾稽范围冻结）
 //!
 //! 任务单号: UNX-F3121
@@ -57,14 +59,12 @@
 //! - `ΣB`：B 面（面 4 回收比率面）为「回收侧」总账；
 //! - `总账`：跨面加法链独立重算值（与 A、B 均无共享中间量）。
 
-#![allow(dead_code)]
-#![allow(unused_imports)]
+use alloc::vec;
 
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ===========================================================================

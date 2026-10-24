@@ -44,13 +44,14 @@
 //!
 //! 与 F0228（0x3Bxx）/F0229（0x3Cxx）/F0224（0x34xx）互不重叠；每码
 //! 专属 reason；码段判据用 `!=` 防自判死。
+use alloc::string::String;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 导入（no_std 三件套）
 // ---------------------------------------------------------------------------
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use super::veb12_recovery::{DegradeNotice, Severity, NOTICE_LINK_VERSION};

@@ -94,6 +94,7 @@
 //!
 //! **确定性**：同输入同输出（纯函数，无时钟无 IO，遍历序固定）。
 
+use alloc::vec;
 use crate::perfstar::imgsimd_ext::Filter;
 use crate::perfstar::mech_deflate::{deflate_fixed, Lz77};
 use crate::perfstar::mech_inflate;

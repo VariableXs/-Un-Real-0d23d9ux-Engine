@@ -236,7 +236,7 @@ impl PrioPropagator {
         };
         if want > cap {
             let mut s = String::from("提升触上限：期望呈现差 ");
-            s.push_str(itoa((want - cap) as u64));
+            s.push_str(&itoa((want - cap) as u64));
             s.push_str(" 级——上游限流或拆任务，静默倒置即违约");
             self.cases.push((XC_INVERSION_UNRESOLVED, s));
         }
@@ -349,15 +349,15 @@ impl PrioSnap {
         let mut s = String::from("[跨帧优先级 ");
         s.push_str(&self.engine);
         s.push_str(" 任务=");
-        s.push_str(itoa(self.tasks));
+        s.push_str(&itoa(self.tasks));
         s.push_str(" 提升=");
-        s.push_str(itoa(self.boosts));
+        s.push_str(&itoa(self.boosts));
         s.push_str(" 在提=");
-        s.push_str(itoa(self.active_boosts));
+        s.push_str(&itoa(self.active_boosts));
         s.push_str(" 回落=");
-        s.push_str(itoa(self.fallbacks));
+        s.push_str(&itoa(self.fallbacks));
         s.push_str(" 立案=");
-        s.push_str(itoa(self.cases));
+        s.push_str(&itoa(self.cases));
         s.push_str("]");
         s
     }

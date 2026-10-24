@@ -13,6 +13,7 @@
 //! 线：瀑布分解必须守恒（四源之和≡总消耗——分解不是编故事）；无事件帧的
 //! 事件源显性空（不发零值事件谎报）。诊断码段 0x6001~0x6005。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

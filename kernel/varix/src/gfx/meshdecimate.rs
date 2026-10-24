@@ -44,8 +44,8 @@
 //!
 //! 纯几何计算，无文本无标识输入。
 
-use alloc::collections::BTreeMap;
 use alloc::vec;
+use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

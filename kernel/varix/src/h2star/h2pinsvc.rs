@@ -9,11 +9,12 @@
 //!
 //! 时间纪律：无时钟；排序稳定可回放。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------

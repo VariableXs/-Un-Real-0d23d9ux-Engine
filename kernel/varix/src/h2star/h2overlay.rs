@@ -16,10 +16,10 @@
 //!
 //! 时间纪律：无时钟；z 序层带走 h2zorder 车道。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 浮层模型

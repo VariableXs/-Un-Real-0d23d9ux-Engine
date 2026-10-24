@@ -11,6 +11,9 @@
 //! 器（hbase），分级联动一处审计。
 
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
 // 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
 // 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
 use crate::float::FloatExt;
@@ -1638,7 +1641,6 @@ impl Default for ManualOverride {
 
 /// 深化层五自检（负载发生器 / 振荡审计 / 手选让位）。
 pub fn run_animdegrade_deep5_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F331-333-deep5");
 
     // 1. 常载：恒定输出。
@@ -2091,7 +2093,6 @@ impl ModeDwellStats {
 
 /// 深化层八自检（健康探针 / 驻留占比）。
 pub fn run_animdegrade_deep8_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F331-333-deep8");
 
     // 1. 参数引用一致（快照与主册常量对拍绿——无配置漂移）。
@@ -2215,7 +2216,6 @@ impl PanelAggregator2 {
 
 /// 深化层十自检（内存审计 / 空账降级）。
 pub fn run_animdegrade_deep10_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F331-333-deep10");
 
     // 1. 内存估算：100 条 = 3200B（口径钉死）；界内绿。
@@ -2491,7 +2491,6 @@ impl ModeEventStream {
 
 /// 深化层九自检（面板视图 / 事件流）。
 pub fn run_animdegrade_deep9_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F331-333-deep9");
 
     // 1. 面板视图：当前模式、驻留占比、动作文案、心跳四件齐（Budget

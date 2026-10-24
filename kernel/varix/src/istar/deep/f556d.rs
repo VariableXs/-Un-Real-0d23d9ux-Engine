@@ -9,6 +9,7 @@
 //! ③「改回原位同样三步」的**对称校验器**——改回后 resolve/可见性账
 //!   必须与初始态镜像对称（改去与改回是同一台机器的两个方向）。
 
+use alloc::vec::Vec;
 use alloc::string::{String, ToString};
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;

@@ -64,10 +64,10 @@
 //! 判据面）、F0171 管图级预算裁决（本条只记超线事实）。本条只做
 //! 「把图跑完并留下可对拍的账」。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@
 //! 联动（分辨率变化 → 缩放档重算建议）；黑屏期账（>2s 计数——诚实）；
 //! 游戏向组合（该屏最高刷新率）快捷标记。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
@@ -80,13 +81,13 @@ impl ScreenRes {
 
     /// 倒计时推进；归零 → 自动回滚（自救判据）。返回 Some(回滚到) 。
     pub fn tick(&mut self, elapsed_ms: u64) -> Option<ModeCombo> {
-        let (combo, remain, _) = self.pending?;
+        let (combo, remain, confirm_ms) = self.pending?;
         if remain <= elapsed_ms {
             self.pending = None;
             self.rollbacks += 1;
             Some(self.current)
         } else {
-            self.pending = Some((combo, remain - elapsed_ms, self.pending.unwrap().2));
+            self.pending = Some((combo, remain - elapsed_ms, confirm_ms));
             None
         }
     }

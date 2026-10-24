@@ -3,8 +3,10 @@
 //! CREAT/EXCL/TRUNC/APPEND/NONBLOCK/CLOEXEC）组合矩阵 30 组——
 //! 访问模式域互斥校验（RDONLY|WRONLY 非法）、合法组合解析全过、
 //! 非法组合全拒且错误码一致，双判据缺一即批内红灯。
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB7C0;
 

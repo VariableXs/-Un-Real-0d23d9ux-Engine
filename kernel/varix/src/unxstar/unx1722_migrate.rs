@@ -90,10 +90,10 @@
 //!   零浮点、零真实 IO、零墙钟。时间与延迟一律逻辑 `tick: u64` 计数器；
 //!   硬件语义由确定性 LCG 伪随机构造，不读真硬件。全部返回值可复算。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

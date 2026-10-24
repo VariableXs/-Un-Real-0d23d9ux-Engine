@@ -1547,3 +1547,14 @@ pub mod cgr06_framecontract;
 pub mod vcs06_usersched;
 pub mod vct07_linktel;
 pub mod vcu07_anticheat;
+// ---- AI-VX-1024（2026-10-24）第三批四单：F1450/F1766/F1928/F2086（隔离探针全绿后入库）----
+pub mod cgj09_pwranomaly;
+pub mod vck70_passthrough;
+pub mod cgm09_outsec;
+pub mod vcn06_effbench;
+// ---- AI-VX-1024B（2026-10-24）：F1451/F1767/F1929 深度实现（隔离探针全绿后入库）----
+pub mod cgj10_jointsample;
+pub mod vck71_partgpu;
+pub mod cgm10_disppwr;
+// ---- AI-VX-1024B（2026-10-24）：CGPU-F2087 效果性能预算（隔离探针全绿后入库，0x1DB 段）----
+pub mod vcn07_effbudget;

@@ -11,6 +11,7 @@
 //! 组）、空格选中单选同样组内互斥、禁用控件 Tab/Shift+Tab 双向跳过
 //! （焦点永不卡死——除非全员禁用）、禁用控件热键不响应。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

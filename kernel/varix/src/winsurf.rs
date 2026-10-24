@@ -23,6 +23,8 @@
 //! 拷贝与 displaysrv::blit 同纪律；宿主可测面 = 全部几何/裁剪/合成逻辑
 //! 纯函数（缓冲注入），真 PMM 分配 `target_os = "none"` 编译。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::displaysrv::{DisplayService, Mode, Rect};
 use crate::fb::PixelFormat;
 

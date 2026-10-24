@@ -163,6 +163,8 @@ pub fn loopback_probe(
 
 #[cfg(test)]
 mod tests {
+use alloc::vec;
+use alloc::vec::Vec;
     use super::*;
 
     /// 宿主假设备：内存块存储，行为与 trait 契约逐条对齐。

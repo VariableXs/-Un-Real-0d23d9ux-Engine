@@ -10,12 +10,13 @@
 //! 与备份五阶段（F7861）对称性声明（恢复四 ↔ 备份五的映射账）
 //! + 注入核（跳步/回退/未知态/对称破缺/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA000 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA000;
 pub const XC_RE_SKIP: u32 = SEG_BASE + 0x01; // 跳阶段
 pub const XC_RE_BACK: u32 = SEG_BASE + 0x02; // 回退

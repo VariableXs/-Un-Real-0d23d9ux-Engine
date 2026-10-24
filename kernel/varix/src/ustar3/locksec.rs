@@ -80,6 +80,8 @@
 //! 零堆纪律：NoShotRegistry 定长 [Option<WinMark>; 16]，矩形为
 //! Copy 标量结构，黑块输出写入调用方给定缓冲。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ===========================================================================

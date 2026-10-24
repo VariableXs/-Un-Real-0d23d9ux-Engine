@@ -14,6 +14,7 @@
 //! 宿主注入的执行器接缝；三重验证目标身份（标签+容量+指纹）后才放行，
 //! 源盘/内置盘恒排除（硬件与数据安全红线同源）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

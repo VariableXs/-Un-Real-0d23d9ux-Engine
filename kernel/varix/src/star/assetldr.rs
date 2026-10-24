@@ -20,6 +20,7 @@
 //!
 //! 无外部依赖。一切时间注入式（分钟戳），宿主测试确定复现。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::MinuteBook;
 
@@ -293,9 +294,10 @@ impl AssetLoader {
         let peak = old_bytes + self.resident_bytes(new).unwrap_or(0);
         self.last_peak_bytes = peak;
 
-        // 原子换入完成：旧主题驻留整体释放。
-        let old_idx = self.theme_idx(old).unwrap();
-        self.themes[old_idx].resident.clear();
+        // 原子换入完成：旧主题驻留整体释放（old 已注销则无可清）。
+        if let Some(old_idx) = self.theme_idx(old) {
+            self.themes[old_idx].resident.clear();
+        }
         self.active = Some(new);
 
         let new_bytes = self.resident_bytes(new).unwrap_or(0);
@@ -544,7 +546,6 @@ pub fn run_assetldr_checks() -> CheckSet {
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec;
     use super::*;
 
     fn tiny_defs() -> Vec<AssetDef> {

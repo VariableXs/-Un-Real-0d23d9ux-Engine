@@ -6,12 +6,12 @@
 //! 双向（升权拒/降权未验证拒/同级免验放行）。聚合防自调：族内判据只调
 //! 另一族 standalone + 进行中 set 自身 tally，守恒断言归 CI 探针层。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::vcr23_trustlevel as tl;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

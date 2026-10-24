@@ -3,6 +3,8 @@
 //! 补深：影响级别判定标准（量化判定函数）、季度刷新引擎、星卡反向
 //! 链接生成、按族×状态双维查询、新差异判例管线入口（F035→F036）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::difftable::{ApiFamily, DiffStatus, DiffTable, Impact};
 

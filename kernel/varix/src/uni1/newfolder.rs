@@ -8,6 +8,7 @@
 //! （冲突保持命名态——不吞输入）；桌面网格自动落位（第一个空格）；
 //! 既有条目 F2 改名。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::uni1::ubase::{Chord, HotkeyTable, MOD_CTRL, MOD_SHIFT};
 

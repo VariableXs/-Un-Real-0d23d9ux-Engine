@@ -3,6 +3,8 @@
 //! 本模块自含实现）、版本号比较与发版门槛判定。零堆、整数运算，
 //! 无 Vec/String/Box/alloc、无外部 crate。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use core::cmp::Ordering;
 
 // ---------------------------------------------------------------------------

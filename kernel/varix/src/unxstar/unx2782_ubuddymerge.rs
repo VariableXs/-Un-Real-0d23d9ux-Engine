@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! ===========================================================================
 //! UNX-F2782 · buddy 归还批量合并（F2718 契约联签兑现）· 深化版纯功能模块
 //! ===========================================================================
@@ -66,13 +67,12 @@
 //! 参数 `A = 6364136223846793005`、`C = 1442695040888963407`（Knuth MMIX 常数），
 //! 全部运算走 `wrapping_mul` / `wrapping_add`，无溢出 UB，无平台差异。
 
-#![allow(dead_code)]
+use alloc::vec;
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::{String, ToString};
 #[allow(unused_imports)]
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ===========================================================================

@@ -5,6 +5,10 @@
 //! （登记/轮换/撤销）、协调披露文档生成器、无效报告三分类器、
 //! 月度安全版模型（不等季窗的例外——F138 联动）。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::secdisclose::{Credit, SecReport, CONFIRM_LIMIT_DAYS};
 

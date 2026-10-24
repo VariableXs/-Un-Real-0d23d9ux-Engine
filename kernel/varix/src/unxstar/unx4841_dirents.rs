@@ -9,11 +9,12 @@
 //! 卷根目录解析账 + 期望序对照 + 注入核（rec_len 未对齐/rec_len 为 0/
 //! 越区步进/名字截断）。
 
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 /// 诊断段（0xC180 独占 0x80）。
 pub const SEG_BASE: u32 = 0xC180;

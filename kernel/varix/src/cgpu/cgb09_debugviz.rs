@@ -53,8 +53,9 @@
 //! 信息详情的上游）；cgb08_framegraph（帧任务图——节点/边数据源）。
 //! 零 panic 面、零 IO、零墙钟（tick 全由上游注入）、no_std。
 
-use alloc::string::{String, ToString};
+use alloc::format;
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

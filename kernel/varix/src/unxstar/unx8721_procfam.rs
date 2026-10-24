@@ -2,8 +2,12 @@
 //! 验收锚点：UNX-F8721-J1 四进程族（init/shell/daemon/ktest）各建
 //! 回归总档——族成员进程树完整、每族用例全过、四族总档聚合对账
 //! 自洽，缺族或缺员即批内红灯。
+use alloc::vec;
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB720;
 

@@ -13,6 +13,7 @@
 //! 断前各自状态（Wi-Fi 连回原热点、蓝牙回原配对）；跨重启记忆；飞行模
 //! 式下依赖网络的功能诚实降级。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

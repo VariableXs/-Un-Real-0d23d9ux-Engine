@@ -108,11 +108,12 @@
 //! 零 panic（生产面）、零 `unsafe`。
 
 
+use alloc::format;
+use alloc::vec;
 // 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
 // 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
 use crate::float::FloatExt;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // 采样序列用本模块自建的 `hammersley_dirs`（二维 `[0,1]²` Hammersley
@@ -1875,7 +1876,7 @@ mod tests {
     #[test]
     fn ggx_d_is_unimodal_with_analytic_peak() {
         let nh = 0.8f64;
-        let a_star = ((1.0 - nh * nh) / (nh * nh)).sqrt();
+        let a_star = ((1.0 - nh * nh) / (nh * nh)).m_sqrt();
         let mut best_a = 0.0f32;
         let mut best_d = -1.0f32;
         let mut i = 0;

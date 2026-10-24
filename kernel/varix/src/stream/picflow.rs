@@ -14,6 +14,7 @@
 //! 定容 .bss（任务56 戒律）：2 槽 × 320×200×4 = 512KB，零堆分配；
 //! 行打包（窗口帧只载 w×h×4 字节），通道内零大栈物化。
 
+use alloc::vec;
 use crate::proc::winsrv::Canvas;
 use crate::drivers::blk::fnv1a64;
 use crate::fb::{Color, Surface};

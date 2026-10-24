@@ -3,7 +3,8 @@
 //! ③校验和计算→④传输落仓→⑤会话落账；阶段状态机 ×1（严格线性，仅允许
 //! i→i+1）；跳阶段注入 ×10 拒收；阶段倒序注入 ×10 拒收。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9D00;
 

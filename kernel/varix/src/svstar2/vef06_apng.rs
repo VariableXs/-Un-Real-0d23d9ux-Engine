@@ -60,9 +60,10 @@
 //!    的语义（`BACKGROUND` 会把区域外也当背景处理，破坏已有内容）；
 //!  · 帧区域**等于画布** → `NONE` 足够，用 `PREVIOUS` 是白白多一份快照。
 //! 判据要求两种情形分别给出**不同且正确**的结果——只测一种就是弱门禁。
-
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::String;
+use alloc::string::ToString;
+
 use alloc::vec::Vec;
 
 use crate::perfstar::frameledger_ext;

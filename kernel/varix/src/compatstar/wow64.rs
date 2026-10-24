@@ -27,8 +27,9 @@
 //!
 //! 零堆纪律：定长拒绝记录表，无 Vec/String/Box/format!。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use alloc::vec::Vec;
+use crate::checks::CheckSet;
 use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
@@ -80,7 +81,8 @@ pub fn detect_machine(image: &[u8]) -> MachineVerdict {
     if image.len() < 0x44 {
         return MachineVerdict::NotPe;
     }
-    let pe_off = u32::from_le_bytes(image[0x3C..0x40].try_into().unwrap()) as usize;
+    // 0x3C..0x40 定长读：直接下标展开（len ≥ 0x44 已由上文保证，总量无 panic）。
+    let pe_off = u32::from_le_bytes([image[0x3C], image[0x3D], image[0x3E], image[0x3F]]) as usize;
     if pe_off < 0x40 || pe_off + 6 > image.len() {
         return MachineVerdict::NotPe;
     }

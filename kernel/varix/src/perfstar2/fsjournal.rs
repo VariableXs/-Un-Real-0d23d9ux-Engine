@@ -18,6 +18,8 @@
 //!
 //! 零堆纪律：定长事务账 + 定长恢复史，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::perfstar::wcoalesce::Tier;
 

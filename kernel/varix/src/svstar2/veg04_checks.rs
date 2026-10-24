@@ -27,6 +27,7 @@
 //!
 //! 语料全部由本文件内的构造器生成（Annex-B 字节流合成器 + SPS/PPS 位流构造器），
 //! 跨平台逐位可复现，零 IO、零墙钟。
+use alloc::vec;
 use alloc::string::ToString;
 
 use super::veg04_h264::*;
@@ -34,7 +35,6 @@ use super::veg04_h264::*;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

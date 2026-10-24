@@ -13,6 +13,7 @@
 //! 实现形态：阈值分流账（驻留 vs 引用条）+ 流式读取模型（分块账——内存
 //! 增量判据载体）+ 预估器（体积/时间，误差 <20% 判线）+ 历史引用条。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

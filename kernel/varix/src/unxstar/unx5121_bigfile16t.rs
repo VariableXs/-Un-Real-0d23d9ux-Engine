@@ -3,7 +3,10 @@
 //! 64K 块 256TiB 三档，推算与上游公式一致率 100%（最大文件 = 2^32 extent 块 ×
 //! 块大小，即 block_size << 32）；三档逐档对拍 + 越界拒绝路径。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x8080;
 

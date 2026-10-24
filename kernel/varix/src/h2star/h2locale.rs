@@ -13,6 +13,7 @@
 //!
 //! 纯函数：无时钟、无全局态；`RegionProfile` 由设置层注入。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -3,7 +3,8 @@
 //! MapKey 失配重试闭环、二次调用契约、回调链冻结语义判据通过；
 //! 纯功能代码 ≥320 行。零浮点、零 unwrap、零 expect。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use crate::alloc::{vec::Vec};
 
 pub const SEG_BASE: u16 = 0x2060;
 
@@ -137,7 +138,7 @@ impl EbsProtocol {
                 self.phase = Phase::Mapped { map_key };
                 Ok((map_key, desc_count))
             }
-            MapResult::BufferTooSmall { needed } => {
+            MapResult::BufferTooSmall { needed: _ } => {
                 self.phase = Phase::FailedOnce { failures: self.failures() + 1 };
                 Err(E_BUFSMALL)
                 // needed 由调用方扩容使用；此处显性返回诊断

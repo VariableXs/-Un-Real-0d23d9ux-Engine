@@ -37,6 +37,7 @@
 //! 在无真墙钟环境下以**逻辑步数**为分子分母（口径表钉死），GPU
 //! 真计时落地后同口径替换数据源，口径定义不动。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

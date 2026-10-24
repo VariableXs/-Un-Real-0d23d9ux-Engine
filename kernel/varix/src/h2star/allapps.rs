@@ -12,6 +12,7 @@
 //! 字母索引（段锚计算——跳转后首应用可见）；装/卸事件即时反映（注册
 //! 表增删直接进序列，无延迟队列）；系统组件来源标记（可见不藏）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

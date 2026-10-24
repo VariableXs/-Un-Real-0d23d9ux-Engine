@@ -12,10 +12,11 @@
 //!
 //! 纪律：判据区零 `unwrap()`/`expect()`；期望值为写死常量或判据侧独立重算。
 
+use alloc::format;
+use alloc::vec;
 use super::ver06a_skinchain::*;
 use crate::checks::CheckSet;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 标准三变更（颜色 + 尺寸 + 时长）。

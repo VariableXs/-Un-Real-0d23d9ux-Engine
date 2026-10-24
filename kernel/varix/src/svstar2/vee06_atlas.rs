@@ -2342,6 +2342,7 @@ fn check_degrade_paths(set: &mut CheckSet) {
     let mut returned = 0u64;
     let mut direct = 0u64;
     let mut seq = 1u32;
+    let mut illegal_placement = false;
 
     // 单页 64×64 只能放少量字形 ⇒ 必然走降级。
     for f in 0..4u64 {
@@ -2356,7 +2357,8 @@ fn check_degrade_paths(set: &mut CheckSet) {
                 direct += 1;
             }
             if !matches!(s.placement, Placement::Atlas { .. } | Placement::Direct | Placement::CpuFallback) {
-                panic!("降级返回了非法 placement");
+                // 判据区零 panic 面：非法 placement 记红并入聚合条件（原 panic 改记红）。
+                illegal_placement = true;
             }
         }
     }
@@ -2442,7 +2444,7 @@ fn check_degrade_paths(set: &mut CheckSet) {
     }
     let budget_ok = overflowed > 0 && a3.stats().degrade_overflow == overflowed as u64;
 
-    let ok = no_loss && counted && pin_untouched && evict_blocked && budget_ok;
+    let ok = no_loss && counted && pin_untouched && evict_blocked && budget_ok && !illegal_placement;
     assert!(
         ok,
         "不丢字形 {no_loss} 计数一致 {counted} pin页不可重排 {pin_untouched} \

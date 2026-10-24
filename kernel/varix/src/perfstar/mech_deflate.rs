@@ -324,6 +324,8 @@ pub fn deflate_fixed(lz: &mut Lz77, input: &[u8], out: &mut [u8]) -> Result<usiz
 // ---------------------------------------------------------------------------
 
 /// 运行检查项（判据锚点见对账表批次四段）。
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 pub fn run_checks() -> CheckSet {

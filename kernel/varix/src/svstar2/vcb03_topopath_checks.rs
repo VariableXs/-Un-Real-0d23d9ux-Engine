@@ -16,12 +16,12 @@
 //! **判据设计硬规矩**：期望值判据侧独立手算（最长链预算自己算不借实现）；
 //! 不变量两头都测（无环空表+有环精确清单）；判据区零 panic 面。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vcb01_framegraph as fg;
 use crate::svstar2::vcb02_depderive as dd;
 use crate::svstar2::vcb03_topopath as tp;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

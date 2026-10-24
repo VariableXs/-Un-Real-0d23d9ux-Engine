@@ -64,11 +64,11 @@
 //!   超预算就失败等于「为了快而不出东西」。正确处置是出东西 + 说清慢在哪一步
 //!   （[`CompileTiming::culprit`]），让上层决定是加缓存还是减反射。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::boxed::Box;
 

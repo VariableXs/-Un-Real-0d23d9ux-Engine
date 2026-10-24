@@ -19,8 +19,8 @@
 //! **依赖锚点**：F017 格式栈、F202 撤销框架。
 //! 时间纪律：不持时钟（本项无时序判据）。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;

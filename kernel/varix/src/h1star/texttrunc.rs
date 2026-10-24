@@ -619,7 +619,6 @@ pub fn run_texttrunc_checks() -> CheckSet {
 mod tests {
     use super::*;
 
-    use alloc::vec::Vec;
 
     #[test]
     fn path_tail_reference_and_extremes() {

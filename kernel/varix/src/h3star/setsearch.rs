@@ -16,11 +16,11 @@
 //! 包含=70 / 混输双片段齐=60。同分按登记序（确定性）。时间注入式，
 //! 宿主测试确定复现。无外部依赖。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::hbase::{Clock, ControlKind, EffectKind, SettingItem, SettingPage, SettingRegistry};
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

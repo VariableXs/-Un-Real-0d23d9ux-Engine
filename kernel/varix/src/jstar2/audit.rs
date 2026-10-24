@@ -23,6 +23,8 @@
 //! - **报告入 F628 详情页**：报告带方案指纹，经 `SchemeLibrary::
 //!   record_report` 的指纹对账挂载（与 F627 报告同通道、同失效纪律）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::{resample_lanczos3, CursorFrame, CursorSchemeModel, OriginKind, PixBuf, Rgb};
 use alloc::string::String;

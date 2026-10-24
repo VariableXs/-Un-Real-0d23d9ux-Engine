@@ -9,12 +9,13 @@
 //! 判定器（半开区间 [base, base+len) 相交）+ 注入核（越界请求/
 //! 段重叠登记/空段/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAD80 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAD80;
 pub const XC_RV_OVERLAP: u32 = SEG_BASE + 0x01; // 白名单外重叠
 pub const XC_RV_SELF: u32 = SEG_BASE + 0x02; // 登记段自重叠

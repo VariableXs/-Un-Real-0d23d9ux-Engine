@@ -7,6 +7,8 @@
 //!
 //! 硬约束：no_std / 无 alloc / 固定容量数组 / 纯逻辑（真机渲染验收另录）。
 
+use alloc::vec::Vec;
+use alloc::string::ToString;
 use crate::checks::CheckSet;
 
 // ===========================================================================

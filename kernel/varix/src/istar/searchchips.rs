@@ -8,6 +8,8 @@
 //!   （片高亮态）；计数徽标（各类结果数即时可见）；键盘可达（Tab 到片行、
 //!   方向键切换）；过滤态记忆（本次搜索会话内保持）；清过滤一键回全量。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

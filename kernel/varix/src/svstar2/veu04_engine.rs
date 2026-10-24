@@ -120,9 +120,9 @@
 //! 故触顶时改为：把被丢弃的条目**降级成一条最简诊断串**追加到 [`DiagLog`]，
 //! 并在 [`Verdict::diag_truncated`] 上留痕——数量对不上这件事本身必须能被读到。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::veu01_arch::{fnv1a64_hex, ConsistencyError, Severity};

@@ -14,6 +14,7 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::string::{String, ToString};
 use super::veo03_subset::*;
 use crate::checks::CheckSet;
 

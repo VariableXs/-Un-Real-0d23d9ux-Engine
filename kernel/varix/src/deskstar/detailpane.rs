@@ -24,11 +24,11 @@
 //! 动画账 + 宽度记忆账 + 监视刷新账。EXIF 缓存经显式注入承接
 //! （F093 接缝）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use crate::deskstar::dbase::Token;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 

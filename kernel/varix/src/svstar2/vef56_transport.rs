@@ -30,6 +30,7 @@
 //! 替换。**抽象泄漏**（上层代码引用具体协议名）→拦截（锚点错误
 //! 路径）——泄漏的抽象比没有抽象更糟：调用方开始按协议名分支。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

@@ -71,6 +71,8 @@
 //! 0x5F 被 CGPU 占，0x5A 全仓扫描仅颜色值 0x5A5A5A 非段位码——空闲）。
 //! no_std 零 std 依赖、零 unwrap 零 expect 零切片越界、零全局可变状态。
 
+use alloc::format;
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 

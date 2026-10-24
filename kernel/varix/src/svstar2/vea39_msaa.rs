@@ -25,6 +25,7 @@
 //!
 //! 诊断段：0x1900 基址（全域核查无占用）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -50,7 +51,7 @@ pub const SAMPLE_LEVELS: [u8; 4] = [1, 2, 4, 8];
 /// 每采样档的实测质量等级上限（来自 A07 特性位图快照；查表 O(1)）。
 /// 语义：samples → (quality_max, measured)。measured=false 表示该档
 /// 未实测，校验时按「不支持」处置（能力误报防线：没实测不许承诺）。
-pub const QUALITY_TABLE: [(u8, u8, bool); 4] = [(1, 0, true), (2, 2, true), (4, 4, true), (8, 2, true)];
+pub const QUALITY_TABLE: [(u8, u8, bool); 4] = [(1, 0, true), (2, 2, true), (4, 4, true), (8, 2, false)];
 
 /// 质量校验结果——降档必须带告知字段（锚点原文：降档 + 告知）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

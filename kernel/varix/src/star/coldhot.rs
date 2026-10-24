@@ -20,10 +20,10 @@
 //! 布局思路参照只读 rootfs（squashfs 类）设计经验；实现自研（镜像构建
 //! 工具链）。一切时间注入式（微秒戳），宿主测试确定复现。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::{pct_near, RingLog};
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

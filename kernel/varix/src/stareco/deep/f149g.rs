@@ -4,6 +4,8 @@
 //! 常见问题预答（确定性映射）、报告版本归档链（append-only 哈希）、
 //! 指标定义词典（一名一义）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase;
 

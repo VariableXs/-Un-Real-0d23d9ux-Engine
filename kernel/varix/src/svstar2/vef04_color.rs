@@ -94,6 +94,7 @@
 
 // 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
 // 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
+use alloc::vec;
 use crate::float::FloatExt;
 use crate::perfstar::frameledger_ext;
 use crate::perfstar::mech_inflate;
@@ -1004,7 +1005,6 @@ fn clamp01(v: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     /// CRC-32（IEEE）。自写而**不复用** `frameledger_ext::crc32`：
     /// 若两者同源，块校验测试会与被测的 CRC 实现同生共死，无法独立证伪。
@@ -1051,7 +1051,7 @@ mod tests {
 
     /// gAMA 载荷（gamma × 100000 的大端 u32）。
     fn gama(g: f32) -> Vec<u8> {
-        ((g * 100000.0).round() as u32).to_be_bytes().to_vec()
+        ((g * 100000.0).m_round() as u32).to_be_bytes().to_vec()
     }
 
     /// cHRM 载荷：8 个大端 u32（× 100000）。

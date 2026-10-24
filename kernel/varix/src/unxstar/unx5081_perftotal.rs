@@ -3,7 +3,13 @@
 //! ②吞吐轴：吞吐 = 完成字节 / 时间窗（KiB/s）；③计数轴：IO 计数 = 读+写+同步 三类
 //! 分别累计。口径账与 F5053/F5013/F5062 分账（模拟分账输入）交叉一致率 100%。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+// 内核浮点层：x86_64-unknown-none 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 FloatExt（转发 libm，见 crate::float 文档）。
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+use crate::float::FloatExt;
+
 
 pub const SEG_BASE: u16 = 0x7F80;
 
@@ -13,7 +19,7 @@ pub fn percentile(sorted: &[u32], p: f64) -> u32 {
         return 0;
     }
     let n = sorted.len() as f64;
-    let idx = ((p * n).ceil() as usize).clamp(1, sorted.len()) - 1;
+    let idx = ((p * n).m_ceil() as usize).clamp(1, sorted.len()) - 1;
     sorted[idx]
 }
 

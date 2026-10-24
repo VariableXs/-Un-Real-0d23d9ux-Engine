@@ -6,6 +6,9 @@
 //! 自测片段生成器、大字/正文双阈值字号权重判定、焦点环令牌映射表、
 //! 自测报告格式。
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::stareco::a11yopen::{
     contrast_gate, focus_ring_ok, motion_duration_ms, restore_focus_ok, shape_redundancy_ok,

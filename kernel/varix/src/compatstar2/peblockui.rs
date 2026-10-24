@@ -180,10 +180,10 @@ impl AuditChain {
 
     /// 越权程序后续崩溃 → 审计链自动关联（按文件哈希回查越权记录）。
     pub fn find_override_for(&self, hash8: &[u8; 8]) -> Option<u64> {
+        // 缺槽不参与匹配（不 panic）。
         (0..self.count).find(|&i| {
-            let e = self.entries[i].unwrap();
-            e.kind == 1 && e.hash8 == *hash8
-        }).map(|i| self.entries[i].unwrap().seq)
+            self.entries[i].as_ref().map_or(false, |e| e.kind == 1 && e.hash8 == *hash8)
+        }).and_then(|i| self.entries[i].as_ref().map(|e| e.seq))
     }
 
     pub fn len(&self) -> usize {

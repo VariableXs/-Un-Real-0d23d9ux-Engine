@@ -35,10 +35,10 @@
 //! - 代数运算全 `wrapping_*`，不使用 `+` / `*`（`overflow-checks` 打开时也不炸）。
 //! - `SutFault` 覆盖全部分支，`match` 一律穷举，无 `_ => unreachable!()`。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 单条语料的最大操作数。上限存在的理由：最小化是 O(n²)，n 必须可控；

@@ -7,11 +7,13 @@
 //! - 热更新（影子图原子提交 + 等增益过渡）→ `H03-热更新-*`
 //! - 模板化（播放链五层 = 本图的预置实例）→ `H03-模板-*`
 
+use alloc::vec;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use super::veh03_mixgraph::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
-use alloc::string::ToString;
+use alloc::format;
 
 fn port(ch: u8, rate: u32, resample: bool) -> Port {
     Port {
@@ -242,7 +244,6 @@ pub fn run_veh03_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

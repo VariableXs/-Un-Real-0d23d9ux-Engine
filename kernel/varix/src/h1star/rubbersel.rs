@@ -26,6 +26,7 @@
 //! `crate::star::sbase::RingLog`（帧账本）。
 //! 时间纪律：滚动步进由调用方注入 dt（毫秒），模块不持时钟。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::h1star::h1base::{Rect, Rgb8};
 use crate::star::sbase::RingLog;

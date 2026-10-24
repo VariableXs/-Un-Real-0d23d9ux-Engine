@@ -26,6 +26,8 @@
 //! `target_state` 显式指定归属态（调用方——F638 迁移桥/F635 侧载链——
 //! 按文件名约定或注册表映射赋予），本模块不做状态猜测。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::{
     CursorFrame, CursorSchemeModel, OriginKind, PointerState, PixBuf, XorShift32, fnv1a64,

@@ -18,6 +18,8 @@
 //!
 //! 零堆纪律：定长快照环 + 定长采样账，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

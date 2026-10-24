@@ -3,6 +3,9 @@
 //! 从按下电源到内核可控的全链路可信。全部为纯逻辑 + 固定容量数组
 //! （无 Vec/String/Box），no_std 安全。
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

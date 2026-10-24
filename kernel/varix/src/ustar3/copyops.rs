@@ -116,6 +116,8 @@
 //! passed, detail)），domain tag 见上；数字精确成常量（5000ms、10000ms、
 //! 10% 缓冲、1GB、600、260、32767）。测试可用 std。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -1027,7 +1029,9 @@ impl CopyVerifier {
         };
         let needed = self.pending[i].map(|p| p.blocks_needed()).unwrap_or(0);
         let (finished_now, job_id, matched) = {
-            let p = self.pending[i].as_mut().unwrap();
+            let Some(p) = self.pending[i].as_mut() else {
+                return false;
+            };
             p.advanced_blocks += 1;
             self.idle_grants -= 1;
             let done = p.advanced_blocks >= needed;

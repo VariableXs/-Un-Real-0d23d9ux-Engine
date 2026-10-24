@@ -70,11 +70,11 @@
 //! 会把两个模块的编译成败绑在一起，一方半成品就拖垮另一方，
 //! 而 E0433 那类失败与真实缺陷长得一模一样、极难分辨。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

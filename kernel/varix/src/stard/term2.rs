@@ -16,6 +16,8 @@
 //!   文本（含时间戳与退出码元数据——F096 面共享）；CJK 组合字符回退链
 //!   走 F016（宽度表内建——组合字符零宽不占列）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::sat_sub;
 

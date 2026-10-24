@@ -32,6 +32,7 @@
 //! = 换算后逐样本差在**登记过的容差**内；曲线形状差异本身就是容差白名单
 //! 登记的原因（诚实声明，不假装逐位一致）。
 
+use alloc::vec;
 use super::vej04_pointlight::{curve_attenuation, contribution, FalloffCurve, PointLight};
 use alloc::format;
 use alloc::string::{String, ToString};

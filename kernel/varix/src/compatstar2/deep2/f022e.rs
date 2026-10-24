@@ -14,6 +14,8 @@
 //!
 //! 零堆纪律：定长段表，无 Vec/String/Box/format!，拒绝一律显性化。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 1601-01-01 UTC 与 1970-01-01 UTC 的秒差（MS FILETIME 纪元）。

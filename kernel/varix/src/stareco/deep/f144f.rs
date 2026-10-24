@@ -4,6 +4,8 @@
 //! 复检调度器（宽限季 → 到期清单）、伪造样本指纹册（排除真签名）、
 //! 撤销事件链（append-only 有效性查询）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase;
 

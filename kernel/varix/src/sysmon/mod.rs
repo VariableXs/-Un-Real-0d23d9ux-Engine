@@ -5,6 +5,8 @@
 //! 每功能一个 `// Axxx` 分区，附真实可测实现；导出
 //! `pub fn run_sysmon_checks() -> CheckSet`（域标签 "aurora-sysmon"）覆盖全部 25 项。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -659,7 +661,7 @@ pub fn panel_cycle(current: Panel, forward: bool) -> Panel {
         Panel::Charts => 3,
     };
     let next = if forward { (id + 1) % 4 } else { (id + 3) % 4 };
-    panel_from_id(next).unwrap()
+    panel_from_id(next).unwrap_or(Panel::Overview)
 }
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,8 @@
 //! （warn > crit > fail、id 非零、无重复）；② 入口段：admit(id, value) 唯一判定入口，
 //! 未登记 id 走默认线；③ 分级段：四级 Normal/Warn/Critical/Fail 语义与边界（含等号）固定。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xD180;
 

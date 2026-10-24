@@ -13,6 +13,7 @@
 //!
 //! 零堆纪律：定长目录 + 定长诊断，无 alloc。
 
+use alloc::vec::Vec;
 use super::selftestviz::{SUITE_MEM_ITEMS, SUITE_PROC_ITEMS, SUITE_STORE_ITEMS};
 use crate::checks::CheckSet;
 

@@ -44,8 +44,8 @@
 //! F1620 移交的几何底座（vmesh 数据结构）；下游 F1622+ 光栅化消费。
 //! 零 panic 面、零 IO、零墙钟、无全局可变状态、no_std 零 std 依赖。
 
-use alloc::string::String;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::vea22_vlayout::VertexSemantic;

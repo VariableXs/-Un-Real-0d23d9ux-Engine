@@ -65,9 +65,9 @@
 //! 明确位置，而不是静默退化出空语料让后面几十项判据集体假绿）。
 //! 生产面 [`ven07_serde`] 内零 `panic!`。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::svstar2::ven02_tree::{

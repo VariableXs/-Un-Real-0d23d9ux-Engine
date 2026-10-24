@@ -3,7 +3,8 @@
 //! 回收边界（仅回收 < checkpoint 的段）/触发条件（空间低于水位或定时）三件；
 //! 与 F5194/F5174 联账一致率 100%（checkpoint 后指针与两分账尾部对拍一致），总纲可导出。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9700;
 

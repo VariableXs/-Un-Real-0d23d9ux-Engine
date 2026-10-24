@@ -5,6 +5,8 @@
 //! standalone + 进行中 set 自身 tally（F0817 首版自我递归栈溢出教训），
 //! 守恒断言归 CI 探针层。
 
+use alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 use super::vez01_vfxarch::{Semantic, Subsystem, VfxEntry};

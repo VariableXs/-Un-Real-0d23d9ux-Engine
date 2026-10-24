@@ -18,6 +18,8 @@
 //!
 //! 钟注入式（ms 实参），无外部依赖。
 
+use alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::{CloneLog, ISTAR_DOMAIN};
 

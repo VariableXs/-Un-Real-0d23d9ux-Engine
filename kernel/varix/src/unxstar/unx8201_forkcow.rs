@@ -3,7 +3,8 @@
 //! fake 底座与收口接口双跑结果一致（切换零改动）——fork 时 COW 冻结申请
 //! （页区间登记），fake/real 双底座同输入同输出。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB340;
 

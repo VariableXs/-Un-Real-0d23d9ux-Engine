@@ -25,9 +25,10 @@
 //!    而不是只断「出现过」。
 //! 6. **判据区零 panic 面**：全文件无 `unwrap()`/`expect()`/`[i]` 越界风险，
 //!    所有下标访问先比长度；空切片一律走 `is_empty()` 分支。
+use alloc::vec;
+use alloc::string::String;
 
 use alloc::string::ToString;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::veb20_closeout::*;

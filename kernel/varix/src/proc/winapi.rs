@@ -22,6 +22,8 @@
 //! Stub 20。user32/gdi32 窗口面整体 Stub——那是任务41（记事本闭环）的
 //! 范围，这里只立注册表插槽，不假装能画窗口。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::loader::{LoadedImage, UserMapper};
 use super::pe::{parse_imports_into, ImportError, ImportTable, PeImage};
 use crate::cpu::sync::SpinProtected;

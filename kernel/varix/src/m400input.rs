@@ -2,6 +2,9 @@
 //!
 //! 真实设备即插即用。纯逻辑 + 固定容量数组，no_std 安全。
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

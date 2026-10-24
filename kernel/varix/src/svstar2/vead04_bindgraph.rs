@@ -90,6 +90,7 @@
 //! 段（0x3E=F6001 / 0x3F=F6002 / 0x40=F6003，0x4B 全仓扫描空闲）。
 //! no_std 零 std 依赖、零 unwrap 零 expect 零切片越界、零全局可变状态。
 
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 

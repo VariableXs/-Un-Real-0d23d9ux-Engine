@@ -437,7 +437,7 @@ pub fn run_unx342_checks() -> CheckSet {
         let mut w = ApSilenceWindow::new();
         let _ = w.irq_arrive(0x21, 1);
         let ok = w.state == SilenceState::Silent && w.current_token() == 0;
-        s.add("C342-09-违规不解除静默", ok, if ok { "" } else { "违规后静默被意外解除" });
+        s.add_dyn("C342-09-违规不解除静默", ok, if ok { "" } else { "违规后静默被意外解除" });
     }
 
     // C342-10 快照指纹确定且态敏感

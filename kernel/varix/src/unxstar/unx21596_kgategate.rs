@@ -21,8 +21,8 @@
 //! 失败清单按**模块首次出现序**分组而不是字典序：模块顺序反映了判据的登记顺序（域
 //! 内先核心后外设），字典序会把 `boot.early` 排到最前，让人先去看引导而漏掉核心红项。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 /// 域面判据总数（施工书 F2 面 800 条）。

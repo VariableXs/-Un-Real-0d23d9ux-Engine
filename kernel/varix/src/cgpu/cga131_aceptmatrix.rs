@@ -6,6 +6,7 @@
 //! 判据：20 维全过、映射口径、证据、处置、签署。
 //!
 //! **设计定盘**：20 维验收闭集，每维归属驱动域三闭集之一（视觉/交互/
+use alloc::vec;
 /// 性能），逐维评分（0~100 整数）+ 通过线（视觉 80 / 交互 75 / 性能
 /// 70——映射口径的不同门槛是口径语义的一部分）。逐维证据 = 证据指纹
 /// 登记（零指纹评分无效）。处置 = 低分维的处置登记（修复单/ADR 豁免，
@@ -338,5 +339,53 @@ impl AcceptMatrix {
     /// score 入口已拦零，此处为终态复核兜底）。
     pub fn evidence_intact(&self) -> bool {
         self.rows.iter().all(|r| r.evidence_fp != 0)
+    }
+}
+
+
+// ===== 深化块（cga131_aceptmatrix · 验收矩阵深化审计）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_aceptmatrix {
+    //! 验收矩阵深化审计 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 验收矩阵行守恒：每行 结论数 ∈ {0, 总列数}，半行 = 漏格。
+    pub fn row_complete(row: &[Option<bool>]) -> Result<(), u16> {
+        let filled = row.iter().filter(|c| c.is_some()).count();
+        if filled != 0 && filled != row.len() {
+            return Err(filled as u16);
+        }
+        Ok(())
+    }
+
+    /// 矩阵全量扫漏：任一行半格即拒。
+    pub fn matrix_no_holes(m: &[&[Option<bool>]]) -> Result<(), u16> {
+        for (r, row) in m.iter().enumerate() {
+            row_complete(row).map_err(|e| (100 + r as u16) * 16 + e)?;
+        }
+        Ok(())
+    }
+
+    /// 通过率千分比：空矩阵显性 None，不返回零谎报。
+    pub fn pass_permille(m: &[&[Option<bool>]]) -> Option<u32> {
+        let total: usize = m.iter().map(|r| r.len()).sum();
+        let passed: usize = m.iter().flat_map(|r| r.iter()).filter(|c| **c == Some(true)).count();
+        if total == 0 {
+            return None;
+        }
+        Some(((passed * 1000) / total) as u32)
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0131-深化");
+        let row_ok: Vec<Option<bool>> = vec![Some(true), Some(false), Some(true)];
+        let row_hole: Vec<Option<bool>> = vec![Some(true), None, Some(true)];
+        cs.add("整行放行", row_complete(&row_ok).is_ok(), "");
+        cs.add("半行检出", row_complete(&row_hole).is_err(), "");
+        cs.add("矩阵扫漏", matrix_no_holes(&[&row_ok, &row_ok]).is_ok() && matrix_no_holes(&[&row_ok, &row_hole]).is_err(), "");
+        cs.add("通过率", pass_permille(&[&row_ok]).is_some(), "");
+        cs
     }
 }

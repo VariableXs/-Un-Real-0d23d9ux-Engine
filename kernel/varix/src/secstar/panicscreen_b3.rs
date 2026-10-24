@@ -13,6 +13,7 @@
 //!
 //! 零堆纪律：定长行缓冲 + 状态字段，无 alloc。
 
+use alloc::vec::Vec;
 use super::panicscreen::{QR_DISPLAY_PX, REBOOT_COUNTDOWN_MS};
 use crate::checks::CheckSet;
 

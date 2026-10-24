@@ -26,6 +26,7 @@
 //! `E_TR_DIM_MISMATCH` 缓冲尺寸与瓦片网格不符 / `E_TR_VERIFY_FAIL`
 //! 校验失败（碰撞），已回退重算。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec::Vec;

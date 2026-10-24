@@ -16,6 +16,7 @@
 //! 6. **摘要须由判据侧独立重算**，并**双向对账**（不向被测方法
 //!    索取答案，否则是自证式）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::veb17_suspend::*;
 

@@ -9,6 +9,8 @@
 //! 参数）、UEFI BootNext 写入与链式引导（引导器侧职责）。选中项之外的
 //! 入口当前如实记录「chainload 未接线」并继续引导 varix——不假装能切。
 
+use alloc::format;
+use alloc::vec;
 use crate::fb::{Color, Surface};
 use crate::inputsvc::MouseDelta;
 

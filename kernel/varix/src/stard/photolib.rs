@@ -18,6 +18,8 @@
 //!   缩略+时长（F094 元数据），播放走第三方。
 //！
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

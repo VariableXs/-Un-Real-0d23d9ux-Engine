@@ -54,6 +54,8 @@
 
 #![allow(dead_code)]
 
+use alloc::format;
+use alloc::vec;
 extern crate alloc;
 
 use alloc::string::{String, ToString};

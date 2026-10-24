@@ -11,6 +11,8 @@
 //! 行，此管节奏行为的建模与探测（D02 抑制联动为声明式引用）。行为表独立写
 //! 死可对拍。诊断码段 0x45xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

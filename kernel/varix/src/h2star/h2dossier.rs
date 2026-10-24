@@ -15,11 +15,12 @@
 //! 注册表：模块名 → (功能锚, 目标行数上限)。行数实测由构建侧
 //! wc 供给（内核内不计行——本层持注册与判定，数字由调用方注入）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 注册表

@@ -44,6 +44,7 @@
 //! （拦截即隔离触发）、F2729 攻击模拟器（模拟本表五类场景）。
 //! 诊断码接续 cgr01 的 0x57xx 段（0x5708 起，互不重叠）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

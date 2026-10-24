@@ -54,6 +54,7 @@
 //! 输入是 Locale 标签、字体链配置与字符集，输出是纯数据结构。
 //! 同一输入必得同一结果（含诊断序列顺序），保证回归可复现。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -1316,8 +1317,6 @@ pub fn check_zero_privacy() -> Result<(), Rejection> {
 mod tests {
     use super::*;
     use alloc::format;
-    use alloc::string::String;
-    use alloc::vec;
 
     #[test]
     fn four_families_have_font_sets() {

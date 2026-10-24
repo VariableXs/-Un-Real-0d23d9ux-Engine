@@ -41,6 +41,10 @@
 //! - PORTSC：CCS=0|PED=1|PR=4|PLS[5:9]|PP=9|速度[10:14)|CSC=17|PEC=18|
 //!   PRC=21|PLC=22（速度 1=全速 2=低速 3=高速 4=超速；变化位 W1C）。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use super::blk::BlockError;
 use super::nvme::{BarAccess, DmaMem};
 use crate::ps2;

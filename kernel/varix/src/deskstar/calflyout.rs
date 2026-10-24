@@ -20,12 +20,12 @@
 //! 月长表全自研零依赖；时间注入式（年月日实参）；弹出预算与动画账
 //! 走 dbase 底盘。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use crate::deskstar::dbase::{FloatLayer, POP_SLIDE, Token};
 use alloc::collections::BTreeMap;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 

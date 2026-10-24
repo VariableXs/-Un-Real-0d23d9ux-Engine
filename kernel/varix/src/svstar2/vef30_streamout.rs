@@ -39,6 +39,8 @@
 //!
 //! 判据（17 项）映射见 `vef30_streamout_checks.rs` 头注。
 
+use alloc::format;
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 

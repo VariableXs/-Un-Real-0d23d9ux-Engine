@@ -9,6 +9,7 @@
 //!   参与排序 +「~」标注跟随——排序不稳定期标注闪烁一次提示）；
 //!   排序与 F219 记忆联动。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

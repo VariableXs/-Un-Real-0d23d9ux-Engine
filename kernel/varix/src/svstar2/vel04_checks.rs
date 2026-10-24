@@ -10,6 +10,7 @@
 //!
 //! 零墙钟、零 IO，随机源与时间均注入故回归可复现。
 
+use alloc::vec;
 use super::vel03_emitter::{DiagBag, DiagCode, Vec3};
 use super::vel04_mode::*;
 use crate::checks::CheckSet;
@@ -17,7 +18,6 @@ use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 use alloc::string::ToString;
 
 /// 建一个标准事件注册表（三个已注册事件）。

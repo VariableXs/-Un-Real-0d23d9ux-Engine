@@ -57,7 +57,11 @@ fn permute(m: &mut [u32; 16]) {
 fn compress(cv: &[u32; 8], block: &[u8; BLOCK_LEN], counter: u64, block_len: u32, flags: u32) -> [u32; 16] {
     let mut m = [0u32; 16];
     for i in 0..16 {
-        m[i] = u32::from_le_bytes(block[i * 4..i * 4 + 4].try_into().expect("定长切片"));
+        let mut word = [0u8; 4];
+        if let Some(seg) = block.get(i * 4..i * 4 + 4) {
+            word.copy_from_slice(seg);
+        }
+        m[i] = u32::from_le_bytes(word);
     }
     let mut state: [u32; 16] = [
         cv[0], cv[1], cv[2], cv[3], cv[4], cv[5], cv[6], cv[7],
@@ -261,6 +265,7 @@ pub fn hash(data: &[u8]) -> [u8; OUT_LEN] {
 
 #[cfg(test)]
 mod tests {
+use alloc::vec::Vec;
     use super::*;
 
     /// 官方测试向量首项（BLAKE3 spec testvectors.json，input "abc"）。

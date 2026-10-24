@@ -35,9 +35,9 @@
 //! 诊断码段 0x36（UNX 册 0x2E~0x34 既有 + 0x35 为 F0181 所取——先入库者
 //! 占段纪律，0x36 起本单独占）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本（向量空间规划协议版本——分区变更即前滚）。

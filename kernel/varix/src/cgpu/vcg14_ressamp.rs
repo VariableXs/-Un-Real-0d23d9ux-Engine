@@ -24,10 +24,10 @@
 //! 诊断码 0xC7 段五码互异：`E_RS_FILTER_UNKNOWN` / `E_RS_DIM_INVALID`
 //! / `E_RS_RMSE_EXCEED` / `E_RS_TPUT_LOW` / `E_RS_NON_MONO`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

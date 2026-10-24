@@ -565,9 +565,13 @@ impl DecodeScheduler {
         }
         let mut best = 0usize;
         for k in 1..self.n {
-            let b = self.q[best].unwrap();
-            let c = self.q[k].unwrap();
-            if c.prio < b.prio {
+            // 占用槽读取走保守比较：任一侧缺槽不参选（不 panic）。
+            let better = match (self.q[best].as_ref(), self.q[k].as_ref()) {
+                (Some(b), Some(c)) => c.prio < b.prio,
+                (Some(_), None) => true,
+                _ => false,
+            };
+            if better {
                 best = k;
             }
         }
@@ -1009,10 +1013,13 @@ impl AgingScheduler {
         }
         let mut best = 0usize;
         for k in 1..self.n {
-            let b = self.jobs[best].unwrap();
-            let c = self.jobs[k].unwrap();
-            let (eb, ec) = (effective_prio(&b), effective_prio(&c));
-            if ec < eb {
+            // 保守比较：缺槽一侧不参选（不 panic）。
+            let better = match (self.jobs[best].as_ref(), self.jobs[k].as_ref()) {
+                (Some(b), Some(c)) => effective_prio(c) < effective_prio(b),
+                (Some(_), None) => true,
+                _ => false,
+            };
+            if better {
                 best = k;
             }
         }

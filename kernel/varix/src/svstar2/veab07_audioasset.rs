@@ -19,9 +19,9 @@
 //! 纯功能线：no_std + alloc，零 unwrap/expect/panic，全整数算术（响度 milli-LU、
 //! 失真比查表对数），逻辑 tick 注入零墙钟，FNV-1a 指纹，诊断码 0xA0 段闭集。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 use core::result::Result;
 

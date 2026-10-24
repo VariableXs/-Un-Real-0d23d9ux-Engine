@@ -28,6 +28,7 @@
 // `no_std` 下 `Vec` 与 `vec!` 不在 prelude，须显式从 `alloc` 引入
 // （与 `pwrdrl.rs` / `compatstar/comdlg.rs` 同惯例）。宿主测试侧
 // `extern crate std` 已把它们放进 prelude，故此导入在两侧都成立。
+use alloc::vec;
 use alloc::vec::Vec;
 
 /// 平方根——牛顿迭代 + 指数折半种子。

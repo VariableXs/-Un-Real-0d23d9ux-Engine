@@ -8,6 +8,8 @@
 //! - 三色健康分级：🟢 全绿 / 🟡 有红但非阻断 / 🔴 聚合器损坏或溢出
 //!   （异常零静默——每级都给「为什么」和「下一步」）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

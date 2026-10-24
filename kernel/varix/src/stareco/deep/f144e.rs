@@ -5,6 +5,8 @@
 //! 复检日历（有效期随大版本+宽限一季）、授予册季报聚合接口、展示
 //! 几何规范校验、伪造检测上报链、申诉通道（一级终级）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::craftbadge::{BadgeOffice, ReviewInput, BADGE_FORMS, GRACE_DAYS, REVIEW_SLA_DAYS};
 

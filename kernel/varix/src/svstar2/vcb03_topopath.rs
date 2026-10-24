@@ -69,9 +69,9 @@
 //! [`LaunchPlan::critical_set`] 恒为关键路径本身（单链语义，预算保障的
 //! 最小集合）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::svstar2::vcb01_framegraph as fg;

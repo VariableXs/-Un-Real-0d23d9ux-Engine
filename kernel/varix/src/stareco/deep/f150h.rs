@@ -3,6 +3,8 @@
 //! 装配与跨域接口件：域完成度总表（20 项 × 行数/目标 → 千分比 + 红黄
 //! 绿）、回归看板行、跨域接口总检（h 层 20 件挂接自证）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f150g::completion_per_mille;
 use crate::checks::CheckSet;
 

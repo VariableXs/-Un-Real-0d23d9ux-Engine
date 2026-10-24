@@ -34,6 +34,7 @@
 //! 零静默纪律：语料三线缺线即红（地板判据）；固化案例回放逐位一致，
 //! 回放 digest 漂移即红；CI 门禁对红项**如实报数**不吞不改。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::gfx::meshquant::{

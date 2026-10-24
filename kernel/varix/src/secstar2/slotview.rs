@@ -22,6 +22,8 @@
 //! 接缝纪律：双槽本体 WP-404/B-1304 既有——本模块是元数据账目与可视层，
 //! 槽区实际写入由更新器执行；回滚动作结果由调用方回报（`finish_rollback`）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -1492,7 +1494,6 @@ mod deep4_tests {
 // 双槽区自持」+【验收判据】回滚全链（B-1305 演练）。
 // ------
 
-use alloc::vec;
 // -------------------------------------------------------------------
 
 /// 双槽占用仪表（字节/容量 per 槽——空间健康可视化数据）。

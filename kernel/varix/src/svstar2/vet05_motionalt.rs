@@ -53,6 +53,7 @@
 //!
 //! 无隐私面：全部输入是闭集枚举与逻辑 tick 整数，无用户内容。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::vep06_motion::ReduceBehavior;

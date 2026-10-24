@@ -35,6 +35,8 @@
 //! to_vec，定长数组 + &str 字面量 + core 运算（no_std 兼容纯逻辑
 //! 判据实装层）。#[cfg(test)] 测试代码可用 std。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ===========================================================================

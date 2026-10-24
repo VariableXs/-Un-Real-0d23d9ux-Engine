@@ -61,6 +61,7 @@
 //! F0806（分级——第五步授予的分级规则）；D08（执行器复用声明）。
 //! 零 panic 面、零 IO、零墙钟（tick 注入）、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

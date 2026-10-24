@@ -43,6 +43,8 @@
 //!    （同脚本双跑 iter_live 序逐位一致）——缺一即立案定位 F1807 防护。
 //! 3. **"24h 固化"**。P0 台账真调（复用 F2016 单源——时限 24h 硬编码），
 //!    绿语料零立案。
+use alloc::format;
+use alloc::vec::Vec;
 
 use super::vek16_ppfuzz::{fnv1a64, CaseLibrary, FuzzCase, P0Ledger, Rng};
 use super::vej04_pointlight::{FalloffCurve, PointLight};

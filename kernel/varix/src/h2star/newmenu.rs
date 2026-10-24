@@ -13,6 +13,8 @@
 //! （主清单不膨胀）；重命名初态三元组（全选/焦点/光标位）；
 //! 落点复用 [`h2base::pick_slot`]（一处一事实）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h2star::h2base::pick_slot;
 use crate::h2star::h2edit;

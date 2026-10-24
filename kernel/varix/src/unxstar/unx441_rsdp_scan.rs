@@ -21,6 +21,7 @@
 //!
 //! 诊断码：`RsdpCode` 0x82 段（0x8200..=0x820F）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

@@ -3,7 +3,10 @@
 //! 切换账逐笔（进程号/原标签/新标签/时点四列），注入错误方向 10/10 显性拒绝
 //! （同标签切换 → 拒），切换语义对照 D2 联签登记。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB420;
 

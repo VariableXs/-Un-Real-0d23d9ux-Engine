@@ -23,11 +23,11 @@
 //!   （逻辑 tick 注入，零墙钟），逐条定制数据结构/状态机/错误路径，零模板
 //!   复述，零死代码。
 
+use alloc::vec;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 常量与判码

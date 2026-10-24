@@ -26,6 +26,7 @@
 //! - 容量全部有上限且如实报告（`truncated()` 纪律）；
 //! - 解析失败诚实报错（错误带定位），不半导入、不静默截断。
 
+use alloc::vec;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::cmp::{max, min};

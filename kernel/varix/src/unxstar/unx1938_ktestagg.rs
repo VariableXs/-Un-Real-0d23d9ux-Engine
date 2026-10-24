@@ -2,8 +2,11 @@
 //! 验收锚点：UNX-F1938-J1 本批 19 条判据聚合入 ktest SMP 面新族，
 //! 三档调度 intact，skip 态 100% 带因，结果账接入 20 维 SMP 维取数口，
 //! 双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB970;
 

@@ -3,6 +3,9 @@
 //! 补深：审核队列（SLA 排程视图）、标签筛选器、举报分流路由
 //! （F142 恶意 / 目录维护面）、目录 JSON 开放数据导出（F128 面）。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::TraceId;
 use crate::stareco::themeshare::{LinkHealth, ListingState, ThemeBoard, ThemeListing};

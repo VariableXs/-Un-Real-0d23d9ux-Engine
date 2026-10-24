@@ -4,7 +4,9 @@
 //! F7398 前轮 + F7495 首轮 + 本批终版三段关系落账）；写窗口注入覆盖断言；
 //! 解锁后数据零损（密钥槽 intact + 主密钥重解一致）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9A80;
 

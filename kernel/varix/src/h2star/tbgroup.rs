@@ -13,6 +13,7 @@
 //! 占满时合并（按钮位预算内平铺，超预算的组合并）；角标=组内窗数；
 //! 分组顺序锚定 `first_open_ms`，关窗不改序（稳定性判据的机制保证）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;

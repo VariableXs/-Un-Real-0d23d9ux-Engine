@@ -14,6 +14,7 @@
 //! 覆盖度、查找回退链（目标语言→英文→键名）、占位符完整性校验、
 //! 导入导出 round-trip 无损、漏翻清单（控制台日志面）。
 
+use alloc::vec::Vec;
 use alloc::vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::{coverage_is_beta, fnv1a64};

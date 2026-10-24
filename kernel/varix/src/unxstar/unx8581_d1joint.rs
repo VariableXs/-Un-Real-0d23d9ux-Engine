@@ -2,8 +2,11 @@
 //! 验收锚点：UNX-F8581-J1 D1 对照基座联测——基座条目（Linux 语义对照表）
 //! 注册齐全，三方对拍（基座 × 被测 × 期望）10/10，语义偏差逐项检出，
 //! 基座指纹冻结后不可漂移，双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB5E0;
 

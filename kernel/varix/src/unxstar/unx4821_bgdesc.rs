@@ -4,7 +4,8 @@
 //! bg_inode_bitmap_lo、bg_inode_table_lo、free_counts×3（u16）；逐组解码后与
 //! 规格账（dumpe2fs 模拟输出）逐字段对拍，全组一致即 100%。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7900;
 

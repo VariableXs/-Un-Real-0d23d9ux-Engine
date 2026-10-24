@@ -2,6 +2,8 @@
 //! 族0270 工具沙箱 · X06726~X06750）。
 //! 零堆、整数运算，无 Vec/String/Box/alloc、无外部 crate。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ===========================================================================

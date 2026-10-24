@@ -952,13 +952,17 @@ pub fn parse_imports(
         if desc + 20 > desc_end || desc + 20 > image.len() {
             return Err(PeBlendError::BadSectionTable);
         }
-        let read32 = |o: usize| -> u32 {
-            u32::from_le_bytes(image[o..o + 4].try_into().unwrap())
+        let read32 = |o: usize| -> Result<u32, PeBlendError> {
+            image
+                .get(o..o + 4)
+                .and_then(|s| s.try_into().ok())
+                .map(u32::from_le_bytes)
+                .ok_or(PeBlendError::BadSectionTable)
         };
-        let oft = read32(desc);
-        let timestamp = read32(desc + 4);
-        let name_rva = read32(desc + 12);
-        let ft = read32(desc + 16);
+        let oft = read32(desc)?;
+        let timestamp = read32(desc + 4)?;
+        let name_rva = read32(desc + 12)?;
+        let ft = read32(desc + 16)?;
         if oft == 0 && name_rva == 0 && ft == 0 {
             break; // 链终止
         }
@@ -989,7 +993,8 @@ pub fn parse_imports(
             if toff + 8 > image.len() || entry.symbol_n >= 32 {
                 break;
             }
-            let thunk = u64::from_le_bytes(image[toff..toff + 8].try_into().unwrap());
+            let Some(chunk) = image.get(toff..toff + 8) else { break };
+            let thunk = u64::from_le_bytes(chunk.try_into().map_err(|_| PeBlendError::BadSectionTable)?);
             if thunk == 0 {
                 break; // thunk 数组终止
             }
@@ -1168,8 +1173,14 @@ pub fn parse_tls_directory(
     if base + 40 > image.len() {
         return Err(PeBlendError::BadSectionTable);
     }
-    let read64 = |o: usize| -> u64 { u64::from_le_bytes(image[o..o + 8].try_into().unwrap()) };
-    let callbacks_va = read64(base + 24);
+    let read64 = |o: usize| -> Result<u64, PeBlendError> {
+        image
+            .get(o..o + 8)
+            .and_then(|s| s.try_into().ok())
+            .map(u64::from_le_bytes)
+            .ok_or(PeBlendError::BadSectionTable)
+    };
+    let callbacks_va = read64(base + 24)?;
     if callbacks_va == 0 {
         return Ok(TlsInfo { callbacks_va: 0, callback_vas: [0; 8], callback_n: 0 });
     }
@@ -1180,7 +1191,7 @@ pub fn parse_tls_directory(
         if o + 8 > image.len() {
             break;
         }
-        let cb = read64(o);
+        let cb = read64(o)?;
         if cb == 0 {
             break; // 数组以全 0 终止（Windows 语义）
         }
@@ -1189,7 +1200,7 @@ pub fn parse_tls_directory(
     }
     // 恰 8 个非零回调后仍有非零项 → 容量拒绝（模型上限，如实不静默）。
     let o9 = arr_off + 64;
-    if out.callback_n == 8 && o9 + 8 <= image.len() && read64(o9) != 0 {
+    if out.callback_n == 8 && o9 + 8 <= image.len() && read64(o9)? != 0 {
         return Err(PeBlendError::BadSectionTable);
     }
     Ok(out)

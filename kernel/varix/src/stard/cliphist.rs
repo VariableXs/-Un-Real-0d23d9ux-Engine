@@ -18,6 +18,8 @@
 //! - 细节：粘贴回历史顶端（使用序）；条目点击=粘贴到当前焦点（原快捷键
 //!   语义保留 Ctrl+V 备选）；总闸关闭时面板入口灰置说明（诚实不藏功能）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

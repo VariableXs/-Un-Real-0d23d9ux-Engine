@@ -10,13 +10,14 @@
 //! 越界长度 → EFAULT 且暂存零残留）+ 10^3 次零失真核（往返指纹
 //! 全等）+ 注入核（空针/越界/残留/漂移/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA680 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA680;
 pub const XC_CP_EFAULT: u32 = SEG_BASE + 0x01; // EFAULT
 pub const XC_CP_RESIDUE: u32 = SEG_BASE + 0x02; // 残留

@@ -87,6 +87,7 @@
 //! 零时钟、零 IO、零环境依赖；数值由调用方传入，输出是纯数据结构与字符串。
 //! 同一输入必得同一结果（含诊断序列顺序与回退层级）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -796,6 +797,7 @@ pub fn lookup_rule(language: &str) -> RuleLookup {
     }
     // `und` 行若被删掉，这里必须 panic 而不是悄悄给一个错的规则——
     // "规则表没有兜底"是表级缺陷，不是可降级的运行时状况。
+    // G2-ALLOW: 表级缺陷守门（fail-fast），仅在规则表自身被篡改时可达，非运行时路径。
     panic!("复数规则表缺 und 兜底行——查表落空将无规则可用");
 }
 
@@ -1967,7 +1969,6 @@ pub fn check_zero_privacy() -> Result<(), Rejection> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     fn cat(n: i64, rule: PluralRule) -> PluralCategory {
         let (op, _) = Operands::of(n, 0);

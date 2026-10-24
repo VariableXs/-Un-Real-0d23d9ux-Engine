@@ -7,10 +7,12 @@
 //! - 尾音保护 → `H04-尾音-*`
 //! - 自动化 → `H04-自动化-*`
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::veh04_sendsidechain::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
+use alloc::format;
 
 /// VE-F1404 域自检。
 pub fn run_veh04_checks() -> CheckSet {
@@ -261,7 +263,6 @@ pub fn run_veh04_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

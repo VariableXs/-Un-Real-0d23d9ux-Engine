@@ -42,6 +42,7 @@
 
 #![allow(clippy::needless_range_loop)]
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

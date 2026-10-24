@@ -5,6 +5,8 @@
 //! 纯逻辑 + 固定容量数组，无 Vec/String/Box/alloc、无外部 crate。
 //! ASCII 匹配一律走 `crate::galaxy` 的大小写不敏感助手。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::galaxy::rt::DetPrng;
 

@@ -48,6 +48,7 @@
 //! 双签生效）；vef54-58（通道/会话/复制——预算约束的下游）。零
 //! panic 面、零 IO、零墙钟（tick 注入）、no_std、零浮点。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

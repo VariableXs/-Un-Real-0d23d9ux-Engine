@@ -13,6 +13,8 @@
 //!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::ved06_zorder::*;
 use crate::checks::CheckSet;
 

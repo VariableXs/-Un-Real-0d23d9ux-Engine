@@ -22,6 +22,9 @@
 //!
 //! 零堆纪律：格式表定长、负载区定长（大对象走引用句柄），无 Vec/String/Box。
 
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

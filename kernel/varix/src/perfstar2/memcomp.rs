@@ -16,6 +16,8 @@
 //!
 //! 零堆纪律：定长页槽表 + 定长采集账本，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

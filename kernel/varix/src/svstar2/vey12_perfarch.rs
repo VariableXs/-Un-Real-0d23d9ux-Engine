@@ -9,6 +9,7 @@
 //! →预算层（分场景分脚本预算）→治理层（热点治理与降级）——层间接口冻结；预
 //! 算超支→治理排程；失守→回退设计重议。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

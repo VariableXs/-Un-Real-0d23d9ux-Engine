@@ -57,11 +57,11 @@
 //!   顶点缓冲里一个文本字节都没有。判据用「缓冲字节数 = 各格式字节宽之和」这个
 //!   **可失败**的算术钉住，而不是靠注释声明。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@
 //!   多点并发按键支持（前瞻 F063 联动）；无法输入的窗口（密码框安全
 //!   键盘前瞻）→ 诚实标注限制。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -63,6 +63,7 @@
 //!
 //! **无障碍（锚点原文）**：描述词全称化；清单公开。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

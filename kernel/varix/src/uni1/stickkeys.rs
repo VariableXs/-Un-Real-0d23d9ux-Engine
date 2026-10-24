@@ -11,6 +11,7 @@
 //! 指示位账）；提示纪律（启用提示一次，「不再提醒」登记——Windows
 //! 历史上弹窗烦人的教训吸收）；两件默认关。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

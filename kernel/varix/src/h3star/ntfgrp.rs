@@ -7,11 +7,12 @@
 //! 该组、顶部「全部清除」带撤销（5 秒内可恢复）；置顶钉选上限 3 条；时
 //! 间显示规则（1 小时内相对时间、更早绝对时间）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 钉选上限。
 pub const PIN_CAP: usize = 3;

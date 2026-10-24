@@ -4,7 +4,8 @@
 //! eh_entries/eh_max/eh_depth/eh_generation；索引项：ei_block(u32)；叶项：
 //! ee_block/ee_len/ee_start_hi/ee_start_lo 四字段。编解码往返 20 卷逐项对拍。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7D80;
 

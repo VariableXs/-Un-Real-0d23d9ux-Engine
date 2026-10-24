@@ -3,6 +3,8 @@
 //! 装配与跨域接口件：图标包 → 桌面图标源（F084 网格取图接口，缺图
 //! 降级到回退图标）、预览网格数据装配、包信息页数据行。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f133g::{bucket_path, classify, IconCategory};
 use crate::checks::CheckSet;
 

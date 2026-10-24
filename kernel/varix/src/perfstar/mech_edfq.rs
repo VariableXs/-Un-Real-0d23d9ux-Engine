@@ -72,6 +72,16 @@ impl DeadlineHeap {
         (a.0.deadline_us, a.1) < (b.0.deadline_us, b.1)
     }
 
+    /// `heap[a] < heap[b]`（None 视为最大：缺槽不参与比较，不 panic——
+    /// 调用方保证两下标均 < len，此处只是把不变量从「崩溃表达」改为
+    /// 「保守表达」：缺槽侧永远不赢，下沉方向自然停住）。
+    fn pair_less(&self, a: usize, b: usize) -> bool {
+        match (self.heap[a].as_ref(), self.heap[b].as_ref()) {
+            (Some(x), Some(y)) => Self::less(x, y),
+            _ => false,
+        }
+    }
+
     /// 入队。批量无截止期（u64::MAX）自动赋「入队时刻 + BATCH_DEADLINE_US」
     /// 的软截止期——主册「批量无截止期 ≠ 0」：不是立即做，也不是永远不做。
     pub fn push(&mut self, mut r: Req) -> bool {
@@ -89,7 +99,19 @@ impl DeadlineHeap {
         self.len += 1;
         while i > 0 {
             let p = (i - 1) / 2;
-            let (ok_i, ok_p) = (self.heap[i].take().unwrap(), self.heap[p].take().unwrap());
+            // 双槽总量匹配：任一缺槽即视为「已就位」（保守停摆，不 panic）。
+            let (ok_i, ok_p) = match (self.heap[i].take(), self.heap[p].take()) {
+                (Some(a), Some(b)) => (a, b),
+                (a, b) => {
+                    if a.is_some() {
+                        self.heap[i] = a;
+                    }
+                    if b.is_some() {
+                        self.heap[p] = b;
+                    }
+                    break;
+                }
+            };
             if Self::less(&ok_i, &ok_p) {
                 self.heap[i] = Some(ok_p);
                 self.heap[p] = Some(ok_i);
@@ -108,27 +130,29 @@ impl DeadlineHeap {
         if self.len == 0 {
             return None;
         }
-        let top = self.heap[0].take().unwrap().0;
+        let top = match self.heap[0].take() {
+            Some((v, _)) => v,
+            None => return None,
+        };
         self.len -= 1;
         if self.len > 0 {
             self.heap[0] = self.heap[self.len].take();
             let mut i = 0usize;
             loop {
                 let (l, r2, mut m) = (2 * i + 1, 2 * i + 2, i);
-                if l < self.len {
-                    if Self::less(self.heap[l].as_ref().unwrap(), self.heap[m].as_ref().unwrap()) {
-                        m = l;
-                    }
+                if l < self.len && self.pair_less(l, m) {
+                    m = l;
                 }
-                if r2 < self.len {
-                    if Self::less(self.heap[r2].as_ref().unwrap(), self.heap[m].as_ref().unwrap()) {
-                        m = r2;
-                    }
+                if r2 < self.len && self.pair_less(r2, m) {
+                    m = r2;
                 }
                 if m == i {
                     break;
                 }
-                let t = self.heap[i].take().unwrap();
+                let t = match self.heap[i].take() {
+                    Some(t) => t,
+                    None => break,
+                };
                 self.heap[i] = self.heap[m].take();
                 self.heap[m] = Some(t);
                 i = m;
@@ -168,16 +192,19 @@ impl DeadlineHeap {
             let mut cur = i;
             loop {
                 let (l, r2, mut m) = (2 * cur + 1, 2 * cur + 2, cur);
-                if l < n && Self::less(self.heap[l].as_ref().unwrap(), self.heap[m].as_ref().unwrap()) {
+                if l < n && self.pair_less(l, m) {
                     m = l;
                 }
-                if r2 < n && Self::less(self.heap[r2].as_ref().unwrap(), self.heap[m].as_ref().unwrap()) {
+                if r2 < n && self.pair_less(r2, m) {
                     m = r2;
                 }
                 if m == cur {
                     break;
                 }
-                let t = self.heap[cur].take().unwrap();
+                let t = match self.heap[cur].take() {
+                    Some(t) => t,
+                    None => break,
+                };
                 self.heap[cur] = self.heap[m].take();
                 self.heap[m] = Some(t);
                 cur = m;
@@ -244,7 +271,15 @@ impl Wfq {
                 }
             }
             if let Some(i) = found {
-                let pick = self.heap.heap[i].take().unwrap().0;
+                let pick = match self.heap.heap[i].take() {
+                    Some((r, _)) => r,
+                    // 扫描与摘取之间槽位已空（不变量兜底）：放弃护轨，按
+                    // 纯 EDF 服务堆顶——请求不丢，公平性下轮再争。
+                    None => {
+                        self.charge(&top);
+                        return Some((top, false));
+                    }
+                };
                 // 收尾：把洞补上（用尾槽回填 + 下沉）。
                 self.heap.len -= 1;
                 if self.heap.len > 0 && i < self.heap.len {

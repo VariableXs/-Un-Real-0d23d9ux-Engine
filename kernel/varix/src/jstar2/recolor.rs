@@ -527,11 +527,14 @@ pub fn transform_frame_hue_range(f: &CursorFrame, r: &HueRangeReplace) -> Cursor
     let base = RecolorParams { hue_shift_deg: r.hue_shift_deg, sat_scale_m: 1000, light_scale_m: r.light_scale_m };
     let mut px = f.px.clone();
     for chunk in px.chunks_exact_mut(4) {
-        let w = hue_range_weight(chunk.try_into().unwrap(), r);
+        // chunks_exact_mut(4) 保证 4 字节；显式拷贝消除 try_into panic 点。
+        let mut arr = [0u8; 4];
+        arr.copy_from_slice(chunk);
+        let w = hue_range_weight(arr, r);
         if w == 0 {
             continue;
         }
-        let transformed = transform_pixel(chunk.try_into().unwrap(), &base);
+        let transformed = transform_pixel(arr, &base);
         let mix = |a: u8, b: u8| -> u8 { ((a as i64 * w + b as i64 * (1000 - w)) / 1000).clamp(0, 255) as u8 };
         chunk[0] = mix(transformed[0], chunk[0]);
         chunk[1] = mix(transformed[1], chunk[1]);

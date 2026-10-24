@@ -29,6 +29,7 @@
 //! - 无索引、无 `unwrap` / `expect`；减法前先比较。
 
 use alloc::format;
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 

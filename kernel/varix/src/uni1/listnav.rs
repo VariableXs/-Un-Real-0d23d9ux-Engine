@@ -9,6 +9,8 @@
 //! 帧就绪（虚拟化：目标页首帧在翻页瞬间即可渲染——数据恒在，无懒加载
 //! 空洞，结构性保证）。
 
+use alloc::format;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

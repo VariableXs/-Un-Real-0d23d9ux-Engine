@@ -17,6 +17,8 @@
 //! ≤50μs/帧"红线步数化（每步常数操作，64 步 @ 数十 ns/步 ≪ 50μs 红线）。
 //! 诊断码段 0x3Cxx 独占。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本（口径冻结标识，消费方对账用）。

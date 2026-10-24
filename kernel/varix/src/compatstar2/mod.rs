@@ -236,6 +236,7 @@ pub fn run_compatstar2_checks() -> crate::checks::CheckSet {
 
 #[cfg(test)]
 mod tests {
+use alloc::string::String;
     use super::*;
 
     /// 域聚合全绿：二十子域逐项无红无截断。

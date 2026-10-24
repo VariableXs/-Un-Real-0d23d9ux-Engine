@@ -12,6 +12,8 @@
 //! 键存取（换目录仍有效——键=文件内容指纹不是路径）；损坏元数据容错
 //! （解析失败静默回初位——「不报错」判据）；另存为显式不继承。
 
+use alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

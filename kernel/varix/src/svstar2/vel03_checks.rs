@@ -11,11 +11,11 @@
 //!
 //! 零墙钟、零 IO，随机源显式注入故回归可复现。
 
+use alloc::vec;
 use super::vel03_emitter::*;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 三角形：直角三角形，面积 = 0.5。

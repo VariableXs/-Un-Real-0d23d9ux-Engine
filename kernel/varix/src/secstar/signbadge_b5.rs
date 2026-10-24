@@ -165,7 +165,7 @@ impl TrustExpiry {
         let mut k = 0;
         let mut i = 0;
         while i < self.n {
-            let g = self.grants[i].unwrap();
+            let Some(g) = self.grants[i] else { i += 1; continue; };
             if today.saturating_sub(g.granted_day) > TRUST_TTL_DAYS {
                 if k < out.len() {
                     out[k] = g.app_id;

@@ -14,6 +14,8 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 use super::veo01_arch::ServoDecision;
 use alloc::format;
 use super::veo02_vendor::*;

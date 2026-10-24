@@ -20,9 +20,9 @@
 //!
 //! 诊断码：`ReportRingCode` 十六进制段 0x91（0x9100..=0x910F）独占。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

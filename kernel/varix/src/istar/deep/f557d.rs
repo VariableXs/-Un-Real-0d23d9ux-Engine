@@ -9,6 +9,8 @@
 //! ③「迁移报告」的**结构化卡**——六类资产 × (扫描/勾选/已迁/首开校验)
 //!   四态矩阵，报告的每一格都有账（报告不是一句「完成」，是可抽查的格）。
 
+use alloc::format;
+use alloc::vec::Vec;
 use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
@@ -187,9 +189,9 @@ impl ReportCard {
         self.rows.iter().all(|r| r.scanned)
     }
 
-    /// 按类取行。
-    pub fn row(&self, kind: AssetKind) -> &ReportCell {
-        self.rows.iter().find(|r| r.kind == kind).unwrap()
+    /// 按类取行（类未扫描时缺行——如实暴露而非掩盖）。
+    pub fn row(&self, kind: AssetKind) -> Option<&ReportCell> {
+        self.rows.iter().find(|r| r.kind == kind)
     }
 }
 
@@ -255,7 +257,7 @@ pub fn run_f557_deep_checks() -> CheckSet {
     let card = ReportCard::build(&mate);
     cs.add(
         "report row mirrors base ledger",
-        card.row(ASSET_KINDS[0]).picked == 1 && card.row(ASSET_KINDS[0]).transferred == 1,
+        card.row(ASSET_KINDS[0]).map_or(false, |r| r.picked == 1 && r.transferred == 1),
         "",
     );
 

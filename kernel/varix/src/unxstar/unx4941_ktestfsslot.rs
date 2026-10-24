@@ -3,7 +3,11 @@
 //! 槽位与 fs23 八族槽位隔离断言通过——ktest fs 面槽位表独立命名空间；
 //! ext4 组槽位注册后与 fs23 八族（族名各异）互不可见、互不冲突、双向隔离。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7D00;
 

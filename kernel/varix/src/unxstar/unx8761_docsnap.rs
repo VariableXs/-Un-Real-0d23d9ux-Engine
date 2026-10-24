@@ -2,8 +2,10 @@
 //! 验收锚点：UNX-F8761-J1 三件域文档（README/附录/域档）内容指纹
 //! 冻结——冻结后逐件复算指纹必须零漂移，任一件内容变更即触发
 //! 冻结告警，三件对账自洽（件数/指纹域/冻结标记），双判据缺一即批内红灯。
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB760;
 

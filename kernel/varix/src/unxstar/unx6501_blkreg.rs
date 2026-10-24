@@ -8,11 +8,11 @@
 //! 注销/查询三原语 + 主设备号闭集（1~255，0 保留）+ v1 冻结页 + 注入核
 //! （重复 major/未知注销/保留 major/封账注册）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 /// 诊断段（0xC700 独占 0x80）。
 pub const SEG_BASE: u32 = 0xC700;

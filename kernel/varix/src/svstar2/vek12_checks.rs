@@ -46,6 +46,8 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 use super::vek12_smaa::*;
 // `alloc` 三件套必须**逐个显式引入**（判据层自己要用 `Vec`/`String`，
 // 不能指望 `vek12_smaa::*` 的 glob 带进来——它里面的 `use alloc::…`
@@ -58,8 +60,6 @@ use super::vek12_smaa::*;
 // **教训：探针必须照抄真 crate 的 cfg**（本条即"no_std 探针必须照抄真 cfg"
 // 那条纪律的又一个变体——**这次是反过来的：探针比真crate 宽松**，
 // 宽松的方向恰好是"能编过"，所以它专门掩盖 import 缺失这类问题）。
-use alloc::string::String;
-use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ===========================================================================

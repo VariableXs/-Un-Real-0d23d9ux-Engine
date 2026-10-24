@@ -3,6 +3,9 @@
 //! 装配与跨域接口件：举报 → 治理立案的移交数据（F134 联动深链）、
 //! 案例公示页行（脱敏口径：当事人代号化）、治理指标卡装配。
 
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f148g::{median_days, CaseStage};
 use crate::checks::CheckSet;
 

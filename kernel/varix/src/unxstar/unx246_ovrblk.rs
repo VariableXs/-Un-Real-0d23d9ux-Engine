@@ -9,12 +9,13 @@
 //! 同键高优先覆盖低优先）+ 来源标记核（生效值必须带来源标记）+
 //! 注入核（未知来源/同键无标记/优先级破缺/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAA80 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAA80;
 pub const XC_OV_SRC: u32 = SEG_BASE + 0x01; // 未知来源
 pub const XC_OV_NOTAG: u32 = SEG_BASE + 0x02; // 无标记

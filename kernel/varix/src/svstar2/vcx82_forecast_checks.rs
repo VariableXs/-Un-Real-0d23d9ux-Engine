@@ -5,12 +5,12 @@
 //! 变异表（倒挂/越轴/重格/依据空各向拒绝）。聚合防自调：族内判据只调
 //! 另一族 standalone + 进行中 set 自身 tally，守恒断言归 CI 探针层。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::vcx82_forecast as fc;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

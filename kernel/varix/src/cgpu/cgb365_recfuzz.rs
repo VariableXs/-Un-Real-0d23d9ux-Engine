@@ -13,7 +13,9 @@
 //! 诊断码段 0x0950（本模块独占：0x0950~0x095F）。
 //! no_std + alloc 零 unwrap（测试除外），全部 Result 化。
 
+use alloc::format;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 
 /// 诊断码段基址。
@@ -85,7 +87,8 @@ impl MalformedCase {
             *st = st.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
             (*st >> 33) as u32
         };
-        let families = [MalformedFamily::MissingField, MalformedFamily::OverLimit, MalformedFamily::CycleRef];        for i in 0..FUZZ_SAMPLES_PER_FAMILY {
+        let families = [MalformedFamily::MissingField, MalformedFamily::OverLimit, MalformedFamily::CycleRef];
+        for i in 0..FUZZ_SAMPLES_PER_FAMILY {
             let f = families[i % families.len()];
             let p = next(&mut st);
             let desc = match f {

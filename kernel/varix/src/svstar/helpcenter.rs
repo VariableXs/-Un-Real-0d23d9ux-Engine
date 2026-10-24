@@ -22,6 +22,8 @@
 //! 时间注入式，宿主测试确定复现。无外部依赖（MD 渲染为轻量自研
 //! 行解析——markdown-it 级外部库不进内核，F130 登记语义）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
@@ -113,9 +115,9 @@ pub fn render_md(src: &str) -> Vec<Block> {
                 if !is_sep {
                     rows.push(cells);
                 }
-                match lines.peek() {
+                match lines.next() {
                     Some(l) if l.starts_with("|") => {
-                        row_line = String::from(lines.next().unwrap());
+                        row_line = String::from(l);
                     }
                     _ => break,
                 }

@@ -18,6 +18,7 @@
 //! [`release_pages`] 摘叶、核对原帧、归还帧——曾经的 32 项定容数组
 //! 改为 alloc::vec::Vec，大镜像无隐形上限。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 /// 4KiB 页面常量（与 mem::paging 同值；引擎自带避免反向依赖）。

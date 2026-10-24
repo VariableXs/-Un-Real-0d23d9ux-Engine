@@ -9,6 +9,7 @@
 //! （原位坐标 F237 记账精度）；依次收缩（逐窗延迟 40ms 阶梯）；总开关
 //! （禁用时判定直接短路）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

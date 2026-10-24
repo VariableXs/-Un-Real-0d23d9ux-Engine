@@ -1,8 +1,11 @@
 //! UNX-F1014 · 时间误差预算表（计时面 SLO 分解契约）账 · 诊断段 0xB8D0
 //! 验收锚点：UNX-F1014-J1 预算表冻结（计时面误差源七项预算+责任条目），
 //! 达标率 ≥99% 断言（F0949 同型账），版本化机制 10/10 次，双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB8D0;
 

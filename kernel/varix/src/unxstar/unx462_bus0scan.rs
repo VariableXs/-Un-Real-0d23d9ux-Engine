@@ -1,3 +1,4 @@
+#![forbid(unsafe_op_in_unsafe_fn)]
 //! UNX-F0462 · 总线 0 扫描（32 设备 × 8 功能）（CoRun·Unxreal · UNX-A1-B04 · PCI 深化之一）
 //!
 //! **锚点**：`docs/Varix/CoRun Varix STAR II · Unxreal/CoRun Varix STAR II · Unxreal.md#UNX-F0462`
@@ -31,10 +32,9 @@
 //!    错误走 Err + 中文诊断；no_std + alloc，绝不 use std。
 //! 6. **诊断码独占 0x7Bxx 段**：与 DSDT 册（0x2Exx）等互不重叠。
 
-#![forbid(unsafe_op_in_unsafe_fn)]
+use alloc::vec;
 
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 

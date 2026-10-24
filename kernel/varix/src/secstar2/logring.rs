@@ -21,8 +21,9 @@
 //! 接缝纪律：与 syslogd（B-3801~3803 既有面）的关系=策略与可视层，不重复
 //! 实现落盘；本模块定义三环的数据契约与对齐/导出语义，既有面按契约供给。
 
-use crate::checks::CheckSet;
+use alloc::format;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

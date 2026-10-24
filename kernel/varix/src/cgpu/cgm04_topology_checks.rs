@@ -8,6 +8,7 @@
 //! - 零 panic 双面自扫（生产面 + 判据面，去注释去字符串后扫描）；
 //! - 聚合守恒防自调（族条数在 tally 时刻精确对账）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::cgpu::cgm04_topology::{
     fnv1a, rect_overlap, validate, TopoEventKind, TopoRole, Topology, ScreenCell,
@@ -17,7 +18,6 @@ use crate::cgpu::cgm04_topology::{
 use crate::cgpu::cgm01_display::VmCode;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 const EXPECT_A_COUNT: usize = 18;

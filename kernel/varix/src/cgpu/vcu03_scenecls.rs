@@ -15,6 +15,7 @@
 //! 复用声明：id 空间（1..=MAX_SCENES）与容量策略直接消费 vcu02 常量，
 //! 不复刻不另立——两册同源一个口径（集成复用锚，与 vcu02 头注「集成
 //! 复用」声明同款纪律）。
+use alloc::format;
 
 use alloc::string::String;
 use alloc::vec::Vec;

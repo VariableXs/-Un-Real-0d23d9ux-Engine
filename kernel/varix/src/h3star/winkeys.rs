@@ -13,6 +13,7 @@
 //! 实现形态：窗口几何状态机（六动作 × 窗口态）+ 连按轮转 + 显示桌面
 //! 原位账（恢复精度 <1px）+ 键位注册表（F244 注入口——登记齐判据）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
@@ -543,7 +544,6 @@ impl CycleKeyBook {
 
 /// 深化层二自检（轮转状态机）。
 pub fn run_winkeys_deep2_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F309-deep2");
 
     // 1. 循环推进：A→B→C→A 环回（环长 3）。

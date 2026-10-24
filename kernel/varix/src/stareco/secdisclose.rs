@@ -14,6 +14,8 @@
 //! 校验、报告接收与 48h 确认时限、披露窗倒计时与强制披露、致谢页
 //! 排序。真签名走内核 ksha256/kvault（ebase 边界声明在册）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::SeqLedger;
 

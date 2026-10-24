@@ -76,9 +76,9 @@
 // `format!` 走 `use alloc::format;`（宏与类型是两个命名空间，
 // `use alloc::string::String;` 管不到宏）；`vec!` 走 `use alloc::vec;`
 // （`use alloc::vec::Vec;` 只导入**类型** `Vec`，不导入 `vec!` 宏）。
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vef02_pngenc::ColorType;

@@ -24,9 +24,10 @@
 //!
 //! 依赖锚点：F053（时间线独立分支）、F121（还原点）、F171（资产）、F173（二维码）、F191（基准重建）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::RingLog;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -468,7 +469,8 @@ impl SnapshotLedger {
         let taken = card.snapshot_before();
         let why_not = if taken { "" } else { "导出卡只读原则——不快照" };
         self.entries.push(SnapshotEntry { card, taken, why_not });
-        self.entries.last().unwrap()
+        let last = self.entries.len().saturating_sub(1);
+        &self.entries[last]
     }
 
     /// 守恒式：非导出卡全有快照、导出卡全豁免（对拍 run 的卡序）。

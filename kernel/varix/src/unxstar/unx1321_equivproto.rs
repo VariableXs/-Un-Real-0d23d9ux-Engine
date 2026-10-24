@@ -19,8 +19,9 @@
 //! 诊断码段：0xD3B0（0xD3B1~0xD3B9 闭集；全域 grep 确认独占）。
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，整数算术，确定性。
 
-use alloc::string::String;
+use alloc::format;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

@@ -31,6 +31,7 @@
 //! - 所有除法前先判零分母；`i32::abs` 对 `i32::MIN` 会溢出，故差值先夹到 ±1e6。
 //! - 无 `unwrap` / `expect`；排序用 `sort_by_key`，不比较浮点。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};

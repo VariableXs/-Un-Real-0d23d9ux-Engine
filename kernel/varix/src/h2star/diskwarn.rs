@@ -13,6 +13,7 @@
 //! 提醒节流（天窗复用 [`h2base::days_between`]）；目录聚合器（按一级
 //! 子目录聚合排序——不逐文件枚举的纪律落地）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h2star::h2base::days_between;
 

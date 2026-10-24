@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! =====================================================================================
 //! 任务单：UNX-F2341 · 域级总回归执行（800 条判据终验复读）
 //! 域/批：CoRun·UNX-A3-B38（消费域移交联签与移交包终验 · 交接收官轴二）
@@ -47,11 +48,10 @@
 //! `no_std + alloc`；零 `unwrap` / `expect` / `panic!` / `todo!`；零浮点；
 //! 零真实 IO、零墙钟；时间一律为注入的逻辑 `tick: u64`；确定性 LCG 保证同种子
 //! 同轨迹；错误为自定义 `Result<T, DomErr>` 闭集。
-#![allow(dead_code)]
+use alloc::vec;
 extern crate alloc;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ===========================================================================

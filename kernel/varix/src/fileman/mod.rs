@@ -8,6 +8,8 @@
 //! 禁止 Vec/String/Box/alloc/外部 crate/std 专用 API；ASCII 匹配走
 //! `crate::galaxy::ascii_*`。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::galaxy::rt::DetPrng;
 

@@ -12,9 +12,9 @@
 //! ③ 性能自检必须实测真实工作量（计数器覆盖缺陷发生层），不做 `n*CONST` 自证式算术；
 //! ④ 边界判据用表外真实形态（0 窗口、非 3 倍数长度、越界扫描输出号）。
 
+use alloc::vec;
 use super::veb11_irq::*;
 use crate::checks::CheckSet;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 构造一条 12 字节事件线格式记录（code / scanout / param 全 LE u32）。

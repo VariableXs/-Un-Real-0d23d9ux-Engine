@@ -3,6 +3,8 @@
 //! 包安装器状态机（校验→暂存→登记→激活，任一步失败回滚清场）、图标
 //! 语义分类表、来源签名链、哈希分桶布局规划、回归采样计划。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase;
 

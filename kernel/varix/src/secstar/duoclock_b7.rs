@@ -1,6 +1,8 @@
 //! F182 双时钟 · 批次七深化（v7）——NTP 往返质量账、slew 队列、
 //! 时间显示格式化、对账快照差异表。零堆、no_std。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 
 /// 往返样本环容量。

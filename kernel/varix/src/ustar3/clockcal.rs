@@ -30,6 +30,8 @@
 //! 零堆纪律：定长表 + core 运算，无 String/Vec/format!；输出为结构化
 //! 数值字段与 &'static str 命名表。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

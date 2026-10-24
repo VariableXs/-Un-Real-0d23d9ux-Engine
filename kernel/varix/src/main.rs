@@ -710,6 +710,7 @@ fn boot() -> ! {
     // 引导全链完成之后——现场带已登记，panic 序列四环节全链可达。
     if varix::cmdline::flag("panic_test") {
         varix::kinfo!("panic-test: deliberate injection begin (B-2903 drill)");
+        // G2-ALLOW: B-2903 对练注入入口，仅在 cmdline panic_test=1 时可达，属演练设计意图。
         panic!("panic_test injection: B-2903 drill");
     }
 

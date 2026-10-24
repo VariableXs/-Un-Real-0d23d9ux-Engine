@@ -11,6 +11,8 @@
 //! （I 域）消费后按全局裁量落地。差异表一经发布冻结，演进走 ADR 账。诊断码
 //! 段 0x3Fxx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 差异表版本（公开口径携带，对账用）。

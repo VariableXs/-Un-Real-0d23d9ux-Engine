@@ -11,6 +11,8 @@
 //! 此是拿考卷结果判级与后续治理（消费 SuitePackage.grade 结论形态的实测数）。
 //! 降质配方只出预载清单（O 域消费执行）。诊断码段 0x46xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

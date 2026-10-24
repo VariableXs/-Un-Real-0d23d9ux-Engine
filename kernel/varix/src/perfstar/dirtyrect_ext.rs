@@ -146,12 +146,12 @@ impl IntervalTree {
     }
     /// 合并：排序后线性扫描，输出合并后的区间到 `out`。返回输出条数。
     pub fn merge_all(&mut self, out: &mut [Iv]) -> usize {
-        // 插入排序（n ≤ 64，常数小；不引入递归栈）
+        // 插入排序（n ≤ 64，常数小；不引入递归栈）。占用槽由 n 计数保证；
+        // 缺槽按「已就位」保守停摆（不 panic）。
         for i in 1..self.n {
             let mut j = i;
             while j > 0 {
-                let a = self.ivs[j - 1].unwrap();
-                let b = self.ivs[j].unwrap();
+                let (Some(a), Some(b)) = (self.ivs[j - 1], self.ivs[j]) else { break };
                 if a.lo <= b.lo {
                     break;
                 }
@@ -163,10 +163,10 @@ impl IntervalTree {
         let mut m = 0usize;
         let mut i = 0usize;
         while i < self.n {
-            let mut cur = self.ivs[i].unwrap();
+            let Some(mut cur) = self.ivs[i] else { i += 1; continue };
             i += 1;
             while i < self.n {
-                let nxt = self.ivs[i].unwrap();
+                let Some(nxt) = self.ivs[i] else { break };
                 if cur.overlaps(&nxt) {
                     cur = cur.merge(&nxt);
                     self.merged_away += 1;

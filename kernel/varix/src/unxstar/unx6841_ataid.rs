@@ -11,9 +11,10 @@
 //! word27 投影）≥10 字段 + 裁断器（word 逐段提取 + 字符串字节序翻转）
 //! + 机读裁断表（(偏移, 长度, 标签, 取值) 四元组闭集）+ 注入核
 //! （word 界越界/LBA48 容量零/字串含 NUL 尾残留/裁断封账）。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
 
-use crate::alloc::string::String;
-use crate::alloc::{format, vec, vec::Vec};
 use crate::checks::CheckSet;
 
 /// 诊断段（0x9000 独占 0x80）。

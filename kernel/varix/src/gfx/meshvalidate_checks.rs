@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! VE-F1612 · 几何校验器域自检（判据逐条映射，40 项）
 //!
 //! **判据（锚点原文）**：schema、三查、容错、同标准、判据。
@@ -20,12 +21,11 @@
 //!   不只在明显越界处取样。
 //! - 修复效果断言的是**修复后重扫的结果**，不是「修复函数被调用过」。
 
-#![allow(dead_code)]
+use alloc::vec;
 
 extern crate alloc;
 
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

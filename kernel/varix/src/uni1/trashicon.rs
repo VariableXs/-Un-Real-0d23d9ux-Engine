@@ -11,6 +11,7 @@
 //! （最近删除置顶——用户最先找的就是刚删的）、按大小降序视图、配额
 //! 修改钳制、空桶清空诚实拒绝。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

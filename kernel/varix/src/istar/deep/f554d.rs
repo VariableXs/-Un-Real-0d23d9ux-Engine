@@ -9,6 +9,7 @@
 //! ③「档位切换有记录（第二天知道夜里静过）」的**明细账**——基础层只有
 //!   切换条数，深化层记 (分钟, 旧档, 新档) 环账，新到旧可读。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::dndtimer::{DndLevel, DndPlan, DndTimer, ExceptionKind, WeekMask};
 use crate::istar::ibase::ISTAR_DOMAIN;

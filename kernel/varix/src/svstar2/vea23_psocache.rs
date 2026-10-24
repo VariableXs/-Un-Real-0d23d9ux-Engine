@@ -57,11 +57,11 @@
 //!   校验不过则重编译。这不是缺陷，是"命中率不归零"与"绝不拿错对象"之间的取舍，
 //!   本模块选后者。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

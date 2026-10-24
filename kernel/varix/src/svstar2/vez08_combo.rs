@@ -86,9 +86,9 @@
 //! 读屏玩家听到的是「超支 30 微秒，建议半剪：让位 2 名」不是一堆裸数
 //! 字（组合报告读屏可达——域本色）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vez07_params::{PresetPack, Validator};

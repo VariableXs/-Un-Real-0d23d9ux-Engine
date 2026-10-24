@@ -57,9 +57,11 @@
 //!    异常出口，不是常规流程）。
 //! 5. **"案例去重"**。若入库不去重，案例库会被重复案例淹到不可维护。断
 //!    同案例二次入库：库不增长、去重计数≥1。
+use alloc::vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use super::vek02_dagexec::{

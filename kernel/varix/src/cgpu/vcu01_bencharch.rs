@@ -76,6 +76,7 @@
 //! 场景分类——四段的后段兑现）；F3360（V 域移交起点）。零 panic 面、
 //! 零 IO、零墙钟（计时上游注入）、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

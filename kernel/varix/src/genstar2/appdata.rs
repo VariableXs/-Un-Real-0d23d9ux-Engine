@@ -128,12 +128,12 @@ impl DataTransparency {
             order[m] = i;
             m += 1;
         }
-        // 插入排序（n ≤ 32）。
+        // 插入排序（n ≤ 32；缺槽键按 0 值沉底，不 panic）。
         for i in 1..m {
             let mut j = i;
             while j > 0 {
-                let a = self.apps[order[j - 1]].unwrap().total();
-                let b = self.apps[order[j]].unwrap().total();
+                let a = self.apps[order[j - 1]].as_ref().map_or(0, |x| x.total());
+                let b = self.apps[order[j]].as_ref().map_or(0, |x| x.total());
                 if a < b {
                     order.swap(j - 1, j);
                     j -= 1;

@@ -21,9 +21,9 @@
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u32/u64/u128 整数算术，
 //!   确定性（探测输入注入，零墙钟零 IO），逐条定制数据结构/状态机/错误路径。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

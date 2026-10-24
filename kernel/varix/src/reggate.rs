@@ -13,6 +13,8 @@
 //!
 //! 零堆纪律：无 Vec/String/Box/format!，定长数组 + 字节串。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::benchsix::{kind_index, synth_samples, BenchKind, BenchReport, BENCH_KINDS};
 use crate::checks::CheckSet;
 

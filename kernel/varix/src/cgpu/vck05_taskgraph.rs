@@ -46,6 +46,7 @@
 //! 并行、跨引擎按 fence 串）；失败传播 [`FailureProp`]（某引擎
 //! 子图失败→下游跨引擎边开裂而非级联重跑——隔离到失败域 F1608）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

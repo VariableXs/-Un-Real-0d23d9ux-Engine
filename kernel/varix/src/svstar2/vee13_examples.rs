@@ -1,3 +1,4 @@
+#![cfg_attr(not(test), no_std)]
 //! VE-F0813 · 文字渲染示例
 //!
 //! 锚点原文逐条落实（册内 VE-F0813 节）：
@@ -49,14 +50,13 @@
 //! 序**（先砍 Hinting 档、最后才砍字号），这两条是示例侧的编排义务，判据钉的是编排
 //! 不是对比度数值本身。
 
-#![cfg_attr(not(test), no_std)]
+use alloc::vec;
 
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::String;
 use alloc::string::ToString;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::svstar2::vee12_textqa as qa;

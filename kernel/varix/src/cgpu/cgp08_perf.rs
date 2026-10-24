@@ -51,6 +51,7 @@
 //! 意识使命）；F2402-F2406（五段设施本体——预算行的归属方）。
 //! 零 panic 面、零 IO、零墙钟（measured 全上游注入）、no_std。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

@@ -25,6 +25,7 @@
 //! 5. **溢出不是数字**：`u32::MAX` 规模语料必须 Err 而非回绕小数——
 //!    回绕会把天文成本洗成预算内，预算门就瞎了。
 
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::vej11_lightbudget::*;

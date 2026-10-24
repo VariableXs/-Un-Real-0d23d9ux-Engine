@@ -10,6 +10,8 @@
 //! - 崩溃后同样恢复（F311 纪律延伸）；恢复的是「工作流」不只是路径；
 //! - 上限 8 标签。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 
@@ -103,7 +105,9 @@ impl TabRestore {
         self.trimmed = false;
         // 快照交还调用方渲染（模型面以通知条数量表达恢复成功）。
         self.restored_scene = Some(s);
-        Some(self.notice.unwrap())
+        let notice = (n, source);
+        self.notice = Some(notice);
+        Some(notice)
     }
 
     /// 恢复出的现场（渲染层取数口）。
@@ -113,12 +117,13 @@ impl TabRestore {
 
     /// 精简选项：「只留当前」——恢复后一键砍到当前标签。
     pub fn trim_to_active(&mut self) -> bool {
-        if self.restored_scene.is_none() || self.trimmed {
+        if self.trimmed {
             return false;
         }
-        let active = self.restored_scene.as_ref().unwrap().active;
-        let keep = self.restored_scene.as_ref().unwrap().tabs[active].clone();
-        let s = self.restored_scene.as_mut().unwrap();
+        let Some(s) = self.restored_scene.as_mut() else {
+            return false;
+        };
+        let keep = s.tabs[s.active].clone();
         s.tabs.clear();
         s.tabs.push(keep);
         s.active = 0;

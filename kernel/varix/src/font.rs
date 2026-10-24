@@ -204,6 +204,7 @@ pub fn text_width_scaled(text: &str, scale: i64) -> i64 {
 
 #[cfg(test)]
 mod tests {
+use alloc::vec;
     use super::*;
     use crate::fb::{Color, PixelFormat, Surface};
     use std::vec::Vec;

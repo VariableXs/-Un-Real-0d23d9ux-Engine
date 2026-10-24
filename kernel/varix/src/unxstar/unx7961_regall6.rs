@@ -3,7 +3,11 @@
 //! 铺排落账 ×1；面区间 vs 域台账 diff ×6 一致（六面各自轮数与台账全等）；
 //! 缺面注入 ×10 检出（任何面缺席即红）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9E00;
 

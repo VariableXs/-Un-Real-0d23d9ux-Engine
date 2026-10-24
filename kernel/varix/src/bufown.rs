@@ -142,7 +142,10 @@ impl SurfaceOwnership {
         if self.pending_commit.is_some() {
             return E_DOUBLE_COMMIT;
         }
-        self.bufs[slot].as_mut().unwrap().state = BufState::Held;
+        match self.bufs[slot].as_mut() {
+            Some(b) => b.state = BufState::Held,
+            None => return E_BAD_SLOT,
+        }
         self.pending_commit = Some(slot);
         self.commits += 1;
         E_OK
@@ -157,12 +160,18 @@ impl SurfaceOwnership {
     pub fn frame_done(&mut self, slot: usize) -> u16 {
         match self.slot_state(slot) {
             Some(BufState::Held) => {
-                self.bufs[slot].as_mut().unwrap().state = BufState::Free;
+                match self.bufs[slot].as_mut() {
+                    Some(b) => b.state = BufState::Free,
+                    None => return E_BAD_SLOT,
+                }
                 self.callbacks += 1;
                 E_OK
             }
             Some(BufState::Dying) => {
-                self.bufs[slot].as_mut().unwrap().state = BufState::Gone;
+                match self.bufs[slot].as_mut() {
+                    Some(b) => b.state = BufState::Gone,
+                    None => return E_BAD_SLOT,
+                }
                 self.callbacks += 1;
                 self.destroys += 1;
                 E_OK
@@ -192,12 +201,18 @@ impl SurfaceOwnership {
     pub fn destroy(&mut self, slot: usize) -> u16 {
         match self.slot_state(slot) {
             Some(BufState::Free) => {
-                self.bufs[slot].as_mut().unwrap().state = BufState::Gone;
+                match self.bufs[slot].as_mut() {
+                    Some(b) => b.state = BufState::Gone,
+                    None => return E_BAD_SLOT,
+                }
                 self.destroys += 1;
                 E_OK
             }
             Some(BufState::Held) => {
-                self.bufs[slot].as_mut().unwrap().state = BufState::Dying;
+                match self.bufs[slot].as_mut() {
+                    Some(b) => b.state = BufState::Dying,
+                    None => return E_BAD_SLOT,
+                }
                 self.destroy_while_held += 1;
                 E_OK
             }

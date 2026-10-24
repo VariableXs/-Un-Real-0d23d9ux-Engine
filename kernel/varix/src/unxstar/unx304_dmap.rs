@@ -9,12 +9,13 @@
 //! + 页粒度对齐）+ 越界守卫（cap 外 phys 拒）+ 注入核（cap 外换算/
 //! 非对齐/窗口重叠/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAC00 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAC00;
 pub const XC_DM_CAP: u32 = SEG_BASE + 0x01; // cap 外
 pub const XC_DM_ALIGN: u32 = SEG_BASE + 0x02; // 非对齐

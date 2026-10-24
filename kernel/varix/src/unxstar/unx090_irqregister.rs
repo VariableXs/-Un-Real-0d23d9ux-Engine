@@ -28,10 +28,10 @@
 //! 设计要点：no_std+alloc；零 unwrap/expect；零 IO 零墙钟；LCG 确定性；
 //! 错误全显性带建议；FNV 快照往返。诊断码段 0x3A（0x39 为 F0881 所取）。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

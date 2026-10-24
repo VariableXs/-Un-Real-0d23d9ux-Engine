@@ -14,12 +14,16 @@
 //!   - 注入核 5 项。
 //! ═══════════════════════════════════════════════════════════════════════
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
+// 内核浮点层：x86_64-unknown-none 下 core 不提供浮点 transcendentals，
+// 本文件用到的浮点方法统一走 FloatExt（转发 libm，见 crate::float 文档）。
+use crate::float::FloatExt;
 
 /// 诊断段基址。
+
 pub const SEG_BASE: u16 = 0x9280;
 
 /// 树空哨兵。
@@ -224,7 +228,7 @@ impl Avl {
         if n == 0 {
             return self.h(self.root) == 0;
         }
-        let bound = (1.44 * ((n as f64) + 2.0).log2()).ceil() as i32 + 1;
+        let bound = (1.44 * ((n as f64) + 2.0).m_log2()).m_ceil() as i32 + 1;
         self.h(self.root) <= bound
     }
 
@@ -308,7 +312,7 @@ pub fn j1_main() -> bool {
     read_tree.cmp_count = 0;
     let _ = read_tree.find(probe);
     let n0 = read_tree.count(read_tree.root);
-    let bound = 2 * (((n0 as f64) + 2.0).log2().ceil() as u64 + 2);
+    let bound = 2 * (((n0 as f64) + 2.0).m_log2().m_ceil() as u64 + 2);
     if read_tree.cmp_count > bound {
         return false;
     }

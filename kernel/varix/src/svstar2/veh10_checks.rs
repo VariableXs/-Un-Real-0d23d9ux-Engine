@@ -39,6 +39,7 @@
 //!    其中 M3/M4/M8 各只转红 1–2 条是**符合预期的低冗余度**——三者对应"最通
 //!    路径""未覆盖贡献 0""并集不双计"三条互不重叠语义，各有专属判据钉住。
 
+use alloc::vec;
 use super::veh10_occlusion::*;
 // `Cartesian` 在 veh10_occlusion 里是私有 import（`use ...` 非 `pub use`），
 // 故 glob 不会把它带进来——判据侧须显式引一次，否则"两套坐标混用"的
@@ -48,7 +49,6 @@ use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 构造一颗合法的遮挡代理球（材质越界时代替为混凝土，测试用）。

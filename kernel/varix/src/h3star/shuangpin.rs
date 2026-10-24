@@ -15,6 +15,7 @@
 //! 双拼解码（双轨：双拼与全拼并行解析不冲突）+ 词库共享（解码结果进
 //! 同一词库面）+ 键位提示显隐开关。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::{String, ToString};

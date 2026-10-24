@@ -40,6 +40,7 @@
 //! SSIM/deltaE——感知级阈值的计量来源）；O 域（降级诚实与 O 域
 //! 「降质不降帧」呼应）。零 panic 面、零 IO、零墙钟、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

@@ -3,7 +3,11 @@
 //! 判据三成分（断言/锚点/写回）/行数逐批求和三方一致，对账偏差零容忍，
 //! 总账在册可导出。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB5A0;
 

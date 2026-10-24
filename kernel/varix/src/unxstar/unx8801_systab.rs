@@ -10,12 +10,13 @@
 //! 号逐号断言（读/写/打开/关闭/brk/mmap/时钟等代表号零混码）+
 //! 注入核（重复注册/越界号/未注册分发/槽位漂移/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA480 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA480;
 pub const XC_SY_DUP: u32 = SEG_BASE + 0x01; // 重复注册
 pub const XC_SY_RANGE: u32 = SEG_BASE + 0x02; // 越界号

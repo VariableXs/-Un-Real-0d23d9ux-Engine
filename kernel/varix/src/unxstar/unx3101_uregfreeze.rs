@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
 //! UNX-F3101 · 回归方案总冻结（判据清单→用例→执行→判定四段方案）
 //!
 //! 任务单号: UNX-F3101
@@ -47,14 +49,12 @@
 //! 错误变体一码一段，逐个占段内偏移 0..=13（注入形态），辅助码占 0x1C..=0x21，
 //! 最大占用 `0x25E1`，未触及段上界 `0x25FF`。
 
-#![allow(dead_code)]
-#![allow(unused_imports)]
+use alloc::vec;
 
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ===========================================================================

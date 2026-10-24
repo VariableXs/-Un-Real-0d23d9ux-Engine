@@ -3,7 +3,10 @@
 //! 新增语义清单/退役范围三登记在册并经台账备注联签确认，与 A1/A2 域现存栈
 //! 接管同口径同纪律（三登记字段名与 A1/A2 登记表逐项同构）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB3C0;
 

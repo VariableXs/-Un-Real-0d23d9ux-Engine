@@ -33,9 +33,9 @@
 //! - `c` = 精度诚实 + 离散轨边界（约 48 项）
 //! - `d` = 零静默与守卫（约 44 项）
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vem03_interp::Interp;

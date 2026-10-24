@@ -481,9 +481,14 @@ impl ServiceBus {
         if self.services[idx].map(|s| s.state) != Some(SvcState::Installed) {
             return false;
         }
-        // 依赖必须全部 Active 才能激活（依赖注入顺序）
-        for d in 0..self.services[idx].unwrap().dep_count {
-            let di = self.services[idx].unwrap().deps[d];
+        // 依赖必须全部 Active 才能激活（依赖注入顺序）——槽占用由上面
+        // Installed 检查保证；缺槽保守拒绝（不 panic）。
+        let Some(svc) = self.services[idx].as_ref() else {
+            return false;
+        };
+        let dep_count = svc.dep_count;
+        let deps = svc.deps;
+        for &di in &deps[..dep_count] {
             if di >= self.count || self.services[di].map(|s| s.state) != Some(SvcState::Active) {
                 return false;
             }
@@ -498,7 +503,10 @@ impl ServiceBus {
         if idx >= self.count || dep >= self.count || dep == idx {
             return false;
         }
-        let dc = self.services[idx].unwrap().dep_count;
+        let dc = match self.services[idx].as_ref() {
+            Some(s) => s.dep_count,
+            None => return false,
+        };
         if dc >= MAX_DEPS {
             return false;
         }

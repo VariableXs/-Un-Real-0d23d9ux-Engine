@@ -26,6 +26,7 @@
 //!
 //! 诊断段：0x1600 基址（全域核查无占用）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -210,6 +211,9 @@ impl UavManager {
             Some(r) => {
                 r.refs += 1;
                 r.acquires += 1;
+                // 成功操作刷新最近操作码：last_code 语义是「本操作结果」
+                // 而非「历史首错」，成功即 0，收工健康态才可判定。
+                self.last_code = 0;
                 true
             }
             None => {
@@ -225,6 +229,7 @@ impl UavManager {
             Some(r) if r.refs > 0 => {
                 r.refs -= 1;
                 r.releases += 1;
+                self.last_code = 0;
                 true
             }
             Some(_) => {

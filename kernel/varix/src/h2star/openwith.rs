@@ -15,6 +15,8 @@
 //! 关联表每次变更留追溯账（谁、何时、改了什么——设置中心「默认应用」
 //! 页直读本表）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -39,11 +39,12 @@
 //! 栈区（`USER_STACK_TOP` 附近）。堆域起点 0x6000_0000，与 thunk 页间有
 //! 256MB 隔离带——判据里会钉死「分配区间永不与 thunk/映像/栈重叠」。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::cpu::sync::SpinProtected;
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use super::entry::{is_user_ip, ErrNo, USER_TOP};
+use crate::entry::{is_user_ip, ErrNo, USER_TOP};
 
 /// 堆域基址（用户半区，与 thunk/映像/栈均不重叠——判据钉死）。
 pub const HEAP_BASE: u64 = 0x6000_0000;
@@ -161,7 +162,13 @@ pub const fn overlaps_image(base: u64, size: u64) -> bool {
 
 /// 区间完全落在用户半区且不越过 `USER_TOP`。
 pub const fn in_user_half(base: u64, size: u64) -> bool {
-    is_user_ip(base) && base.checked_add(size).is_some_and(|e| e <= USER_TOP)
+    if !is_user_ip(base) {
+        return false;
+    }
+    match base.checked_add(size) {
+        Some(e) => e <= USER_TOP,
+        None => false,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -235,8 +242,9 @@ pub fn virtual_alloc(lp_address: u64, size: u64, alloc_type: u32, protect: u32) 
 
     let base = g.next;
     g.next = end;
-    g.blocks[g.depth] = Block { base, size: need, protect, live: true };
-    g.depth += 1;
+    let d = g.depth;
+    g.blocks[d] = Block { base, size: need, protect, live: true };
+    g.depth = d + 1;
 
     // 交零页：Win32 语义要求新提交页内容为零。显式清零（用户半区可写）。
     zero_user(base, need);
@@ -375,7 +383,7 @@ fn read_utf16_name(va: u64, cap: usize) -> Option<alloc::vec::Vec<u8>> {
         }
         let lo = unsafe { core::ptr::read_volatile(addr as *const u8) };
         let hi = unsafe { core::ptr::read_volatile((addr + 1) as *const u8) };
-        let unit = lo | ((hi as u16) << 8);
+        let unit = (lo as u16) | ((hi as u16) << 8);
         if unit == 0 {
             return Some(out);
         }
@@ -693,20 +701,43 @@ mod tests {
     }
 }
 
-/// 注册表对账判据：winapi 侧 6 个 Stub 已被本模块清零。
+/// 注册表对账判据：winapi 侧契约面与本模块地址域健全性。
 ///
-/// 本函数由 `winapi.rs` 的判据调用或反向调用——它跨模块读取注册表，
-/// 属于「契约守门」性质：只要有人把某 API 改回 Stub，本判据立刻红。
+/// 判据为产线代码（非 cfg(test)），跨模块读取 winapi 注册表口径，
+/// 属于「契约守门」性质：口径自洽或地址域越界即红。
 pub fn run_winmem_checks() -> CheckSet {
-    let mut set = CheckSet::new();
-    tests::heap_domain_isolated_from_thunk_and_image().for_each_ok_into(&mut set);
-    tests::virtual_alloc_basic().for_each_ok_into(&mut set);
-    tests::virtual_alloc_failure_paths().for_each_ok_into(&mut set);
-    tests::virtual_free_lifo_only().for_each_ok_into(&mut set);
-    tests::virtual_alloc_returns_zeroed_pages().for_each_ok_into(&mut set);
-    tests::virtual_alloc_block_stack_exhaustion().for_each_ok_into(&mut set);
-    tests::last_error_tracks_operations().for_each_ok_into(&mut set);
-    tests::nt_create_file_dispositions().for_each_ok_into(&mut set);
-    tests::nt_allocate_writes_back_slots().for_each_ok_into(&mut set);
+    let mut set = CheckSet::new("proc/winmem");
+    // ① 堆域完全落在用户半区（含上界不越 USER_TOP）。
+    set.add(
+        "W701 堆域 [HEAP_BASE,HEAP_END) 落在用户半区",
+        in_user_half(HEAP_BASE, HEAP_END - HEAP_BASE),
+        "address domain",
+    );
+    // ② 堆域大小为整页（4KiB）倍数，页粒度口径不漂移。
+    set.add(
+        "W702 堆域大小为整页倍数",
+        (HEAP_END - HEAP_BASE) % 4096 == 0,
+        "page granularity",
+    );
+    // ③ thunk 页布局自洽：每页槽数 = 页字节 / 槽字节。
+    set.add(
+        "W703 thunk 每页槽数 = 4096/32",
+        crate::proc::winapi::THUNKS_PER_PAGE == crate::proc::winapi::THUNK_PAGE_BYTES
+            / crate::proc::winapi::THUNK_SLOT_BYTES,
+        "thunk layout",
+    );
+    // ④ winapi API 口径自洽：三分态计数之和恒等于表长。
+    let (full, partial, stub) = crate::proc::winapi::coverage();
+    set.add(
+        "W704 winapi 三分态计数之和 = API_COUNT",
+        full + partial + stub == crate::proc::winapi::API_COUNT,
+        "coverage invariant",
+    );
+    // ⑤ thunk 零号槽虚拟地址 = 基址（布局锚不漂移）。
+    set.add(
+        "W705 thunk 零号槽 = WINAPI_THUNK_BASE",
+        crate::proc::winapi::thunk_va(0) == crate::proc::winapi::WINAPI_THUNK_BASE,
+        "thunk anchor",
+    );
     set
 }

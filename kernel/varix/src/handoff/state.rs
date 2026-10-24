@@ -241,6 +241,8 @@ impl HandoffMachine {
 
 #[cfg(test)]
 mod tests {
+use alloc::vec;
+use alloc::vec::Vec;
     use super::*;
 
     // B-201 主判据：七迁移全覆盖（表驱动测试含异常分支）。

@@ -210,11 +210,13 @@ pub fn deserialize(text: &str) -> Result<PrefPack, ImportError> {
             let mut it = kv.splitn(2, '=');
             let k = it.next().ok_or(ImportError::Malformed)?;
             let v = it.next().ok_or(ImportError::Malformed)?;
-            if !KEY_WHITELIST.contains(&k) {
+            // 单次查找替代 contains+find 双扫；缺位（不可能，已判白名单）
+            // 显性拒绝，不 panic。
+            let Some(key) = KEY_WHITELIST.iter().copied().find(|w| *w == k) else {
                 return Err(ImportError::KeyOffWhitelist);
-            }
+            };
             entries.push(PrefEntry {
-                key: KEY_WHITELIST.iter().find(|w| **w == k).unwrap(),
+                key,
                 value: String::from(v),
             });
         }
@@ -450,8 +452,11 @@ impl ThemePackExport {
             }
             match line.split_once('=') {
                 Some((k, v)) if THEME_KEYS.contains(&k) && !v.is_empty() => {
-                    let key = THEME_KEYS.iter().find(|c| **c == k).unwrap();
-                    ok.push((*key, String::from(v)));
+                    // 白名单已判；缺位走 rejected 臂（不 panic）。
+                    match THEME_KEYS.iter().copied().find(|c| *c == k) {
+                        Some(key) => ok.push((key, String::from(v))),
+                        None => rejected.push(String::from(line)),
+                    }
                 }
                 _ => rejected.push(String::from(line)),
             }

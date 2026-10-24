@@ -4,7 +4,8 @@
 //! 同批落账）；数据提交点断言 10/10 通过（写后未提交前读不到新值，提交后
 //! 必读到新值）；与 F5187 复制预演联账一致（复制产物逐块对拍一致）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x8380;
 

@@ -11,6 +11,7 @@
 //! 实装：默认四项清单（唯一源）；动态项可见性（蓝牙在线性注入）；
 //! 防重名复用 [`h2base::bump_copy_name`]；第三方扩展折叠区（审计留痕）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::h2star::h2base::bump_copy_name;
 

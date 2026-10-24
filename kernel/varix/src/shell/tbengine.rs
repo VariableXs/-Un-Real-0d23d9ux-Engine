@@ -6,6 +6,8 @@
 //!
 //! 纪律：零分配、全整数 permille、`CheckSet` 自检 75 项全绿（ktest）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

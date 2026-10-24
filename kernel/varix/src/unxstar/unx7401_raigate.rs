@@ -9,13 +9,14 @@
 //! 分批表双射零缺失）+ 全跑账（(批, 项, 绿/红, 耗时档)）+ 注入核
 //! （缺批/缺项/红项漏报/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0x9400 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0x9400;
 pub const XC_RG_NOBATCH: u32 = SEG_BASE + 0x01; // 缺批
 pub const XC_RG_NOITEM: u32 = SEG_BASE + 0x02; // 缺项

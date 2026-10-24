@@ -42,6 +42,7 @@
 //! 另册）；F5608（场景图声源——听者面另册）。零 panic 面、零 IO、
 //! 零墙钟（tick 注入）、零浮点、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

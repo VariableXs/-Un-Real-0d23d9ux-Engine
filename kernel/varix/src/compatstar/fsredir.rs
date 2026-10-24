@@ -23,6 +23,7 @@
 //!
 //! 零堆纪律：trie 节点定长池、审计环定长 1000，无 Vec/String/Box/format!。
 
+use alloc::format;
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};

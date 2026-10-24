@@ -4,6 +4,7 @@
 //! F135 文档/F127 工具/流程三方）、志愿者画像册（可比性分桶）、
 //! 流程检查单模板（公开）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ecogate::{Step, StuckKind, Walkthrough, TOTAL_BUDGET_MIN};
 

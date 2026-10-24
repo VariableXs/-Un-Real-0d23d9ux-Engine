@@ -52,13 +52,13 @@
 //! 仅依赖同册 [`vep05_orch`]（组件内编排图复用——锚点跨批对接点）与 [`vep03_token`]
 //! （reduce 泳道与三段式错误）、`alloc`。零 IO、零墙钟、零浮点。
 
+use alloc::vec;
 use crate::svstar2::vep03_token::{Lane, MotionTokenError};
 use crate::svstar2::vep04_stack::P_NAMESPACE_OWNER;
 use crate::svstar2::vep05_orch::{compile, CompiledOrch, CompileParams, OrchGraph, OrchNode, Orchestrator};
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

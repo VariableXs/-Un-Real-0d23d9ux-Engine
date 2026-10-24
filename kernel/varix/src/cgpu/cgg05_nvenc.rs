@@ -10,6 +10,8 @@
 //! cgg02_nvprobe（F0962）分工——彼管 3D 特性，此管媒体编解码专项。代际差异
 //! 诚实标注：不虚报不存在的能力。诊断码段 0x4Dxx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

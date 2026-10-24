@@ -13,13 +13,14 @@
 //! 行为一致 + 同码双跑 10/10 确定性核 + 注入核（空路径/$ORIGIN
 //! 无锚/超长/坏魔数/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA180 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA180;
 pub const XC_IP_NOENT: u32 = SEG_BASE + 0x01; // ENOENT
 pub const XC_IP_ELIBBAD: u32 = SEG_BASE + 0x02; // ELIBBAD

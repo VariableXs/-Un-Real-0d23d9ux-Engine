@@ -3,7 +3,11 @@
 //! 复制后两进程独立 close 互不影响（父子行为对照 10/10 与 Linux 一致：
 //! 父 close 后子仍可读写，子 close 后父仍可读写，双方都 close 才释放）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB260;
 

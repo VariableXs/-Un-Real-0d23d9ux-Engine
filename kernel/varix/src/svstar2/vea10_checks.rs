@@ -11,6 +11,9 @@
 //!
 //! 逻辑 tick 注入、无墙钟，回归可复现。
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::ToString;
 use super::vea10_bus::*;
 use crate::checks::CheckSet;
 

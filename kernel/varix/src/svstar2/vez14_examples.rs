@@ -43,8 +43,9 @@
 //! =三条核心管线全活着——示例失效（管线死）即 [`E_EX_RUN_FAIL`] 试跑
 //! 失败下架。
 
-use alloc::string::String;
+use alloc::format;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

@@ -2,7 +2,7 @@
 //! 验收锚点：UNX-F0171-J1 事件日志重放计算 PCR0-7 预期值，与读回
 //! PCR 实值一致，双判据缺一即批内红灯。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB810;
 

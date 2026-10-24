@@ -42,9 +42,11 @@
 //! （从可用清单摘除并计数，不是删库——修好重新上架）。下架的模板
 //! 生成请求显性拒绝，不静默兜底到别的模板（用户要的是插件，给他
 //! 应用模板是善意的背叛）。
+use alloc::vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
@@ -636,4 +638,3 @@ fn std_lib() -> TemplateLib {
     lib
 }
 
-use alloc::vec;

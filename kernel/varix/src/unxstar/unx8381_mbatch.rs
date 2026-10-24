@@ -10,12 +10,13 @@
 //! 交叉场景 30 组冻结）+ 总检一键跑挂点登记（(批, 项, 挂点) 三元
 //! 组）+ 注入核（缺批/缺项/互锁破缺/挂点漂移/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA300 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA300;
 pub const XC_MB_NOBATCH: u32 = SEG_BASE + 0x01; // 缺批
 pub const XC_MB_NOITEM: u32 = SEG_BASE + 0x02; // 缺项

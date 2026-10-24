@@ -12,6 +12,7 @@
 //! （副本名被占 → 顺延 (2)/(3)，全占诚实回落）、关窗守卫（脏文档
 //! 关窗走 F310 钩子——防丢失硬线）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::uni1::ubase::{Chord, HotkeyTable, MOD_CTRL, MOD_SHIFT};
 

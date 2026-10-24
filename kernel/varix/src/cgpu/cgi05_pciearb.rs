@@ -10,6 +10,8 @@
 //! cgi02_pciebw（F1282）；账户水位复用声明 cgi03_bwaccount（F1283）——本模
 /// 块是仲裁分配层。诊断码段 0x4Axx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

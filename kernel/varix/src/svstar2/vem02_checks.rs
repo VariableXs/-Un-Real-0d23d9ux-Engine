@@ -17,8 +17,8 @@
 //!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
-use super::vem02_track::*;
 use alloc::vec;
+use super::vem02_track::*;
 use alloc::format;
 use crate::checks::CheckSet;
 use alloc::string::ToString;

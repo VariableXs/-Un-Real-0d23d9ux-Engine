@@ -3,6 +3,7 @@
 //! 装配与跨域接口件：示例仓库 → F118 欢迎中心五卡数据、示例启动器
 //! 行（先修未完置灰锁）、源码本体只读视图（g 层内容的展示面）。
 
+use alloc::vec::Vec;
 use super::f136g;
 use crate::checks::CheckSet;
 

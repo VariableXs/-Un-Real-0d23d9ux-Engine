@@ -9,6 +9,7 @@
 //! overflow, time wrap, IRQ storms, log storms, boot rescue and driver-load
 //! isolation — closed by the kernel-wide self-test loop (F475).
 
+use alloc::vec::Vec;
 use crate::checks::{CheckSet, KernelCheckup};
 
 // ---------------------------------------------------------------------------
@@ -1026,7 +1027,7 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 仅一个 CheckSet 临时存活。
     // （350→349：AI-U4 复验轮清除 rebase 伤——U1 注释块下错挂的
     // secstar2 重复注册行删除，同域两行归一行。）
-    let domains: [fn() -> CheckSet; 352] = [
+    let domains: [fn() -> CheckSet; 364] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
@@ -1489,6 +1490,18 @@ pub fn run_kernel_checkup() -> KernelCheckup {
         crate::ustar3::winkeys::run_f548_checks,
         crate::ustar3::clockcal::run_f549_checks,
         crate::ustar3::anchor::run_f550_checks,
+    crate::m700vm::run_m700vm_checks,
+    crate::compatstar::comdlg::run_comdlg_ext_checks,
+    crate::galaxy::finalgate::run_finalgate_checks,
+    crate::galaxy::verifyall::run_verifyall_checks,
+    crate::gfx::meshstream::run_vei11_checks,
+    crate::h3star::copypath::run_copypath_checks,
+    crate::h3star::copypath::run_copypath_deep_checks,
+    crate::proc::winmem::run_winmem_checks,
+    crate::vestar::ve175_cmdcompress::run_command_compress_checks,
+    crate::vestar::ve176_logsampler::run_log_sampler_checks,
+    crate::vestar::ve174_minimizer::run_minimizer_checks,
+    crate::vestar::ve183_timetravel::run_time_travel_checks,
     ];
     for f in domains {
         checkup.register(f());

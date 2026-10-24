@@ -12,6 +12,7 @@
 //!
 //! 逻辑 tick 注入、无墙钟，回归可复现。
 
+use alloc::vec::Vec;
 use super::vea09_recovery::*;
 use crate::checks::CheckSet;
 

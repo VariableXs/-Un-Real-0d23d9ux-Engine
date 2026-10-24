@@ -4,6 +4,7 @@
 //! boot-line spec: full banner width, 24px segment ticks, right-aligned
 //! percentage, sheen sweep across the filled span.
 
+use alloc::vec;
 use crate::fb::{Color, Surface};
 use crate::font;
 

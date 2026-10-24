@@ -12,6 +12,7 @@
 //! 预期常量独立给定；outer_steps 向上取整与 ETA 链逐值手算复核
 //! （eta = max(ops/gran,1) × 10 × max(steps,1)，除数均非零常量路径）。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

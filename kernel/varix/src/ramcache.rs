@@ -16,6 +16,7 @@
 //! - **内核戒律**：目标态 256KiB 数据区 = static .bss（>64KB struct 禁
 //!   栈上/Box 中转物化）；泛型 `CAP` 让宿主测试用 16KiB 小实例栈安全。
 
+use alloc::vec::Vec;
 use crate::drivers::blk::fnv1a64;
 use crate::quota::{ReclaimStage, ReclaimStageId};
 

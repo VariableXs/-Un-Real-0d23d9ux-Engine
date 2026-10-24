@@ -146,8 +146,12 @@ impl BenchSample {
     /// Median-of-3 style stability: all samples within 10% of each other.
     pub fn stable(samples: [BenchSample; 3]) -> bool {
         let v = [samples[0].ns_per_iter_centi(), samples[1].ns_per_iter_centi(), samples[2].ns_per_iter_centi()];
-        let lo = *v.iter().min().unwrap();
-        let hi = *v.iter().max().unwrap();
+        // 定长 3 样本折叠求界，零 panic 点。
+        let (mut lo, mut hi) = (v[0], v[0]);
+        for &x in v.iter() {
+            lo = lo.min(x);
+            hi = hi.max(x);
+        }
         lo > 0 && hi * 100 <= lo * 110
     }
 }

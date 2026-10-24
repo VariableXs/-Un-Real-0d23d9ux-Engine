@@ -14,6 +14,8 @@
 //! 与 cgc04_framearbiter（帧内时间预算）分工——彼管毫秒、此管瓦特。降载信
 //! 号只发单不执行（F0008 消费）。诊断码段 0x48xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

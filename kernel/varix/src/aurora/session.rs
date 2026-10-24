@@ -6,6 +6,8 @@
 //! 空闲锁定、性能预算、域自检与模糊测试边界，全部以固定容量数组 + usize 计数实现，
 //! 无分配、无 unsafe、无宏、无泛型魔法，可直接在宿主机测试套件中无硬件地运行。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 pub const SESSION_DOMAIN: &str = "aurora-session";
@@ -830,11 +832,11 @@ pub fn session_startup_selfcheck() -> bool {
         return false;
     }
     session_lock(&mut table, 0);
-    if table.session_get(0).unwrap().state != SessionState::Locked {
+    if table.session_get(0).map_or(true, |g| g.state != SessionState::Locked) {
         return false;
     }
     session_unlock(&mut table, 0);
-    if table.session_get(0).unwrap().state != SessionState::Active {
+    if table.session_get(0).map_or(true, |g| g.state != SessionState::Active) {
         return false;
     }
     session_invariants(&table) == 0
@@ -865,7 +867,10 @@ pub fn session_startup_perf_budget() -> bool {
 pub fn session_startup_metrics() -> (usize, usize, usize, usize) {
     let mut table = SessionTable::new();
     table.session_open(1, 1, false);
-    let g = table.session_open(2, 2, true).unwrap();
+    let g = match table.session_open(2, 2, true) {
+        Some(g) => g,
+        None => return (0, 0, 0, 0),
+    };
     session_lock(&mut table, g);
     session_metrics(&table)
 }

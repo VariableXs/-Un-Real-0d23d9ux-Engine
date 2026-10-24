@@ -50,8 +50,8 @@
 //! +失败景点名（[`E_DC_REPRO_FAIL`]）。两级处置语义分明：欠账可以带
 //! 排程发版（排程可查），错误必须修完才能发版。
 
-use alloc::string::String;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

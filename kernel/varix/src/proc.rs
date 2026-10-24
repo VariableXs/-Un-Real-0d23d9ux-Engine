@@ -20,6 +20,9 @@ pub mod syscall;
 /// 任务40（AI-B）· Win32 服务台：导入绑定 + Wine 核心 DLL 首层 API。
 pub mod winapi;
 pub mod winsrv;
+/// Win32 内存/文件/错误码服务（Wine 前置件 · AI-4 · 207 项目落地 P1）：
+/// Wine 跑起来必须有、而 Wine 只调用不实现的那一半内核服务面。
+pub mod winmem;
 /// 任务42（AI-B）· Job 限额：内存/CPU rate/KILL_ON_JOB_CLOSE（对齐宿主 isolation.rs）。
 pub mod job;
 /// 任务43（AI-B）· Wine prefix 模板与每进程隔离目录。

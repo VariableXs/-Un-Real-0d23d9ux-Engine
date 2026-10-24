@@ -10,6 +10,8 @@
 //!
 //! 零堆纪律：定长历史环，无 alloc。
 
+use alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

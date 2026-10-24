@@ -17,12 +17,12 @@
 //! 3. 七个诊断码逐个**真跑造出来**（有短码 ≠ 可达）；
 //! 4. 判据区零 panic 面：越界一律 match/`.get()` 记红。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::ver01h_evalperf::{BatchInput, BatchResult, EvalGraph, EvalPipeline};
 use crate::svstar2::ver01i_debugtool::*;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

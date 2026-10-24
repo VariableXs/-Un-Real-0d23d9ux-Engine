@@ -4,6 +4,7 @@
 //! 绑定面四名、码段 0x21 四码），不复用实现侧常量。聚合防自调：族内
 //! 判据只调另一族 standalone + 进行中 set 自身 tally。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 use super::vc21_budgetarch as ba;

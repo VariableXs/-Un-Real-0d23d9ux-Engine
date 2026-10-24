@@ -21,6 +21,7 @@
 //!
 //! 零堆纪律：解析全为切片读取 + 定长输出结构，无 Vec/String/Box/format!。
 
+use alloc::format;
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};
@@ -135,6 +136,16 @@ pub enum LnkError {
     FieldTooLong,
 }
 
+/// 小端读 N 字节（越界/溢出 → `LnkError::TooSmall`：截断文件读出界按
+/// 「文件太小」计，语义诚实，不 panic——原 `try_into().unwrap()` 形态
+/// 在畸形偏移下会炸内核，改为错误传播）。
+fn le<const N: usize>(data: &[u8], off: usize) -> Result<[u8; N], LnkError> {
+    let end = off.checked_add(N).ok_or(LnkError::TooSmall)?;
+    data.get(off..end)
+        .and_then(|s| s.try_into().ok())
+        .ok_or(LnkError::TooSmall)
+}
+
 /// MS-SHLLINK 解析器。输入 = 完整 .lnk 文件字节；输出 = 六字段结构。
 pub fn parse_lnk(data: &[u8]) -> Result<ShellLink, LnkError> {
     if data.len() < SHELL_LINK_HEADER_SIZE {
@@ -147,9 +158,9 @@ pub fn parse_lnk(data: &[u8]) -> Result<ShellLink, LnkError> {
     if data[0..4] != 0x4C_u32.to_le_bytes() || data[4..20] != GUID {
         return Err(LnkError::BadGuid);
     }
-    let flags = u32::from_le_bytes(data[20..24].try_into().unwrap());
-    let show = u32::from_le_bytes(data[60..64].try_into().unwrap());
-    let hotkey = u16::from_le_bytes(data[64..66].try_into().unwrap());
+    let flags = u32::from_le_bytes(le::<4>(data, 20)?);
+    let show = u32::from_le_bytes(le::<4>(data, 60)?);
+    let hotkey = u16::from_le_bytes(le::<2>(data, 64)?);
     let mut link = ShellLink {
         show_command: show,
         hotkey,
@@ -161,19 +172,19 @@ pub fn parse_lnk(data: &[u8]) -> Result<ShellLink, LnkError> {
     let mut off = SHELL_LINK_HEADER_SIZE;
     // LinkTargetIDList（bit0）：跳过（IDList 不参与六字段）。
     if flags & LF_LINK_TARGET_IDLIST != 0 {
-        let idl_size = u16::from_le_bytes(data[off..off + 2].try_into().unwrap()) as usize;
+        let idl_size = u16::from_le_bytes(le::<2>(data, off)?) as usize;
         off += 2 + idl_size;
     }
     // LinkInfo（bit1）：本地目标路径。
     if flags & LF_LINK_INFO != 0 && off + 4 <= data.len() {
-        let li_size = u32::from_le_bytes(data[off..off + 4].try_into().unwrap()) as usize;
+        let li_size = u32::from_le_bytes(le::<4>(data, off)?) as usize;
         if li_size >= 0x1C && off + li_size <= data.len() {
             let li_base = off;
             // LinkInfo 头 0x1C：HeaderSize(4) LinkFlags(4) VolumeIDSize(4)
             // LocalBasePathOffset(4)@+12 CommonNetworkRelativeLinkSize(4)
             // CommonNetworkRelativeLinkOffset(4) CommonPathSuffixOffset(4)@+24。
-            let local_base_off = u32::from_le_bytes(data[li_base + 12..li_base + 16].try_into().unwrap()) as usize;
-            let common_suffix_off = u32::from_le_bytes(data[li_base + 24..li_base + 28].try_into().unwrap()) as usize;
+            let local_base_off = u32::from_le_bytes(le::<4>(data, li_base + 12)?) as usize;
+            let common_suffix_off = u32::from_le_bytes(le::<4>(data, li_base + 24)?) as usize;
             // LocalBasePath（ANSI）以 \0 结尾。
             if local_base_off != 0 && li_base + local_base_off < data.len() {
                 let start = li_base + local_base_off;
@@ -206,7 +217,7 @@ pub fn parse_lnk(data: &[u8]) -> Result<ShellLink, LnkError> {
         if off + 2 > data.len() {
             return Err(LnkError::BadStringOffset);
         }
-        let cc = u16::from_le_bytes(data[off..off + 2].try_into().unwrap()) as usize;
+        let cc = u16::from_le_bytes(le::<2>(data, off)?) as usize;
         let bytes_len = if unicode { cc * 2 } else { cc };
         if off + 2 + bytes_len > data.len() {
             return Err(LnkError::BadStringOffset);

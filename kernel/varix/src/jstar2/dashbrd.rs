@@ -25,6 +25,8 @@
 //! - **F244/F301 聚合登记**：仪表卡与四入口各登记搜索关键词（F301
 //!    「指针」落地页 + 每个直达入口的直达搜索面）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::vtheme::{MouseBehaviorSection, VXTHEME_SECTION};
 use alloc::string::String;

@@ -9,6 +9,8 @@
 //!   host 可测；不做大结构导入表物化（41KB ImportTable 不上栈，走名字子串口径）。
 //! - 调用点：ring3 spawn 路径 parse 成功后、装载前——拒绝即不装载。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::proc::pe::{PeImage, MZ_MAGIC};
 
 /// 判定结果：放行 / 拒绝（带规则 id 与用户可读原因）。

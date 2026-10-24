@@ -17,13 +17,14 @@
 //! 纪律：本层只产出**计划与账目**（做什么、什么顺序、怎么撤销），
 //! 真实 IO 由执行层接手——计划器无 IO，全部逻辑宿主可测。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use crate::h2star::h2base::bump_copy_name;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 计划模型

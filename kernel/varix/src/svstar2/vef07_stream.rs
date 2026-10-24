@@ -37,10 +37,12 @@
 //!
 //! 判据见 [`crate::svstar2::vef07_checks`]。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
 extern crate alloc;
 
 use alloc::boxed::Box;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::perfstar::imgsimd;

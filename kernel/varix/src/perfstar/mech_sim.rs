@@ -121,6 +121,15 @@ impl EventQueue {
         (a.at_us, a.seq) < (b.at_us, b.seq)
     }
 
+    /// `heap[a] < heap[b]`（None 视为最大：缺槽不参与比较，不 panic——
+    /// 调用方保证下标 < len，此处把不变量从「崩溃表达」改为「保守表达」）。
+    fn pair_less(heap: &[Option<Event>; EVENT_CAP], a: usize, b: usize) -> bool {
+        match (heap[a].as_ref(), heap[b].as_ref()) {
+            (Some(x), Some(y)) => Self::less(x, y),
+            _ => false,
+        }
+    }
+
     fn swap(heap: &mut [Option<Event>; EVENT_CAP], i: usize, j: usize) {
         let t = heap[i];
         heap[i] = heap[j];
@@ -130,7 +139,19 @@ impl EventQueue {
     fn sift_up(&mut self, mut i: usize) {
         while i > 0 {
             let p = (i - 1) / 2;
-            let (ok_i, ok_p) = (self.heap[i].take().unwrap(), self.heap[p].take().unwrap());
+            // 双槽总量匹配：任一缺槽即视为「已就位」（保守停摆，不 panic）。
+            let (ok_i, ok_p) = match (self.heap[i].take(), self.heap[p].take()) {
+                (Some(a), Some(b)) => (a, b),
+                (a, b) => {
+                    if a.is_some() {
+                        self.heap[i] = a;
+                    }
+                    if b.is_some() {
+                        self.heap[p] = b;
+                    }
+                    break;
+                }
+            };
             if Self::less(&ok_i, &ok_p) {
                 self.heap[i] = Some(ok_p);
                 self.heap[p] = Some(ok_i);
@@ -148,19 +169,11 @@ impl EventQueue {
             let l = 2 * i + 1;
             let r = 2 * i + 2;
             let mut m = i;
-            if l < self.len {
-                let ok_m = self.heap[m].unwrap();
-                let ok_l = self.heap[l].unwrap();
-                if Self::less(&ok_l, &ok_m) {
-                    m = l;
-                }
+            if l < self.len && Self::pair_less(&self.heap, l, m) {
+                m = l;
             }
-            if r < self.len {
-                let ok_m = self.heap[m].unwrap();
-                let ok_r = self.heap[r].unwrap();
-                if Self::less(&ok_r, &ok_m) {
-                    m = r;
-                }
+            if r < self.len && Self::pair_less(&self.heap, r, m) {
+                m = r;
             }
             if m == i {
                 break;
@@ -189,7 +202,10 @@ impl EventQueue {
         if self.len == 0 {
             return None;
         }
-        let top = self.heap[0].take().unwrap();
+        let top = match self.heap[0].take() {
+            Some(t) => t,
+            None => return None,
+        };
         self.len -= 1;
         if self.len > 0 {
             self.heap[0] = self.heap[self.len].take();

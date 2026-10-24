@@ -22,6 +22,8 @@
 //!
 //! 零堆纪律：定长卡片表 + 定长一致性样本账，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

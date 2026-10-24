@@ -15,10 +15,10 @@
 //! **判据设计硬规矩**：期望值判据侧独立手算；不变量两头都测（恰阈值
 //! 升档+未到不升）；判据区零 panic 面。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vcb05_priority as pr;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

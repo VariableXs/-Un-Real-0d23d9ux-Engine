@@ -18,12 +18,12 @@
 //! 生成（不依赖外部 PNG 样本——F1011 的 PngSuite 语料另立专项），
 //! zlib 层用 stored（未压缩）deflate 块手搭，保证确定性。
 
+use alloc::vec;
 use super::vef01_pngdec::*;
 use crate::checks::CheckSet;
 use crate::perfstar::imgsimd;
 use crate::perfstar::mech_inflate;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

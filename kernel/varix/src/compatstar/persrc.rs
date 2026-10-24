@@ -22,6 +22,8 @@
 //!
 //! 零堆纪律：目录树遍历迭代式 + 定长输出，无 Vec/String/Box/format!。
 
+use alloc::string::String;
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
@@ -53,6 +55,14 @@ pub struct ResLeaf {
     pub size: u32,
 }
 
+/// 小端读 4 字节（越界/溢出 → None——原 `try_into().unwrap()` 形态在
+/// 畸形资源偏移下会炸内核，改为调用方按未命中/截断处理）。
+fn le4(data: &[u8], off: usize) -> Option<u32> {
+    let end = off.checked_add(4)?;
+    let s = data.get(off..end)?;
+    Some(u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+}
+
 /// 资源目录段（一段连续的节内存视图；迭代式三级遍历：type → name/id →
 /// language）。
 pub struct ResDir<'a> {
@@ -67,10 +77,7 @@ impl<'a> ResDir<'a> {
     }
 
     fn u32_at(&self, off: usize) -> Option<u32> {
-        if off + 4 > self.data.len() {
-            return None;
-        }
-        Some(u32::from_le_bytes(self.data[off..off + 4].try_into().unwrap()))
+        le4(self.data, off)
     }
 
     /// 目录条目数（Named + Id）。
@@ -90,8 +97,8 @@ impl<'a> ResDir<'a> {
             if eoff + 8 > self.data.len() {
                 break;
             }
-            let name_id = u32::from_le_bytes(self.data[eoff..eoff + 4].try_into().unwrap());
-            let off_val = u32::from_le_bytes(self.data[eoff + 4..eoff + 8].try_into().unwrap());
+            let Some(name_id) = le4(self.data, eoff) else { break };
+            let Some(off_val) = le4(self.data, eoff + 4) else { break };
             let id = name_id & 0x7FFF_FFFF;
             let is_dir = off_val & 0x8000_0000 != 0;
             out.push((id, is_dir, (off_val & 0x7FFF_FFFF) as usize));
@@ -323,10 +330,9 @@ pub fn parse_version_info(data: &[u8]) -> VersionInfo {
     // VS_FIXEDFILEINFO 签名 0xFEEF04BD 搜索（FileVersionMS/LS 抽取）。
     for w in 0..data.len().saturating_sub(12) / 4 {
         let off = w * 4;
-        let sig = u32::from_le_bytes(data[off..off + 4].try_into().unwrap());
+        let Some(sig) = le4(data, off) else { break };
         if sig == 0xFEEF_04BD {
-            let ms = u32::from_le_bytes(data[off + 8..off + 12].try_into().unwrap());
-            let ls = u32::from_le_bytes(data[off + 12..off + 16].try_into().unwrap());
+            let (Some(ms), Some(ls)) = (le4(data, off + 8), le4(data, off + 12)) else { break };
             vi.file_version_bin = (ms, ls);
             vi.has_fixed_info = true;
             break;

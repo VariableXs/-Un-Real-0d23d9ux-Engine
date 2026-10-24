@@ -6,6 +6,8 @@
 //!
 //! `run_code_checks()` 产出恰好 25 条自检，每条 `passed` 均由真实计算得出。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::{push_str, push_usize, CheckSet};
 
 /// 本域特性编号总表（F351~F375），供收口检查对账。

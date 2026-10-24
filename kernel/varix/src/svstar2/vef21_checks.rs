@@ -12,6 +12,7 @@
 //! 成功）；目标不可达必须报 Infeasible 而不是夹到下限假装成功——正向恒绿
 //! 不构成证据。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

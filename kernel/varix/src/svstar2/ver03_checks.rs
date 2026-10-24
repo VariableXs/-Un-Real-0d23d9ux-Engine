@@ -16,6 +16,7 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::ver03_arch::*;
 use crate::checks::CheckSet;
 
@@ -768,7 +769,6 @@ pub fn run_ver03_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     /// 正样本：全绿总纲零红项且预检通过。
     #[test]

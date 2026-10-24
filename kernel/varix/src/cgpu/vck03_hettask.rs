@@ -17,6 +17,8 @@
 //! 不改核：全部字段挂 HetTaskExt 侧车结构，B 域 Task 本体零改动（判据"扩展
 //! 不改核"的结构化兑现）。能效选路表独立写死可对拍。诊断码段 0x41xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 // 引擎能力口径：声明式复用 vck02_hetres（F1602）——单一事实源。

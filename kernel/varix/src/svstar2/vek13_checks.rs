@@ -54,6 +54,7 @@
 //! 全路径无任何减法），并断「Debug 档 == 1 作对照 + Release 档 == 0」。
 //! 单调计数的 0 才让「未进入」成为可证伪命题（十诫第 10 条）。
 
+use alloc::string::String;
 use super::vek13_ppdbg::*;
 
 // `alloc` 三件套里**只引入实际用到的**（理由见上）：本层用 `Vec`；

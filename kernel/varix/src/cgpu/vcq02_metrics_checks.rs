@@ -12,8 +12,8 @@
 //! 非法逐码拒）；版本化不可变语义独立验证（bump 后旧表逐字段原样）；
 //! 码段判据 `!=` 防自判死（0x50..0x57 全排除）。
 
-use alloc::string::String;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

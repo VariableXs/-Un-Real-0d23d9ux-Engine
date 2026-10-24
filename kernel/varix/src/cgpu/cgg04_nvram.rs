@@ -11,6 +11,8 @@
 //! 分与压力怎么预判。H 显存域（F0852）联动为声明式理念复用——预算结构同形
 //! 不重定义物理口径。诊断码段 0x47xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

@@ -21,6 +21,9 @@
 //!
 //! 零堆纪律：定长图标表 + 定长白名单，无 alloc。
 
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

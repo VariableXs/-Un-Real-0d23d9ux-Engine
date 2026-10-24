@@ -42,10 +42,10 @@
 //! `[i]` / `unwrap()` / `expect()` 只出现在 `#[cfg(test)]`；
 //! `run_*_checks` 内一律 match 记红。
 
+use alloc::vec;
 use crate::svstar2::ver01h_evalperf::{BatchResult, EvalGraph};
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@
 //! 探测逻辑，A 域 schema 是唯一裁判。初始化失败/前置拒绝的设备**不注册**
 //! （带着失败状态注册 = 把坏账推给上层，违反异常零静默）。
 
+use alloc::vec;
 use super::veb01_device::*;
 use super::veb01_init::{InitOutcome, preflight, outcome_fingerprint};
 use super::vea01_index::{ProbeReport, run_a01};
@@ -16,7 +17,6 @@ use super::vea01_probe::{AdapterProbeInput, BusKind};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 注册结论——B 域驱动向 A 域交付的最终形态。
 #[derive(Clone, Debug)]

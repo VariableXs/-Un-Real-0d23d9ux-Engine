@@ -39,8 +39,8 @@
 //! 错误路径（0xCF 段）：格式未知 / 块数据不足 / 尺寸非法 / 输出缓冲不足 /
 //! BC7 模式未实现 / HDR 族无表拒绝 / ASTC 拒绝 / 输出格式不匹配 / 缓存键冲突。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
 /// 诊断码段基址。

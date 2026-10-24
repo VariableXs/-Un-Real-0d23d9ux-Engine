@@ -14,6 +14,7 @@
 //! 实现形态：比例审计器 + 徽标账（五类各一徽标、缺一即红）+ 即时改值
 //! 通路（直通 [`super::hbase::SettingRegistry::set_value`] 唯一改值口）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::hbase::{ControlKind, DeferredKind, EffectKind, SettingItem, SettingRegistry, INSTANT_FEEDBACK_MS};

@@ -13,6 +13,8 @@
 //! 首日——单点服务）；格式化器（日期/数字/大小三出口——全系统唯一）；
 //! 默认值清单（中文语境判据原文值）；大小单位阶梯（KB=1024B 标注）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

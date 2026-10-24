@@ -7,10 +7,12 @@
 //! - 场景统一 → `H07-场景-*`
 //! - 防重叠 → `H07-防重叠-*`
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::veh07_fade::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
+use alloc::format;
 
 /// VE-F1407 域自检。
 pub fn run_veh07_checks() -> CheckSet {
@@ -251,7 +253,6 @@ pub fn run_veh07_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::{format, vec};
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

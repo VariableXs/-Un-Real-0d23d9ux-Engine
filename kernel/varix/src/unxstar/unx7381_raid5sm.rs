@@ -9,12 +9,13 @@
 //! 事因, 序号, 校验和位)）+ 元数据持久化（状态快照 → 重启恢复
 //! 断言）+ 注入核（未知态/回迁/跳迁/快照漂移/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0x9380 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0x9380;
 pub const XC_R5_UNK: u32 = SEG_BASE + 0x01; // 未知态
 pub const XC_R5_ILL: u32 = SEG_BASE + 0x02; // 非法迁移

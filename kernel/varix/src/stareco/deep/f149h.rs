@@ -3,6 +3,8 @@
 //! 装配与跨域接口件：报告 → 欢迎中心/关于页的订阅行（最新值+环比
 //! 人话）、缺季诚实行、报告页区块装配（指标卡/故事/预告三段）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f149f::qoq;
 use super::f149g::{Goal, GridCell};
 use crate::checks::CheckSet;

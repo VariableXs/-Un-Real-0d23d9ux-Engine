@@ -12,6 +12,7 @@
 //! 容量上限整批原子拒绝（部分进站=半截状态，禁止）；永久清空带确认位
 //! 并入守恒账；多步撤销（undo_last_n）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

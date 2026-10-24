@@ -13,6 +13,8 @@
 //! 不抢焦点（横幅永不置焦点——结构常量）；交互去重（已交互应用 30s
 //! 内不再弹横幅）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -134,11 +134,12 @@ impl FeedbackLoop {
             }
         }
         if let Some(i) = hit {
-            self.merged_dupes += 1;
-            let slot = self.reports[i].as_mut().expect("hit slot");
-            // 聚类到已有报告 = 该报告确认度上升，推进一态
-            let _ = slot.track.advance(day);
-            return Ok(slot.id);
+            if let Some(slot) = self.reports[i].as_mut() {
+                self.merged_dupes += 1;
+                // 聚类到已有报告 = 该报告确认度上升，推进一态
+                let _ = slot.track.advance(day);
+                return Ok(slot.id);
+            }
         }
         let s = self.seq.take(day);
         if s == 0 {

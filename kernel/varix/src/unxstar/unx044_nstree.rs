@@ -50,12 +50,11 @@
 //! 11. **诊断码独占 0x0A40..=0x0A5F 段**：已 grep 同目录确认 0x0Axx 全段
 //!     空闲（0x0701~0x070F 为 F007 系、0x0720~0x072F 为 F0043 系所占）。
 #![cfg_attr(not(feature = "std"), no_std)]
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// 词法流容量上限（1 MiB，与 F0043 词法窗口口径一致再放宽一档）。
 pub const STREAM_CAP: usize = 1 << 20;

@@ -14,6 +14,8 @@
 //!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::vee02_utf8::*;
 use crate::checks::CheckSet;
 

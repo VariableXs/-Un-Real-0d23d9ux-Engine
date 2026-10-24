@@ -20,6 +20,7 @@
 //!
 //! 时间注入式（毫秒戳），宿主测试确定复现。无外部依赖。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -12,12 +12,13 @@
 //! 复制）+ 延迟记账（<2s 判线）+ 5 条历史环。识别器本体由注入口供给
 //! （内核侧不绑定具体模型——离线判据结构性成立：无任何网络通路）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::hbase::Clock;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源）

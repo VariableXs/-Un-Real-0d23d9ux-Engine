@@ -13,6 +13,7 @@
 //! - 隐私与代价红线：只记交互行为与结果，**不记用户输入的具体内容**；
 //!   写入绝不阻塞交互（攒批异步落账，批量/容量双闸）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

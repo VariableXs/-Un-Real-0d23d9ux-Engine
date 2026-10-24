@@ -9,6 +9,7 @@
 //! 管理（内嵌/外挂双模式——内嵌优先）、章节标记（MP4/Split 章节）、写回安全
 //! （原子写+备份+只改明确要求的字段）。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

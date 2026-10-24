@@ -4,9 +4,9 @@
 //! 完成归并）、抢占让位点 2ms 纪律、专核不受后台任务干扰、窃取开销
 //! ≤3% 账面；另覆盖池规模/树形状/同层优先窃取/遥测/判据自检。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::cgpu::cga02_threadpool as tp;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 判据侧独立确定性着色（第二份实现，与 tp::TileJob::execute 同语义

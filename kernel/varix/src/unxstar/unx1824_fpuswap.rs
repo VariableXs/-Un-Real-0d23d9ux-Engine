@@ -1,3 +1,4 @@
+use alloc::vec;
 // unx1824_fpuswap —— UNX-F1824 FPU 切换策略总纲（eager/lazy 决策）
 // 判据原文 UNX-F1824-J1：策略决策（默认 eager、lazy 预留）冻结 v1，策略切换账目化，
 // 决策依据账可回放。
@@ -11,7 +12,6 @@
 //   * 指纹冻结 + 注入核 10/10。
 
 use crate::checks::CheckSet;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ── 诊断段（0xF280 独占） ─────────────────────────────────────────────

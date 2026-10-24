@@ -11,6 +11,7 @@
 //!    直接断言被测字段，或手工构造矛盾态。
 //! 5. **等价/不可达变体不算漏网**——变体必须真改变行为路径且成本可承受。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::veb15_suite::*;
 

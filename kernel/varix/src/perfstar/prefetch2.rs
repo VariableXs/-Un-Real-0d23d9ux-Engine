@@ -280,14 +280,14 @@ impl PrefetchService {
     /// 软缺页断点记录。
     pub fn note_fault(&mut self, app_hash: u64, page: u32, now_ms: u64) {
         let s = self.find_slot(app_hash, now_ms);
-        let fp = self.fps[s].as_mut().unwrap();
+        let Some(fp) = self.fps[s].as_mut() else { return };
         fp.note_fault(page, now_ms);
     }
 
     /// 版本登记：版本变化 → 指纹失效重建（主册【状态与异常】）。
     pub fn note_version(&mut self, app_hash: u64, version: u64, now_ms: u64) {
         let s = self.find_slot(app_hash, now_ms);
-        let fp = self.fps[s].as_mut().unwrap();
+        let Some(fp) = self.fps[s].as_mut() else { return };
         if fp.version != 0 && fp.version != version && !fp.is_empty() {
             *fp = Fingerprint::new(app_hash, version);
             self.version_invalidations += 1;
@@ -333,7 +333,7 @@ impl PrefetchService {
     /// 启动读页对账（命中率记账：判据 >70%）。
     pub fn note_read(&mut self, app_hash: u64, page: u32, now_ms: u64) -> bool {
         let s = self.find_slot(app_hash, now_ms);
-        let fp = self.fps[s].as_mut().unwrap();
+        let Some(fp) = self.fps[s].as_mut() else { return false };
         fp.last_used_ms = now_ms;
         let in_range = (page as usize) < BITMAP_WORDS * 64;
         let hit = in_range && (fp.bitmap[(page / 64) as usize] >> (page % 64)) & 1 == 1;

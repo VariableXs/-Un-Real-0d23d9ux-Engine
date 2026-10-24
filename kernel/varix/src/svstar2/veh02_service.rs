@@ -98,6 +98,8 @@
 //! 的通信类别）、F1416（类别预算——本文件为其执行面并显式记录通信缺口）、
 //! F1419（引擎 API 冻结 v1 的引擎族：服务启停 / 会话 CRUD）。
 
+use alloc::string::ToString;
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

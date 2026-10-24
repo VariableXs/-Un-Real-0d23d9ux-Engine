@@ -11,6 +11,8 @@
 //! ④**恢复默认的快照对账**——逐字段还原凭证：动了哪几笔、还原后是否
 //!   与打开时刻快照逐字段一致且 dirty 清零。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 use crate::istar::lnkparams::{ExecCheck, LnkParams, RunStyle};

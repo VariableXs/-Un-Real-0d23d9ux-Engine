@@ -19,6 +19,8 @@
 //!   即选（数字键选）；分类目录树左栏（复用 C-4 树组件）；使用计数排序
 //!   （冷短语沉底）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::{String, ToString};

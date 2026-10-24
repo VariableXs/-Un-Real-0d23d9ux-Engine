@@ -28,6 +28,7 @@
 //! 参数校验、超时注入）跑通 enable→identify→建 IO 队列→读写的完整
 //! 序列；目标态只替换真 MMIO/真 DMA 桶两层薄实现。
 
+use alloc::vec;
 use super::blk::{BlockDevice, BlockError};
 
 // ---- NVMe opcode（支持集如实冻结）--------------------------------------

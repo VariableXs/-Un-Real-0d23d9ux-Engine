@@ -12,10 +12,10 @@
 //!
 //! 逻辑时钟注入、无墙钟，回归可复现。
 
+use alloc::vec;
 use super::vea06_qsched::*;
 use crate::checks::CheckSet;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 默认优先级的图形任务。

@@ -6,6 +6,7 @@
 //! ③ 侧栏 ≤10 条的 **LRU 淘汰**——满额保存最久未用先出；
 //! ④ 与 F306 联动的**条件编译**——胶囊→索引查询谓词。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 use crate::istar::savedsearch::{Capsule, CapsuleKind, SavedSearches, SAVED_CAP};

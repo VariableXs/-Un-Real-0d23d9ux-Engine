@@ -39,6 +39,7 @@
 //! 与 localStorage 的语义差异清单见
 //! `docs/双域-任务24-KV语义差异清单-2026-09-17.md`（如实公示）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::vec::Vec;
 use crate::drivers::blk::{fnv1a64, BlockDevice, BlockError};

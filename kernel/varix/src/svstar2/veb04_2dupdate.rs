@@ -27,12 +27,12 @@
 //! - 带宽台账：全程记账 full-frame vs 实发字节，4K 滚动场景的 60-90% 节省
 //!   是测出来的数字不是口号（checks 内置滚动场景实测）。
 
+use alloc::vec;
 use super::veb02_proto::{CtrlCommand, Rect};
 use super::veb03_resource::{fmt_bpp, ResourceTable, PAGE_SIZE};
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

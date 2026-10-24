@@ -9,9 +9,9 @@
 //! - 演练账：每步产出 (步骤, 结论, 耗时)——十三章「体验日志」的
 //!   演练侧落点，失败步不中断后续步（一次演练出全量红项清单）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::h2star::h2appctl::{Instance, Lifecycle, Entry};

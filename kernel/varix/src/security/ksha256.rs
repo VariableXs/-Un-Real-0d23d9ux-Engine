@@ -179,6 +179,8 @@ pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+use alloc::vec;
+use alloc::vec::Vec;
     use super::*;
 
     fn hex(s: &str) -> alloc::vec::Vec<u8> {

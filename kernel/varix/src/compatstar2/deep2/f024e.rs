@@ -14,6 +14,8 @@
 //! 零堆纪律：SAN 定长 16 槽、名称缓冲定长 64 字节，无 Vec/String/Box/
 //! format!，拒绝一律 Err(&'static str) 或计数账面。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// id-kp-serverAuth（RFC 5280 Appendix A 注册段真实值）。

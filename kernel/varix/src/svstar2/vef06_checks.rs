@@ -11,10 +11,10 @@
 //! 三族独立入口：80 项 > `CheckSet::MAX_CHECKS`(112) 的安全线以下，但与全仓
 //! 共享聚合器同风险，故仍按族注册以规避任何静默截断。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::string::ToString;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::{CheckSet, MAX_CHECKS};

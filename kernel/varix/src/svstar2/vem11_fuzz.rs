@@ -48,6 +48,7 @@
 //! F1769 M 段（本模块以步数预算把"1 小时档"变成可判定事件）；
 //! 导入对抗千级；去重哈希控库容。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

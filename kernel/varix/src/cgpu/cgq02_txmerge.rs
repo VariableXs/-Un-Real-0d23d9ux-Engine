@@ -17,10 +17,10 @@
 //! 4. **收益量化**（判据四）：合并前后事务数对比账（TLP 头开销节省
 //!    量化）；守恒对账（批内字节 + 直通字节 ≡ 提交字节）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 模块版本。
 pub const TM_VERSION: &str = "cgq02_txmerge-v1";

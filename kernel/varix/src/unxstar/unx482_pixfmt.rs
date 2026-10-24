@@ -39,9 +39,9 @@
 //! 等互不重叠；本模块零 panic 面——帧缓冲字节是观察值不是可信值，
 //! 所有切片越界/变体不可判/坏帧形态均走诊断码闭集（0x9600..0x960F）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

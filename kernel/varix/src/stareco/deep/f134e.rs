@@ -5,6 +5,9 @@
 //! 序列化 round-trip、获取指引双形态生成、SLA 批量审计钟、版本兼容
 //! 闸、收录时间序排序器（非商店宪法的机器面）。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase;
 use crate::stareco::themeshare::{FetchKind, LinkHealth, ListingState, ThemeBoard, ThemeListing, REVIEW_SLA_DAYS};

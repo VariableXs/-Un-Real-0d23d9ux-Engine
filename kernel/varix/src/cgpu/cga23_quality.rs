@@ -22,6 +22,7 @@
 //! 错误路径（0xD0 段）：`E_Q_TIER` 档位越界 / `E_Q_DIM` 尺寸非法或两图不等 /
 //! `E_Q_SHORT` 缓冲不足 / `E_Q_MODE` 混合模式越界 / `E_Q_GATE` 门禁拒绝。
 
+use alloc::vec;
 use super::cga16_simdblend::{BlendMode, MODE_COUNT};
 use crate::checks::CheckSet;
 use alloc::vec::Vec;

@@ -13,9 +13,14 @@ pub mod loc;
 pub mod notifylink;
 pub mod scripthost;
 
+use crate::checks::CheckSet;
+
 /// AI-28 K 线全量聚合：10 族 × 25 = 250 检。
-pub fn run_task_all_checks() -> usize {
-    let sets = [
+///
+/// 返回族数组而非单集——`MAX_CHECKS = 112` 装不下 250 检，合并会静默丢弃；
+/// 注册表侧逐族登记（`quality.rs` 的 `for cs in ...` 惯例），全量保真。
+pub fn run_task_all_checks() -> [CheckSet; 10] {
+    [
         cli::run_cli_checks(),
         scripthost::run_scripthost_checks(),
         cron::run_cron_checks(),
@@ -26,14 +31,5 @@ pub fn run_task_all_checks() -> usize {
         exteco::run_exteco_checks(),
         egg::run_egg_checks(),
         finale::run_finale_checks(),
-    ];
-    let mut passed = 0usize;
-    for set in sets.iter() {
-        let (p, f) = set.tally();
-        passed += p;
-        if f > 0 {
-            return 0xFFFF_0000 | passed;
-        }
-    }
-    passed
+    ]
 }

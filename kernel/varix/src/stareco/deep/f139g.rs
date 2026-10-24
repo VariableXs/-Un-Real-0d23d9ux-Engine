@@ -4,6 +4,10 @@
 //! （sev:>2 status:open 形态）、批量状态迁移（逐项结果+审计）、
 //! 确定性导出渲染（JSON 行/CSV）、周报聚合。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

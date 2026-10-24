@@ -22,6 +22,8 @@
 //! 主册判据）；常量注释写明主册依据；自检经 robust.rs 域函数指针表注册
 //! （50 域直排注册，禁改直排调用）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 pub mod anchor;
 pub mod clockcal;
 pub mod copyops;

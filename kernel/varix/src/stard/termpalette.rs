@@ -19,6 +19,8 @@
 //!
 //! 匹配/排序/持久化全部模型面实现，注入时钟确定复现，零外部依赖。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

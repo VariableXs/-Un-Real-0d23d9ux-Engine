@@ -3,7 +3,8 @@
 //! 禁混报；双层窗口覆盖断言（RAID 写窗 × LUKS 写窗两维均覆盖）；每轮校验和基线
 //! 对照；恢复后解锁+一致性双断言（解锁成功 且 数据校验和 == 基线）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9B80;
 

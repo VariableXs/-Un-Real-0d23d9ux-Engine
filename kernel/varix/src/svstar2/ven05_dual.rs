@@ -109,8 +109,8 @@
 //! 纯函数、无时钟无 IO、无堆外分配；遍历序固定；模板展开遍历序固定。
 //! 同输入同输出，回归可复现。零 panic（生产面）、零 `unsafe`。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::format;
 

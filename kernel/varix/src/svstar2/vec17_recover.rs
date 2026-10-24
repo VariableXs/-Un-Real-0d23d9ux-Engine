@@ -63,9 +63,9 @@
 //!   括号作用域（同步点来源）、F0409 运算符（分号类错误码来源）。下游 F0421
 //!   语法解析继续消费本条产出的**恢复流**（`RecoveryAction` 序列 + 游标）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vec16_report::{classify, ErrorFamily, Severity};

@@ -23,10 +23,10 @@
 //!
 //! 分两批落集（`MAX_CHECKS` 是全仓共享的定长上限，单域不得独占）。
 
+use alloc::vec;
 extern crate alloc;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

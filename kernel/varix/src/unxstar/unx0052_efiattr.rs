@@ -3,7 +3,9 @@
 //! 类型-属性合法组合表判据通过，非法组合显性立案；
 //! 纯功能代码 ≥260 行。零浮点、零 unwrap、零 expect。
 
-use crate::alloc::{string::String, vec::Vec};
+
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 
 pub const SEG_BASE: u16 = 0x2050;
 

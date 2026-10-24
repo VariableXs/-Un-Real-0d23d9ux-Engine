@@ -52,6 +52,7 @@
 //! 告行预算/语义句结构的回归与其他四域同权重（无障碍不是附加题是必
 //! 答题——域本色）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

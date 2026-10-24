@@ -18,9 +18,9 @@
 //! 诊断码段：0x50（本单独占，0x5001~0x500F）。
 //! 施工：AI-WB2 · 2026-10-11。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

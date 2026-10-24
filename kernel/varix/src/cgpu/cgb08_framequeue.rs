@@ -44,8 +44,8 @@
 //! 失败的处置面）；F0170（同步原语——跨队列 barrier 的下游）。
 //! 零 panic 面、零 IO、零墙钟、no_std。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

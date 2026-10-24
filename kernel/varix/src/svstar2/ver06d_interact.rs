@@ -39,10 +39,10 @@
 //! 用 `VecDeque` 的 `push_back` / `pop_front` / `retain`，无索引；
 //! 容量计算全 `saturating_*`。测试区除外。
 
+use alloc::vec::Vec;
 use alloc::collections::VecDeque;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 一、诊断码（E18 段续：5434 起）

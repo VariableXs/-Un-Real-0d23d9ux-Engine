@@ -24,11 +24,12 @@
 //! 实装口径：通知总线状态机 + 风暴合并账 + 免打扰时段机 + 撤销窗
 //! 暂存账。落盘由配置层接手（本模块给持久化标志位与序列化边界）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use crate::deskstar::dbase::FloatLayer;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

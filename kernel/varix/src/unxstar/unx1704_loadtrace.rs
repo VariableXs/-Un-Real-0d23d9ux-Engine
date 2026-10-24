@@ -1,8 +1,12 @@
 //! UNX-F1704 · 每线程负载贡献追踪（贡献分解）账 · 诊断段 0xB910
 //! 验收锚点：UNX-F1704-J1 线程级追踪值=窗口内运行时长×权重归一，
 //! Σ线程贡献=核追踪值闭合，迁移随线程携带，双判据缺一即批内红灯。
+use alloc::vec;
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB910;
 

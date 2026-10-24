@@ -14,6 +14,7 @@
 //! **判据设计硬规矩**（承 AB/P 域先例）：期望值判据侧独立重算；不变量两头
 //! 都测（违规被拒+合规放行）；判据区零 panic 面。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::svstar2::veae01_inputarch as ia;
 

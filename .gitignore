@@ -58,6 +58,11 @@ VarixTaskOps/VTaskBoard/*.exe
 VarixTaskOps/VTaskBoard/*.part
 chromiumerrorsentinel.lock
 Typora_Hook_Log.txt
+# .mimosa 是钩子工具的**会话状态**（hook-state/hook-status/finding-ledger/
+# history），不是源码：内容随每次会话变化，入库只会制造假 diff。
+# 2026-10-22 清理：曾误入库 127 个（kernel/varix/src 与 svstar2 两处），
+# 已 git rm；这里补规则防止再次混入。源码保护红线针对 *.rs，不针对工具状态。
+.mimosa/
 
 # ── 大体积本地数据 ────────────────────────────────────────────────
 # taskboard.md 35MB 为本地任务台账，随用随改，不适合入库。
@@ -140,3 +145,61 @@ qemu-*.log
 qs-*.log
 *-shot-*.ppm
 *-shot-*.png
+
+# ══ 2026-10-24 仓库瘦身：GitHub 只留内核纯功能源码 ════════════════
+# 指令（Variable 2026-10-24）：全部纯功能 src 推送 GitHub；除内核外
+# 不需要的从 GitHub 去掉。以下目录仅取消跟踪（git rm --cached），
+# 本地磁盘与 git 历史均保留，可随时找回。
+/src/
+/docs/
+/src-tauri/
+/code-analysis/
+/VarixAutoPilot2/
+/VarixTaskOps/
+/varix/
+/_ai110_deep/
+/user/
+/launcher/
+/memory/
+/Unxreal/
+/Unstot/
+/attic/
+/dispatch/
+/dist/
+/dist-portable/
+/json/
+/portable/
+/reports/
+/scripts/
+/wt-vej10/
+/.wbmemory/
+/.workbuddy/
+/.mimosa/
+# 根级一次性脚本 / 台账 / 报告 / 前端配置（过程产物）
+/_*.py
+/_*.md
+/_*.json
+/_*.txt
+/_*.js
+/expand_*.py
+/patch_*.py
+/check_*.py
+/count_body.py
+/unxreal_e5_custom_*.py
+/unx21_ai_tasks.json
+/package.json
+/package-lock.json
+/tsconfig.json
+/vite.config.ts
+# 内核侧非源码（工作区状态、构建中间产物、工作报告）
+/kernel/.workbuddy/
+/kernel/.zcodeignore
+/kernel/_iso_cgpu/
+/kernel/*.md
+/kernel/*.txt
+# 点前缀过程文件（AI 深写预稿 / 就绪标记 / 临时工作区）
+/.deep_*.json
+/.ve_*.md
+/.z*/
+/_wt_*/
+/CoRun*.md

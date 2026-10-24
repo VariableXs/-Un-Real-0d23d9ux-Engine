@@ -17,10 +17,10 @@
 //! 诊断码段：0x6A80（0x6A81~0x6A88 闭集；全域 grep 确认独占）。
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64 整数算术，零墙钟。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 模块版本。
 pub const FD_VERSION: &str = "unx1961_freqdom-v1";

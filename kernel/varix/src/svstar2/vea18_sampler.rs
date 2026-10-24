@@ -56,11 +56,11 @@
 //!
 //! 逻辑 tick 注入，零墙钟；全部确定性算法、零 IO，保证回归可复现。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

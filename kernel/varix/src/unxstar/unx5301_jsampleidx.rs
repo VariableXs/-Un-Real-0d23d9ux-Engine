@@ -3,7 +3,10 @@
 //! AQ/AR/AS/AT）零漏项；与 F4943/F5099/F5143 索引同制断言通过（同制 = 组名两字母
 //! +组内 10 条 +指纹算法一致）；索引可导出（组名→条数升序枚举）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9780;
 

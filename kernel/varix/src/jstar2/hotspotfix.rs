@@ -16,6 +16,8 @@
 //! - **一键采纳**：检测 → 推荐 → 采纳（写补偿）→ 复检（F627 体检
 //!   联动：采纳后热点项转绿）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::checker;
 use crate::jstar2::jbase::{

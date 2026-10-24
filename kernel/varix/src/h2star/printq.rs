@@ -13,6 +13,7 @@
 //! 可取消，即时落终态）；人话映射表（错误码→原因文案唯一源）；虚拟
 //! 打印同型（同一状态机同一队列——类型不分家）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

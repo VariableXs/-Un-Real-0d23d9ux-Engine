@@ -315,3 +315,89 @@ pub fn trend_audited(ledger: &StressFinalLedger, min_window: usize) -> Result<()
     let _ = min_window;
     Ok(())
 }
+
+
+// ===== 深化块（cga146_stressfin · 长稳终审深化）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_stressfin {
+    //! 长稳终审深化 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 长稳窗口统计：滚动均值 + 峰谷差，峰谷差超界 = 长稳不合格。
+    pub struct SoakWindow {
+        pub samples: Vec<u32>,
+        pub cap: usize,
+    }
+
+    impl SoakWindow {
+        pub fn new(cap: usize) -> Self {
+            SoakWindow { samples: Vec::new(), cap: if cap == 0 { 1 } else { cap } }
+        }
+        pub fn push(&mut self, v: u32) {
+            if self.samples.len() == self.cap {
+                self.samples.remove(0);
+            }
+            self.samples.push(v);
+        }
+        /// 均值（整数）：空窗显性 None。
+        pub fn mean(&self) -> Option<u64> {
+            if self.samples.is_empty() {
+                return None;
+            }
+            Some(self.samples.iter().map(|&s| s as u64).sum::<u64>() / self.samples.len() as u64)
+        }
+        /// 峰谷差。
+        pub fn amplitude(&self) -> Option<u32> {
+            if self.samples.is_empty() {
+                return None;
+            }
+            let lo = *self.samples.iter().min().unwrap_or(&0);
+            let hi = *self.samples.iter().max().unwrap_or(&0);
+            Some(hi - lo)
+        }
+    }
+
+    /// 长稳合格判定：均值在带内 且 峰谷差 ≤ 上限 且 样本数 ≥ 最小窗。
+    pub fn soak_verdict(mean: u64, band_lo: u64, band_hi: u64, amplitude: u32, amp_cap: u32, n: usize, min_n: usize) -> Result<(), u16> {
+        if min_n == 0 {
+            return Err(1);
+        }
+        if n < min_n {
+            return Err(2);
+        }
+        if mean < band_lo || mean > band_hi {
+            return Err(3);
+        }
+        if amplitude > amp_cap {
+            return Err(4);
+        }
+        Ok(())
+    }
+
+    /// 趋势回归斜率（整数近似）：末半窗均值 - 首半窗均值，正漂移立案。
+    pub fn drift_slope(samples: &[u32]) -> Result<i64, u16> {
+        if samples.len() < 4 {
+            return Err(1);
+        }
+        let h = samples.len() / 2;
+        let a: u64 = samples[..h].iter().map(|&s| s as u64).sum::<u64>() / h as u64;
+        let b: u64 = samples[h..].iter().map(|&s| s as u64).sum::<u64>() / (samples.len() - h) as u64;
+        Ok(b as i64 - a as i64)
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0146-深化");
+        let mut w = SoakWindow::new(8);
+        for i in 0..16u32 {
+            w.push(100 + i % 3);
+        }
+        cs.add("窗口容量钳制", w.samples.len() == 8, "");
+        cs.add("均值有值", w.mean().is_some(), "");
+        cs.add("峰谷差有值", w.amplitude().is_some(), "");
+        cs.add("长稳判定", soak_verdict(101, 90, 110, 2, 5, 16, 8).is_ok() && soak_verdict(150, 90, 110, 2, 5, 16, 8).is_err(), "");
+        cs.add("趋势斜率", drift_slope(&[1, 1, 1, 1]).is_ok() && drift_slope(&[1, 1]).is_err(), "");
+        cs
+    }
+}

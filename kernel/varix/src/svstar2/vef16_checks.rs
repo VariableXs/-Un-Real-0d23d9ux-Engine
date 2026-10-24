@@ -33,10 +33,10 @@
 //! 8. **判据内不调聚合函数**：否则构成无限递归（VE-F5401 亲历：症状是
 //!    栈溢出而非某条判据变红，极难定位）。
 
+use alloc::vec;
 extern crate alloc;
 
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::{CheckSet, MAX_CHECKS};

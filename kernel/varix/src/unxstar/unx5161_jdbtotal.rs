@@ -3,7 +3,10 @@
 //! 断电/清理六面分层，与任务书 B19–B26 160 条构成对照一致率 100%
 //! （六面各分配条数合计恰 160），总纲可导出（面名→条数升序枚举）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x8180;
 

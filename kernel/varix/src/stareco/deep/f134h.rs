@@ -3,6 +3,8 @@
 //! 装配与跨域接口件：分享页 → F151 令牌表的导入适配器（KV 对输出，
 //! 悬空引用拒绝导入）、页面区块装配（置顶/最新/推荐三区数据行）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f134g::ThemeMetaDeep;
 use crate::checks::CheckSet;
 

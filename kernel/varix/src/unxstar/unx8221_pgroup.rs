@@ -3,7 +3,11 @@
 //! 组遍历计数 = 账面计数——进程组：pgid + 组长 pid + 组员 pid 集；
 //! 归属双向：由 pid 查组 / 由组列成员，两向计数全等。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB360;
 
@@ -150,7 +154,7 @@ pub fn run_unx8221_checks() -> crate::checks::CheckSet {
     s.add("双向-归属两向全一致", led.bidirectional_ok(), if led.bidirectional_ok() { "" } else { "双向缺口" });
 
     // 组遍历计数 == 账面计数
-    s.add("计数-遍历恰等于账面", led.traversal_equals_ledger(), if led.traversal_equals_ledger() { "" } else { "计数缺口" });
+    s.add_dyn("计数-遍历恰等于账面", led.traversal_equals_ledger(), if led.traversal_equals_ledger() { "" } else { "计数缺口" });
 
     // 离组：组员可离组长不可
     let mut g2 = led.groups.first_mut().unwrap();
@@ -161,7 +165,7 @@ pub fn run_unx8221_checks() -> crate::checks::CheckSet {
 
     // 重复 pgid 建组拒
     let dup = !led.create(100, 200);
-    s.add("建组-重复pgid拒", dup, if dup { "" } else { "重复漏网" });
+    s.add_dyn("建组-重复pgid拒", dup, if dup { "" } else { "重复漏网" });
 
     // 双组账：归属互斥（一 pid 只属一组）
     let _ = led.create(200, 201);

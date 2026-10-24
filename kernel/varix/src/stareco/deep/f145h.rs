@@ -3,6 +3,7 @@
 //! 装配与跨域接口件：课程链 → F119 帮助中心学习路径行（下一步推荐）、
 //! 文章卡装配（分级/主题标注）、待译文章角标数据。
 
+use alloc::vec::Vec;
 use super::f145g::Course;
 use crate::checks::CheckSet;
 

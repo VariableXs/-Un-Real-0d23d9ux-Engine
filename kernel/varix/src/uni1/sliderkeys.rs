@@ -16,6 +16,8 @@
 //! 默认的诚实 None）；调整历史账（最后 N 步可观测——误调可追溯）；
 //! 值等人话读数（千分比/百分比归一）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 连发节奏（F240 同源）：首发放松前单发；按住后阶梯速率（ms/发）。

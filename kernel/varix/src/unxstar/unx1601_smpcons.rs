@@ -18,9 +18,9 @@
 //! 诊断码段：0x52C0（0x52C1~0x52C8 闭集；全域 grep 确认独占）。
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，整数算术，确定性。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

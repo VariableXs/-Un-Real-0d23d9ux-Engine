@@ -51,6 +51,8 @@
 //! 6. **"三方裁决"**。若只断「冲突时选档位」，一个恒返回"用户优先"的实现也全绿。
 //!    必须把**三种冲突输入**分别打进去：用户覆盖>档位>预算临时，三档各胜一次。
 
+use alloc::format;
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 

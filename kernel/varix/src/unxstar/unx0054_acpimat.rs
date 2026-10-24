@@ -1,8 +1,12 @@
 //! UNX-F0054 · ACPI 表版本兼容矩阵账 · 诊断段 0xB7F0
 //! 验收锚点：UNX-F0054-J1 对 ACPI 2.0–6.5 各版本字段差异逐项登记，
 //! 三台不同代机型全表解析通过，双判据缺一即批内红灯。
+use alloc::vec;
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB7F0;
 

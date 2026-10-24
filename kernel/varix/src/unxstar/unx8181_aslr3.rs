@@ -3,7 +3,10 @@
 //! 档位切换即时生效且与 Linux randomize_va_space 三档语义对照一致——
 //! 0=关闭（固定布局）/ 1=保守（仅 mmap 栈随机）/ 2=全开（exec/brk/mmap/栈全随机）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB320;
 

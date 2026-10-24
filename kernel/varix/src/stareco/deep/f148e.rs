@@ -5,6 +5,8 @@
 //! 五阶段深化（证据收集/时限钟/跳步拒绝）、裁决记录册序号链、轮值
 //! 社区池（与 F129 复核池同池+回避）、规则修订提案频率闸深化。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::{fnv1a64, TraceId};
 use crate::stareco::governance::{listing_admissible, CaseStage, ARBITRATION_SLA_DAYS};

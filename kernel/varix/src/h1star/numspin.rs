@@ -18,6 +18,7 @@
 //! **依赖锚点**：`crate::h1star::h1base`（Curve/MotionPolicy）。
 //! 时间纪律：一切时间由调用方注入毫秒戳，模块不持时钟。
 
+
 use crate::checks::CheckSet;
 use crate::h1star::h1base::{Curve, MotionPolicy};
 
@@ -179,9 +180,9 @@ impl NumberSpinner {
 /// 与触界行为必须逐字节一致（同一 `apply_delta` 落点的自动化证明）。
 pub fn three_paths_consistent() -> bool {
     // 中部值：三通路各 +1 落点一致。
-    let mut a = NumberSpinner::new(50, 0, 100).unwrap();
-    let mut b = NumberSpinner::new(50, 0, 100).unwrap();
-    let mut c = NumberSpinner::new(50, 0, 100).unwrap();
+    let Some(mut a) = NumberSpinner::new(50, 0, 100) else { return false; };
+    let Some(mut b) = NumberSpinner::new(50, 0, 100) else { return false; };
+    let Some(mut c) = NumberSpinner::new(50, 0, 100) else { return false; };
     let _ = a.step(true);
     let _ = b.wheel(true, false);
     c.drag_begin(0);
@@ -191,9 +192,9 @@ pub fn three_paths_consistent() -> bool {
         return false;
     }
     // 触界行为一致：max 处再 +1 全部停住不回绕。
-    let mut a2 = NumberSpinner::new(100, 0, 100).unwrap();
-    let mut b2 = NumberSpinner::new(100, 0, 100).unwrap();
-    let mut c2 = NumberSpinner::new(100, 0, 100).unwrap();
+    let Some(mut a2) = NumberSpinner::new(100, 0, 100) else { return false; };
+    let Some(mut b2) = NumberSpinner::new(100, 0, 100) else { return false; };
+    let Some(mut c2) = NumberSpinner::new(100, 0, 100) else { return false; };
     let pa = a2.step(true);
     let pb = b2.wheel(true, true);
     c2.drag_begin(0);
@@ -209,34 +210,34 @@ pub fn three_paths_consistent() -> bool {
 pub fn clamp_boundary_cases() -> bool {
     let mut ok = 0usize;
     // 1) min 处按钮 -1。
-    let mut s = NumberSpinner::new(0, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(0, 0, 100) else { return false; };
     if s.step(false).1 && s.value == 0 { ok += 1; }
     // 2) min 处滚轮 -1。
-    let mut s = NumberSpinner::new(0, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(0, 0, 100) else { return false; };
     if s.wheel(false, false).1 && s.value == 0 { ok += 1; }
     // 3) max 处 Shift 滚轮 +10。
-    let mut s = NumberSpinner::new(100, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(100, 0, 100) else { return false; };
     if s.wheel(true, true).1 && s.value == 100 { ok += 1; }
     // 4) 键入越界（>max）→ 拒绝 + 抖动。
-    let mut s = NumberSpinner::new(50, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(50, 0, 100) else { return false; };
     if s.submit_text("200", MotionPolicy::normal()).is_none() && s.shake_left_ms() == SHAKE_MS && s.value == 50 { ok += 1; }
     // 5) 键入合法越上界（=max）→ 接受并钳到 max。
-    let mut s = NumberSpinner::new(50, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(50, 0, 100) else { return false; };
     if s.submit_text("100", MotionPolicy::normal()) == Some(100) { ok += 1; }
     // 6) 键入负值越下界 → 拒绝。
-    let mut s = NumberSpinner::new(50, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(50, 0, 100) else { return false; };
     if s.submit_text("-1", MotionPolicy::normal()).is_none() { ok += 1; }
     // 7) 键入非数字 → 拒绝 + 抖动 + 不弹窗（无对话框出口）。
-    let mut s = NumberSpinner::new(50, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(50, 0, 100) else { return false; };
     if s.submit_text("abc", MotionPolicy::normal()).is_none() && s.shake_left_ms() == SHAKE_MS { ok += 1; }
     // 8) 拖拽远超上界 → 钳在 max。
-    let mut s = NumberSpinner::new(90, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(90, 0, 100) else { return false; };
     s.drag_begin(0);
     let (v, _) = s.drag_move(999);
     s.drag_end();
     if v == 100 { ok += 1; }
     // 9) 拖拽远超下界 → 钳在 min。
-    let mut s = NumberSpinner::new(10, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(10, 0, 100) else { return false; };
     s.drag_begin(0);
     let (v, _) = s.drag_move(-999);
     s.drag_end();
@@ -275,12 +276,18 @@ pub fn run_numspin_checks() -> CheckSet {
     set.add("autorepeat resets on release", s.autorepeat_interval_ms() == 500, "");
 
     // 4. 滚轮 Shift 加速 ±10。
-    let mut s = NumberSpinner::new(50, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(50, 0, 100) else {
+        set.add("spinner construct", false, "非法区间构造失败（不可达路径防御）");
+        return set;
+    };
     let _ = s.wheel(true, true);
     set.add("wheel shift accelerates x10", s.value == 60, "");
 
     // 5. 非法输入抖动 120ms 且结构性不弹窗（拒绝路径无对话框出口）。
-    let mut s = NumberSpinner::new(50, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(50, 0, 100) else {
+        set.add("spinner construct", false, "非法区间构造失败（不可达路径防御）");
+        return set;
+    };
     let r = s.submit_text("xyz", MotionPolicy::normal());
     set.add(
         "illegal input shakes 120ms no dialog",
@@ -297,7 +304,10 @@ pub fn run_numspin_checks() -> CheckSet {
     set.add("10 clamp boundary cases green", clamp_boundary_cases(), "");
 
     // 8. 拖拽 3px=±1 的连续改值标度。
-    let mut s = NumberSpinner::new(50, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(50, 0, 100) else {
+        set.add("spinner construct", false, "非法区间构造失败（不可达路径防御）");
+        return set;
+    };
     s.drag_begin(0);
     let _ = s.drag_move(6);
     s.drag_end();
@@ -307,7 +317,10 @@ pub fn run_numspin_checks() -> CheckSet {
     set.add("step button 16px", STEP_BTN_PX == 16, "");
 
     // 10. 键入合法值直接生效（三通路第四面：直接键入）。
-    let mut s = NumberSpinner::new(50, 0, 100).unwrap();
+    let Some(mut s) = NumberSpinner::new(50, 0, 100) else {
+        set.add("spinner construct", false, "非法区间构造失败（不可达路径防御）");
+        return set;
+    };
     set.add("typed value applies", s.submit_text("77", MotionPolicy::normal()) == Some(77), "");
 
     set

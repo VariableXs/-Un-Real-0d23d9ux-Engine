@@ -25,6 +25,7 @@
 //! 逻辑时钟而非墙钟：生命周期要可复现、可回放，墙钟会让"哪个上下文先死"
 //! 这类顺序问题在测试里飘。零外部依赖，只依赖 `crate::checks`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;

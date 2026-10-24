@@ -18,6 +18,8 @@
 // no_std 下 std prelude 不存在：`Vec` 与 `String` 都得显式引入。原注释以为
 // 「只用 `Vec::new()` 不需要 import」是错的——`Vec::new()` 里的 `Vec` 是类型名，
 // 同样要 import。本条自检用 `Vec::new()` 而非 `vec![]`（后者还要 `vec!` 宏）。
+use alloc::string::String;
+use alloc::vec;
 use super::vec16_report::Severity;
 use super::vec17_recover::*;
 use crate::checks::CheckSet;

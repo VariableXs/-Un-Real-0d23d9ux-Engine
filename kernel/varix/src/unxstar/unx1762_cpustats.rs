@@ -86,11 +86,11 @@
 //! 宽区承载**累积量**（总量、时间窗和、代价累计、校验和）。
 //! `last_*_tick` 字段（每族 local = 7）统一落在窄区尾部，语义为"最近一次该族记账的逻辑 tick"。
 
+use alloc::vec;
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
 

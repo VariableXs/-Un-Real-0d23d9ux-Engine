@@ -33,9 +33,9 @@
 //! [`Telemetry::drain`]）；窃取开销 ≤3% 入 CGPU-Bench 账面
 //! （[`STEAL_OVERHEAD_TARGET_PCT`]），实测未回填不虚报。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use alloc::collections::VecDeque;
-use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 诊断码：CGPU 域 0x3900 段续编（F0001 已占 0x3900-0x3906）。

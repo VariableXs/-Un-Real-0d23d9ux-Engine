@@ -68,6 +68,7 @@
 //! （越界即视为容量不足并计数，不中止渲染）。断言集中在
 //! [`run_vee07_checks`] 内。
 
+use alloc::vec;
 extern crate alloc;
 
 use alloc::string::ToString;

@@ -9,6 +9,8 @@
 //!
 //! 纯静态校验 + 纯函数推演，无时钟无 IO，回归可复现。
 
+use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::format;
 use alloc::vec::Vec;
 

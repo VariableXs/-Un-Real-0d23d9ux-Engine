@@ -74,7 +74,9 @@ impl WindowZBook {
         if self.n == 0 {
             return None;
         }
-        Some(self.stack[pos.min(self.n - 1)].unwrap())
+        let pos = self.stack[pos.min(self.n - 1)];
+        let Some(next) = pos else { return None };
+        Some(next)
     }
 
     /// 激活序快照（栈顶向下的 app 序——诊断导出面）。
@@ -145,11 +147,13 @@ impl DumpManifest {
         }
         let mut oldest = 0;
         for i in 1..self.n {
-            if self.entries[i].unwrap().at_ms < self.entries[oldest].unwrap().at_ms {
-                oldest = i;
+            if let (Some(a), Some(b)) = (self.entries[i].as_ref(), self.entries[oldest].as_ref()) {
+                if a.at_ms < b.at_ms {
+                    oldest = i;
+                }
             }
         }
-        let evicted = self.entries[oldest].take().unwrap();
+        let Some(evicted) = self.entries[oldest].take() else { return None };
         for j in oldest..self.n - 1 {
             self.entries[j] = self.entries[j + 1];
         }

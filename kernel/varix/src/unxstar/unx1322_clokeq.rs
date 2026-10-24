@@ -15,11 +15,12 @@
 //!   - 注入核 5 项。
 //! ═══════════════════════════════════════════════════════════════════════
 
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段基址。
+
 pub const SEG_BASE: u16 = 0xB380;
 
 /// 容差带（tick 单位）。

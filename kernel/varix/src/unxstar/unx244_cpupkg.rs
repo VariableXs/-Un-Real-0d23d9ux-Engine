@@ -9,10 +9,10 @@
 //! 判据落地：三段齐备入 Manifest + 三面对账一致 + 注入必拒
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u32/u64 FNV 整数算术，零墙钟。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 模块版本。
 pub const CP_VERSION: &str = "unx244_cpupkg-v1";

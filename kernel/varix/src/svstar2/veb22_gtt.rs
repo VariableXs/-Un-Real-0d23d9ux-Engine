@@ -59,12 +59,12 @@
 //! 旧页内容，区间提前复用就是数据踩踏。这是 A 域围栏契约在 GTT 侧的
 //! 兑现点，`fence_flush(signaled)` 由调用方注入签到谓词。
 
+use alloc::vec;
 // ---------------------------------------------------------------------------
 // 导入（no_std 三件套 + format）
 // ---------------------------------------------------------------------------
 
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::veb21_ident::GenTier;

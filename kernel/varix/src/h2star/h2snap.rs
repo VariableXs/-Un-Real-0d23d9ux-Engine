@@ -16,6 +16,7 @@
 //! 负责**格式**：版本头 + 长度前缀 + FNV-1a 校验和——读到半截/
 //! 篡改数据时诚实拒绝（坏数据不装好），F273 场景调用方降级默认态。
 
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::h2star::h2persist::{AtomicChannel, ReadResult, fnv1a64, FORMAT_VERSION};
 

@@ -16,6 +16,8 @@
 //! 定点排序（同输入同结果——可复现）+ 造词三次入库的自学习账。全程零
 //! 网络依赖（离线判据结构性成立）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

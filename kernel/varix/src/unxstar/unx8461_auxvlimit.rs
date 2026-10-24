@@ -2,7 +2,11 @@
 //! 验收锚点：UNX-F8461-J1 正向：合法 auxv 条目栈构造通过（B03 判据承接）；
 //! 反向：条目数超限注入全拒（栈预算守恒——不超写），双判据缺一即批内红灯。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB520;
 

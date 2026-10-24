@@ -54,9 +54,9 @@
 //! 越界钳制取**含端点**边界（min/max 本身合法——与 F4405 配置档
 //! 同口径）；类型面全整数 i64（无 f32 无 libm——内核面纪律）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

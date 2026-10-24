@@ -7,6 +7,8 @@
 //! 纪律：纯逻辑 + 固定容量数组；无 `Vec`/`String`/`Box`/`alloc`；
 //! 全部定点运算（Q15），内核中断路径无 FPU。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// Q15：1.0 = 32768。

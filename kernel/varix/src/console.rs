@@ -4,6 +4,7 @@
 //! newline / carriage-return / tab / backspace handling, hardware scrolling
 //! via row copy, and an underline-style cursor at the active cell.
 
+use alloc::vec;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::sync::atomic::{AtomicBool, Ordering};

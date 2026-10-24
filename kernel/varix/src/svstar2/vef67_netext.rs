@@ -25,11 +25,11 @@
 //! 诊断码 0x67 段五码互异：`E_NE_NO_TOKEN` / `E_NE_BUDGET_EXCEED`
 //! / `E_NE_POLICY_VIOLATION` / `E_NE_DUP_NAME` / `E_NE_IF_VERSION`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

@@ -47,9 +47,9 @@
 //! 但已不再被任何代码引用，**不得再作为契约依据**——内核与 TS 若有分歧，
 //! 以本模块为准。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

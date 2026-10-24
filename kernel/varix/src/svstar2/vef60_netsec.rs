@@ -73,9 +73,9 @@
 //! 的输入治理同源同口径）；[`DeepenSurface`] trait（F5417 深化下游
 //! 消费面——清洗账/白名单账/限流账的只读出口，深化模块据此对账）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

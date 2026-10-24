@@ -9,12 +9,13 @@
 //! 核（字典重查 vs 冻结期望全等）+ 码查找器（未知码报 E-UNKNOWN）+
 //! 注入核（越界码/要素缺失/文案漂移/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA980 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA980;
 pub const XC_EC_RANGE: u32 = SEG_BASE + 0x01; // 越界码
 pub const XC_EC_ELEM: u32 = SEG_BASE + 0x02; // 要素缺失

@@ -28,10 +28,10 @@
 //! 定性仿真；FNV-1a 快照往返；错误全显性带诊断码与建议。诊断码
 //! 段 0x4C（0x4B 为 F0918 所取）。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

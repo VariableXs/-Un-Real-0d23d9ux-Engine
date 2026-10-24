@@ -12,6 +12,7 @@
 //! ④**12 色语义表持久化对账**——序号往返无损 + 越界拒绝 + 存档→还原
 //!   →逐路径令牌一致（重读同色，不许读一次变一次）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::foldertint::TintBook;
 use crate::istar::ibase::{ISTAR_DOMAIN, Tint12};

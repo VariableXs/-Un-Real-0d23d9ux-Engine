@@ -29,11 +29,11 @@
 //! 诊断码 0xC4 段五码互异：`E_HC_NO_DEVICE` / `E_HC_STAGE_ORDER` /
 //! `E_HC_BENCH_FAIL` / `E_HC_SOAK_TIMEOUT` / `E_HC_PROFILE_MISMATCH`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

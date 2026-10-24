@@ -14,6 +14,9 @@
 //! **判据设计硬规矩**：期望值独立重算；不变量两头都测；缓存 O(1) 用
 //! 「槽位号独立重算」对账；版本戳失效双向（bump 前命中 / bump 后未命中）。
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::svstar2::vev02_monitor::{CapabilityRecord, HdrCapability};
 use crate::svstar2::vev03_color as ce;

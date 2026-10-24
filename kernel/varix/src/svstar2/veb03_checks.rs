@@ -7,12 +7,14 @@
 //! - 导出句柄可被导入 → `B03-导出-*`
 //! - 泄漏压测归零 → `B03-泄漏-*`
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::veb01_device::DisplayCfg;
 use super::veb02_proto::{CtrlCommand, MemEntry, ReferenceDevice, RespErr, CtrlResponse};
 use super::veb03_resource::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
+use alloc::format;
 
 fn mem(addr: u64, len: u32) -> MemEntry {
     MemEntry { addr, length: len }
@@ -414,7 +416,6 @@ pub fn run_veb03_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

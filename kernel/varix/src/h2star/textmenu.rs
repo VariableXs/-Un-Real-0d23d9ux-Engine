@@ -12,6 +12,7 @@
 //! 灰、无选区时剪切复制置灰，但**位置恒定**）；只读形制（三项菜单）；
 //! 快捷键标注表（F205 同源文案）；F107 输入法菜单挂接位。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

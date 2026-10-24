@@ -14,6 +14,7 @@
 //! 键语义表（Ctrl=强制复制；默认复制——主册「默认安全=复制」定值）；
 //! 插入点指示随坐标更新（精度=逐字符列宽注入口）；终端安全提示常驻。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

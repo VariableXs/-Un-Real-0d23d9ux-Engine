@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(non_upper_case_globals)]
+#![allow(unused_macros)]
 //! unx1842_ipivec_deep ↔ UNX-F1842 IPI 向量分配表（造 IPI 必登记）· 深化版
 //!
 //! ---------------------------------------------------------------------------
@@ -141,16 +144,13 @@
 //! 本深化版占用 `0xB0E0` 段、零 crate 依赖，两者并存互不覆盖，
 //! 由主会话分别注册。
 
-#![allow(dead_code)]
-#![allow(non_upper_case_globals)]
-#![allow(unused_macros)]
+use alloc::vec;
 
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ===========================================================================

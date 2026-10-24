@@ -353,6 +353,7 @@ impl Surface {
 
 #[cfg(test)]
 mod tests {
+use alloc::vec;
     use super::*;
     use std::vec::Vec;
 

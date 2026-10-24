@@ -11,6 +11,7 @@
 //! 实现形态：悬停计时器（注入钟——500ms 进入窗 / 300ms 划过豁免）+
 //! 前置状态机（含最小化还原衔接）+ 多标签切换 + 落点高亮标记。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
 

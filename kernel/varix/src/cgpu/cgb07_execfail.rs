@@ -61,8 +61,9 @@
 //! 零 panic 面（下标走 `get`/`Option`，算术饱和）、零 IO、零墙钟
 //! （tick 上游注入）、无全局可变状态、no_std。
 
-use alloc::string::{String, ToString};
+use alloc::format;
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

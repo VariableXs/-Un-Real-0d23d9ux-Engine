@@ -31,6 +31,7 @@
 //! 错误路径（0xCB 段）：`E_TS_GRID_ZERO` 网格为 0 / `E_TS_NOT_POW2`
 //! Hilbert 要求边长为 2 的幂 / `E_TS_ORDER_INVALID` 序表与瓦片数不符。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec::Vec;

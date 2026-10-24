@@ -22,6 +22,7 @@
 //! 本文件是**过程产物之外的功能文件**（随源码入库）：与 F4002 同构，
 //! `pubmod vei03_checks` 由 `svstar2/mod.rs` 聚合。
 
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 

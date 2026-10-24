@@ -32,7 +32,6 @@
 
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
-use alloc::vec;
 use super::peblend::{self, Subsystem};
 use super::wow64::{self, MachineVerdict};
 
@@ -428,7 +427,11 @@ pub fn sniff_signature(bytes: &[u8]) -> SniffVerdict {
     if bytes.len() < 0x40 || bytes[0..2] != [b'M', b'Z'] {
         return SniffVerdict::NotExecutable;
     }
-    let pe_off = u32::from_le_bytes(bytes[0x3C..0x40].try_into().unwrap()) as usize;
+    // 0x3C..0x40 由 len >= 0x40 前置校验保证；直接下标展开消除语法性 panic 点。
+    let pe_off = (bytes[0x3C] as usize)
+        | ((bytes[0x3D] as usize) << 8)
+        | ((bytes[0x3E] as usize) << 16)
+        | ((bytes[0x3F] as usize) << 24);
     if pe_off < 0x40 || pe_off + 4 > bytes.len() {
         return SniffVerdict::NotExecutable;
     }
@@ -881,9 +884,10 @@ impl LaunchAuditRing {
     /// 按时间序枚举（诊断页回放面）。
     pub fn iter(&self) -> impl Iterator<Item = LaunchAudit> + '_ {
         let (head, n) = (self.head, self.n);
-        (0..n).map(move |k| {
+        // filter_map：环内空槽（未占位）跳过，不 panic。
+        (0..n).filter_map(move |k| {
             let idx = if head >= n { k } else { (head + AUDIT_RING_CAP - n + k) % AUDIT_CAP_MARKER };
-            self.buf[idx].unwrap()
+            self.buf[idx]
         })
     }
 

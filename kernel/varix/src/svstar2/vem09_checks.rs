@@ -17,9 +17,9 @@
 //! **补判据必须双向验证**：每条新判据都在变异 harness 里跑过「基线绿 +
 //! 变体红」；只绿不红的判据等于没写。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vem03_interp::Interp;

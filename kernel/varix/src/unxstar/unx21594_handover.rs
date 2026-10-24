@@ -21,8 +21,8 @@
 //! 的批），也不该报错（那会让整本台账无法归档）。故归一化——`freeze_committed()`
 //! 要求标记与接口集同时成立，空承诺降级为普通条目。交接清单的用途是「能交出去」。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 /// 域内批数（施工书 B01–B40）。

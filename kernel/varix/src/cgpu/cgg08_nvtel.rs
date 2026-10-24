@@ -12,6 +12,7 @@
 //! 值谎报）；缺陷检出只计数不臆造细节（细节归差异表）；启用率分母为零时
 //! 显性 None。诊断码段 0x5F01~0x5F05。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

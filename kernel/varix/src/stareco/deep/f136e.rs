@@ -5,6 +5,8 @@
 //! 密度精算、≤200 行门禁拆分建议、新概念坡度校验、CI 断绿归因四
 //! 分类、新手实录册、截图基线哈希对拍。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::fnv1a64;
 use crate::stareco::examples::{Example, ExampleRepo, MAX_LINES_PER_EXAMPLE};

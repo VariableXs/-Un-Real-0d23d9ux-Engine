@@ -13,6 +13,7 @@
 //! 500ms 内重按不重复开窗）；锚格式规范（非 help.* 前缀点名）；打开
 //! 历史留痕（最近 16 条）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

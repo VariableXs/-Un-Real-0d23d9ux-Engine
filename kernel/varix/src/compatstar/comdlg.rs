@@ -21,6 +21,7 @@
 //! 联动；模态语义（模态期父窗不收输入）与 Windows 一致。
 //!
 //! 零堆纪律：会话表/记忆表/色板全定长，无 Vec/String/Box/format!。
+use alloc::string::String;
 
 use crate::checks::CheckSet;
 use alloc::vec::Vec;

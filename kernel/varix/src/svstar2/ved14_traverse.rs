@@ -38,11 +38,11 @@
 //! 逻辑 tick 注入，零墙钟；零 IO；类型自持（不 import 未注册的兄弟模块，编译期不受
 //! 平行会话注册次序影响），上游契约以等价自有类型承接。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

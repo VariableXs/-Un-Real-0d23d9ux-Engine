@@ -13,12 +13,14 @@
 //!   - 注入核：8 项 must-catch，全抓方绿。
 //! ═══════════════════════════════════════════════════════════════════════
 
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
-use crate::alloc::format;
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段基址（独占 0xB000~0xB07F）。
+
 pub const SEG_BASE: u16 = 0xB000;
 
 /// 八原语。

@@ -16,6 +16,7 @@
 //! 步进，连击限速 80ms——拧爆音量不给窗口）；拖动超时恢复（起拖
 //! 10s 无动作自动恢复起拖值——脱手不留半截状态）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

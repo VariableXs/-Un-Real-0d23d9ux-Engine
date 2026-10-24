@@ -36,6 +36,7 @@
 //! F2410（P05 异常预测——联动复用对象）；F2564/F2565（容错/崩溃恢复
 //! ——分类表的处置指针指向）。零 panic 面、零 IO、零墙钟、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

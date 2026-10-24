@@ -12,6 +12,8 @@
 //! 计划（内容=件数+总大小、默认焦点=取消——F207 铁律结构化钉死）；
 //! 占用表注入（哪个应用锁哪个文件——人话提示的数据源）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -11,6 +11,7 @@
 //! （全禁原地不动——不假装切换）；连点防抖（300ms 内第二击不算循环）；
 //! IME 组合期点击挂起（不打断输入）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

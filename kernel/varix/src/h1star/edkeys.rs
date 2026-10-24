@@ -22,6 +22,7 @@
 //! **依赖锚点**：`crate::h1star::textsel`（断词分类复用，零重复实现）。
 //! 时间纪律：不持时钟（本项无时序判据）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h1star::textsel::{char_start_pub, class_of, decode_pub, ScriptClass};
 use alloc::vec::Vec;

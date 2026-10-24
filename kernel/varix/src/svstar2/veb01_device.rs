@@ -22,12 +22,12 @@
 //! - 确定性、零 IO、可序列化：设备状态来自快照注入（PCI 配置空间的一手
 //!   读数），不摸真硬件——QEMU 判据靠对拍快照回归覆盖。
 
+use alloc::vec;
 use crate::svstar2::vea01_probe::fnv1a64;
 
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 一、virtio 商标与身份（判据：QEMU 识别、旧版显性拒绝）

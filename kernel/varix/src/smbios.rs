@@ -6,6 +6,8 @@
 //! manufacturer/product/version (Type 1). Pure parsing + a thin target
 //! reader that maps the Limine-provided address.
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::once::OnceLock;
 
 /// Maximum bytes of structure table we are willing to walk.

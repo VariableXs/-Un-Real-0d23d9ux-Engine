@@ -5,6 +5,8 @@
 //! （rustdoc 思路——符号清单→页数据→缺失段报告→覆盖率口径）、五区
 //! 内容清单管理、多词 AND 跨区搜索、示例链接校验、直链表与漂移报告。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::devportal::{ApiPage, DevPortal, SECTIONS};
 use crate::stareco::ebase;

@@ -26,6 +26,8 @@
 //!
 //! 零堆纪律：语言匹配纯查表、码页转换定长输入输出，无 Vec/String/Box。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

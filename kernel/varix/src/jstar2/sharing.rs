@@ -28,6 +28,8 @@
 //! - **往返保真**：单次往返指纹一致 + 双重往返（导出→导入→再导出）
 //!   逐字节一致——分享链的保真口径钉在字节级。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::checker::{self, HealthReport};
 use crate::jstar2::jbase::{
@@ -392,7 +394,8 @@ impl ImportSession {
         let p = preview(&self.bytes, verify, |_| GateVerdict::Allow)?;
         self.preview = Some(p);
         self.stage = SessionStage::Previewed;
-        Ok(self.preview.as_ref().unwrap())
+        // 刚置入必中；缺位（不可达）按会话内错误诚实上报。
+        self.preview.as_ref().ok_or("预览置入后不可见——会话内部不变量缺口")
     }
 
     /// 预览结论只读视图。
@@ -413,7 +416,8 @@ impl ImportSession {
         if green {
             self.stage = SessionStage::HealthPassed;
         }
-        Ok(self.health.as_ref().unwrap())
+        // 刚置入必中；缺位（不可达）按会话内错误诚实上报。
+        self.health.as_ref().ok_or("体检报告置入后不可见——会话内部不变量缺口")
     }
 
     /// 体检结论只读视图。

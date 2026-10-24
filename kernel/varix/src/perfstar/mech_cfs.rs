@@ -260,6 +260,7 @@ pub fn drive(rq: &mut CfsRq, steps: usize) -> usize {
 // ---------------------------------------------------------------------------
 
 pub fn run_checks() -> crate::checks::CheckSet {
+use alloc::vec::Vec;
     use crate::checks::CheckSet;
     let mut cs = CheckSet::new("mech_cfs");
 

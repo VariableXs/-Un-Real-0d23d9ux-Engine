@@ -1,8 +1,26 @@
 //! UNX-F1686 · 权重→vruntime 累加速率一致性核对账 · 诊断段 0xB8F0
 //! 验收锚点：UNX-F1686-J1 累加速率=基准速率×（基准权重/本权重）与
 //! F1644 账目回放一致，偏差为零，双判据缺一即批内红灯。
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+/// 本地 LCG 线性同余（CI 确定性引擎——同种子同序列；与各域单文件惯例一致）。
+pub struct Lcg(u64);
+impl Lcg {
+    pub fn new(seed: u64) -> Self {
+        Lcg(seed)
+    }
+    pub fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0
+    }
+    pub fn below(&mut self, n: u64) -> u64 {
+        self.next() % n
+    }
+}
+
 
 pub const SEG_BASE: u16 = 0xB8F0;
 

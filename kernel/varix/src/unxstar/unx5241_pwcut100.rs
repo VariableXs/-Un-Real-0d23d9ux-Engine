@@ -4,7 +4,8 @@
 //! F5219/F5233 联账一致率 100%（两分账合计恰 100），总纲可导出；
 //! 不变量：提交点后数据可恢复、提交点前数据零可见。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9580;
 

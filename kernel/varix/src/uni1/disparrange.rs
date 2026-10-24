@@ -10,6 +10,7 @@
 //! 屏缺失时窗口按相对位置迁回存活屏——钳制在屏界内）；即时生效
 //! （无应用按钮——改完即生效语义）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

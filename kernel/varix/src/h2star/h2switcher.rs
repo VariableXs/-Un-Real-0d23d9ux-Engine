@@ -13,9 +13,9 @@
 //!
 //! 时间纪律：激活时刻由 z 序账供给（h2zorder 单一数据源）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

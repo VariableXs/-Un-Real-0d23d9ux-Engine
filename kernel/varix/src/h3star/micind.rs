@@ -10,6 +10,8 @@
 //! 三项合模块：设备占用账（麦/摄共用机制）+ 权限矩阵（F322/F323 的询
 //! 问联动点）——隐私面一个账本，指示与权限不打架。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::hbase::Clock;

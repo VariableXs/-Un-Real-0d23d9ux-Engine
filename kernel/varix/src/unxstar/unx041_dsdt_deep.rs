@@ -33,6 +33,8 @@
 //! 诊断枚举 DsdtDeepCode 十六码（0x2F 段 0x2F00..=0x2F0F 互异 +
 //! [`segment_guard`] 段守恒对账）。no_std 零 unwrap 零 panic 面。
 
+use alloc::format;
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 

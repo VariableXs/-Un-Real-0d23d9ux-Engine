@@ -25,6 +25,8 @@
 //!
 //! 零堆纪律：全部定长数组，无 Vec/String/Box/format!。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

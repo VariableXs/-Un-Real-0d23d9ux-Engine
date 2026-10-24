@@ -28,10 +28,10 @@
 //! 常量写死并注释来源；错误全显性带可操作建议；FNV 快照往返一致。
 //! 诊断码段 0x35（UNX 册已占 0x2E~0x34——先入库者占段纪律，0x35 起本单独占）。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本（编排器协议版本——声明格式变更即前滚）。

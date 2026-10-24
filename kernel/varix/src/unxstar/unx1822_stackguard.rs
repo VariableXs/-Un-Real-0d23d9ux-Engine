@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! ===========================================================================
 //! UNX-F1822 · 线程栈分配与 guard 页（A1-MM 衔接）
 //! ===========================================================================
@@ -190,14 +191,13 @@
 //! 时间轴为逻辑 `tick: u64`，所有随机性来自确定性 LCG。
 //! 零模板复述，零死代码。
 
-#![allow(clippy::needless_range_loop)]
+use alloc::vec;
 
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ===========================================================================

@@ -181,12 +181,12 @@
 //! **确定性**：同输入同输出（纯函数，无时钟无 IO，遍历序固定）。零外部依赖，
 //! 只用 `alloc` 与上游三模块。
 
+use alloc::vec;
 use crate::perfstar::imgsimd::{self};
 use crate::perfstar::mech_inflate;
 use crate::svstar2::vef01_pngdec as dec;
 use crate::svstar2::vef02_pngenc as enc;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

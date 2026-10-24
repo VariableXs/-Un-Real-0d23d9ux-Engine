@@ -12,13 +12,14 @@
 //! 宣言账（两主题 × 总纲引言 diff=0 + 六批铺排预告）+ 注入核
 //! （叶篡改/根漂移/缺主题/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0x9580 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0x9580;
 pub const XC_BC_LEAF: u32 = SEG_BASE + 0x01; // 叶篡改
 pub const XC_BC_ROOT: u32 = SEG_BASE + 0x02; // 根漂移

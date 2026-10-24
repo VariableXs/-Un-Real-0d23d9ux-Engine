@@ -48,13 +48,11 @@
 //! `0x4DA0` 段（全域 grep 确认：邻段 0x4cd0=F1021、0x4d40=F1022、
 //! 0x9D=F1023，互不重叠）。
 
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
 
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
+use alloc::format;
 // ---------------------------------------------------------------------------
 // 一、常量与诊断码闭集（独占 0x4DA0 段）
 // ---------------------------------------------------------------------------

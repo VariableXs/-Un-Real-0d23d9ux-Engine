@@ -11,13 +11,14 @@
 //! SIGSTOP 不可捕获守卫）+ 注入核（旗标越位/信号零/不可捕获/读回
 //! 漂移/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA700 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA700;
 pub const XC_SA_UNCAUGHT: u32 = SEG_BASE + 0x01; // 不可捕获
 pub const XC_SA_BADSIG: u32 = SEG_BASE + 0x02; // 信号号非法

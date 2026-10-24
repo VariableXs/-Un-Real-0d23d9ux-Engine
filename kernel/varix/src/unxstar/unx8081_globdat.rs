@@ -3,7 +3,9 @@
 //! （逐项 = 符号地址直填 GOT 槽），应用计数与 DT_RELA 中该类型计数一致
 //! （应用 n 项 == RELA 表中 R_X86_64_GLOB_DAT 恰 n 条）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB240;
 
@@ -161,7 +163,7 @@ pub fn run_unx8081_checks() -> crate::checks::CheckSet {
     let rela2 = vec![Rela::new(0x5000, R_GLOB_DAT, 99)];
     let mut ap2 = GotApplier::new();
     let n2 = ap2.apply(&rela2, &syms);
-    s.add("跳过-未知符号不计入", n2 == 0 && ap2.got.is_empty(), if n2 == 0 { "" } else { "未知符号泄漏" });
+    s.add_dyn("跳过-未知符号不计入", n2 == 0 && ap2.got.is_empty(), if n2 == 0 { "" } else { "未知符号泄漏" });
 
     // 100 项批量：应用计数与 RELA 计数一致 + 基准全对
     let mut rela3: Vec<Rela> = Vec::new();

@@ -18,6 +18,8 @@
 //! **空清单诚实态**：导出无方案/文件缺失 → `MigrationOutcome::Empty`
 //! 一句话说清（不空转不假装）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::curimport::import_cursor_set;
 use crate::jstar2::jbase::{CursorSchemeModel, OriginKind, PointerState, ALL_STATES};
@@ -236,6 +238,9 @@ pub struct MigrationPlan {
 }
 
 impl MigrationPlan {
+    /// 空计划兜底（plan 缺位时的诚实空态，不 panic）。
+    pub const EMPTY: MigrationPlan = MigrationPlan { entries: Vec::new(), header_ok: false };
+
     /// ready 方案数（向导汇总行的数字面）。
     pub fn ready_count(&self) -> usize {
         self.entries.iter().filter(|p| p.ready).count()
@@ -307,7 +312,8 @@ impl<'a> MigrationSession<'a> {
             self.plan = Some(migration_plan(self.view, self.store));
             self.stage = MigrationStage::Planned;
         }
-        self.plan.as_ref().unwrap()
+        // Planned 态必有计划；缺位（不可达）按空计划兜底而非 panic。
+        self.plan.as_ref().unwrap_or(&MigrationPlan::EMPTY)
     }
 
     /// 提交迁移（Planned → Committed；未出计划直接提交被拒——不盲迁）。
@@ -929,7 +935,8 @@ pub fn export_bundle(
     let text = export_scheme_reg(m)?;
     let mut files = Vec::new();
     for st in crate::jstar2::jbase::ALL_STATES.iter() {
-        let e = m.state(*st).expect("15 态已验齐");
+        // 全态应齐备（15 态判据守护）；缺态跳过该文件而非 panic。
+        let Some(e) = m.state(*st) else { continue };
         files.push((synth_cursor_filename(m, *st), encode_cur_32bpp(&e.frames[0])));
     }
     Ok((text, files))

@@ -16,6 +16,8 @@
 //! （模板内建判据 = 体检免检项映射表登记——`EXEMPT_MAP`：模板产物的
 //! 热点 8×8 邻域与静态 0 延时特征映射为体检对应项的绿灯凭据）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::checker;
 use crate::jstar2::jbase::{

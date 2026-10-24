@@ -20,6 +20,7 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::string::String;
 use super::vek08_colorspace::*;
 use crate::checks::CheckSet;
 // 上游依赖显式导入：`use ...::*` 只带出模块**自己定义**的公开项，不带出它

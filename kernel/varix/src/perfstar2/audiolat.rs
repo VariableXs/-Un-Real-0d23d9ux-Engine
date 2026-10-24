@@ -19,6 +19,8 @@
 //!
 //! 零堆纪律：定长流表 + 定长分段账，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

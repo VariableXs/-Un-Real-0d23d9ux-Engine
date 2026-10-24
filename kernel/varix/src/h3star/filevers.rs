@@ -12,6 +12,8 @@
 //! 实现形态：版本账（保存即快照——延迟记账）+ 时间线/对比/还原状态机
 //! + 30 天/500 上限清理器 + 独立区隔离账。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::hbase::Clock;
@@ -556,7 +558,6 @@ impl RetentionPolicy {
 
 /// 深化层三自检（保留策略）。
 pub fn run_filevers_deep3_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F325-deep3");
 
     let policy = RetentionPolicy::standard();

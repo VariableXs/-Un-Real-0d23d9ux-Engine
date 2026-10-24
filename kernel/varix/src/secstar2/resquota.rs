@@ -22,6 +22,8 @@
 //! 阶梯思路参照 Linux cgroup 压力反馈与 Android OOM adj（简化版）；实现自研。
 //! 依赖锚点：F020（崩溃流程）、F038（确认语义）、F041（帧率对账）、F057（IO 映射）、F060（用量同源）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec::Vec;

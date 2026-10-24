@@ -3,6 +3,8 @@
 //! 装配与跨域接口件：贡献者页数据行渲染（g 层档案 → 展示行）、
 //! 与 F129 判例线的状态查询接口、上游不可达的诚实降级行。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f131g::{ContributorProfile, TrustTier};
 use crate::checks::CheckSet;
 

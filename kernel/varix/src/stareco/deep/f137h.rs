@@ -3,6 +3,7 @@
 //! 装配与跨域接口件：冻结/破坏台账 → 文档站 API 页版本史渲染行、
 //! 徽标位数据（稳定/冻结/弃用三态）、破坏性变更页面标红判定。
 
+use alloc::vec::Vec;
 use super::f137f::{BreakKind, classify_break};
 use super::f137g::FreezeTable;
 use crate::checks::CheckSet;

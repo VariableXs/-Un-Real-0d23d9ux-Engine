@@ -6,8 +6,8 @@
 //! - 编码显性 → `C07-编码-*`（字节 × 编码标记；\xNN 与 \uXXXX 裁定）
 //! - 未闭合指向 → `C07-未闭合-*`（报错指向开引号）
 
-use super::vec07_string::*;
 use alloc::vec;
+use super::vec07_string::*;
 use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec::Vec;

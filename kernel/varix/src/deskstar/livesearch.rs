@@ -24,11 +24,11 @@
 //! 索引账（懒建+失效）+ 匹配引擎（子串 + 拼音首字母）+ 高亮区间
 //! 账（中英混排）+ 渐进/可取消递归账。时间注入式。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use crate::deskstar::dbase::{budget_ok, Debouncer, Token};
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 

@@ -2,7 +2,8 @@
 //! 验收锚点：UNX-F8421-J1 正向：表体完整样本通过；反向：表体越出文件尾注入
 //! 全拒（逐条校验——不整表信任），双判据缺一即批内红灯。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB4C0;
 

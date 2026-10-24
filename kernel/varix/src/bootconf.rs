@@ -21,6 +21,10 @@
 //! 串**不 panic——配置文件是磁盘上的外部输入，fuzz 规则与全部解析器一致
 //! （tests/fuzz.rs 同款）。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use crate::bootchain::hash_bytes;
 
 /// 配置解析常量：条目上限 16（Limine 场景双条目起步，裕量按 8 倍给）。

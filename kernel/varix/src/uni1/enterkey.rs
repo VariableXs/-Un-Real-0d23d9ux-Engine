@@ -11,6 +11,7 @@
 //! 脱靶分记）、会话对账审计（窗口数≠栈数可机检暴露）、Alt+Enter 焦点
 //! 回归账、Ctrl+Enter 保持选中。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

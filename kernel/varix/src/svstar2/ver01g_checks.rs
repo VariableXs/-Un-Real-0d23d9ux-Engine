@@ -50,6 +50,7 @@
 //! 3. **变体双向验证**：每条「必被抓」判据都配一个把被测对象改坏的变体，
 //!    确认判定确实转红；只写正向断言则「恒真」与「在判」不可区分。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::ver01b_parser::Site;
 use crate::svstar2::ver01f_overlay::{Level, OverlayStack};
@@ -57,7 +58,6 @@ use crate::svstar2::ver01g_persist::*;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 期望的规则条数（判据侧常量，不从被测常量推导——那会自证）。

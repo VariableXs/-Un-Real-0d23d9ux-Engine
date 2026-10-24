@@ -16,11 +16,12 @@
 //! **F346 判据**：默认全关判据（新装应用自启动=0 直到用户开）；影响估
 //! 算准确性（±20%）；禁用生效；三清单独立性。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // F342 磁盘检查与修复
@@ -2935,7 +2936,6 @@ impl MultiVolumeCleanup {
 
 /// 深化层七自检（确认门 / ETA / 多盘）。
 pub fn run_sysgov_deep7_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F342-346-deep7");
 
     // 1. 确认门：错名/空输入拒绝计数、精确匹配放行、提示文案指名。
@@ -3746,7 +3746,6 @@ impl VendorTemplate {
 
 /// 深化层十一自检（哈希锚定 / 服务自检 / 模板）。
 pub fn run_sysgov_deep11_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F342-346-deep11");
 
     // 1. 哈希锚定：清单一致放行；改一项拦（确认的是 A 执行的必须是 A）。
@@ -3912,7 +3911,6 @@ impl QuotaWarn {
 
 /// 深化层十二自检（版本化 / 预置清单 / 配额）。
 pub fn run_sysgov_deep12_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F342-346-deep12");
 
     // 1. 协议版本化：头部带版本、同版本放行、异版本显性拒绝。

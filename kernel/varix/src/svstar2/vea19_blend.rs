@@ -83,6 +83,7 @@
 //!
 //! 逻辑 tick 注入，零墙钟；全部确定性算法、零IO，保证回归可复现。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;

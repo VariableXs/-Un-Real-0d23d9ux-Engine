@@ -10,8 +10,9 @@
 //! ④ 两级语义断「内容层永不产出 LenientParsed」；
 //! ⑤ 拒绝三要素断 `message`/`hint` **非空**（只断码非空时空诊断仍全绿）。
 
-use alloc::string::String;
+use alloc::format;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

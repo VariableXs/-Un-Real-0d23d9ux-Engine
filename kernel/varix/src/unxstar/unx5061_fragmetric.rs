@@ -8,11 +8,11 @@
 //! （extents/ideal 归一化千分位）+ filefrag 语义对照 + 注入核
 //! （口径漂移/零块除零/封账/重叠计数失真）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 /// 诊断段（0xC480 独占 0x80）。
 pub const SEG_BASE: u32 = 0xC480;

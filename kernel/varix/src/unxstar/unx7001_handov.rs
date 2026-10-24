@@ -9,12 +9,13 @@
 //! 扫描 → 齐备率 = 承接项/应承接项）+ 齐备率 100% 机检（缺项/悬空
 //! 承接全报）+ 注入核（缺节/悬空项/凭据空/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0x9200 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0x9200;
 pub const XC_HV_NOSEC: u32 = SEG_BASE + 0x01; // 缺节
 pub const XC_HV_DANGLE: u32 = SEG_BASE + 0x02; // 悬空承接项

@@ -9,6 +9,7 @@
 //! 编排层（转场时机与语义）→动效层（缓动库与打断处理——三段共用 S 域动效词典
 //! 口径）；转场不闪不晃——晕动与光敏双友好；词典违例→驳回。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

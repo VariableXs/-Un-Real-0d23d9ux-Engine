@@ -11,6 +11,7 @@
 //!
 //! 解析规则（.lnk 字段串约定，一处一事实）：`目标|参数|工作目录|图标`。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

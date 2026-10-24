@@ -5,6 +5,8 @@
 //! 画像可比性分组、卡壳点回流工单（F135/F127 生成+闭环确认）、基线
 //! 重置断点册、逐季耗时曲线与回退红标。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ecogate::{Step, StuckKind, TOTAL_BUDGET_MIN};
 
@@ -171,7 +173,7 @@ impl BaselineBook {
     }
 
     pub fn latest_baseline(&self) -> (u32, u32) {
-        *self.points.last().expect("至少一个基线")
+        self.points.last().copied().unwrap_or((0, 0))
     }
 
     /// 断点数（季报口径说明的依据）。

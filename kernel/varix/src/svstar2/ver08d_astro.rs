@@ -193,7 +193,7 @@ pub fn hour_angle(lat_mdeg: MilliDeg, decl_mdeg: MilliDeg) -> Option<MilliDeg> {
     let cos_h = (numer * 1000 / denom).clamp(-1000, 1000);
     // |cos H| 顶到 ±1000 也可能刚好有解（擦边日出），先试反余弦。
     let h = acos_fixed(cos_h as i32);
-    if cos_h.abs() >= 1000 && cos_fixed(h) != cos_h {
+    if cos_h.abs() >= 1000 && cos_fixed(h) as i64 != cos_h {
         return None;
     }
     Some(h)

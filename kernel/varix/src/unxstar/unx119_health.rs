@@ -22,9 +22,9 @@
 //! 诊断码段：0xD1（本单独占，0xD101~0xD10F）。
 //! 施工：AI · 2026-10-11。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

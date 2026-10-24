@@ -113,6 +113,7 @@
 //! （判据侧穷举本模块的 `pub fn` 名单做白名单核对），新增一个装载函数会
 //! 直接转红。这比"写一句声明"更难被绕过。
 
+use alloc::vec;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

@@ -81,12 +81,12 @@
 //! - **跨域衔接对账钩子（复用方义务——家族）**：
 //!   [`reconcile_import_graph`] 供复用方自查点名表都在图上且非墓碑。
 
+use alloc::vec;
 use crate::svstar2::veo01_arch::{CaseLedger, ClampLog, ClampNotice, StyleError};
 use crate::svstar2::veo07_rules::{self, NameIndex, Stylesheet};
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

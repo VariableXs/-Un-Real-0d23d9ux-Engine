@@ -37,6 +37,7 @@
 
 #![allow(clippy::too_many_arguments)]
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

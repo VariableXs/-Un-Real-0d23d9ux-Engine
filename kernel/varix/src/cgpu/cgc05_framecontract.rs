@@ -17,6 +17,8 @@
 //! 景三档+画质档位+硬件下限+书面报告）。账户耗时记账口径对齐 cgc04
 //! （AcctKind 五账户 ordinal 同表）。诊断码段 0x42xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 合同版本（合同文本随版本冻结——版本号即冻结标识，改动走 ADR）。

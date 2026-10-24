@@ -29,6 +29,9 @@
 //! nonce 熵 = rdrand（可用时）⊕ TSC 计数器；rdrand 不可用（QEMU 旧机型/
 //! 老 CPU）时退化为纯 TSC——演示与自测语境可接受，量产需硬件熵审计。
 
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::cpu::sync::SpinProtected;
 use crate::drivers::blk::{BlockDevice, BlockError};
 use crate::kaesgcm::{Aes256Gcm, KEY_LEN, NONCE_LEN, TAG_LEN};
@@ -246,18 +249,20 @@ fn parse_meta(raw: &[u8]) -> Option<([u8; KEY_LEN], [u8; NONCE_LEN], alloc::vec:
     Some((salt, nonce, ct, tag))
 }
 
-fn seal_blob(key: &[u8; KEY_LEN], plain: &[u8]) -> alloc::vec::Vec<u8> {
+fn seal_blob(key: &[u8; KEY_LEN], plain: &[u8]) -> Result<alloc::vec::Vec<u8>, VaultError> {
     let g = Aes256Gcm::new(key);
     let nonce = nonce_new();
     let mut ct = alloc::vec![0u8; plain.len()];
     let mut tag = [0u8; TAG_LEN];
     // 布局与桌面侧 seal 一致：nonce‖ct‖tag，AAD = MAGIC。
-    g.seal(&nonce, MAGIC, plain, &mut ct, &mut tag).expect("seal 长度已前置校验");
+    // seal 失败（缓冲布局异常）按加密面失败如实上报，不 panic。
+    g.seal(&nonce, MAGIC, plain, &mut ct, &mut tag)
+        .map_err(|_| VaultError::AuthFail)?;
     let mut out = alloc::vec::Vec::with_capacity(NONCE_LEN + ct.len() + TAG_LEN);
     out.extend_from_slice(&nonce);
     out.extend_from_slice(&ct);
     out.extend_from_slice(&tag);
-    out
+    Ok(out)
 }
 
 /// 打开封条：nonce‖ct‖tag 布局，AAD=MAGIC。损坏 → AuthFail（零明文）。
@@ -311,9 +316,17 @@ fn decode_entries(raw: &[u8]) -> Result<alloc::vec::Vec<([u8; NAME_MAX], usize, 
         let mut name = [0u8; NAME_MAX];
         name[..nlen].copy_from_slice(&raw[i..i + nlen]);
         i += nlen;
-        let size = u64::from_le_bytes(raw[i..i + 8].try_into().expect("8B"));
+        // 元数据尾 16B = size(8) + added_at(8)：越界按 AuthFail（截断 blob
+        // 与伪造 blob 同面处理），不 panic。
+        let read_u64 = |off: usize| -> Result<u64, VaultError> {
+            raw.get(off..off + 8)
+                .and_then(|s| <[u8; 8]>::try_from(s).ok())
+                .map(u64::from_le_bytes)
+                .ok_or(VaultError::AuthFail)
+        };
+        let size = read_u64(i)?;
         i += 8;
-        let added = u64::from_le_bytes(raw[i..i + 8].try_into().expect("8B"));
+        let added = read_u64(i)?;
         i += 8;
         out.push((name, nlen, EntryMeta { size, added_at: added }));
     }
@@ -362,7 +375,7 @@ pub fn init<B: BlockDevice>(store: &mut KvStore<B>, password: &[u8]) -> Result<(
     let salt = nonce_new_32();
     let key = derive(&salt, password);
     // check blob：seal(CHECK_PLAIN)，解锁时 open 比对。
-    let check = seal_blob(&key, CHECK_PLAIN);
+    let check = seal_blob(&key, CHECK_PLAIN)?;
     let mut meta = alloc::vec::Vec::with_capacity(META_LEN);
     meta.extend_from_slice(&salt);
     meta.extend_from_slice(&check);
@@ -411,7 +424,7 @@ pub fn put<B: BlockDevice>(store: &mut KvStore<B>, name: &[u8], plain: &[u8], no
     if items.len() >= MAX_ENTRIES {
         return Err(VaultError::TooManyEntries);
     }
-    let blob = seal_blob(&key, plain);
+    let blob = seal_blob(&key, plain)?;
     store.set(NS, name, &blob)?;
     let mut fixed = [0u8; NAME_MAX];
     fixed[..name.len()].copy_from_slice(name);
@@ -502,10 +515,16 @@ pub fn destroy_all<B: BlockDevice>(store: &mut KvStore<B>) -> Result<(), VaultEr
 
 /// PBKDF2-HMAC-SHA256（ksha256 底座；与桌面侧 derive_key 同参数）。
 fn derive(salt: &[u8; KEY_LEN], password: &[u8]) -> [u8; KEY_LEN] {
-    let dk = pbkdf2_sha256(password, salt, PBKDF2_ROUNDS, KEY_LEN).expect("dk_len=32 合法");
-    let mut key = [0u8; KEY_LEN];
-    key.copy_from_slice(&dk);
-    key
+    // 请求长度 = KEY_LEN（常量）：Err 分支按常量构造不可达——但仍以
+    // 总量匹配表达（零密钥会使后续 open 全部 AuthFail，不 panic 不误通过）。
+    match pbkdf2_sha256(password, salt, PBKDF2_ROUNDS, KEY_LEN) {
+        Some(d) if d.len() == KEY_LEN => {
+            let mut key = [0u8; KEY_LEN];
+            key.copy_from_slice(&d);
+            key
+        }
+        _ => [0u8; KEY_LEN],
+    }
 }
 
 fn nonce_new_32() -> [u8; KEY_LEN] {

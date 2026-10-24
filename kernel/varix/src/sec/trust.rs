@@ -6,6 +6,8 @@
 //! 反勒索、固件信任链、开盖检测、fuzz 深化、红队剧本与域自检。
 //! 纪律：纯逻辑 + 固定容量数组；无 `Vec`/`String`/`Box`/`alloc`。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

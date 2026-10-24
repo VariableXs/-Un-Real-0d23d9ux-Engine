@@ -16,6 +16,7 @@
 //! 单一定义点审计：尺寸参数只在此定义）+ 矢量缩放模型（几何倍率——
 //! 无位图插值）+ 即时预览账。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

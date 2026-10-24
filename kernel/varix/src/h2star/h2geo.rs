@@ -14,10 +14,10 @@
 //! 时间纪律延续：无时钟；全部纯函数——输入矩形与参数，输出矩形与
 //! 校验位。旋钮（缝宽 8px 等）由调用方注入，本模块不读全局状态。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 一个轴对齐矩形（整像素——布局不许出现半像素糊边）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

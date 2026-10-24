@@ -3,6 +3,7 @@
 //! 装配与跨域接口件：源池健康 → 前端数据源选择页行（F101 天气件等
 //! 消费）、当前生效源标注、全降级诚实行、插件管理页行。
 
+use alloc::vec::Vec;
 use super::f146g::{degrade, DegradedLevel};
 use crate::checks::CheckSet;
 

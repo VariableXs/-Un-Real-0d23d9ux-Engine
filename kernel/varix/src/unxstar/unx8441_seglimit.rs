@@ -3,7 +3,8 @@
 //! 注入全拒（上限阈值冻结），错误码对齐 Linux（ENOMEM/EFBIG 族），
 //! 双判据缺一即批内红灯。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB4E0;
 

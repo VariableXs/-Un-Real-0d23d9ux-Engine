@@ -1,3 +1,4 @@
+use alloc::vec;
 // unx4381 —— UNX-F4381 dup 基础语义
 // 判据原文 UNX-F4381-J1：dup 返回最小可用新 fd 且与旧 fd 指向同一 file 对象
 // （f_count+1 守恒账），新旧 fd 独立位图位（1,000 次映射核对）。
@@ -11,7 +12,6 @@
 //   * 注入核：fd 越界/重复关闭/计数漂移/封表后 dup 四类必抓。
 
 use crate::checks::CheckSet;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ── 诊断段（0xD180 独占） ─────────────────────────────────────────────

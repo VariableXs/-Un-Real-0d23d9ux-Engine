@@ -1,47 +1,50 @@
-//! UNX-F3381 · 样本库总设计（可复现死锁样本注入框架）
-//!
-//! 任务单号: UNX-F3381
-//! 标题: 样本库总设计（可复现死锁样本注入框架）
-//! 域/批: A4/G8（CoRun·UNX-A5 段｜ktest/框架/测试基建域）
-//! 册目标: 400 行（判据 J1 框架文档 + M-140 框架空转验证）
-//!
-//! 判据原文（逐字摘抄，来源《CoRun Varix STAR II · Unxreal》任务书表格）:
-//! 「UNX-F3381 | 样本库总设计（可复现死锁样本注入框架） | 400 | 骨架 |
-//!   J1：框架文档交付：样本 = 参数化场景函数（锁数/时长/时机/期望结果四参数）；M-140 框架空转验证。」
-//!
-//! 说明（锚点目录同名文件的辨析）:
-//! `_attic/.../anchors/UNX-F3381.md` 内实为 **UNX-F33810 · SAE 面体验日志埋点**，与本单无关。
-//! 本单判据以任务书表格 `| UNX-F3381 |` 行为准。
-//!
-//! 本单核心语义（四参数场景函数，逐层落地）:
-//! - **参数化场景函数**：样本 = `ScenarioFn(locks, duration, timing, expect)`，四参数构成**闭集**，
-//!   任一参数越界即 `ParamOutOfRange`，不得「就近取值」。
-//! - **可复现**：样本身份 = `fnv1a(参数四元组)`，种子只影响**注入时机序列**，
-//!   不影响参数本身——这是「同一样本在任何机器上重放同一条路径」的前提。
-//! - **样本登记 / 检索 / 淘汰**：登记册位图判重，检索按四元组精确匹配，淘汰按 LRU 序（逻辑 tick）。
-//! - **期望 vs 实际对账**：`Reconcile` 把每次执行结果与样本期望比对，
-//!   差异分类为 `DiffKind` 六态（Match/LockOrder/LockCount/Deadlock/Timing/None），
-//!   差异必须**显性分类**而非笼统判失败。
-//!
-//! 深度骨架:
-//! 常量表 / 4 核心结构（ScenarioFn、SampleBook、ExecLog、DiffBook）/
-//! 14 错误变体 / 6 辅助码 / 主状态机（合法边闭集 + 非法转换拒记）/
-//! 守恒账 `reconcile()` / append-only 环形账（`dropped` 显性）/
-//! 注入核 14/14 全拒留痕 / 冻结指纹 `fingerprint() + verify()` /
-//! `export_kv() + export_tlv()` / 确定性 `replay(seed)` / `observe(seed)` /
-//! `complexity()` 逐项性能分解（对标 Windows 同类能力写「深在哪」）。
-//!
-//! 码段声明:
-//! 本单独占诊断码段 `0x27C0 ..= 0x27FF`（`SEG_BASE = 0x27C0`，`SEG_MASK = 0x003F`）。
-//! 错误变体一码一段，逐个占段内偏移 `0x00..=0x0D`；辅助码占 `0x1C..=0x21`，
-//! 最大占用 `0x27E1`，未触及段上界 `0x27FF`。
-
 #![allow(dead_code)]
 #![allow(unused_imports)]
+use alloc::vec;
+// UNX-F3381 · 样本库总设计（可复现死锁样本注入框架）
+//
+// 任务单号: UNX-F3381
+// 标题: 样本库总设计（可复现死锁样本注入框架）
+// 域/批: A4/G8（CoRun·UNX-A5 段｜ktest/框架/测试基建域）
+// 册目标: 400 行（判据 J1 框架文档 + M-140 框架空转验证）
+//
+// 判据原文（逐字摘抄，来源《CoRun Varix STAR II · Unxreal》任务书表格）:
+// 「UNX-F3381 | 样本库总设计（可复现死锁样本注入框架） | 400 | 骨架 |
+//   J1：框架文档交付：样本 = 参数化场景函数（锁数/时长/时机/期望结果四参数）；M-140 框架空转验证。」
+//
+// 说明（锚点目录同名文件的辨析）:
+// `_attic/.../anchors/UNX-F3381.md` 内实为 **UNX-F33810 · SAE 面体验日志埋点**，与本单无关。
+// 本单判据以任务书表格 `| UNX-F3381 |` 行为准。
+//
+// 本单核心语义（四参数场景函数，逐层落地）:
+// - **参数化场景函数**：样本 = `ScenarioFn(locks, duration, timing, expect)`，四参数构成**闭集**，
+//   任一参数越界即 `ParamOutOfRange`，不得「就近取值」。
+// - **可复现**：样本身份 = `fnv1a(参数四元组)`，种子只影响**注入时机序列**，
+//   不影响参数本身——这是「同一样本在任何机器上重放同一条路径」的前提。
+// - **样本登记 / 检索 / 淘汰**：登记册位图判重，检索按四元组精确匹配，淘汰按 LRU 序（逻辑 tick）。
+// - **期望 vs 实际对账**：`Reconcile` 把每次执行结果与样本期望比对，
+//   差异分类为 `DiffKind` 六态（Match/LockOrder/LockCount/Deadlock/Timing/None），
+//   差异必须**显性分类**而非笼统判失败。
+//
+// 深度骨架:
+// 常量表 / 4 核心结构（ScenarioFn、SampleBook、ExecLog、DiffBook）/
+// 14 错误变体 / 6 辅助码 / 主状态机（合法边闭集 + 非法转换拒记）/
+// 守恒账 `reconcile()` / append-only 环形账（`dropped` 显性）/
+// 注入核 14/14 全拒留痕 / 冻结指纹 `fingerprint() + verify()` /
+// `export_kv() + export_tlv()` / 确定性 `replay(seed)` / `observe(seed)` /
+// `complexity()` 逐项性能分解（对标 Windows 同类能力写「深在哪」）。
+//
+// 码段声明:
+// 本单独占诊断码段 `0x27C0 ..= 0x27FF`（`SEG_BASE = 0x27C0`，`SEG_MASK = 0x003F`）。
+// 错误变体一码一段，逐个占段内偏移 `0x00..=0x0D`；辅助码占 `0x1C..=0x21`，
+// 最大占用 `0x27E1`，未触及段上界 `0x27FF`。
+
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 
 extern crate alloc;
 
-use alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 // ===========================================================================
 // 1. 常量表

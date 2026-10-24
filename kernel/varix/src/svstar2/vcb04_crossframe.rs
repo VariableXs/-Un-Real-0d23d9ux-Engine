@@ -47,9 +47,9 @@
 //! `now >= deadline` 且仍 Pending 即 Lost——恰 N-1 帧仍在等、恰 N 帧判丢
 //! （边界双向判据钉死，防 >⇄>= 变异）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

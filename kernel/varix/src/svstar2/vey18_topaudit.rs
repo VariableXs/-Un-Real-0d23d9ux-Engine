@@ -9,6 +9,7 @@
 //! ——第二十二位域入族对齐；对账非冻结→阻断；映射缺/重→修正留痕；回执未达→
 //! 催办限期。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

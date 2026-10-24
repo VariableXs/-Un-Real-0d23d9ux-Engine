@@ -19,10 +19,10 @@
 //! 诊断码段：0x56（本单独占，0x5601~0x560F）。
 //! 施工：AI-WB2 · 2026-10-11。
 
+use alloc::vec::Vec;
 use alloc::collections::VecDeque;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // §0 诊断码闭集（0x56 段独占）

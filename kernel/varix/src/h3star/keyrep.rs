@@ -14,6 +14,8 @@
 //! 的模型面：逐键计时验证延迟与速率）+ 覆盖面登记账（终端覆盖文档化）
 //! + 组件遵循审计（自设重复=0）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::hbase::PersistKv;

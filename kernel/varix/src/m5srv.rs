@@ -3,6 +3,8 @@
 //! 服务从"能跑"到"可运营"：契约、灰度、热升级、SLA。
 //! 全部为纯逻辑 + 固定容量数组（无 Vec/String/Box），no_std 安全。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

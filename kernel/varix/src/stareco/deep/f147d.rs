@@ -4,6 +4,8 @@
 //! 分步呈现）、清理审计日志（临时态写点逐条对账）、多盘冲突提示
 //! 文案、热插拔检测节拍。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::fnv1a64;
 use crate::stareco::syncroam::{adaptive_crop, RoamChoice, RoamSession, SYNC_TARGET_SECONDS};

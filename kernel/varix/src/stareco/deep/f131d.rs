@@ -5,6 +5,8 @@
 //! 冲突统一窗内处理）、90 天无响应维护分支公告（fork 责任三件）、
 //! 回馈记录公开页数据源（F130 分区）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::upstream::{PrState, UpstreamBook, UpstreamPriority, UpstreamPr};
 

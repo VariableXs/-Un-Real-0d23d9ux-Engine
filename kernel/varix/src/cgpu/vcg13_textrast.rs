@@ -27,11 +27,11 @@
 //! 诊断码 0xED 段五码互异：`E_TR_IF_VERSION` / `E_TR_LSB_DRIFT` /
 //! `E_TR_LOAD_INVALID` / `E_TR_CACHE_MISS_ONLY` / `E_TR_AA_UNKNOWN`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

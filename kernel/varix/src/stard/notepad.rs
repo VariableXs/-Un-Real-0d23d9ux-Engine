@@ -20,6 +20,9 @@
 //! 存储面以 `MemStore`（内存文件 + 可注入故障：断电/盘满）建模——原子写
 //! 协议在模型面上百次断电注入可复现，宿主测试确定。
 
+use alloc::format;
+use alloc::string::ToString;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

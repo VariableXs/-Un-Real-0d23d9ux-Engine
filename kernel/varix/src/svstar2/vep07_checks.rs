@@ -26,6 +26,7 @@
 //! 三条编译规则的**成功路径**也断，但重点在**该拒的确实拒了、拒绝时给出可定位信息**。
 //! 一个「什么都拒」的实现骗不过副作用断言（节点数守恒、边类型分布）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vep03_token::Lane;
 use crate::svstar2::vep05_orch::{compile, CompileParams, EdgeKind};
@@ -33,7 +34,6 @@ use crate::svstar2::vep07_compose::*;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

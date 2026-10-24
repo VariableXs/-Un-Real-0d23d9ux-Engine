@@ -37,6 +37,7 @@
 //!
 //! 无索引、无 `unwrap`；换算全 `u64` 防溢出。测试区除外。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

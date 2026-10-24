@@ -16,6 +16,8 @@
 //! 合内（页面在树上不在树外，承接不是口头声明）；码段判据 `!=` 防自
 //! 判死；判据区零 panic 面（索引全部前置长度短路保护）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use alloc::string::ToString;
 
 use crate::checks::CheckSet;

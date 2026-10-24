@@ -48,6 +48,7 @@
 //! 报"环境粒子已降级"而非黑箱掉帧——域本色核心「价签可见即诚实承诺」
 //! 的降级侧延伸：预算紧了诚实说紧了、减了什么诚实说减了什么。
 
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 

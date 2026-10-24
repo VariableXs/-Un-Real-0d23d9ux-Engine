@@ -3,6 +3,8 @@
 //! 虚拟内存从"能映射"到"可审计"：账本、缺页分类、大页阶梯、COW 稽核、
 //! 反向映射、压力谱线、TLB 击落、对账与年报。
 //! 全部为纯逻辑 + 固定容量数组（无 Vec/String/Box），no_std 安全。
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use crate::checks::CheckSet;
 
@@ -1843,7 +1845,9 @@ impl VmYearbook {
     }
 
     /// 洞察：快照中占比最大的字段。
-    pub snapshot_dominant as fn(&VmYearbook) -> usize = Self::dominant_field;
+    pub fn snapshot_dominant(&self) -> usize {
+        self.dominant_field()
+    }
 }
 
 impl VmYearbook {

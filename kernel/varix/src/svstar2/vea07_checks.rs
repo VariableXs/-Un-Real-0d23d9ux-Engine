@@ -9,10 +9,12 @@
 //! - V01 能力协商复用 → `A07-对接-*`
 //! - 位图读屏可达 → `A07-读屏-*`
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::vea07_caps::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
+use alloc::format;
 use alloc::string::ToString;
 
 /// 标准测试输入：自报 5 项、实测 4 项（其中 1 项虚报 + 1 项漏报）。
@@ -213,7 +215,6 @@ pub fn run_vea07_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

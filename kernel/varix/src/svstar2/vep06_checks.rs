@@ -27,6 +27,7 @@
 //! 重点是"该拒的确实拒了、且拒绝时零副作用"（断长度不变、断检索结果不变）。
 //! 一个「什么都拒」的实现能骗过所有正向断言，却骗不过这些副作用断言。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vep03_token::Lane;
 use crate::svstar2::vep05_orch::OrchGraph;
@@ -34,7 +35,6 @@ use crate::svstar2::vep06_motion::*;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 构造一条两节点序列图（判据语料共用起手式）。

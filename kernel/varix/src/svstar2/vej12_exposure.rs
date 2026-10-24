@@ -47,10 +47,14 @@
 //! 4. **"VE-V 边界"**。若只写注释，边界漂移没人管。必须断**两域参数域
 //!    不相交**（J 管场景线性亮度→TM 前曝光；V 管显示 gamma/系统亮度——
 //!    声明表逐行 + 域交集为空的可判定形态）。
+use alloc::vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+
+use crate::float::FloatExt;
 
 // ===========================================================================
 // 一、诊断码（自建，J 域独占段 0x33xx——0x31=F1810、0x32=F2016、0x39=F1811）
@@ -192,8 +196,8 @@ pub const SATURATION_WHITE: f32 = 1.0e4;
  */
 pub fn luminance_stats(samples: &[f32]) -> LumStats {
     // 直方图两级：bin 域 [1e-4, 1e4] 对数均分 64 桶
-    let lo_ln = SATURATION_BLACK.ln();
-    let hi_ln = SATURATION_WHITE.ln();
+    let lo_ln = SATURATION_BLACK.m_ln();
+    let hi_ln = SATURATION_WHITE.m_ln();
     let mut hist = [0u32; HIST_BINS];
     let mut sum_ln = 0.0f32;
     let mut n = 0usize;
@@ -203,14 +207,14 @@ pub fn luminance_stats(samples: &[f32]) -> LumStats {
         let s = if s.is_finite() && s > 0.0 { s } else { SATURATION_BLACK };
         all_black &= s <= SATURATION_BLACK;
         all_white &= s >= SATURATION_WHITE;
-        let ln = s.max(SATURATION_BLACK).ln();
+        let ln = s.max(SATURATION_BLACK).m_ln();
         sum_ln += ln;
         n += 1;
         let t = (ln - lo_ln) / (hi_ln - lo_ln);
         let bin = (t.clamp(0.0, 0.999_999) * HIST_BINS as f32) as usize;
         hist[bin] += 1;
     }
-    let log_avg = if n == 0 { SATURATION_BLACK } else { (sum_ln / n as f32).exp() };
+    let log_avg = if n == 0 { SATURATION_BLACK } else { (sum_ln / n as f32).m_exp() };
     // 峰值 bin 的代表亮度（bin 中心）
     let (best, _) = hist
         .iter()
@@ -218,7 +222,7 @@ pub fn luminance_stats(samples: &[f32]) -> LumStats {
         .max_by_key(|(_, c)| **c)
         .unwrap_or((0, &0));
     let peak = ((best as f32 + 0.5) / HIST_BINS as f32) * (hi_ln - lo_ln) + lo_ln;
-    let peak = peak.exp();
+    let peak = peak.m_exp();
     LumStats {
         log_avg_lum: log_avg,
         peak_lum: peak,
@@ -358,7 +362,7 @@ impl ExposureSystem {
         // 目标 EV：把统计亮度对齐到目标中位（log2(target/log_avg)）
         let target = clamp_ev(
             (self.auto.target_median.max(SATURATION_BLACK) / stats.log_avg_lum.max(SATURATION_BLACK))
-                .log2(),
+                .m_log2(),
         );
         // 频闪检测（振荡特征 = 大跳 **且方向交替**）：
         // - 同向持续大跳 = 合法场景迁移（推近目标），**不计**振荡——
@@ -514,8 +518,8 @@ pub mod checks {
             let grad: Vec<f32> = (0..32).map(|i| 0.1 + 0.9 * i as f32 / 31.0).collect();
             let st = luminance_stats(&grad);
             let indep: f32 =
-                grad.iter().map(|v| v.max(SATURATION_BLACK).ln()).sum::<f32>() / 32.0;
-            let indep = indep.exp();
+                grad.iter().map(|v| v.max(SATURATION_BLACK).m_ln()).sum::<f32>() / 32.0;
+            let indep = indep.m_exp();
             let close = (st.log_avg_lum - indep).abs() < 1e-5;
             // 对数平均 ≤ 算术平均（Jensen 不等式——统计正确性的数学性质）
             let arith: f32 = grad.iter().sum::<f32>() / 32.0;

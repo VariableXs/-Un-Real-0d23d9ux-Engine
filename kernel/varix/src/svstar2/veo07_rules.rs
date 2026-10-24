@@ -89,9 +89,9 @@
 //! `[i]` / `unwrap()` / `expect()` 只出现在 `#[cfg(test)]`；
 //! 生产路径一律 `get`/`iter`/`match` 记红。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::veo01_arch::{CaseLedger, ClampLog, ClampNotice, StyleError};

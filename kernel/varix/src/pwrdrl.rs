@@ -20,9 +20,10 @@
 //! 半写块面（断电瞬间一部分新一部分旧）经账本重放必须收敛到
 //! "最近完整检查点的盘面"；收敛失败 = 结构损坏 = 违例。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 // no_std 态走 alloc 的 Vec/vec!（kvsrv/power_shutdown 同范式，两态通吃）。
-use alloc::vec::{self, Vec};
 
 /// 断电窗口（Q41）：最近五秒未落 = 诚实文案的数据面。
 pub const POWER_LOSS_WINDOW_MS: u32 = 5_000;

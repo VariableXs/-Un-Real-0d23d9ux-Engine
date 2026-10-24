@@ -52,10 +52,10 @@
 //! 为判据（泳道→坍缩由同一 bool 驱动，改任一边都抓不到），必须**直接查
 //! 编译产物字段**（duration/offset/stage/实例数）。
 
+use alloc::vec;
 use alloc::string::String;
 // `vec!` 宏与 `Vec` 类型是两个命名空间：导入了 `Vec` 并不等于能用 `vec![]`，
 // 真 crate 根（lib.rs）无 `#[macro_use] extern crate alloc`，故此处须显式导入宏。
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

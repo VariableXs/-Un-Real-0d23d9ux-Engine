@@ -18,8 +18,8 @@
 //! `detail` 用 `&'static str`（内核 `CheckSet::add` 只存 `&'static str`），
 //! 失败细节由单元测试承担——自检只负责绿/红 + 稳定短码。
 
-use alloc::vec::Vec;
 use alloc::vec;
+use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
 use crate::svstar2::vei05_font as ft;

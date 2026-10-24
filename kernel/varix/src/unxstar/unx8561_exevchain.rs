@@ -2,7 +2,10 @@
 //! 验收锚点：UNX-F8561-J1 execve 全链联测档——C2 分发入口 → C1 装载 → C5 ld.so
 //! → main 四段联签单登记，fake 分发下联测断言 10/10，联签待收口登记。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB5C0;
 

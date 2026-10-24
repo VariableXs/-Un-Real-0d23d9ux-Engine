@@ -973,8 +973,10 @@ impl TaskUsage {
         }
         for i in 1..self.n {
             let key = order[i];
+            // 缺槽键按 0 降序沉底（不 panic）。
+            let key_v = self.rows[key].as_ref().map_or(0, |r| r.1);
             let mut j = i;
-            while j > 0 && self.rows[order[j - 1]].unwrap().1 < self.rows[key].unwrap().1 {
+            while j > 0 && self.rows[order[j - 1]].as_ref().map_or(0, |r| r.1) < key_v {
                 order[j] = order[j - 1];
                 j -= 1;
             }
@@ -1174,7 +1176,8 @@ impl PinReorder {
         if from >= self.n || to >= self.n || from == to {
             return false;
         }
-        let item = self.order[from].take().expect("from 位必有");
+        // from < self.n 已前置校验；缺位（不可达）按拖拽失败诚实返回。
+        let Some(item) = self.order[from].take() else { return false };
         if from < to {
             // 前移：中间项整体前挪。
             for k in from..to {

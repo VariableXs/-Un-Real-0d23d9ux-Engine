@@ -2,6 +2,7 @@
 //!
 //! **判据（锚点原文）**：价值采样、DSL 声明、自适应复用、三组、判据。
 
+use alloc::vec::Vec;
 use super::cgp03_sampling::{
     parse_policies, Decision, SamplingEngine, SamplingAction, SignalCost, DslError, LoadTier,
     ADAPT_UPTIFT, DSL_GRAMMAR, REUSE_LINES, SIGNAL_MAX,

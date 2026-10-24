@@ -5,6 +5,8 @@
 //! 闸门审计记录。本文件是 F150「域就是打勾标准」判据的机器总装——
 //! 数据来自 wc 实数（生成命令见账本），一处一事实。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f150g::completion_per_mille;
 use crate::checks::CheckSet;
 

@@ -9,11 +9,11 @@
 //! frag/subvol/squash/journal 十二槽落位）+ 消费端对接账 + 签名逐项一致
 //! 断言 + 注入核（重复注册/未知 fs/签名漂移/树槽缺失）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 /// 诊断段（0xC100 独占 0x80）。
 pub const SEG_BASE: u32 = 0xC100;

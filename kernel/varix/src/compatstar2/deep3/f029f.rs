@@ -11,6 +11,8 @@
 //! 拓扑确定性摘要——域内口径）。零堆纪律：定长 4 屏快照 + 定长 8 历史，
 //! 无 Vec/String/Box/format!，错误一律 Err 或计数账面，零静默。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 快照容量（4 屏预留——多屏期扩容不动契约）。

@@ -13,9 +13,10 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::format;
+use alloc::vec;
 use super::veq02_graph::*;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

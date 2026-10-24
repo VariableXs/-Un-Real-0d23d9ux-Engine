@@ -8,6 +8,7 @@
 //! 序/名称序）；结束任务确认链；三源对账（本界面/F354 托盘/F291 耗电
 //! 排行同读数误差容差 3%——读数由调用方注入对拍）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::uni1::ubase::{Chord, HotkeyTable, MOD_CTRL, MOD_SHIFT};
 

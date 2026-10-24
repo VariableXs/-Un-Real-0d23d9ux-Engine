@@ -7,13 +7,14 @@
 //! - 降级链联动 → `B05-降级-*`
 //! - 协商耗时 ≤50ms → `B05-耗时-*`
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::vea07_caps::StandardBitmap;
 use super::veb02_proto::CTRL_HDR_LEN;
 use super::veb05_virgl::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
-use alloc::vec::Vec;
+use alloc::format;
 
 /// 构造一份 virgl capset 载荷（checks 复用）。
 fn capset_payload(gl_major: u32, gl_minor: u32, max_tex: u32, max_samples: u32, fmt_mask: u64) -> Vec<u8> {
@@ -281,7 +282,6 @@ pub fn run_veb05_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

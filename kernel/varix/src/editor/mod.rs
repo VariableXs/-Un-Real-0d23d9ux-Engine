@@ -600,7 +600,8 @@ impl UndoStack {
             return false;
         }
         self.top -= 1;
-        let op = self.ops[self.top].take().unwrap();
+        // 栈顶之下必有操作（不变量）；缺位（不可达）按无操作诚实返回。
+        let Some(op) = self.ops[self.top].take() else { self.top += 1; return false };
         if op.is_insert {
             buf.delete_at(op.pos, op.n);
         } else {
@@ -617,7 +618,7 @@ impl UndoStack {
             return false;
         }
         self.rtop -= 1;
-        let op = self.redo[self.rtop].take().unwrap();
+        let Some(op) = self.redo[self.rtop].take() else { self.rtop += 1; return false };
         if op.is_insert {
             buf.insert_at(op.pos, &op.bytes[..op.n]);
         } else {

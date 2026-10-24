@@ -21,8 +21,9 @@
 //!
 //! 依赖锚点：F123（关于本机页）、F128（开放 JSON）、F130（组件登记册）、F190（双槽态）。
 
-use crate::checks::CheckSet;
+use alloc::format;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

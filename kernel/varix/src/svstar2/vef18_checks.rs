@@ -12,6 +12,7 @@
 //! Ok，再谈容错——否则「全拒」也能假绿）；**零 panic 面**（取值失败
 //! 一律 match 记红，不 unwrap 不越界下标）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::gfx::meshquant::{
     component_step, compute_bounds, dequantize_position, quantize_position, QuantBits, QuantDiag,
@@ -19,7 +20,6 @@ use crate::gfx::meshquant::{
 use crate::gfx::meshvalidate::{triple_scan, ScanLimits, TripleScan};
 use crate::svstar2::vef18_geofuzz as fz;
 use crate::svstar2::vem09_import::{GltfAnimDoc, GltfInterp, MappingTable, SamplerRef};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // 判据侧写死期望（不从被测反推）。

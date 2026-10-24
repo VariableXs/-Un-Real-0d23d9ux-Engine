@@ -12,6 +12,8 @@
 //! 时间预算）分工——彼管每帧毫秒怎么分、此管链路 MB/s 怎么分。全量记账复用
 //! F1122 理念（每笔留痕 seq 单调）。诊断码段 0x40xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 // 带宽物理口径：声明式复用 cgi02_pciebw（F1282）——不重定义，单一事实源。

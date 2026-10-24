@@ -26,6 +26,8 @@
 //! **依赖锚点**：F227/F124（Enter 曲线与动画总谱——经 h1base 取值）、
 //! F245（动效策略注入）、F226（层级——角标指示层不遮内容）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::h1star::h1base::{Curve, MotionPolicy, Rect};
 use crate::star::sbase::RingLog;

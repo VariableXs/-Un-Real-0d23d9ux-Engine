@@ -19,6 +19,8 @@
 //!
 //! 零堆纪律：类注册表定长、对象表定长，无 Vec/String/Box/format!。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

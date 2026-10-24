@@ -3,7 +3,8 @@
 //! 覆盖计数留账）；冷层：满段落"文件段"（32 段定容 512 条，满则滚动开新段，段号留账）；
 //! 容量模型：16 盘×30 天×每天 96 采样 = 46,080 条可预排且不溢出。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7B00;
 

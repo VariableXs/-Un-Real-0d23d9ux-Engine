@@ -22,6 +22,7 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::veu01_arch::Severity;
 use super::veu02_model::DomainTag;
 use super::veu03_registry::{standard_registry, ContractRegistry};
@@ -30,7 +31,6 @@ use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::boxed::Box;
 

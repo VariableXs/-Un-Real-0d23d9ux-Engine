@@ -54,9 +54,11 @@
 //!
 //! 零 panic 面、零 IO、无全局可变状态、全合成输入无隐私面。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use crate::svstar2::ven08_debug::TuneChannel;
 
 use super::ven02_tree::{
     self, assert_invariants, insert, ControlTree, PropertyKey, SingleParentPolicy, TreeDiagCode,
@@ -157,9 +159,10 @@ pub const fn fnv1a64(bytes: &[u8]) -> u64 {
 // ---------------------------------------------------------------------------
 
 /// 树畸形四类（锚点原文：环/孤儿/超深/超宽）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TreeMalform {
     /// 祖先链成环（F2602 不变量对抗）。
+    #[default]
     Cycle,
     /// 无父节点（可达性对抗——树 API 注册制造不出，攻击面在导入层）。
     Orphan,
@@ -190,11 +193,12 @@ impl TreeMalform {
 }
 
 /// 段一攻击结论（三态：显性拒绝 / 放行 / 检出——放行给合法面用）。
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum AttackVerdict {
     /// 被显性拒绝（拒绝码——校验拒绝语义）。
     Rejected(String),
     /// 放行且防护生效（性能防护语义：分页/有界）。
+    #[default]
     Allowed,
     /// 静默通过（**P0 语义**：拦截失守）。
     Leaked,
@@ -333,9 +337,10 @@ pub fn run_tree_malform_attacks() -> [(TreeMalform, AttackVerdict, u64); 4] {
 // ---------------------------------------------------------------------------
 
 /// 序列化畸形四类（锚点原文：结构损坏/类型错误/绑定路径注入/深度攻击）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SerdeMalform {
     /// JSON 结构损坏（截断/括号错配——解析层拦截）。
+    #[default]
     BrokenJson,
     /// 类型错误（root 给数字——形状层拦截）。
     WrongType,
@@ -353,6 +358,16 @@ impl SerdeMalform {
         SerdeMalform::BindPathInjection,
         SerdeMalform::NestAttack,
     ];
+
+    /// 判据文案用短名。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SerdeMalform::BrokenJson => "BrokenJson",
+            SerdeMalform::WrongType => "WrongType",
+            SerdeMalform::BindPathInjection => "BindPathInjection",
+            SerdeMalform::NestAttack => "NestAttack",
+        }
+    }
 
     /// 对抗语料（每类一段畸形 JSON——确定性字面量，不是随机生成：
     /// 随机语料让「谁红了」不可复现，固字面量才进案例库）。
@@ -401,7 +416,8 @@ fn serde_corpus_dynamic(kind: SerdeMalform) -> String {
 /// （`parse_and_validate` 出违规）。全部走 `parse_and_validate` 一条口，
 /// 「拦截 = Err 或违规非空」，静默通过 = `Leaked`（P0）。
 pub fn run_serde_attacks() -> [(SerdeMalform, AttackVerdict, u64); 4] {
-    let mut out = [(SerdeMalform::BrokenJson, AttackVerdict::Leaked, 0u64); 4];
+    let mut out: [(SerdeMalform, AttackVerdict, u64); 4] =
+        SerdeMalform::ALL.map(|k| (k, AttackVerdict::Leaked, 0u64));
     let mut k = 0usize;
     while k < SerdeMalform::ALL.len() {
         let kind = SerdeMalform::ALL[k];
@@ -486,6 +502,7 @@ pub fn run_mixed_storm(seed: u64) -> MixedStormReport {
     let mut ledger = RouteLedger::new();
     let mut engine = PropEngine::new();
     let mut bag = DiagBag::new();
+    let mut channel = TuneChannel::default();
     let mut seq: u64 = 0;
 
     let mut step = 0usize;
@@ -503,7 +520,7 @@ pub fn run_mixed_storm(seed: u64) -> MixedStormReport {
             }
         };
         seq += 1;
-        let ack = apply_tune(&mut mirror, &mut engine, TuneCommand { seq, op }, &mut bag);
+        let ack = apply_tune(&mut channel, &mut mirror, TuneCommand { seq, op }, &mut bag);
         if ack.is_applied() {
             rep.tune_applied += 1;
         } else {
@@ -523,9 +540,15 @@ pub fn run_mixed_storm(seed: u64) -> MixedStormReport {
         // —— 每 4 步：提交一帧增量 + 序列化一轮。
         if (step + 1) % 4 == 0 {
             let apply_rep = incr.commit_frame(&mirror.tree, &mut ledger);
-            rep.incr_applied += apply_rep.commit.applied;
+            rep.incr_applied += apply_rep.commit.applied as u32;
             let doc = export_snapshot(&mirror.tree, &engine);
-            match doc.and_then(|d| to_json(&d).and_then(|text| parse_and_validate(&text))) {
+            let outcome = match doc {
+                Ok(d) => to_json(&d)
+                    .map_err(|e| e.message)
+                    .and_then(|text| parse_and_validate(&text).map_err(|e| e.message)),
+                Err(e) => Err(e),
+            };
+            match outcome {
                 Ok((_d2, report, shape)) => {
                     rep.serde_rounds += 1;
                     if !report.all_passed() || !shape.is_empty() {
@@ -548,7 +571,7 @@ pub fn run_mixed_storm(seed: u64) -> MixedStormReport {
     }
     // 收尾帧：队列收敛（提交后队列必须清空）。
     let apply_rep = incr.commit_frame(&mirror.tree, &mut ledger);
-    rep.incr_applied += apply_rep.commit.applied;
+    rep.incr_applied += apply_rep.commit.applied as u32;
     if !invariants_green(&mirror.tree) {
         rep.invariant_reds += 1;
     }
@@ -560,7 +583,7 @@ fn export_snapshot(tree: &ControlTree, engine: &PropEngine) -> Result<TreeDoc, S
     let nodes = collect_nodes(tree).map_err(|d| d.message)?;
     let props = collect_props(engine, tree).map_err(|d| d.message)?;
     let binds = collect_binds(tree).map_err(|d| d.message)?;
-    let mut doc = TreeDoc::new(tree.root_id());
+    let mut doc = TreeDoc::new(tree.root());
     doc.version = CUR_VERSION;
     doc.nodes = nodes;
     doc.props = props;
@@ -737,9 +760,11 @@ pub fn run_tree_fuzz(seed: u64, now_ms: u64) -> (FuzzReport, CaseStore) {
     let mut store = CaseStore::new();
     let mut k = 0usize;
     while k < report.tree_attacks.len() {
-        let (kind, verdict, digest) = report.tree_attacks[k];
+        let kind = report.tree_attacks[k].0;
+        let verdict = &report.tree_attacks[k].1;
+        let digest = report.tree_attacks[k].2;
         let expected = match verdict {
-            AttackVerdict::Rejected(ref m) => format!("树畸形 {} 显性拒绝：{}", kind.as_str(), m),
+            AttackVerdict::Rejected(m) => format!("树畸形 {} 显性拒绝：{}", kind.as_str(), m),
             AttackVerdict::Allowed => format!("树畸形 {} 防护生效（分页/深度上限）", kind.as_str()),
             AttackVerdict::Leaked => format!("树畸形 {} 静默通过（P0）", kind.as_str()),
         };
@@ -752,9 +777,11 @@ pub fn run_tree_fuzz(seed: u64, now_ms: u64) -> (FuzzReport, CaseStore) {
     }
     let mut k = 0usize;
     while k < report.serde_attacks.len() {
-        let (kind, verdict, digest) = report.serde_attacks[k];
+        let kind = report.serde_attacks[k].0;
+        let verdict = &report.serde_attacks[k].1;
+        let digest = report.serde_attacks[k].2;
         let expected = match verdict {
-            AttackVerdict::Rejected(ref m) => format!("畸形 JSON {} 显性拒绝：{}", kind.as_str(), m),
+            AttackVerdict::Rejected(m) => format!("畸形 JSON {} 显性拒绝：{}", kind.as_str(), m),
             AttackVerdict::Allowed => format!("畸形 JSON {} 防护生效", kind.as_str()),
             AttackVerdict::Leaked => format!("畸形 JSON {} 静默通过（P0）", kind.as_str()),
         };
@@ -795,8 +822,9 @@ pub fn run_ven09_checks() -> CheckSet {
         let mut ok = TreeMalform::ALL.len() == 4;
         let mut i = 0usize;
         while i < report.tree_attacks.len() {
-            let (kind, verdict, _) = report.tree_attacks[i];
-            if TreeMalform::ALL[i] != kind || !verdict_ok(&verdict) {
+            let kind = report.tree_attacks[i].0;
+            let verdict = &report.tree_attacks[i].1;
+            if TreeMalform::ALL[i] != kind || !verdict_ok(verdict) {
                 ok = false;
             }
             i += 1;
@@ -866,8 +894,9 @@ pub fn run_ven09_checks() -> CheckSet {
         let mut ok = SerdeMalform::ALL.len() == 4;
         let mut i = 0usize;
         while i < report.serde_attacks.len() {
-            let (kind, verdict, _) = report.serde_attacks[i];
-            if SerdeMalform::ALL[i] != kind || !verdict_ok(&verdict) {
+            let kind = report.serde_attacks[i].0;
+            let verdict = &report.serde_attacks[i].1;
+            if SerdeMalform::ALL[i] != kind || !verdict_ok(verdict) {
                 ok = false;
             }
             i += 1;

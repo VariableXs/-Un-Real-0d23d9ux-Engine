@@ -10,6 +10,7 @@
 //!   * an outer ring of radius `RING_R` with a gap cut at the top, and
 //!   * an inner "V" stroke pair — the Varix wordmark reduced to two strokes.
 
+use alloc::vec;
 use crate::fb::{Color, Surface};
 
 /// Top of the mark's vertical gradient (near-white).

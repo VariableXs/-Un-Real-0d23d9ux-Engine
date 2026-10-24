@@ -2,8 +2,24 @@
 //! 验收锚点：UNX-F1884-J1 迁移×击落联合回归断言全过（迁移后 mm
 //! 活跃 mask 翻转+击落必达 10/10），与 F1729/F1867 协同语义一致，
 //! 双判据缺一即批内红灯。
+use alloc::vec::Vec;
+use alloc::string::String;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+/// 本地 LCG 线性同余（CI 确定性引擎——同种子同序列；与各域单文件惯例一致）。
+pub struct Lcg(u64);
+impl Lcg {
+    pub fn new(seed: u64) -> Self {
+        Lcg(seed)
+    }
+    pub fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0
+    }
+    pub fn below(&mut self, n: u64) -> u64 {
+        self.next() % n
+    }
+}
+
 
 pub const SEG_BASE: u16 = 0xB950;
 

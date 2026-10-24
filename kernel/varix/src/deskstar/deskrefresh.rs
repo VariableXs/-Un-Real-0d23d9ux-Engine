@@ -21,11 +21,11 @@
 //! 实装口径：刷新状态机（快照对比增量化）+ 微闪账 + 防抖合并 +
 //! 缓存自愈账 + 诚实计数账。时间注入式。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use crate::deskstar::dbase::{budget_ok, Debouncer};
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 

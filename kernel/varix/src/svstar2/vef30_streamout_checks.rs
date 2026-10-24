@@ -17,6 +17,7 @@
 //! `>`⇄`>=` 等价变异；先断合法管线过再断重叠拒（反恒假门禁）；先断
 //! 基线输出非空再断一致（恒真门禁防护）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vef30_streamout as so;
 use alloc::vec::Vec;

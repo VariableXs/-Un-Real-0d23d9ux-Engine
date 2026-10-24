@@ -7,16 +7,16 @@
 //! ABI 联动、下游验证。
 //!
 //! **设计定盘**：六算子族闭集（栅格化/混合/文字/图像/编解码/工具），
-/// 每算子登记（族别 + 签名指纹 + 稳定性级）。稳定性三级闭集：Stable
-/// （十年承诺）/ Provisional（一版承诺）/ Experimental（无承诺，冻结
-/// 时 Experimental 算子必须全量降级为 Provisional——冻结面不允许无承诺
-/// 项）。语义测试锁定 = 每算子配测试指纹（无测试指纹的算子不得冻结）。
-/// ABI 联动 = 冻结集指纹与 F0118 ABI 账的兼容核验入口（基线指纹集 =
-/// 本册冻结集的投影）。下游验证 = 下游消费者登记引用，冻结后引用指纹
-/// 比对。
-///
-/// 诊断码段 0x01B0~0x01BF（0x01 段第 12 子区）。
-/// no_std + alloc 零 unwrap 零 expect 零 panic 面零 IO 零墙钟零浮点。
+//! 每算子登记（族别 + 签名指纹 + 稳定性级）。稳定性三级闭集：Stable
+//! （十年承诺）/ Provisional（一版承诺）/ Experimental（无承诺，冻结
+//! 时 Experimental 算子必须全量降级为 Provisional——冻结面不允许无承诺
+//! 项）。语义测试锁定 = 每算子配测试指纹（无测试指纹的算子不得冻结）。
+//! ABI 联动 = 冻结集指纹与 F0118 ABI 账的兼容核验入口（基线指纹集 =
+//! 本册冻结集的投影）。下游验证 = 下游消费者登记引用，冻结后引用指纹
+//! 比对。
+//! 
+//! 诊断码段 0x01B0~0x01BF（0x01 段第 12 子区）。
+//! no_std + alloc 零 unwrap 零 expect 零 panic 面零 IO 零墙钟零浮点。
 
 use alloc::vec::Vec;
 
@@ -321,5 +321,54 @@ impl ApiFreezeBook {
             .filter(|f| !self.ops.iter().any(|o| o.fam == *f))
             .collect();
         (exp, missing)
+    }
+}
+
+
+// ===== 深化块（cga125_apifreeze · API 冻结深化审计）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_apifreeze {
+    //! API 冻结深化审计 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 冻结族签名复审：族表逐项 FNV-1a 64 位复算，任何一项为 0 视为未冻结。
+    pub fn signature_fnv(data: &[u8]) -> u64 {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for &b in data {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        h
+    }
+
+    /// 族冻结完整性：任一签名命中零哈希即拒绝（空承诺 = 未冻结）。
+    pub fn freeze_family_complete(sigs: &[u64]) -> Result<(), u16> {
+        if sigs.is_empty() {
+            return Err(1);
+        }
+        for (i, s) in sigs.iter().enumerate() {
+            if *s == 0 {
+                return Err(2 + i as u16);
+            }
+        }
+        Ok(())
+    }
+
+    /// 版本前进单调性：新版本号必须严格大于旧版本号（回退 = 破坏冻结承诺）。
+    pub fn version_forward_only(old: u32, new: u32) -> Result<(), u16> {
+        if new <= old {
+            return Err(64);
+        }
+        Ok(())
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0125-深化");
+        let ok = freeze_family_complete(&[signature_fnv(b"api.v1"), signature_fnv(b"api.v2")]).is_ok();
+        cs.add("签名FNV非零", ok, "");
+        cs.add("版本只进不退", version_forward_only(1, 2).is_ok() && version_forward_only(2, 1).is_err(), "");
+        cs
     }
 }

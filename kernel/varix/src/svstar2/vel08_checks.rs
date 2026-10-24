@@ -27,8 +27,8 @@
 //!    panic，看着像「变异未捕获」，实为门禁崩溃。
 //! ⑥ 变异分类先看 stdout 再看退出码（探针在 failed>0 时故意 exit(1)）。
 
-use alloc::string::String;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::vel08_pool::*;

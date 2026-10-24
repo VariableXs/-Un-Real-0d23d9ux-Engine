@@ -72,9 +72,11 @@ pub enum GreetPeriod {
 
 impl GreetPeriod {
     /// 时段判定（6:00-12:00 早 / 12:00-18:00 午后 / 其余晚）。
+    /// 界常量直写分钟值（360/720/1080 = 06:00/12:00/18:00，合法输入
+    /// 无需经 Option 校验通道，零 panic 点）。
     pub fn of(day_min: u32) -> GreetPeriod {
-        let morning = in_window(day_min, hhmm(6, 0).unwrap(), hhmm(12, 0).unwrap());
-        let afternoon = in_window(day_min, hhmm(12, 0).unwrap(), hhmm(18, 0).unwrap());
+        let morning = in_window(day_min, 360, 720);
+        let afternoon = in_window(day_min, 720, 1080);
         if morning {
             GreetPeriod::Morning
         } else if afternoon {

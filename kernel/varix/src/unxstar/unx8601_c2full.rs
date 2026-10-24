@@ -2,8 +2,11 @@
 //! 验收锚点：UNX-F8601-J1 C2 分发号面全量联测——号面表 ≥300 条注册，
 //! 分发轮转全覆盖零漏发，全量统计（通过/拒/未覆盖）三口径对账自洽，
 //! 收官断言一票否决，双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB620;
 

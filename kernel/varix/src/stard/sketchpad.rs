@@ -17,6 +17,8 @@
 //! - 异常：超大画布（>8K）→ 建议档位限制；内存压力 → 撤销栈自动收缩
 //!   （提示）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::galaxy::math as m;
 

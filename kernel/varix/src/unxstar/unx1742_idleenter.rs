@@ -70,9 +70,9 @@
 //! `no_std + alloc`；**零 `unwrap()`、零 `expect()`、零 `panic!()`、零浮点、零真实 IO、零墙钟**。
 //! 时间一律为注入的逻辑 `tick: u64`；随机源一律为确定性 LCG；错误一律为闭集枚举 `E`。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

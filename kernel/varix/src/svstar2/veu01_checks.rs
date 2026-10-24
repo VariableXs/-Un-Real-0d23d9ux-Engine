@@ -15,12 +15,12 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::veu01_arch::*;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 判据族前缀表（**长前缀在前**：先匹到`U01-判据-层-` 再轮到 `U01-判据-`）。

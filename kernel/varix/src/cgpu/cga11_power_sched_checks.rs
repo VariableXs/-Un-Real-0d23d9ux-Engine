@@ -210,7 +210,7 @@ pub fn run_cga11_checks() -> CheckSet {
             Err(_) => false,
         }
     };
-    s.add("predictive_ahead_2s", ok10, "ahead 7300ms >= 2000ms");
+    s.add_dyn("predictive_ahead_2s", ok10, "ahead 7300ms >= 2000ms");
 
     // 11 预测前置约束：窗口未满拒（不猜）+ 负斜率无趋势 None。
     let ok11 = {

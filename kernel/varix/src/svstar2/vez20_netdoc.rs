@@ -20,10 +20,10 @@
 //! Z 域字符串码五码互异：`E_ND_MISSING_SECTION` / `E_ND_MISSING_SCENE`
 //! / `E_ND_REPRO_FAIL` / `E_ND_DIVERGE` / `E_ND_UNKNOWN_FAMILY`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

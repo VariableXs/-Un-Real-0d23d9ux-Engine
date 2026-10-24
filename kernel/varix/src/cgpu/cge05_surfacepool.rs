@@ -16,6 +16,8 @@
 //! 调度）分工——彼是表面怎么画与排队，此是表面池的预算与生命周期治理。份额
 //! 重排输出声明式对接 cgc04（F0005 仲裁器网页表面池账户）。诊断码段 0x43xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

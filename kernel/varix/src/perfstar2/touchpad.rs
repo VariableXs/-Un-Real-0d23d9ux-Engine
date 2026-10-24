@@ -19,6 +19,8 @@
 //!
 //! 零堆纪律：定长轨迹环 + 定长报告结构，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

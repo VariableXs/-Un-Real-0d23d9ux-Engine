@@ -12,6 +12,7 @@
 //! 使用流里取「最近 5 文件夹 + 最近 5 文件」，已固定的文件夹自动从推荐
 //! 区隐藏——共存显示逻辑）；快照序列化做持久化往返；重复固定幂等。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

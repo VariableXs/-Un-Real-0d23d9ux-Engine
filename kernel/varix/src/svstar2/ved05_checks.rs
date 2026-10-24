@@ -11,6 +11,7 @@
 //!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
+use alloc::vec;
 use super::ved03_alpha::{CompositingPath, Opacity};
 use super::ved05_isolation::*;
 use crate::checks::CheckSet;

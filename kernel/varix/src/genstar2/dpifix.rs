@@ -240,11 +240,16 @@ impl FixMemoPersist {
         out[6] = self.n_silenced as u8;
         let mut w = 7;
         for i in 0..self.n_prompted {
-            out[w..w + 8].copy_from_slice(&self.prompted[i].unwrap().to_le_bytes());
+            // 计数与槽位同源（n_prompted 只在置槽时递增）；缺位跳写防御。
+            if let Some(v) = self.prompted[i] {
+                out[w..w + 8].copy_from_slice(&v.to_le_bytes());
+            }
             w += 8;
         }
         for i in 0..self.n_silenced {
-            out[w..w + 8].copy_from_slice(&self.silenced[i].unwrap().to_le_bytes());
+            if let Some(v) = self.silenced[i] {
+                out[w..w + 8].copy_from_slice(&v.to_le_bytes());
+            }
             w += 8;
         }
         Some(w)

@@ -5,6 +5,10 @@
 //! 评估器（覆盖率结论+阻断清单+建议）、报障转差异草稿管线、快照 diff、
 //! 四维组合查询。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::difftable::{ApiFamily, DiffStatus, DiffTable, Impact};
 

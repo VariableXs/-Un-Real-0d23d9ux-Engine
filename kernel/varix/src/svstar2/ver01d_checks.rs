@@ -83,6 +83,7 @@
 //!
 //! 零墙钟、零 IO、无随机源，回归可复现。
 
+use alloc::vec;
 use super::ver01b_parser::Site;
 use super::ver01c_cascade::CascadeEngine;
 use super::ver01d_switch::*;
@@ -90,7 +91,6 @@ use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 域自检集合的标签。

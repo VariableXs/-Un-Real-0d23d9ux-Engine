@@ -2,8 +2,11 @@
 //! 验收锚点：UNX-F8701-J1 八批（B21–B28）各 20 条共 160 个 ID 的
 //! 总对账——跨批连续无断档、无重复、批间总量对账自洽、错账零容忍
 //! 两路检出（断档路 / 重复路），双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB6E0;
 

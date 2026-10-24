@@ -9,11 +9,13 @@
 //!
 //! 注：H01 前缀已被 F1401（边界契约）占用，本项（F1402）自检用 H02 前缀。
 
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 use super::veh02_audioarch::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
-use alloc::vec::Vec;
+use alloc::format;
 
 /// VE-F1402 域自检。
 pub fn run_veh02_checks() -> CheckSet {
@@ -310,7 +312,6 @@ pub fn run_veh02_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

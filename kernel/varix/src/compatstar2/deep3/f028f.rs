@@ -108,11 +108,16 @@ impl BitmapCache {
         self.entries.iter().position(|s| matches!(s, Some(k) if k.bucket == bucket && k.w == w && k.h == h))
     }
 
-    /// 全表 LRU 槽（stamp 最小者）——替换语义用。
+    /// 全表 LRU 槽（stamp 最小者）——替换语义用（缺槽不参选，不 panic）。
     fn lru_slot(&self) -> usize {
         let mut oldest = 0usize;
         for i in 1..CACHE_SLOTS {
-            if self.entries[i].unwrap().stamp < self.entries[oldest].unwrap().stamp {
+            let older = match (self.entries[i].as_ref(), self.entries[oldest].as_ref()) {
+                (Some(a), Some(b)) => a.stamp < b.stamp,
+                (Some(_), None) => true,
+                _ => false,
+            };
+            if older {
                 oldest = i;
             }
         }
@@ -124,7 +129,14 @@ impl BitmapCache {
         let mut best: Option<usize> = None;
         for i in 0..CACHE_SLOTS {
             if let Some(k) = self.entries[i] {
-                if k.bucket == bucket && best.map_or(true, |b| k.stamp < self.entries[b].unwrap().stamp) {
+                if k.bucket != bucket {
+                    continue;
+                }
+                let colder_than_best = match best {
+                    None => true,
+                    Some(b) => self.entries[b].as_ref().map_or(false, |bk| k.stamp < bk.stamp),
+                };
+                if colder_than_best {
                     best = Some(i);
                 }
             }
@@ -167,7 +179,7 @@ impl BitmapCache {
             Some(i) => i,
             None => {
                 let old = self.lru_slot();
-                let victim = self.entries[old].unwrap();
+                let Some(victim) = self.entries[old] else { return Err("lru-miss") };
                 self.used[Self::bucket_idx(victim.bucket)] -= victim.bytes;
                 self.replacements += 1;
                 old
@@ -179,7 +191,7 @@ impl BitmapCache {
         while self.used[bi] > BUCKET_BUDGET_BYTES {
             match self.lru_slot_in(bucket) {
                 Some(i) => {
-                    let victim = self.entries[i].take().unwrap();
+                    let Some(victim) = self.entries[i].take() else { break };
                     self.used[bi] -= victim.bytes;
                     self.evictions += 1;
                 }

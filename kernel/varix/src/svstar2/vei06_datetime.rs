@@ -1480,7 +1480,6 @@ pub fn check_zero_privacy() -> Result<(), Rejection> {
 mod tests {
     use super::*;
     use alloc::format;
-    use alloc::string::String;
 
     #[test]
     fn cldr_is_pinned_with_und_fallback() {

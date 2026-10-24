@@ -22,6 +22,7 @@
 //! `crate::star::sbase::RingLog`（对称账本）。
 //! 时间纪律：一切时间由调用方注入毫秒戳，模块不持时钟。
 
+use alloc::vec;
 use crate::checks::{push_str, push_usize, CheckSet};
 use crate::star::sbase::RingLog;
 
@@ -358,7 +359,10 @@ impl UndoManager {
     /// 记录一步新动作（会话隔离；槽满显性拒绝）。
     pub fn record(&mut self, app: u16, a: UndoAction) {
         match self.ensure(app) {
-            Some(i) => self.slots[i].as_mut().unwrap().stacks.push(a),
+            Some(i) => match self.slots[i].as_mut() {
+                Some(sl) => sl.stacks.push(a),
+                None => self.rejected_sessions += 1,
+            },
             None => self.rejected_sessions += 1,
         }
     }
@@ -366,7 +370,7 @@ impl UndoManager {
     /// 撤销一步：成功则点亮 2 秒悬浮提示并入账本。
     pub fn undo(&mut self, app: u16, now: u64) -> Option<UndoAction> {
         let i = self.find(app)?;
-        let a = self.slots[i].as_mut().unwrap().stacks.undo()?;
+        let a = self.slots[i].as_mut().and_then(|sl| sl.stacks.undo())?;
         self.ledger.push(LedgerEntry { app, action: a, dir: Dir::Undo, ts: now });
         self.hint = Some(HintState { app, action: a, dir: Dir::Undo, since: now });
         self.hint_lit += 1;
@@ -376,7 +380,7 @@ impl UndoManager {
     /// 重做一步：成功则点亮 2 秒悬浮提示（重做文案）并入账本。
     pub fn redo(&mut self, app: u16, now: u64) -> Option<UndoAction> {
         let i = self.find(app)?;
-        let a = self.slots[i].as_mut().unwrap().stacks.redo()?;
+        let a = self.slots[i].as_mut().and_then(|sl| sl.stacks.redo())?;
         self.ledger.push(LedgerEntry { app, action: a, dir: Dir::Redo, ts: now });
         self.hint = Some(HintState { app, action: a, dir: Dir::Redo, since: now });
         self.hint_lit += 1;
@@ -384,19 +388,21 @@ impl UndoManager {
     }
 
     pub fn can_undo(&self, app: u16) -> bool {
-        self.find(app).map_or(false, |i| {
-            self.slots[i].as_ref().unwrap().stacks.can_undo()
-        })
+        self.find(app)
+            .and_then(|i| self.slots[i].as_ref())
+            .map_or(false, |sl| sl.stacks.can_undo())
     }
 
     pub fn can_redo(&self, app: u16) -> bool {
-        self.find(app).map_or(false, |i| {
-            self.slots[i].as_ref().unwrap().stacks.can_redo()
-        })
+        self.find(app)
+            .and_then(|i| self.slots[i].as_ref())
+            .map_or(false, |sl| sl.stacks.can_redo())
     }
 
     pub fn stacks(&self, app: u16) -> Option<&SessionStacks> {
-        self.find(app).map(|i| &self.slots[i].as_ref().unwrap().stacks)
+        self.find(app)
+            .and_then(|i| self.slots[i].as_ref())
+            .map(|sl| &sl.stacks)
     }
 
     /// 提示是否在亮（2 秒窗内）。

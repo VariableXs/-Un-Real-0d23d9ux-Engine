@@ -17,8 +17,9 @@
 //! 判据只经 `parse_metadata` / `scan_text_chunks` 等**公开面**观测——
 //! 这也是「判据不向被测函数问答案」的要求。
 
-use alloc::format;
 use alloc::vec;
+use alloc::string::{String, ToString};
+use alloc::format;
 use alloc::vec::Vec;
 // `use alloc::format;` **不可省**：`C05-SAFE-05` 用`format!("k{}", i)`
 // 造可逐条断言的 keyword。真仓 no_std 下漏这一行即报

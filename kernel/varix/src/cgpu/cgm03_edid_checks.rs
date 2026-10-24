@@ -3,13 +3,13 @@
 //! 判据侧独立构造 EDID 夹具（逐字节含手算校验和）+ 手算 60000mHz 刷新对账
 //! ——同源恒绿的弱门禁比没有门禁更坏。聚合防自调：A/B 两族 + tally 守恒。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::cgm03_edid as api;
 use super::cgm03_edid::*;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// A 族条数（判据侧写死）。

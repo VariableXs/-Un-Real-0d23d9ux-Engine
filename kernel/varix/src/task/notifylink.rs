@@ -636,6 +636,7 @@ fn push_num(buf: &mut [u8], n: &mut usize, v: u32) {
 
 #[cfg(test)]
 mod tests {
+use alloc::string::String;
     use super::*;
 
     #[test]

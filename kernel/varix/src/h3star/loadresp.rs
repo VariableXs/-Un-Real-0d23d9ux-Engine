@@ -298,7 +298,8 @@ impl PriorityArbiter {
                 _ => best = Some((rk, *r)),
             }
         }
-        let (brk, bp) = best.expect("requests 非空");
+        // requests 非空已在函数头前置校验；缺位（不可达）按纯后台轮诚实返回。
+        let Some((brk, bp)) = best else { return None };
         let had_foreground = brk != 4;
         if had_foreground {
             self.background_denied +=
@@ -535,8 +536,8 @@ impl DegradeMatrix {
 
     pub fn for_level(level: u32) -> (u64, u32) {
         let lv = level.clamp(1, 5);
-        let row = Self::POLICY.iter().find(|(l, _, _)| *l == lv).unwrap();
-        (row.1, row.2)
+        // lv 已钳到 1..=5，POLICY 恰覆盖；缺位（不可达）按零窗兜底。
+        Self::POLICY.get((lv - 1) as usize).map_or((0, 0), |row| (row.1, row.2))
     }
 
     /// 矩阵自证：负载越高让路越多、直通阈值越紧（策略不倒挂）。

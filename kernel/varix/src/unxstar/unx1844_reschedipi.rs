@@ -1,3 +1,4 @@
+use alloc::vec;
 // unx1844_reschedipi —— UNX-F1844 重调度 IPI 处理（need_resched 消费）
 // 判据原文 UNX-F1844-J1：重调度 IPI→need_resched 置位→主循环消费闭环断言全过，
 // 中断语境纪律（F1802 调度点号）一致。
@@ -12,7 +13,6 @@
 //   * 指纹冻结 + 注入核 10/10。
 
 use crate::checks::CheckSet;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ── 诊断段（0xF300 独占） ─────────────────────────────────────────────

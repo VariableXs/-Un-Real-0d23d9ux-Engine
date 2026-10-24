@@ -27,6 +27,7 @@
 //! `E_YV_DEPTH_INVALID` 位深非法 / `E_YV_PLANE_SHORT` 平面长度不足 /
 //! `E_YV_DIM_ODD` 420/422 的宽高为奇数。
 
+use alloc::vec;
 use super::cga15_csconv::{dequant_yuv, unpack_depth, Range, YuvMatrix, YuvStd};
 use crate::checks::CheckSet;
 use alloc::string::String;

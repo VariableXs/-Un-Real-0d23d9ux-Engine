@@ -13,6 +13,8 @@
 //! 时间纪律：时刻由调用方注入；块大小来自 h2knob `h2.f269.chunk_mb`
 //! （默认 4MB）——本引擎按块推进，不持有真实 IO。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h2star::h2ledger::ResumeLedger;
 

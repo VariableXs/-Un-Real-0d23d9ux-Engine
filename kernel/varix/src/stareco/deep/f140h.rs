@@ -3,6 +3,7 @@
 //! 装配与跨域接口件：语言热切（F398）可用语言清单装配、缺失词条
 //! 降级策略行（回退链人话化）、词条覆盖徽标数据。
 
+use alloc::vec::Vec;
 use super::f140g::CoverageCell;
 use crate::checks::CheckSet;
 

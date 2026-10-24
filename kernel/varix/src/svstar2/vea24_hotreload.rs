@@ -54,11 +54,11 @@
 //!
 //! 零 panic 面：本模块不含 `unwrap`/`expect`/`panic`，全部错误经枚举返回。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::string::ToString;
 

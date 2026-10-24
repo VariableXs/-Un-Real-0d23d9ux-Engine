@@ -22,9 +22,9 @@
 //! - 优先级仲裁：同 sink 同 tick 竞争时系统类必胜，应用类让行（可记账的
 //!   让行，不是静默丢）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

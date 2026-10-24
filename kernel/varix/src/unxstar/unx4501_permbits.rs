@@ -8,10 +8,9 @@
 //! + 编/解码原语 + 512 组抽样复验核（编码→解码 diff=0）+ F4004 联动
 //! 断言 + 注入核（越界位/非法字符/特殊位丢失/联动漂移）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC080 独占 0x80）。

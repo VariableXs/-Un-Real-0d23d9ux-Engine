@@ -75,6 +75,7 @@
 //! （资源抽象/任务模型/能力探测——五层的前三层兑现）；F1760（域收口）。
 //! 零 panic 面、零 IO、零墙钟、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

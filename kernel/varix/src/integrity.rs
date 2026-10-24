@@ -246,6 +246,8 @@ pub fn verify(image: &[u8], expected: Option<&[u8; 32]>) -> ChainReport {
     }
 }
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::once::OnceLock;
 
 static REPORT: OnceLock<ChainReport> = OnceLock::new();

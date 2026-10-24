@@ -3,6 +3,7 @@
 //! 装配与跨域接口件：无障碍设置页装配（各开关 → 行 + 联动引擎状态
 //! 查询）、对照检查结果 → 系统通知的人话行。
 
+use alloc::vec::Vec;
 use super::f141f::{alt_text_issue, contrast_ge_45};
 use crate::checks::CheckSet;
 

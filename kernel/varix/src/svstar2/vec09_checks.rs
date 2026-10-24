@@ -6,6 +6,7 @@
 //! - 歧义登记 → `C09-歧义-*`（登记表查询/回填/防重）
 //! - 语境裁定 → `C09-语境-*`（前缀/中缀歧义默认与改判口径）
 
+use alloc::vec::Vec;
 use super::vec09_operator::*;
 use crate::checks::CheckSet;
 

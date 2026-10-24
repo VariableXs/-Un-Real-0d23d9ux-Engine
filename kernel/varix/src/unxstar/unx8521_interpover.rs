@@ -2,7 +2,10 @@
 //! 验收锚点：UNX-F8521-J1 正向：段界内合法解释器路径通过（B04 判据承接）；
 //! 反向：路径越段界/缺 NUL 终止注入全拒，双判据缺一即批内红灯。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB560;
 

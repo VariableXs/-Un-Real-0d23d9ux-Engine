@@ -9,6 +9,8 @@
 //! - 点击即重跑（条件是活的是查询不是快照——结果永远新鲜）；
 //! - 条件可视化（「类型:文档 修改:近7天」胶囊可逐个删改）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

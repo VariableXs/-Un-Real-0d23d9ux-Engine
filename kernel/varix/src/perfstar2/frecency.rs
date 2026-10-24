@@ -165,22 +165,22 @@ impl FrecencyEngine {
             }
         }
         let slot = self.n;
+        // 展示名 = 路径末段（文件名）——直接构造完整条目，一次落槽
+        // （原「占槽后 as_mut().unwrap() 回填」形态在槽位异常下会炸内核）。
+        let disp = display_name_of(path);
+        let dl = disp.len().min(24);
+        let mut name = [0u8; 24];
+        name[..dl].copy_from_slice(&disp[..dl]);
         self.entries[slot] = Some(Entry {
             path_hash: h,
-            name: [0; 24],
-            name_len: 0,
+            name,
+            name_len: dl as u8,
             freq: 1,
             last_ms: at_ms,
             pinned: false,
             exists: true,
             is_app,
         });
-        // 展示名 = 路径末段（文件名）。
-        let disp = display_name_of(path);
-        let e = self.entries[slot].as_mut().unwrap();
-        let dl = disp.len().min(24);
-        e.name[..dl].copy_from_slice(&disp[..dl]);
-        e.name_len = dl as u8;
         self.n += 1;
         self.snapshot_version += 1;
         self.async_flushes += 1;
@@ -261,7 +261,9 @@ impl FrecencyEngine {
             if let Some(e) = self.entries[i] {
                 if e.path_hash == h && !e.exists {
                     if relocate {
-                        self.entries[i].as_mut().unwrap().exists = true;
+                        if let Some(em) = self.entries[i].as_mut() {
+                            em.exists = true;
+                        }
                     } else {
                         let mut j = i;
                         while j + 1 < self.n {
@@ -1211,21 +1213,26 @@ pub fn snapshot_merge(a: &[SnapEntry], b: &[SnapEntry], out: &mut [SnapEntry]) -
             mn += 1;
         }
     }
-    // 频次降序插入排序。
+    // 频次降序插入排序（缺槽键按 0 沉底，不 panic）。
     for i in 1..mn {
         let key = merged[i];
+        let key_freq = key.as_ref().map_or(0, |e| e.freq);
         let mut j = i;
-        while j > 0 && merged[j - 1].unwrap().freq < key.unwrap().freq {
+        while j > 0 && merged[j - 1].as_ref().map_or(0, |e| e.freq) < key_freq {
             merged[j] = merged[j - 1];
             j -= 1;
         }
         merged[j] = key;
     }
     let n = mn.min(out.len()).min(SNAP_MAX_ENTRIES);
+    let mut w = 0usize;
     for k in 0..n {
-        out[k] = merged[k].unwrap();
+        if let Some(e) = merged[k] {
+            out[w] = e;
+            w += 1;
+        }
     }
-    n
+    w
 }
 
 /// Top-K 选择：按 score 降序前 K 条的 idx（K = out.len() 上限）。

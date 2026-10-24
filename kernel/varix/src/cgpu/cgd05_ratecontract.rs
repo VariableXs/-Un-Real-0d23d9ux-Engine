@@ -12,6 +12,8 @@
 //! 对账纪律发现）。预算修正建议只出单不执行（C 域 cgc02/cgc03 池消费）。
 //! 分位判定用 0.5ms 桶计数排序（O(n+桶)，不用比较排序）。诊断码段 0x3Dxx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 合同版本（合同文本随版本冻结，改动走 ADR——版本号即冻结标识）。

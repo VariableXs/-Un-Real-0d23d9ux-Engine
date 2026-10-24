@@ -9,12 +9,13 @@
 //! 换算器（cycles → ns：cycles * ns_per_cycle 饱和乘）+ 注入核
 //! （回退注入/溢出/零频/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAE80 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAE80;
 pub const XC_MN_BACK: u32 = SEG_BASE + 0x01; // 回退
 pub const XC_MN_FREQ: u32 = SEG_BASE + 0x02; // 零频

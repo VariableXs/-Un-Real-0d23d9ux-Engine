@@ -20,6 +20,8 @@
 //! 宿主可测面：命令编解码/参数校验/packing 全部纯函数；真绘制与真盘
 //! 路径 `target_os = "none"` 编译（与 ps2/inputsvc 同纪律）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::entry::ErrNo;
 
 // ---------------------------------------------------------------------------

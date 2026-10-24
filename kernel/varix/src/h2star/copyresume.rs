@@ -11,6 +11,8 @@
 //! 一块）；断点账（已传块清单 + 块校验——恢复时校验通过的跳过）；源
 //! 占用开关（暂停释放/恢复重占）；关机挂起任务登记（下次开机询问口）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -20,12 +20,12 @@
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64 算术，确定性
 //! （逻辑 tick 注入，零墙钟，零 IO），零浮点。
 
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 // 补宏导入：`use alloc::vec::Vec;` 只导**类型**不导**宏**，而本模块在
 // 公开函数（非 cfg(test) 区）里裸用 `vec![…]`，no_std 下宏须显式导入。
 
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 版本与诊断段

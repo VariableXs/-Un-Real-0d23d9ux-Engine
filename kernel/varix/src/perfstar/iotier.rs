@@ -29,6 +29,8 @@
 //!
 //! 零堆纪律：三条定长环形队列 + 定长审计环，无 Vec/String/Box/format!。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

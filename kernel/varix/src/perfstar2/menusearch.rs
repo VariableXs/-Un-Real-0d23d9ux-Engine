@@ -24,6 +24,8 @@
 //!
 //! 零堆纪律：定长索引表 + 定长结果集，无 alloc。
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,8 @@
 //! - 作用域直供 → `C10-作用域-*`（花括号开合标记流带深度、供符号表期）
 //! - 深度上限 → `C10-深度-*`（超限报错、上限可配）
 
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 use super::vec10_brace::*;
 use alloc::format;
 use crate::checks::CheckSet;

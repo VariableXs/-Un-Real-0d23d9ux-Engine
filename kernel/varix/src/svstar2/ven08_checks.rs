@@ -30,6 +30,7 @@
 //! 分两个入口返回（`_a` / `_b`）：`CheckSet` 定容 112 项，单函数塞 24 项虽不溢出，
 //! 但与 `ven06` / `ven07` / `ves04` 的分批惯例一致，便于定位是哪一批变红。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::ven08_debug::*;
 

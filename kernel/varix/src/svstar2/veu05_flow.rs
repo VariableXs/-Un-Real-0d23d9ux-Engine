@@ -230,9 +230,9 @@
 //! 前者让 `advance` 与 `open` 双拒，后者只留一个游标归零却仍占名额的流程行。
 //! 两处的修法一致：**终态即离册，痕迹留档**。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::veu01_arch::{fnv1a64_hex, ConsistencyError, Severity};

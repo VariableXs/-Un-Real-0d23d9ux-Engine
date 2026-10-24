@@ -85,6 +85,8 @@
 //!
 //! 零外部依赖；逻辑 tick 注入，零墙钟；确定性算法、零 IO、回归可复现。
 
+use alloc::string::ToString;
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

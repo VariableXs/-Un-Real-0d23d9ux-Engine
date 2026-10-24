@@ -266,7 +266,8 @@ unsafe fn unfilter_sub_avx(cur: &mut [u8], bpp: usize) {
 pub fn unfilter_auto(isa: Isa, filter: u8, bpp: usize, prev: Option<&[u8]>, cur: &mut [u8]) -> Option<Isa> {
     match (isa, filter) {
         (Isa::Avx2, FILTER_UP) if prev.is_some() => unsafe {
-            unfilter_up_sse(prev.unwrap(), cur);
+            // guard 已判 prev 非空；缺位（不可达）退化为空切片 no-op。
+            unfilter_up_sse(prev.unwrap_or(&[]), cur);
             Some(Isa::Avx2)
         },
         (Isa::Avx2, FILTER_SUB) => unsafe {
@@ -274,7 +275,7 @@ pub fn unfilter_auto(isa: Isa, filter: u8, bpp: usize, prev: Option<&[u8]>, cur:
             Some(Isa::Avx2)
         },
         (Isa::Sse42, FILTER_UP) if prev.is_some() => unsafe {
-            unfilter_up_sse(prev.unwrap(), cur);
+            unfilter_up_sse(prev.unwrap_or(&[]), cur);
             Some(Isa::Sse42)
         },
         (isa, f) => {

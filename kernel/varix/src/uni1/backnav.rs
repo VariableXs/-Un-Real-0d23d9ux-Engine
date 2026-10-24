@@ -11,6 +11,7 @@
 //! 轻提示一次。v6 深化：历史容量上限（淘汰最老、账面诚实）、层级深度
 //! 查询、面包屑渲染数据、一键升到根（计数账）、前进被新导航截断。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

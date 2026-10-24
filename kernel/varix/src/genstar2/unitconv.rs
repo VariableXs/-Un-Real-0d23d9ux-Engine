@@ -266,11 +266,7 @@ pub fn alias_resolve(word: &str) -> Option<&'static str> {
     ];
     // 仅映射册内单位（fake 后缀 = 口语存在但册内未收——诚实返回 None）。
     ALIASES.iter().find(|(w, _)| *w == word).and_then(|(_, u)| {
-        if UNITS.iter().any(|unit| unit.names.contains(u)) {
-            Some(UNITS.iter().find(|unit| unit.names.contains(u)).unwrap().names[0])
-        } else {
-            None
-        }
+        UNITS.iter().find(|unit| unit.names.contains(u)).map(|unit| unit.names[0])
     })
 }
 
@@ -359,7 +355,7 @@ pub fn run_unitconv_deep_checks() -> CheckSet {
     cs.add("chain_two_hop", (convert_chain(5.0, &["km", "m", "mi"]).unwrap() - convert(5.0, "km", "mi").unwrap()).abs() < 1e-9, "");
     cs.add("chain_bad_hop_honest", convert_chain(5.0, &["km", "kg", "mi"]).is_none(), "");
     // 双向 round-trip（六族各验一对——精度守护）。
-    cs.add("roundtrip_all_families", ["km", "lb", "c", "acre", "gal", "mph"].iter().all(|&u| roundtrip_ok(42.0, u, base_of(u))), "");
+    cs.add("roundtrip_all_families", ["km", "lb", "c", "acre", "gal", "mph"].iter().all(|&u| base_of(u).map_or(false, |b| roundtrip_ok(42.0, u, b))), "");
     // 口语别名（册内映射、册外诚实 None）。
     cs.add("alias_known", alias_resolve("公斤") == Some("kg"), "");
     cs.add("alias_unknown_honest", alias_resolve("码").is_none(), "");
@@ -381,10 +377,9 @@ pub fn run_unitconv_deep_checks() -> CheckSet {
     cs
 }
 
-fn base_of(unit: &str) -> &'static str {
-    let u = find_unit(unit).unwrap();
-    let family = u.family;
-    UNITS.iter().find(|x| x.family == family && x.is_base_target).unwrap().names[0]
+fn base_of(unit: &str) -> Option<&'static str> {
+    let u = find_unit(unit)?;
+    UNITS.iter().find(|x| x.family == u.family && x.is_base_target).map(|x| x.names[0])
 }
 
 #[cfg(test)]

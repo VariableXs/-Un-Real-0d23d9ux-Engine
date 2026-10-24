@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! VE-F1010 · PNG 透明度全语义（VE-F 域 · 着色器系统 · PNG 组）
 //!
 //! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F1010`
@@ -66,12 +67,11 @@
 //! 越界返回 [`Fault`]；`u16` 乘法一律走 `u32` 中间量（65535×65535+32767
 //! = 4294868992，恰在 `u32` 内，中间量不溢出是**算过**的，不是碰运气）。
 
-#![allow(clippy::needless_range_loop)]
+use alloc::vec;
 
 // lib.rs 只有 `extern crate alloc` 且无 `#[macro_use]`，宏逐文件显式导入。
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vef02_pngenc::ColorType;

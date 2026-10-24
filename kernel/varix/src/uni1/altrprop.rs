@@ -11,6 +11,7 @@
 //! 重复打开不叠窗（单例复用计数）、页签枚举（常规/安全/详细信息）、
 //! 混合目录合计（目录不虚计字节）、重复关闭拒绝。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

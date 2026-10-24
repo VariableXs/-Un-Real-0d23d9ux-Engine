@@ -11,6 +11,7 @@
 //!   ——一键恢复」）；恢复动作逐项可查；
 //! - 升级不该偷走用户的设置——这是对「升级即重配」老毛病的结构性拒绝。
 
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

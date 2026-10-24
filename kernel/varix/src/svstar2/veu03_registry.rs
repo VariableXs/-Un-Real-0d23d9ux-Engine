@@ -75,9 +75,9 @@
 //! 故 [`Self::register`] 入口即拒空判据——**元模型一旦放宽就再也收不回来**，
 //! 这是注册中心作为入口的唯一优势所在，不用它就是浪费。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::veu01_arch::{fnv1a64_hex, ConsistencyError};

@@ -76,10 +76,11 @@ pub const E_PROBE_FABRICATED: &str = "E_PROBE_FABRICATED";
 /// 步序越权（跳步查询）。
 pub const E_PROBE_SEQUENCE: &str = "E_PROBE_SEQUENCE";
 
-/// 探测五步（锚点「探测五步」）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// 探测五步（锚点「探测五步」）。默认态为流水线起点 `Enumerate`。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ProbeStage {
     /// 枚举可用引擎。
+    #[default]
     Enumerate,
     /// 逐引擎能力查询。
     Query,

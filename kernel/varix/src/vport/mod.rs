@@ -8,6 +8,8 @@
 //! 纪律：纯逻辑 + 固定容量数组；无 `Vec`/`String`/`Box`/`alloc`/外部 crate；
 //! **不删 Windows 后端**——移植以"新增 Varix 后端"方式进行（回滚纪律）。
 
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 use crate::checks::CheckSet;
 use crate::gfxsrv::{argb, color_b, color_g, color_r, rgb, Canvas};
 

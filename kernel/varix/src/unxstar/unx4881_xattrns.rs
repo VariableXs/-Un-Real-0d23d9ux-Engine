@@ -8,11 +8,11 @@
 //! 解码器（全名 → (ns, rest)）+ 上游对照基准表 + 可见性/写权语义位
 //! + 10 组非法前缀注入 + 注入核（未知前缀/空名/超长/封账写）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 /// 诊断段（0xC200 独占 0x80）。
 pub const SEG_BASE: u32 = 0xC200;

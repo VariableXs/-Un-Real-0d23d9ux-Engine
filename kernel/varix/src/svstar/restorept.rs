@@ -22,6 +22,7 @@
 //!
 //! 时间注入式（毫秒戳），宿主测试确定复现。无外部依赖。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use crate::svstar::vbase;
@@ -259,9 +260,12 @@ impl RestoreStore {
             }
             // 回滚执行：配置层热加载（不重启）。
             self.current = snapshot.clone();
-            // 一致性自证：回滚后哈希 = 点级哈希。
-            if self.current.content_hash()
-                == self.points.iter().find(|p| p.id == id).unwrap().hash
+            // 一致性自证：回滚后哈希 = 点级哈希（点已除名则视同不一致）。
+            if self
+                .points
+                .iter()
+                .find(|p| p.id == id)
+                .map_or(false, |p| self.current.content_hash() == p.hash)
             {
                 return (true, retries);
             }

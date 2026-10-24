@@ -13,6 +13,8 @@
 //!
 //! 负数、小数（按档案 decimal）均支持；溢出 u64/i64 显式拒绝。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 
 use crate::h2star::h2locale::RegionProfile;

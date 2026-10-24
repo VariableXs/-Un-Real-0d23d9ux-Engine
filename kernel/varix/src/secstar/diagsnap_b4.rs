@@ -13,6 +13,7 @@
 //!
 //! 零堆纪律：定长表 + 定长块缓冲，无 alloc。
 
+use alloc::vec;
 use super::diagsnap::{HOTKEY_KEY, LEDGER_WINDOW_MS, STORE_CAP, STORE_CAP_TIGHT, THREAD_CAP};
 use crate::checks::CheckSet;
 

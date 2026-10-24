@@ -19,6 +19,8 @@
 //! 保全→冲刷→闸门→写变量→重启，全程 ≤ 25s 且有画面。[`FiveStepLedger`]
 //! 把五段耗时记成可审计的账（screen 模块的帧日志与之对账）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use alloc::format;
 use alloc::string::String;
 

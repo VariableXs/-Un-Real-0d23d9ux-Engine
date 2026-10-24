@@ -17,6 +17,7 @@
 //! ④ 负向断言配正向计数（缺引用除了断码还要断 missing_refs 恰等于差集）；
 //! ⑤ 判据区零 panic 面：取值一律 `.get()`/`match` 记红。
 
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 

@@ -5,6 +5,7 @@
 //! 固定容量数组；追踪脚本用有界字节码解释器（永不 panic）。
 //! 自检经 `run_gobs_checks()` 收口。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 pub const MAX_EVENTS: usize = 32;

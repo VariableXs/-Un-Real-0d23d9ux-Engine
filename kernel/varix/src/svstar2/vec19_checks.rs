@@ -15,8 +15,8 @@
 //!   整批可复现）
 //! - 零静默 → `C19-显性-*`（未接入恢复层按未验证记账、批次渲染含分层与发现）
 
-use alloc::string::String;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::vec19_fuzz::*;

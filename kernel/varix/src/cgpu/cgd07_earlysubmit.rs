@@ -14,6 +14,7 @@
 //! 帧率承诺、此管帧间提前量；与 cgd06（延迟账本）共享 50ms 目标线口径。
 //! 诊断码段 0x4Fxx（五码独占）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

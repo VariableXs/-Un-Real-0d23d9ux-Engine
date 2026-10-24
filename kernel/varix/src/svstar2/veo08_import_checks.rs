@@ -23,13 +23,13 @@
 //! 6. 判据区零 panic 面；
 //! 7. 判据不得自调全域入口（递归教训承 F2806 判据-06）。
 
+use alloc::vec;
 use crate::checks::{CheckSet, MAX_CHECKS};
 
 use super::veo08_import::*;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

@@ -13,7 +13,10 @@
 //! 诊断码段 0x0910（本模块独占：0x0910~0x091F）。
 //! no_std + alloc 零 unwrap（测试除外），全部 Result 化。
 
-use alloc::string::String;
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// 诊断码段基址。
 pub const SEG_BASE: u16 = 0x0910;
@@ -128,37 +131,55 @@ pub fn serialize(f: &RecipeFields) -> Result<String, u16> {
     ))
 }
 
-/// 原始解析（只做结构解析不校验不钳制——供导入通道先钳后验）。
-fn deserialize_raw(text: &str) -> Result<RecipeFields, u16> {
+/// 反序列化（判据「分发」入口）：字段解析 + schema 校验 + 钳制，
+/// 三步走完才算导入成功。
+pub fn deserialize(text: &str) -> Result<RecipeFields, u16> {
+    let mut out = parse_raw(text)?;
+    // 分发通道安全钳制：先钳后验（钳不掉的才拒）。
+    out.clamp_inplace();
+    out.validate()?;
+    Ok(out)
+}
+
+/// 原始解析（判据「分发」第一步）：只解析不钳制——钳制时点由调用方
+/// 决定（通道计数需要钳前态）。accounts 数组先整体摘出再解析，
+/// 避免顶层逗号分裂破坏数组。
+fn parse_raw(text: &str) -> Result<RecipeFields, u16> {
     let t = text.trim();
     if !t.starts_with('{') || !t.ends_with('}') {
         return Err(SEG_BASE + 4);
     }
+    let body = &t[1..t.len() - 1];
     let mut out = RecipeFields::blank();
     let mut found_accounts = false;
-    let body = &t[1..t.len() - 1];
-    // 第一步：整体摘出 "accounts":[a,b,c]（数组内逗号不可被顶层分裂）。
-    #[allow(unused_assignments)]
-    let mut rest = String::new();
-    if let Some(pos) = body.find("\"accounts\"") {
-        let after = &body[pos..];
-        let open = after.find('[').ok_or(SEG_BASE + 8)?;
-        let close = after.find(']').ok_or(SEG_BASE + 8)?;
-        let inner = &after[open + 1..close];
+    // 摘数组：定位 "accounts" 键，取 [..] 整段，余文挖除该键后逐键扫。
+    let mut rest = body;
+    // 挖除缓冲（提升到函数域——rest 可能转指它）。
+    let mut cleaned = String::new();
+    if let Some(kpos) = body.find("\"accounts\"") {
+        let tail = &body[kpos..];
+        let lbr = tail.find('[').ok_or(SEG_BASE + 8)?;
+        let rbr = tail[lbr..].find(']').ok_or(SEG_BASE + 8)? + lbr;
+        let inner = &tail[lbr + 1..rbr];
         let mut it = inner.split(',');
         let a = it.next().ok_or(SEG_BASE + 8)?.trim().parse::<u32>().map_err(|_| SEG_BASE + 8)?;
         let b = it.next().ok_or(SEG_BASE + 8)?.trim().parse::<u32>().map_err(|_| SEG_BASE + 8)?;
         let c = it.next().ok_or(SEG_BASE + 8)?.trim().parse::<u32>().map_err(|_| SEG_BASE + 8)?;
         out.accounts = (a, b, c);
         found_accounts = true;
-        // 其余键值段（accounts 声明头之前的 + 数组闭合之后的）。
-        let before = &body[..pos];
-        let tail = &after[close + 1..];
-        rest = alloc::format!("{}{}", before.trim_end_matches(','), tail);
-    } else {
-        rest = String::from(body);
+        let after = tail[rbr + 1..].trim_start();
+        let after2 = after.strip_prefix(',').unwrap_or(after);
+        cleaned.push_str(&body[..kpos]);
+        cleaned.push_str(after2);
+        rest = cleaned.trim();
+        if rest.ends_with(',') {
+            rest = &rest[..rest.len() - 1];
+        }
+        if rest.starts_with(',') {
+            rest = &rest[1..];
+        }
     }
-    // 第二步：逐键解析标量键。
+    // 逐键扫描（no_std 手写解析——开放格式不依赖外部解析器）。
     for seg in rest.split(',') {
         let seg = seg.trim();
         if seg.is_empty() {
@@ -175,6 +196,10 @@ fn deserialize_raw(text: &str) -> Result<RecipeFields, u16> {
             "kind" => out.kind = v.parse::<u32>().map_err(|_| SEG_BASE + 7)?,
             "name" => out.name = String::from(v.trim_matches('"')),
             "multi_lane" => out.multi_lane = v == "true",
+            "accounts" => {
+                // 已在数组摘除阶段处理；重复键视为 schema 拒。
+                return Err(SEG_BASE + 9);
+            }
             _ => return Err(SEG_BASE + 9),
         }
     }
@@ -182,14 +207,6 @@ fn deserialize_raw(text: &str) -> Result<RecipeFields, u16> {
         return Err(SEG_BASE + 10);
     }
     Ok(out)
-}
-
-/// 反序列化（判据「分发」入口）：解析 + 钳制 + schema 校验。
-pub fn deserialize(text: &str) -> Result<RecipeFields, u16> {
-    let mut f = deserialize_raw(text)?;
-    f.clamp_inplace();
-    f.validate()?;
-    Ok(f)
 }
 
 /// 社区通道账（判据「分发」的通道面）：导入/导出双向计数 + 拒收
@@ -213,17 +230,17 @@ impl ChannelLedger {
     }
     /// 导入一笔（判据「分发 + 安全钳制」联动主判据）。
     pub fn import(&mut self, text: &str) -> Result<RecipeFields, u16> {
-        match deserialize_raw(text) {
+        match parse_raw(text) {
             Ok(mut f) => {
-                // 钳制检测：钳前钳后不同 = 该配方被无害化。
+                // 钳前留影：钳前≠钳后 = 该配方被无害化（判据「安全钳制」联动）。
                 let before = f.accounts;
                 f.clamp_inplace();
-                let changed = f.accounts != before;
+                if f.accounts != before {
+                    self.clamped += 1;
+                }
+                // schema 校验失败同样计入拒收（拒收归因完整性）。
                 match f.validate() {
                     Ok(()) => {
-                        if changed {
-                            self.clamped += 1;
-                        }
                         self.imported += 1;
                         Ok(f)
                     }

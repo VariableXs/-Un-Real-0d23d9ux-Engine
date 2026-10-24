@@ -34,10 +34,10 @@
 //! 逻辑 tick）；LCG 确定性仿真（Numerical Recipes 参数）；FNV-1a 快照
 //! 往返；错误全显性带诊断码与建议。诊断码段 0x3B（0x3A 为 F0901 所取）。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

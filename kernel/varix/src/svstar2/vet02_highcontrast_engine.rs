@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! VE-F3803 · 高对比渲染引擎（VE-T 域 · 无障碍渲染 · 目标 380 行）
 //!
 //! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F3803`
@@ -80,7 +81,7 @@
 //! （[`vet01_a11y_render_pipeline`]）为复用单源；D 域后处理为执行对端；
 //! 下游 F3822 forced-colors（让位关系对端）。
 
-#![allow(clippy::needless_range_loop)]
+use alloc::vec;
 
 // 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
 // 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
@@ -91,7 +92,6 @@ use super::vet01_a11y_render_pipeline as f3802;
 use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

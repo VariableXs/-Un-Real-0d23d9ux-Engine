@@ -20,11 +20,11 @@
 //!
 //! 语料全部由本文件内的构造器生成，零 IO、零墙钟、跨平台逐位可复现。
 
+use alloc::vec;
 use super::ved18_debugview::*;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

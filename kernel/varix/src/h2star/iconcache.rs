@@ -13,6 +13,7 @@
 /// 注入——不过即重算自愈）；上限 LRU 淘汰 + F268 联动清仓口；F5 手动
 /// 刷新兜底（全量失效）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

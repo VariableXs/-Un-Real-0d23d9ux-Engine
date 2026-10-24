@@ -8,6 +8,7 @@
 //! ③「持久化与备份（F396）」的**配置幂等账**——同一配置重复下发
 //!   不产生第二份持久化账（备份去重，不生产垃圾账）。
 
+use alloc::vec::Vec;
 use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;

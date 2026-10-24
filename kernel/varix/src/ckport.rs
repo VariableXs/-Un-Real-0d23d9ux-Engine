@@ -63,6 +63,8 @@
 //! 注：`no_std` 由 crate 根 `lib.rs` 的 `#![cfg_attr(not(test), no_std)]` 统一施加，
 //! 本模块**不写内层 `#![no_std]`**（内层属性会与 crate 根冲突）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

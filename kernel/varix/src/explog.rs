@@ -13,6 +13,8 @@
 //!
 //! 零堆纪律：无 Vec/String/Box/format!，定长数组 + 字节串 + 'static 切片。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

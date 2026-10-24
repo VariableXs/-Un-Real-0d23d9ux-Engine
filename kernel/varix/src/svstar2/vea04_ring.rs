@@ -29,6 +29,7 @@
 //! 逻辑时钟注入，不用墙钟——保证回归可复现、分位统计可重放。
 //! 零外部依赖，只依赖 `crate::checks`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;

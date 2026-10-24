@@ -129,14 +129,12 @@
 // 本单为「册内自足模块」：以私有 `mod m;` 引入时全部 `pub` 项被判未可达，
 // 这是引入方式使然，不是死代码。
 #![allow(dead_code)]
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 extern crate alloc;
-
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
 
 // ===========================================================================
 // 0. 常量表（判据阈值写死 + 来源注释）

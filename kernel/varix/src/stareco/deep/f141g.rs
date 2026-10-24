@@ -3,6 +3,10 @@
 //! 键盘导航图生成（焦点序→步骤说明）、读屏标注完备性、动效替代
 //! 通路表（减弱动效必有余路）、仅色传意检测、触达目标尺寸审计。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

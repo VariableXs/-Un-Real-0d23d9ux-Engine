@@ -15,11 +15,11 @@
 //! **判据设计硬规矩**：期望值判据侧独立手算；不变量两头都测；判据区
 //! 零 panic 面（无 unwrap/expect/unreachable——Err 即判红）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vcb06_graphexec as gx;
 
 use alloc::collections::BTreeMap;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

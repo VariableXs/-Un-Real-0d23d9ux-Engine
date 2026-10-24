@@ -223,6 +223,7 @@ pub fn compatdb_reset() {
 /// 注册表**名字→槽位**动态解析（不猜槽号）；解析不到的 API 从位图
 /// 剔除（真实注册表收缩时画像自动跟随）。调用幂等。
 pub fn compatdb_seed_profiles() {
+use alloc::vec::Vec;
     use super::winapi::{API_TABLE, ApiStatus};
     let mut notepad_mask = 0u64;
     for want in [

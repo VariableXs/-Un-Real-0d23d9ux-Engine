@@ -12,6 +12,7 @@
 //! ④「细带小到不误点」的 **双击防误触**——窗口期内第二击不重复触发
 //!   （一次按压一次生效）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 use crate::istar::showdesk::{HOTZONE_EXTRA_PX, PEEK_OPACITY_PCT, STRIP_W_PX, ShowDesk};

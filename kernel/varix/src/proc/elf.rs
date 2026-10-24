@@ -487,6 +487,7 @@ pub fn synth_multi(entry: u64, segs: &[SegSpec]) -> [u8; 2048] {
 
 #[cfg(test)]
 mod tests {
+use alloc::vec::Vec;
     use super::*;
 
     #[test]

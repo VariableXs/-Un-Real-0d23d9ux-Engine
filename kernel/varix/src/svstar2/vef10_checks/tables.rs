@@ -6,8 +6,8 @@
 //! 归约骨架消重；`item` 夹具为纯构造；判据之间互不调用，
 //! 判据 ID 与失败措辞逐字保留。
 
-use alloc::string::ToString;
 use alloc::vec;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

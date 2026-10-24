@@ -34,8 +34,8 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
-use super::vek09_msaa::*;
 use alloc::vec;
+use super::vek09_msaa::*;
 use alloc::format;
 use crate::checks::CheckSet;
 use alloc::string::String;

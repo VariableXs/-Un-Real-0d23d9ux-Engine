@@ -20,11 +20,11 @@
 //! - 错误映射全覆盖：每个 RESP_* 常量都有 B 域段错误条目，带三要素
 //!   （发生了什么/为什么/下一步）——映射表漏一条即构建期缺陷。
 
+use alloc::vec;
 use super::veb01_device::{DisplayCfg, MAX_SCANOUTS};
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

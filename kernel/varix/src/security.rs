@@ -7,6 +7,8 @@
 //! the ChaCha20 block function — because a placeholder hash in a security
 //! module is worse than no hash at all.
 
+use alloc::vec::Vec;
+use alloc::format;
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 // ---------------------------------------------------------------------------

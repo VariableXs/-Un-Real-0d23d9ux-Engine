@@ -74,11 +74,11 @@
 //! 逻辑 tick 注入，零墙钟；零 IO；类型自持（不 import 未注册的兄弟模块）——
 //! 上游契约以等价自有类型承接，编译期不受平行会话注册次序影响。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 调试覆盖开关（四开关，锚点硬要求）。

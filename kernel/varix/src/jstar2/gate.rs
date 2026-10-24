@@ -18,6 +18,8 @@
 //!
 //! **零误拦**：F633 的 100 样本库全部过闸（正常包零误拦的复测面）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::curimport::{generate_library, parse_ani_bytes, parse_cur_bytes, CurImportError};
 use crate::jstar2::jbase::{

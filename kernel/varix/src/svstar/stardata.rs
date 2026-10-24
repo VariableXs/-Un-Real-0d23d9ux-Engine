@@ -21,13 +21,14 @@
 //! 时间注入式（Unix 秒），宿主测试确定复现。无外部依赖（JSON 面用
 //! vbase::JsonObj 唯一源；签名用 vbase::sha256 + vxapp 验签口径）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use crate::svstar::vbase;
 use crate::svstar::vxapp;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源）
@@ -815,18 +816,18 @@ pub fn import_cards_json(json: &str) -> Result<StarData, Vec<ImportError>> {
                                 errs.push(ImportError { program: String::from(p), reason: "rating out of range" });
                             } else if cp > 10_000 {
                                 errs.push(ImportError { program: String::from(p), reason: "case_pass_bp out of range" });
-                            } else if source.is_none() {
-                                errs.push(ImportError { program: String::from(p), reason: "unknown source tag" });
-                            } else {
+                            } else if let Some(src) = source {
                                 sd.add_card(StarCard {
                                     program: String::from(p),
                                     program_version: String::from(v),
                                     rating: r as u32,
                                     case_pass_bp: cp as u32,
                                     boot_profile_ms: b,
-                                    source: source.unwrap(),
+                                    source: src,
                                     updated_at: u,
                                 });
+                            } else {
+                                errs.push(ImportError { program: String::from(p), reason: "unknown source tag" });
                             }
                         }
                         (Some(p), _, _, _, _, _, _) => {

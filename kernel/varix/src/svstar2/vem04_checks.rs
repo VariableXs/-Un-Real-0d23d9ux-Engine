@@ -19,6 +19,8 @@
 //!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vem02_track::{
     KeyframeRef, MountInput, Outcome, TrackClass, TrackContainer, TrackPayload,
@@ -26,7 +28,6 @@ use crate::svstar2::vem02_track::{
 use crate::svstar2::vem04_batch::*;
 
 extern crate alloc;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::string::ToString;
 use alloc::string::String;

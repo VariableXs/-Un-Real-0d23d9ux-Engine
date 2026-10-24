@@ -300,3 +300,75 @@ pub fn coverage_distribution(m: &FinAcceptMatrix) -> Result<u32, u16> {
     }
     Ok(total)
 }
+
+
+// ===== 深化块（cga145_acceptfin · 验收终审深化）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_acceptfin {
+    //! 验收终审深化 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 终审票据链：每张票必须 (序号, 判定, 责任人) 三元齐备，序号严格递增。
+    pub fn ticket_chain(tickets: &[(u32, u8, u64)]) -> Result<(), u16> {
+        if tickets.is_empty() {
+            return Err(1);
+        }
+        let mut prev: Option<u32> = None;
+        for (i, &(no, verdict, owner)) in tickets.iter().enumerate() {
+            if owner == 0 {
+                return Err(2 + i as u16);
+            }
+            if verdict > 2 {
+                return Err(32 + i as u16);
+            }
+            if let Some(p) = prev {
+                if no <= p {
+                    return Err(64 + i as u16);
+                }
+            }
+            prev = Some(no);
+        }
+        Ok(())
+    }
+
+    /// 终审结论合成：任一否决即整体否决（短板纪律），全票通过才通过。
+    pub fn final_verdict(verdicts: &[u8]) -> u8 {
+        if verdicts.is_empty() {
+            return 3;
+        }
+        if verdicts.iter().any(|&v| v == 2) {
+            2
+        } else if verdicts.iter().any(|&v| v == 1) {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// 门槛核对：通过率千分比必须 ≥ 门槛，不足即拒。
+    pub fn threshold_gate(passed: u32, total: u32, floor_permille: u32) -> Result<(), u16> {
+        if total == 0 {
+            return Err(1);
+        }
+        if floor_permille > 1000 {
+            return Err(2);
+        }
+        if passed * 1000 < total * floor_permille {
+            return Err(3);
+        }
+        Ok(())
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0145-深化");
+        let ok = ticket_chain(&[(1, 0, 7), (2, 0, 7), (3, 1, 9)]).is_ok();
+        cs.add("票据链合法", ok, "");
+        cs.add("跳号检出", ticket_chain(&[(1, 0, 7), (3, 0, 7)]).is_err(), "");
+        cs.add("无主检出", ticket_chain(&[(1, 0, 0)]).is_err(), "");
+        cs.add("短板合成", final_verdict(&[0, 0, 0]) == 0 && final_verdict(&[0, 1, 0]) == 1 && final_verdict(&[0, 2, 1]) == 2, "");
+        cs.add("门槛守门", threshold_gate(990, 1000, 980).is_ok() && threshold_gate(900, 1000, 980).is_err(), "");
+        cs
+    }
+}

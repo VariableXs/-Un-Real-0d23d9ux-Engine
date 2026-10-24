@@ -8,6 +8,7 @@
 //! - 泄漏责任人标注 → `A08-泄漏-*`
 //! - 计数漂移审计 → `A08-漂移-*`
 
+use alloc::vec::Vec;
 use super::vea08_handle::*;
 use crate::checks::CheckSet;
 

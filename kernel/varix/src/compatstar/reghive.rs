@@ -22,6 +22,8 @@
 //! 零堆纪律：B 树节点定长 4KB × 定长节点池，键定长 64B / 值定长 256B，
 //! 无 Vec/String/Box/format!（节点池容量 64 节点 = 256KB 工程值，登记报告）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use alloc::string::ToString;
 
@@ -96,6 +98,12 @@ struct Node {
 impl Node {
     const fn new() -> Node {
         Node { leaf: true, recs: [None; NODE_ORDER], children: [-1; NODE_ORDER + 1], n: 0 }
+    }
+
+    /// 占用槽读取（i < n 由树不变量保证；越界/缺槽返回 None——调用方
+    /// 按「树结构损坏 → 未命中/拒绝」处理，不 panic）。
+    fn rec(&self, i: usize) -> Option<Rec> {
+        self.recs.get(i).and_then(|s| *s)
     }
 }
 
@@ -173,7 +181,10 @@ impl Hive {
             let node = &self.nodes[id as usize];
             let mut i = 0;
             while i < node.n {
-                let r = node.recs[i].unwrap();
+                let r = match node.rec(i) {
+                    Some(r) => r,
+                    None => return None,
+                };
                 match cmp_key(r.key_str(), key) {
                     core::cmp::Ordering::Equal => return Some(r),
                     core::cmp::Ordering::Less => i += 1,
@@ -236,10 +247,12 @@ impl Hive {
                 // 有序插入。
                 let mut pos = root.n;
                 for i in 0..root.n {
-                    if cmp_key(root.recs[i].unwrap().key_str(), rec.key_str()) == core::cmp::Ordering::Greater {
+                if let Some(r) = root.rec(i) {
+                    if cmp_key(r.key_str(), rec.key_str()) == core::cmp::Ordering::Greater {
                         pos = i;
                         break;
                     }
+                }
                 }
                 let mut j = root.n;
                 while j > pos {
@@ -295,8 +308,10 @@ impl Hive {
             let root = &self.nodes[self.root as usize];
             let mut i = 0;
             while i < root.n {
-                if cmp_key(root.recs[i].unwrap().key_str(), rec.key_str()) == core::cmp::Ordering::Greater {
-                    break;
+                if let Some(r) = root.rec(i) {
+                    if cmp_key(r.key_str(), rec.key_str()) == core::cmp::Ordering::Greater {
+                        break;
+                    }
                 }
                 i += 1;
             }
@@ -321,9 +336,11 @@ impl Hive {
             let leaf = &mut self.nodes[child as usize];
             let mut pos = leaf.n;
             for i in 0..leaf.n {
-                if cmp_key(leaf.recs[i].unwrap().key_str(), rec.key_str()) == core::cmp::Ordering::Greater {
-                    pos = i;
-                    break;
+                if let Some(r) = leaf.rec(i) {
+                    if cmp_key(r.key_str(), rec.key_str()) == core::cmp::Ordering::Greater {
+                        pos = i;
+                        break;
+                    }
                 }
             }
             let mut j = leaf.n;
@@ -345,15 +362,19 @@ impl Hive {
                 Some(n) => n,
                 None => return false,
             };
-        let (up_val, moved): (Rec, [Option<Rec>; NODE_ORDER]) = {
+        let (up_slot, moved): (Option<Rec>, [Option<Rec>; NODE_ORDER]) = {
             let ln = &self.nodes[child as usize];
             let mut mv = [None; NODE_ORDER];
             for k in 0..(NODE_ORDER - mid) {
                 mv[k] = ln.recs[mid + k];
             }
-            (ln.recs[mid - 1].unwrap(), mv)
+            (ln.rec(mid - 1), mv)
         };
-        let up = up_val;
+        // 中间键提升（占用槽由「分裂时叶必满」不变量保证；缺槽视为树
+        // 结构损坏 → 如实拒绝本次插入，不 panic）。
+        let Some(up) = up_slot else {
+            return false;
+        };
         {
             let nr = &mut self.nodes[right as usize];
             nr.leaf = true;
@@ -388,7 +409,10 @@ impl Hive {
             let node = &mut self.nodes[id as usize];
             let mut i = 0;
             while i < node.n {
-                let r = node.recs[i].unwrap();
+                let r = match node.rec(i) {
+                    Some(r) => r,
+                    None => return false,
+                };
                 match cmp_key(r.key_str(), rec.key_str()) {
                     core::cmp::Ordering::Equal => {
                         node.recs[i] = Some(rec);
@@ -414,7 +438,10 @@ impl Hive {
             let node = &mut self.nodes[id as usize];
             let mut i = 0;
             while i < node.n {
-                let r = node.recs[i].unwrap();
+                let r = match node.rec(i) {
+                    Some(r) => r,
+                    None => return false,
+                };
                 match cmp_key(r.key_str(), key) {
                     core::cmp::Ordering::Equal => {
                         // 删除：后项前移（模板回读面在 get 兜底——删自有键后

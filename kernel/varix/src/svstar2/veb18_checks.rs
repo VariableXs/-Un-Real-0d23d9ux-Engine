@@ -26,8 +26,8 @@
 //! 5. **判据区零 panic 面**：全文件无 `unwrap()`/`expect()`/`[i]` 越界风险，
 //!    所有下标访问先比长度。
 
-use alloc::string::ToString;
 use alloc::vec;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use super::veb18_compat::*;

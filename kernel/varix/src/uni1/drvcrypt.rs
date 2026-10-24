@@ -27,6 +27,8 @@
 //! - 退加密 [`VaultWizard::disable`]：仅完成态 + 显式确认才可退；退
 //!   即清全部密钥材料与会话缓存（不留残余——数据安全红线侧）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 
 /// 后台加密期间前台单次 IO 延迟预算（ms）——F334 前台无感判据。

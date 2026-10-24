@@ -3,6 +3,7 @@
 //! 补深：破面通知三渠道、实验 API 首次调用日志提示、迁移指南模型、
 //! 破面历史册（append-only）、实验级转正流程（考察期满→授予）。
 
+use alloc::vec::Vec;
 use alloc::vec;
 use crate::checks::CheckSet;
 use crate::stareco::apistab::{signature_fp_of, ApiRegistry, Stability, MIGRATION_WINDOW_DAYS};

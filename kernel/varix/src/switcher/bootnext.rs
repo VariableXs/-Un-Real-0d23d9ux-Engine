@@ -4,6 +4,8 @@
 //! 边界：本域只做「编排层」——底层引导原语来自 VARIX-500 AI-01，本文件不重复实现。
 //! 形态：`no_std` + 固定容量数组（无 Vec/String/Box），全部状态可序列化到 ESP。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

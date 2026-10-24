@@ -18,10 +18,10 @@
 //! Z 域字符串码五码互异：`E_DS_ILLEGAL` / `E_DS_ROLLBACK` /
 //! `E_DS_SUSPECT_TIMEOUT` / `E_DS_NO_SUBSCRIBER` / `E_DS_UNKNOWN_DEV`。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

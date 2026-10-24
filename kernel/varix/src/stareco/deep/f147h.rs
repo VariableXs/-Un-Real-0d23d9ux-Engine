@@ -3,6 +3,7 @@
 //! 装配与跨域接口件：同步状态 → 设置中心同步页行（设备/状态/冲突
 //! 数）、冲突解决入口行（人工策略的下发数据）、同步关闭诚实行。
 
+use alloc::vec::Vec;
 use super::f147g::Strategy;
 use crate::checks::CheckSet;
 

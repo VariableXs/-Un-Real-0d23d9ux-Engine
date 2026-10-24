@@ -5,13 +5,13 @@
 //! 只做 [`CheckSet::merge`]；条数守恒断言用 tally 对比判据侧写死值（F2806/
 //! F0817 首版无限递归教训：族内判据调本族/全域入口 = 自我递归栈溢出）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::vee08_fontmetric::{MetricSnapshot, MetricSource};
 use super::vee18_ncontract::*;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

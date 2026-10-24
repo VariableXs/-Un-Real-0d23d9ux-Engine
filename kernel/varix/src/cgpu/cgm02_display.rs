@@ -44,6 +44,7 @@
 // 导入（no_std 三件套）
 // ---------------------------------------------------------------------------
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::cgpu::cgm01_display::VmCode;
 

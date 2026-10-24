@@ -11,11 +11,12 @@
 //! 实现形态：共享会话状态机（发现→确认→传输→完成，含拒绝/断线分支）
 //! + 分块传输账（断点续传——已确认块不重传）+ 隐身默认位。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源）

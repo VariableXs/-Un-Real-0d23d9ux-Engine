@@ -225,7 +225,7 @@ impl IoUring {
         if self.sq_head == self.sq_tail {
             return false;
         }
-        let e = self.sq[self.sq_head].take().unwrap();
+        let Some(e) = self.sq[self.sq_head].take() else { return false };
         self.sq_head = (self.sq_head + 1) % SQ_DEPTH;
         let cnext = (self.cq_tail + 1) % CQ_DEPTH;
         if cnext == self.cq_head {
@@ -240,7 +240,7 @@ impl IoUring {
         if self.cq_head == self.cq_tail {
             return None;
         }
-        let c = self.cq[self.cq_head].take().unwrap();
+        let Some(c) = self.cq[self.cq_head].take() else { return None };
         self.cq_head = (self.cq_head + 1) % CQ_DEPTH;
         self.reaped += 1;
         Some(c)

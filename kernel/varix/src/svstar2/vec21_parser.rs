@@ -59,8 +59,8 @@
 //!   的情形必须逐条登记处置理由，不得静默跳过（见 [`ConflictDisposition`]）。
 //! 零 panic 面、零 IO、无全局可变状态。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use super::vec03_lexer::{Token, TokenKind};

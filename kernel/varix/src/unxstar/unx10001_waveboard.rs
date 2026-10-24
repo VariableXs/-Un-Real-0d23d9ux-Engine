@@ -1,8 +1,11 @@
 //! UNX-F10001 · 波次报表总纲（维度与口径）账 · 诊断段 0xB7E0
 //! 验收锚点：UNX-F10001-J1 报表口径成文落账（五维：波/批/战线/模块/
 //! 判据），维度歧义 10/10 次检出，双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB7E0;
 
@@ -259,7 +262,7 @@ pub fn run_unx10001_checks() -> crate::checks::CheckSet {
     let mut spot = true;
     for _ in 0..5 {
         let i = lcg.below(b.entries.len() as u64) as usize;
-        let (dim, k, v) = b.entries[i];
+        let (dim, k, v) = b.entries[i].clone();
         let d = b.dims.iter().find(|d| d.dim == dim).unwrap();
         if !k.starts_with(&format!("{}:", d.unique_key)) || v == u64::MAX {
             spot = false;

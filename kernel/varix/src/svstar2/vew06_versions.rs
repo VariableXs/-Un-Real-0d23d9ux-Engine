@@ -38,9 +38,9 @@
 //!    API 不兼容、废弃超期三条失败路径各自给出**专属拦截原因**（一个笼统的
 //!    "失败"会让插件作者无从修复）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vew05_trust::TrustChain;

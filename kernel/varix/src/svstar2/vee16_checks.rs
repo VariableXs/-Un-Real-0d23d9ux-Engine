@@ -10,8 +10,8 @@
 //! 双向验证纪律：每条判据配「构造违规 → 断言检出」——坏后端必须被摘除、
 //! 虚报必须被金样抓住、协议残缺必须被全域门槛拒绝；正向恒绿不构成证据。
 
-use alloc::boxed::Box;
 use alloc::vec;
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

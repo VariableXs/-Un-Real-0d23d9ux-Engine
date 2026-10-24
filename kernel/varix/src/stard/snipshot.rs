@@ -21,6 +21,8 @@
 //! 像素面以 `Frame`（RGBA 行主序缓冲）建模，帧源由调用方注入口供给；
 //! 马赛克/取色/放大镜全部纯函数——对拍判据可复现。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

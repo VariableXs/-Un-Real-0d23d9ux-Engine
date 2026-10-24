@@ -24,10 +24,10 @@
 //! 诊断码段：0x7980（0x7981~0x7988 闭集；全域 grep 确认独占）。
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64 整数算术，零墙钟。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 模块版本。
 pub const FZ_VERSION: &str = "unx2201_freezectl-v1";

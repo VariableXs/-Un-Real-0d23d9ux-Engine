@@ -33,6 +33,7 @@
 //! `E_CS_DEPTH` 位深越界 / `E_CS_RANGE` range 标志非法 /
 //! `E_CS_UNSUPPORTED` 未登记的转换对 / `E_CS_LEN_MISMATCH` 批量长度不齐。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec::Vec;

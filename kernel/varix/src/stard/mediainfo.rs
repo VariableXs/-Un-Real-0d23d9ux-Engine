@@ -19,6 +19,8 @@
 //! STREAMINFO / MP3 帧头+Xing），零外部依赖、对抗样本不 panic（F176
 //! 安全纪律同源）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

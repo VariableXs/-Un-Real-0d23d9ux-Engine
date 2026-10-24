@@ -4,6 +4,8 @@
 //! no_std 内核 target 下编译，单测在 std 下运行。
 //! ASCII 大小写不敏感匹配走 `crate::galaxy::ascii_*`（no_std 下无分配）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::galaxy::rt::DetPrng;
 

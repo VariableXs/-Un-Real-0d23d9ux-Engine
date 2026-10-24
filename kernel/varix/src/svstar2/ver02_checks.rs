@@ -703,7 +703,6 @@ pub fn run_ver02_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::string::String;
 
     #[test]
     fn ver02_contract_selfcheck_clean() {

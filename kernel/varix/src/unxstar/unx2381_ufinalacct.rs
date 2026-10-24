@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! =====================================================================================
 //! 任务单：UNX-F2381 · 收官轴总控（域终账总成 · 40 批加法链终账）
 //! 域/批：CoRun·UNX-A3-B40（域终账与收官标志条 · 交接收官轴四 · 末批）
@@ -63,9 +64,11 @@
 //! `no_std + alloc`；零 `unwrap` / `expect` / `panic!` / `todo!`；零浮点；
 //! 零真实 IO、零墙钟——时间一律为注入的逻辑 `tick: u64`；确定性 LCG 保证同种子
 //! 同轨迹；错误为自定义 `Result<T, FaErr>` 闭集。
-#![allow(dead_code)]
+use alloc::vec;
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 extern crate alloc;
-use alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 // ===========================================================================
 // 1. 常量表

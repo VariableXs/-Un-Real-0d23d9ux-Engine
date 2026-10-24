@@ -11,6 +11,8 @@
 //!
 //! 零堆纪律：定长回收站账表，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::ToString;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

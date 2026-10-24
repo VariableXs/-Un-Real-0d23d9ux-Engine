@@ -53,9 +53,9 @@
 //!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::svstar2::ven02_tree::{ControlTree, SingleParentPolicy, create_node, insert};

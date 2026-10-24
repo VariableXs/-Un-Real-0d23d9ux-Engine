@@ -2,6 +2,8 @@
 //! 命令解析（动词/参数/开关）、别名表、分发表、退出码与叙事、历史环形台账。
 //! 零堆、整数运算，无 Vec/String/Box/alloc、无外部 crate。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 历史台账容量与参数上限。

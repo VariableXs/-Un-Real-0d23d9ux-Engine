@@ -45,9 +45,9 @@
 //! 严重得多）。偏好节承载无障碍偏好（高对比/读屏行距等），随档案
 //! 一起走版本链——无障碍设置不该是二等公民。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

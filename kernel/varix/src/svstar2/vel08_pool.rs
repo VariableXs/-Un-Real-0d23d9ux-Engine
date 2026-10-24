@@ -102,12 +102,12 @@
 //!    而非加抓不到的假判据——**假判据比没判据更坏**，它给人虚假保障。
 
 
+use alloc::vec;
 // 内核浮点层：`x86_64-unknown-none` 下 core 不提供浮点 transcendentals，
 // 本文件用到的浮点方法统一走 `FloatExt`（转发 libm，见 crate::float 文档）。
 use crate::float::FloatExt;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

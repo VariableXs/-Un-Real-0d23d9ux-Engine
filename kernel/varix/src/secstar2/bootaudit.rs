@@ -22,9 +22,10 @@
 //! 接缝纪律：哈希计算用 crate::ksha256（内核自实现 SHA-256，标准向量锁定）；
 //! F174 快照链/F198 恢复环境为消费方，结果经 `AuditReport` 注出。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::ksha256;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

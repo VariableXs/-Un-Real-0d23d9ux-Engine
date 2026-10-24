@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! VE-F1612 · 几何校验器（VE-I 域 · I01 网格格式与几何基础组 · 目标 360 行）
 //!
 //! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F1612`
@@ -44,11 +45,10 @@
 //!   可修项交 [`FixPlan`]、不可修项进拒绝通道，两侧计数口径一致。
 //! - **零静默**：任何拦截都产出 [`RejectNotice`]，无「静默丢弃」路径。
 
-#![allow(dead_code)]
+use alloc::vec;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::meshrepair::{Defect, DefectKind, RepairMesh};

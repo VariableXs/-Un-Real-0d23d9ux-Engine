@@ -12,6 +12,7 @@
 //! 据红线：遥测只聚合不动账本；空场景不发零值（空=空，不造假）。诊断码段
 //! 0x5B01~0x5B05。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

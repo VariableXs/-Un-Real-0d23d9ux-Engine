@@ -8,6 +8,8 @@
 //! ③「数据更新随系统更新（F122）走」的**版本账**——内置数据版本戳 +
 //!   更新通道记录 + 覆盖年滚动规则（当年+次年；过期年数据随更新滚出）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::istar::holiday::{covers, lookup, mark_token, BUILTIN, COVERED_YEARS, DayMark};

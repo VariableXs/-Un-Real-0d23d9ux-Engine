@@ -13,6 +13,7 @@
 //! 窗口所在屏 → 每屏按钮表）；焦点屏判定（事件时戳注入）；副屏时钟
 //! 开关（独立旋钮）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

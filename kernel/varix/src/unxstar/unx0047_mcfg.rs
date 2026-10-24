@@ -2,7 +2,8 @@
 //! 验收锚点：UNX-F0047-J1 ECAM 基址/段号/总线范围与真机一致，
 //! 配置空间首字节读取判据通过；纯功能代码 ≥240 行。
 
-use crate::alloc::vec::Vec;
+
+use crate::alloc::{vec::Vec};
 
 pub const SEG_BASE: u16 = 0x2000;
 

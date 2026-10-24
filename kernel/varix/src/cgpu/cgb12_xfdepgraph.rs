@@ -93,15 +93,15 @@ impl XfEdge {
     pub fn key(&self) -> String {
         let mut s = String::new();
         s.push_str("f");
-        s.push_str(itoa(self.consumer_frame));
+        s.push_str(&itoa(self.consumer_frame));
         s.push_str("t");
-        s.push_str(itoa(self.consumer_task as u64));
+        s.push_str(&itoa(self.consumer_task as u64));
         s.push_str("<-f");
-        s.push_str(itoa(self.producer_frame));
+        s.push_str(&itoa(self.producer_frame));
         s.push_str("t");
-        s.push_str(itoa(self.producer_task as u64));
+        s.push_str(&itoa(self.producer_task as u64));
         s.push_str("r");
-        s.push_str(itoa(self.resource as u64));
+        s.push_str(&itoa(self.resource as u64));
         s
     }
 }
@@ -568,19 +568,19 @@ impl XfGraphSnap {
         let mut s = String::from("[XF图 ");
         s.push_str(&self.engine);
         s.push_str(" 纪元=");
-        s.push_str(itoa(self.epoch));
+        s.push_str(&itoa(self.epoch));
         s.push_str(" 边=");
-        s.push_str(itoa(self.edges));
+        s.push_str(&itoa(self.edges));
         s.push_str(" 在用=");
-        s.push_str(itoa(self.live));
+        s.push_str(&itoa(self.live));
         s.push_str(" 排空=");
-        s.push_str(itoa(self.draining));
+        s.push_str(&itoa(self.draining));
         s.push_str(" 退役=");
-        s.push_str(itoa(self.retired));
+        s.push_str(&itoa(self.retired));
         s.push_str(" 环标记=");
-        s.push_str(itoa(self.cycle_marks));
+        s.push_str(&itoa(self.cycle_marks));
         s.push_str(" 拒绝=");
-        s.push_str(itoa(self.rejects));
+        s.push_str(&itoa(self.rejects));
         s.push_str("]");
         s
     }

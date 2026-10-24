@@ -22,8 +22,9 @@
 //! 接缝纪律：与 cmdline（旧 F017 通用 key=value 框架）语法对齐（等号分隔、
 //! flag 即空值）；拒绝记录注入 F188 日志环由调用方完成。
 
-use crate::checks::CheckSet;
+use alloc::format;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec::Vec;
 

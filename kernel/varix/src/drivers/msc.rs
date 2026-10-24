@@ -24,6 +24,8 @@
 //! 数据段由 [`BulkPipe`] 分块（xHCI 侧 ≤4KiB DMA 缓冲），分块循环在
 //! 本层内完成，对上层呈现整段读写的 [`BlockDevice`] 契约。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::blk::{BlockDevice, BlockError};
 
 // ---- BOT 常量（USB MSC BOT 规范逐值同构）----------------------------------

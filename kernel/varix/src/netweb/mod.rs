@@ -3,6 +3,8 @@
 //! 纯逻辑 + 固定容量数组。无 Vec/String/Box/alloc，无外部 crate/std 专用 API。
 //! ASCII 匹配借用 `crate::galaxy::ascii_*_ci`。模糊测试借用 `crate::galaxy::rt::DetPrng`。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::galaxy::rt::DetPrng;
 

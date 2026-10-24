@@ -9,13 +9,14 @@
 //! 缺段拒收）+ 缺段注入 ×10 全拒核 + 引言 diff=0 核 + 注入核
 //! （缺段/乱段/重段/空演/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA080 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA080;
 pub const XC_RD_MISS: u32 = SEG_BASE + 0x01; // 缺段
 pub const XC_RD_ORDER: u32 = SEG_BASE + 0x02; // 乱段

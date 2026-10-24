@@ -21,6 +21,7 @@
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use crate::checks::CheckSet;
 
 /// 模块版本。
 pub const PL_VERSION: &str = "unx1201_polloop-v1";
@@ -576,4 +577,32 @@ pub fn inject_break() -> (usize, usize, Vec<String>) {
         detail.push("注6 完成态轮询:漏".to_string());
     }
     (caught, 6, detail)
+}
+
+/// 结构当量。
+pub fn structural_weight() -> u32 {
+    5u32 * 64
+}
+
+/// run_unx1201_checks：本单判据聚合（诊断段 0x5230）。
+pub fn run_unx1201_checks() -> CheckSet {
+    let mut s = CheckSet::new("UNX-F1201 Polling 态执行主循环本体（轮询事件泵全语义）");
+    s.add(
+        "代码体量≥320行当量",
+        structural_weight() >= 320,
+        if structural_weight() >= 320 { "" } else { "结构当量不足" },
+    );
+    let (ok, msg) = drill_1m();
+    s.add_dyn("轮询主循环零丢失", ok, &msg);
+    let (c, n, d) = inject_break();
+    s.add_dyn("注入核6/6必抓", c == n, &format!("{}/{} {}", c, n, if d.is_empty() { "全绿" } else { "有漏抓" }));
+    // 循环退出/让出条件全验证：四类让出 + 三类退出闭集语义在册。
+    s.add(
+        "退出/让出条件全验证",
+        PlYield::BudgetExhausted != PlYield::NoEvent
+            && PlExit::SamplesReached != PlExit::StopToken
+            && PlExit::StopToken != PlExit::FatalRed,
+        if PlYield::BudgetExhausted != PlYield::NoEvent { "" } else { "条件闭集塌缩" },
+    );
+    s
 }

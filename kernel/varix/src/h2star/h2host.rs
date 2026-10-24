@@ -16,6 +16,8 @@
 //!
 //! 时间纪律：时钟由调用方注入（毫秒戳）；本层只做计划与记账。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -147,8 +147,13 @@ impl<'a> Parser<'a> {
     }
     fn expr(&mut self) -> i16 {
         let mut lhs = self.term();
-        while let Some(Tok::Plus | Tok::Minus) = self.peek() {
-            let op = self.next().unwrap();
+        loop {
+            match self.peek() {
+                Some(Tok::Plus | Tok::Minus) => {}
+                _ => break,
+            }
+            // peek 已判为加/减，next 必中；None 按表达式终止处理（不 panic）。
+            let Some(op) = self.next() else { break };
             let rhs = self.term();
             let kind = if matches!(op, Tok::Plus) { NKind::Add } else { NKind::Sub };
             let node = Node { kind, l: lhs, r: rhs, val: 0, name: [0; 8], name_len: 0 };
@@ -157,10 +162,16 @@ impl<'a> Parser<'a> {
         }
         lhs
     }
+
     fn term(&mut self) -> i16 {
         let mut lhs = self.atom();
-        while let Some(Tok::Star | Tok::Slash) = self.peek() {
-            let op = self.next().unwrap();
+        loop {
+            match self.peek() {
+                Some(Tok::Star | Tok::Slash) => {}
+                _ => break,
+            }
+            // peek 已判为乘/除，next 必中；None 按表达式终止处理（不 panic）。
+            let Some(op) = self.next() else { break };
             let rhs = self.atom();
             let kind = if matches!(op, Tok::Star) { NKind::Mul } else { NKind::Div };
             let node = Node { kind, l: lhs, r: rhs, val: 0, name: [0; 8], name_len: 0 };

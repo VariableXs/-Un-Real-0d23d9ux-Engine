@@ -31,6 +31,7 @@
 //! - 无索引切片；`Vec::remove(0)` 前先判空；计数器 `saturating_*`。
 
 use alloc::format;
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 

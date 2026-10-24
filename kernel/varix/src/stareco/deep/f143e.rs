@@ -5,6 +5,10 @@
 //! （用途→判定→结论）、图解几何规范（间距/底色最小值）、打包器、
 //! 版本映射（品牌随系统大版本）、滥用工单先礼后兵三步深化。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::brandkit::{AbuseStage, Terms, DEFAULT_TERMS};
 

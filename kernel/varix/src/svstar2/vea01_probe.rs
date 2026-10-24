@@ -29,11 +29,11 @@
 //! 确定性算法、零 IO、可序列化：同样的输入必得同样的输出。时间用逻辑 tick
 //! 注入，不用墙钟——保证回归可复现、对拍可重现。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

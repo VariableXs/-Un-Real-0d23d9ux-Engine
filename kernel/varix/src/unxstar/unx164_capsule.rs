@@ -10,12 +10,13 @@
 //! 刷写动作永不执行）+ 探测账（(能力位, 探测值, 只读标记)）+ 注入核
 //! （写越权/坏魔数/尺寸漂移/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA900 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA900;
 pub const XC_CP_WRITE: u32 = SEG_BASE + 0x01; // 写越权
 pub const XC_CP_HDR: u32 = SEG_BASE + 0x02; // 坏头

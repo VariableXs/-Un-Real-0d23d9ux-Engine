@@ -1,8 +1,11 @@
 //! UNX-F0819 · 异常现场人话化解释与诊断账深化账 · 诊断段 0xB890
 //! 验收锚点：UNX-F0819-J1 全 32 异常人话化文案覆盖 100%，诊断账
 //! 三要素齐备率 100%（发生了什么/为什么/下一步），双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB890;
 

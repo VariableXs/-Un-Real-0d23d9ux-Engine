@@ -13,6 +13,7 @@
 /// 位）/卸（系统锁定清单保护）；损坏注入拒绝（魔数/表校验注入点——
 /// 拒绝并说明原因）；预览（任意文字+字号——渲染参数出口）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

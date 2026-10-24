@@ -21,9 +21,9 @@
 //!   b 族 = 修复器数据（15 项）
 //!   c 族 = 契约冻结与判据集自检（12 项）
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

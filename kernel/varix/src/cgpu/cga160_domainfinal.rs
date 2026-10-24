@@ -372,3 +372,39 @@ impl DomainFinalAudit {
         Ok(())
     }
 }
+
+
+// ===== 深化块（cga160_domainfinal · 域终审深化）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_domainfinal {
+    //! 域终审深化 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 域收口三式对账：登记数 = 实现数 + 显性豁免数，缺式即拒。
+    pub fn closure_identity(registered: u32, implemented: u32, waived: u32) -> Result<(), u16> {
+        if registered != implemented + waived {
+            return Err(1);
+        }
+        Ok(())
+    }
+
+    /// 域指纹链：逐层 FNV 叠加，空层指纹必须等于基值（零层不漂移）。
+    pub fn chain_fingerprint(items: &[u64]) -> u64 {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for &it in items {
+            h ^= it;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        h
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0160-深化");
+        cs.add("收口恒等式", closure_identity(10, 8, 2).is_ok() && closure_identity(10, 8, 1).is_err(), "");
+        cs.add("空层不漂移", chain_fingerprint(&[]) == 0xcbf29ce484222325, "");
+        cs.add("内容变指纹变", chain_fingerprint(&[1]) != chain_fingerprint(&[2]), "");
+        cs
+    }
+}

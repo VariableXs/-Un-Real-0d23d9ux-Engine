@@ -16,6 +16,8 @@
 //! 栈/堆纪律（任务56 戒律）：画布/窗口表/队列/文件槽全部 static .bss
 //! 定容，零堆分配、零 >64KB 栈物化；所有方法签名不带大返回值。
 
+use alloc::format;
+use alloc::vec::Vec;
 use core::sync::atomic::Ordering;
 
 use crate::cpu::sync::SpinProtected;
@@ -395,6 +397,49 @@ impl VFiles {
         self.files[i] = VFile { alive: true, name: nm, name_len: name.len(), data: d, len: data.len() };
         self.file_len += 1;
         true
+    }
+
+    /// 文件名是否存活（winmem `nt_create_file` 的 OPEN_EXISTING 前置检查）。
+    pub fn exists(&self, name: &[u8]) -> bool {
+        self.files[..self.file_len]
+            .iter()
+            .any(|f| f.alive && &f.name[..f.name_len] == name)
+    }
+
+    /// 建/开文件并返回句柄（槽下标 + 1，0 表示失败）。
+    ///
+    /// `create_always=true`（CREATE_ALWAYS=2）语义为「建或覆盖」：同名存活
+    /// 文件清空复用原槽，否则占用新槽；`false`（OPEN_EXISTING=3）语义为
+    /// 「原样打开已存在文件」。槽表满且无同名可复用 → 0（调用方置
+    /// ERROR_ACCESS_DENIED）。名字必须非空且短于 `NAME_MAX`。
+    pub fn open_slot(&mut self, name: &[u8], create_always: bool) -> usize {
+        if name.is_empty() || name.len() >= NAME_MAX {
+            return 0;
+        }
+        for (i, f) in self.files[..self.file_len].iter_mut().enumerate() {
+            if f.alive && &f.name[..f.name_len] == name {
+                if create_always {
+                    f.data = [0; VFILE_DATA];
+                    f.len = 0;
+                }
+                return i + 1;
+            }
+        }
+        if create_always && self.file_len < VFILE_MAX {
+            let i = self.file_len;
+            let mut nm = [0u8; NAME_MAX];
+            nm[..name.len()].copy_from_slice(name);
+            self.files[i] = VFile {
+                alive: true,
+                name: nm,
+                name_len: name.len(),
+                data: [0; VFILE_DATA],
+                len: 0,
+            };
+            self.file_len += 1;
+            return i + 1;
+        }
+        0
     }
 
     /// 读文件。

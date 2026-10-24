@@ -7,10 +7,13 @@
 //! - 距离模型 → `H09-距离-*`
 //! - 64 声源 + voice 预算 → `H09-声源-*`
 
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 use super::veh09_spatial::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
+use alloc::format;
 
 /// 构造一个「绕 Y 轴右转 deg 度」的听者姿态（偏航，用于方位相关判据）。
 fn turned_listener(deg: f32) -> Listener {
@@ -619,7 +622,6 @@ pub fn run_veh09_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

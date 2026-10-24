@@ -14,6 +14,7 @@
 //!
 //! 时间纪律：无时钟；滚动量是纯函数（同输入同滚动）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

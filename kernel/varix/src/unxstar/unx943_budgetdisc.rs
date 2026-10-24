@@ -19,7 +19,9 @@
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，u64/u128 整数算术，确定性（逻辑 tick）。
 //! 当前模式：只写功能代码，判据/checks 文件押后；本模块不写任何 #[test]。
 
-use alloc::{format, string::{String, ToString}, vec, vec::Vec};
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// 模块版本（深化版）。
 pub const BD_VERSION: &str = "unx943_budgetdisc-v1";

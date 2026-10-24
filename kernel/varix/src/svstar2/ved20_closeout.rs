@@ -101,11 +101,11 @@
 //!
 //! 逻辑 tick 注入，零墙钟；零 IO（载体事实由外部注入，本模块纯计算）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

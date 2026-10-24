@@ -2,8 +2,9 @@
 //! 验收锚点：UNX-F8741-J1 冷启动计时协议终版——阶段链（boot→mm→
 //! sched→usr）时间戳单调不减、阶段间隙上限约束、总时长预算约束、
 //! 协议版本冻结字段，违序/超窗/超预算三路全拒，双判据缺一即批内红灯。
+use alloc::vec::Vec;
+use alloc::string::String;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB740;
 

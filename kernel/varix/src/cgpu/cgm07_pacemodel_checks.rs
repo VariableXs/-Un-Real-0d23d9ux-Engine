@@ -2,8 +2,8 @@
 //!
 //! 判据纪律：预期值判据侧手算写死；零 panic 面。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
 use super::cgm07_pacemodel::{

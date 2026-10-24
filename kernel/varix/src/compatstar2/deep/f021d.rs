@@ -96,7 +96,10 @@ impl HeapModel {
         for i in 0..MAX_HEAP_BLOCKS {
             let hit = matches!(&self.blocks[i], Some(b) if b.offset == base && b.in_use);
             if hit {
-                let old_size = self.blocks[i].unwrap().size;
+                let old_size = match self.blocks[i].as_ref() {
+                    Some(b) => b.size,
+                    None => 0,
+                };
                 if need <= old_size {
                     if let Some(b) = self.blocks[i].as_mut() {
                         self.used_bytes -= b.size - need;

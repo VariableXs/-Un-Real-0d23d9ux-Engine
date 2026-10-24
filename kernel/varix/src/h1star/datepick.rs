@@ -26,6 +26,8 @@
 //!
 //! **依赖锚点**：`crate::checks::CheckSet`。
 
+use alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

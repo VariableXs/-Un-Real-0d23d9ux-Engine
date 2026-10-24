@@ -10,12 +10,13 @@
 //! seteuid/setreuid/setresuid 从此矩阵派生）+ 注入核（非特权越权/
 //! 保存值回退/矩阵漂移/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA580 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA580;
 pub const XC_ID_EPERM: u32 = SEG_BASE + 0x01; // 越权
 pub const XC_ID_RANGE: u32 = SEG_BASE + 0x02; // 越界 uid

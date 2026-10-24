@@ -16,9 +16,9 @@
 //! 证据推导但允许人工请求：`ratify` 对三种自相矛盾的请求都拒，且引证证据码
 //! 而非自造码（自造码等于把跨模块对账键私有化）。
 
+use alloc::vec;
 use alloc::string::String;
 use alloc::string::ToString;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 会签样本数（施工书：20 例）。

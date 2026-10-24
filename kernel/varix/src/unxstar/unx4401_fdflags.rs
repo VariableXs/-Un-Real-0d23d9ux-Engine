@@ -8,10 +8,9 @@
 //! 原语 + 读-改-回读核 + 邻 fd 零扰动核 + 注入核（越界 fd / 越权位 /
 //! 封表写 / 邻 fd 扰动检出）。判据 run_unx4401_checks()。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC000 独占 0x80）。

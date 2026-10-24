@@ -11,6 +11,8 @@
 //!
 //! 零堆纪律：定长列表，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

@@ -34,6 +34,7 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::veo01_arch::{CaseLedger, ClampLog};
 use super::veo05_props::{self, Declaration, ParsedValue, PropertyId, ValueKind};
 use super::veo06_shorthand::*;
@@ -41,7 +42,6 @@ use crate::checks::{CheckSet, MAX_CHECKS};
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ fn any_free_id() -> PropertyId {
 /// 架构-01：规格表审计必须通过（**五闸 + 两跨表闸 + 边序闸全过**）。
 fn chk_arch_spec_audit(s: &mut CheckSet) {
     match audit_spec_table() {
-        Ok(msg) => s.ok("O06-架构-01-规格表审计全过"),
+        Ok(_) => s.add("O06-架构-01-规格表审计全过", true, ""),
         Err(e) => s.fail("O06-架构-01-规格表审计全过", e.code),
     }
     // 审计摘要须自报条数（**可机检的落点**，不是空串）。

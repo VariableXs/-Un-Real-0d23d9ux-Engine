@@ -3,7 +3,9 @@
 //! 依赖解析（职责两分逐项登记），分工表与 F8064 递归装载口径一致机检，
 //! 协议版本冻结。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB460;
 

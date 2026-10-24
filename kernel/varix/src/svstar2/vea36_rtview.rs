@@ -51,6 +51,7 @@
 // 引入（no_std 内核侧；alloc 三件套自查：vec 宏 / Vec 类型 / String+ToString）
 // ---------------------------------------------------------------------------
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

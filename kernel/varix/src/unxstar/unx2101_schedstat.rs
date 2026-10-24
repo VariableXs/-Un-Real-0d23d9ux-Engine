@@ -43,6 +43,7 @@
 //! 把这条对齐做成可判定的恒等式，而不是靠注释声明。
 
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -1049,7 +1050,7 @@ pub fn run_unx2101_checks() -> CheckSet {
     for v in [17u32, 15u32, 16u32] {
         let _ = reg3.register(VerEntry { ver: v, fields: 3, unit_tag: "ns", since: v as u64 });
     }
-    cs.add(
+    cs.add_dyn(
         "F2101-03 版本册多版本",
         reg3.n == 3 && reg3.vers() == alloc::vec![15u32, 16, 17],
         "多版本共存且可按序读出",
@@ -1139,7 +1140,7 @@ pub fn run_unx2101_checks() -> CheckSet {
         let _ = f10.push(*s);
     }
     let rt = roundtrip(&mut f10);
-    cs.add(
+    cs.add_dyn(
         "F2101-10 往返逐字节",
         rt.byte_equal && rt.field_equal && rt.at == LINE_MAX,
         "往返后逐字节相同且字段全等",

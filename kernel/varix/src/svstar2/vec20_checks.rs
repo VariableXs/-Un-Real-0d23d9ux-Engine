@@ -20,6 +20,7 @@
 //! 参考值与被测对象**无关地独立算出**。
 
 
+use alloc::vec;
 use super::vec20_closure::*;
 use crate::checks::CheckSet;
 

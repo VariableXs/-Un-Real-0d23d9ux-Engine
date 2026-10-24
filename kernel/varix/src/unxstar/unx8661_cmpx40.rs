@@ -2,8 +2,11 @@
 //! 验收锚点：UNX-F8661-J1 40 组对照执行（varix 语义 × Linux 语义）
 //! 全量收官——一致率统计、偏差清单逐组落账、收官断言一票否决，
 //! 偏差注入必被逐组检出，双判据缺一即批内红灯。
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB6A0;
 

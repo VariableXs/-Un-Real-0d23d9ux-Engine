@@ -30,6 +30,7 @@
 //! - 乘除全走 u64 中间量，避免 u32 溢出；除法分母是字面常量 1000。
 //! - 无切片索引（`get()` + `unwrap_or`），无 `unwrap` / `expect`。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

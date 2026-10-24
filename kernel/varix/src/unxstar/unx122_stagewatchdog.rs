@@ -28,6 +28,7 @@
 //! 0x80..0x93 已占）。no_std + alloc 零 unwrap 零 expect 零 panic 面
 //! 零 IO 零墙钟零浮点。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。
@@ -831,7 +832,6 @@ use alloc::string::String;
 // 补宏导入：`use alloc::vec::Vec;` 只导**类型**不导**宏**，而本模块在
 // 公开函数（非 cfg(test) 区）里裸用 `vec![…]`，no_std 下宏须显式导入。
 
-use alloc::vec;
 
 /// 校准采样账容量（每阶段滚动样本数）。
 pub const SAMPLE_CAP: usize = 8;

@@ -18,6 +18,7 @@
 //! MAX/MAX+1 恰阈对拍防等价变异；先断合法批过再断重叠拒（反恒假）；
 //! 范围溢出用 first=u32::MAX, count=1 恰好边界 + count=2 溢出双向。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vef31_indirect as id;
 use alloc::vec::Vec;

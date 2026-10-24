@@ -9,6 +9,7 @@
 //! 诊断码段 0x06B0（本模块独占：0x06B0~0x06BF）。
 //! no_std + alloc 零 unwrap，全部 Result 化。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 /// 诊断码段基址。

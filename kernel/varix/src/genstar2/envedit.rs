@@ -10,6 +10,8 @@
 //!
 //! 零堆纪律：定长变量表与撤销栈，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use alloc::boxed::Box;
 
@@ -666,7 +668,7 @@ impl EnvEditor {
         }
         let mut merged = [0u8; VALUE_CAP];
         let mut w = 0usize;
-        let base = self.pane_var(p, idx).unwrap().value_str();
+        let base = self.pane_var(p, idx).map(|v| v.value_str()).unwrap_or("");
         if base.len() + 1 + seg.len() > VALUE_CAP {
             return false;
         }
@@ -689,7 +691,7 @@ impl EnvEditor {
             Some(i) => i,
             None => return false,
         };
-        let base = self.pane_var(p, idx).unwrap().value_str();
+        let base = self.pane_var(p, idx).map(|v| v.value_str()).unwrap_or("");
         let seg_u = seg.to_ascii_uppercase();
         let mut out = [0u8; VALUE_CAP];
         let mut w = 0usize;

@@ -77,7 +77,10 @@
 //!           确定性 LCG（64 位标准常数 6364136223846793005 / 1442695040888963407）；
 //!           自定义 Result<T,E>；所有容器定容优先，越界以错误码表达。
 
-use alloc::format; use alloc::string::{String, ToString}; use alloc::vec; use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 /// 模块版本（调度点全集登记 v1 · 清单冻结 v1）。
 pub const SP2_VERSION: &str = "unx1802_schedpts-v1";
 /// 判据标识（注释引用原文）。

@@ -11,12 +11,13 @@
 //! fd 表克隆/mm 换绑/人格冻结）+ 注入核（自为父/退出码漂移/fd 溢出/
 //! 人格未知/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA200 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA200;
 pub const XC_TS_SELF: u32 = SEG_BASE + 0x01; // 自为父
 pub const XC_TS_EXIT: u32 = SEG_BASE + 0x02; // 退出码漂移

@@ -50,6 +50,7 @@
 //! 0x3907 预估算术溢出 / 0x3908 模型待重定标 / 0x3909 降档建议已发出 /
 //! 0x390A 重定标落账。全段 `0x39` 与邻居 `0x31`（F1810）/`0x32` 不重叠。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

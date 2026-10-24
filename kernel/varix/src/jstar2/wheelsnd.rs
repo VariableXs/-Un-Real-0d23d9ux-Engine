@@ -17,6 +17,8 @@
 //! - **勿扰联动**：F341 勿扰档把交互音量按比例压低（深夜自动轻下去，
 //!   不用手动管——勿扰比例由显式注入口承接）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
 

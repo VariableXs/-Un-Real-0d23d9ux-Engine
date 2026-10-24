@@ -10,6 +10,8 @@
 //! - 测试结果可导出（送修/换机前的凭证）；
 //! - 工具轻量即开即用（<1s）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

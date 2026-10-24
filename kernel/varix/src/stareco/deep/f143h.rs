@@ -3,6 +3,7 @@
 //! 装配与跨域接口件：资产包 → 关于本机页展示行（4K 线标注）、第三方
 //! 申请页数据装配、色板 → 设置外观页 token 行（F151 联动格式）。
 
+use alloc::vec::Vec;
 use super::f143f::perceived_luma;
 use crate::checks::CheckSet;
 

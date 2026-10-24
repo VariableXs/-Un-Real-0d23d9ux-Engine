@@ -20,8 +20,9 @@
 //!
 //! 依赖锚点：F049（空闲窗口）、F077（通知中心）、F093（缩略图后台）、F121（快照）、F151（令牌原子替换）。
 
-use crate::checks::CheckSet;
+use alloc::format;
 use alloc::vec;
+use crate::checks::CheckSet;
 use crate::star::sbase::RingLog;
 use alloc::vec::Vec;
 

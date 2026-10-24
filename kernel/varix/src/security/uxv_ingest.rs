@@ -18,6 +18,7 @@
 //! 掉电安全：容器本身有 journal（B-13）；内核门只承诺"校验失败整包拒"，
 //! 掉电注入 ×10 用例断言任何截断形态都被拒收（无半文件流入队列）。
 
+use alloc::vec;
 use crate::kblake3 as blake3;
 
 pub const MAX_INGEST_BYTES: u64 = 256 * 1024 * 1024;
@@ -68,7 +69,10 @@ pub fn ingest(blob: &[u8]) -> Result<IngestOk, IngestError> {
     if &blob[0..8] != MAGIC {
         return Err(IngestError::NotUxv);
     }
-    let footer_offset = u64::from_le_bytes(blob[12..20].try_into().expect("定长"));
+    let footer_offset = blob
+        .get(12..20)
+        .and_then(|s| <[u8; 8]>::try_from(s).ok())
+        .map_or(0, u64::from_le_bytes);
     if footer_offset == 0 {
         return Err(IngestError::Unsealed);
     }

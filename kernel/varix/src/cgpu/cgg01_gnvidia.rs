@@ -53,6 +53,8 @@
 //! F0801/F0802/F0806（F01 认证体系——复用对象）；F1120（域收口）。
 //! 零 panic 面、零 IO、零墙钟、no_std。
 
+use alloc::format;
+use alloc::vec::Vec;
 use alloc::string::{String, ToString};
 
 // ---------------------------------------------------------------------------

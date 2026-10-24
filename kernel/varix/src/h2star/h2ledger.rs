@@ -14,6 +14,8 @@
 //! 时间纪律：分钟戳全部注入；存储纪律：账本可编解码（[`h2snap`] 层
 //! 序列化），本模块只管账目协议不管介质。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h2star::h2persist::fnv1a64;
 

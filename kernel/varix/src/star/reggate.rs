@@ -383,7 +383,8 @@ impl RegGate {
             Some((_, tr)) => tr,
             None => {
                 self.trends.push((run.bench, Vec::new()));
-                &mut self.trends.last_mut().unwrap().1
+                let last = self.trends.len().saturating_sub(1);
+                &mut self.trends[last].1
             }
         };
         tr.push(TrendPoint { day: run.day, value: med, verdict, ext_cause: None });

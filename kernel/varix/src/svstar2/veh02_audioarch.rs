@@ -24,9 +24,9 @@
 //!   协商）；消费者侧断连处理契约（按类别：系统类即发即弃不重建，媒体/游戏
 //!   状态协商重建，通信类最优先重连）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

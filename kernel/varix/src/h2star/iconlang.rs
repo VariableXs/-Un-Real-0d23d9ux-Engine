@@ -14,6 +14,7 @@
 //! 必须归族——孤例检测=无族图标数为 0）；资产管线装载口（F068 引用）；
 //! 账本导出（F135 文档站数据源）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

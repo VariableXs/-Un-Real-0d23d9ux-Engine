@@ -16,10 +16,11 @@
 //! ≤2 对全拼（score 40 + 「您是不是要找」标注）。条目名精确/前缀
 //! （score 100/90）永远压容错层。容错开关关闭 → 三层全停，只剩精确面。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

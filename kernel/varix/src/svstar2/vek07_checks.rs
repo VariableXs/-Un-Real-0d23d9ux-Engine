@@ -9,6 +9,8 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use super::vek07_exposure::*;
 use crate::checks::CheckSet;
 // 上游依赖显式导入而非依赖 `vek07_exposure::*` 的间接带入：`use ...::*` 只

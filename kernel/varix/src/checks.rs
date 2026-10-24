@@ -452,6 +452,30 @@ pub fn push_hex_u64(out: &mut [u8], n: &mut usize, mut v: u64) {
 /// 「不够即扩」纪律扩到 320（余量供后续分队收口）；AI-H1 收口实测注册面
 /// 已达 364 域（domains 表 350 + 合成器九族 + U2/I4/H1/J2 单聚合）> 320
 /// ——H1 批次前按同一纪律扩到 384（余量 20 供 J2/I 域收尾批次）。
+/// 构建器封装：兼容 `CheckSetBuilder::new(id, desc) -> .ok(name, ok, detail) -> .done()` 调用面。
+/// 语义与 [`CheckSet::add`] 完全一致，仅提供链式装配与命名第二参的外观。
+pub struct CheckSetBuilder {
+    inner: CheckSet,
+}
+
+impl CheckSetBuilder {
+    pub fn new(domain: &'static str, _desc: &str) -> CheckSetBuilder {
+        CheckSetBuilder {
+            inner: CheckSet::new(domain),
+        }
+    }
+
+    /// 记录一条判据（等价 [`CheckSet::add`]）。
+    pub fn ok(&mut self, name: &'static str, passed: bool, detail: &'static str) {
+        self.inner.add(name, passed, detail);
+    }
+
+    /// 收束为 [`CheckSet`]。
+    pub fn done(self) -> CheckSet {
+        self.inner
+    }
+}
+
 pub const MAX_DOMAINS: usize = 384;
 
 /// 每域聚合摘要（register 时从 CheckSet 提取）。CheckSet 全量值拷贝入

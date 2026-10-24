@@ -4,6 +4,8 @@
 //! 多设备星型拓扑校验、档案配额清理（最旧淘汰）、同步事件日志回放
 //! （幂等复跑）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase;
 
@@ -74,7 +76,11 @@ pub fn star_topology_ok(devices: &[&'static str], links: &[(&'static str, &'stat
         }
     }
     let hub = counts.iter().max_by_key(|(_, c)| *c).map(|(n, _)| *n).ok_or("零链路")?;
-    let hub_count = counts.iter().find(|(n, _)| *n == hub).map(|(_, c)| *c).expect("hub");
+    let hub_count = counts
+        .iter()
+        .find(|(n, _)| *n == hub)
+        .map(|(_, c)| *c)
+        .unwrap_or(0);
     // 每设备恰好一条链，且全部指向 hub。
     for d in devices {
         if *d == hub {

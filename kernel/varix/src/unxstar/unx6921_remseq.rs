@@ -8,12 +8,13 @@
 //! 步序执行器（严格序号递进 + 乱序拒）+ 步留账（(步, 资源, 序号)）
 //! + 步幂等核（重复执行同步拒）+ 注入核（跳步/逆序/重复/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0x9180 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0x9180;
 pub const XC_RM_SKIP: u32 = SEG_BASE + 0x01; // 跳步
 pub const XC_RM_ORDER: u32 = SEG_BASE + 0x02; // 乱序

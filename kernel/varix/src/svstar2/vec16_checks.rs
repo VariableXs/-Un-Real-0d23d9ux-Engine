@@ -12,10 +12,12 @@
 //!   自洽性核验、位置不自洽出注记）
 //! - 零静默 → `C16-显性-*`（未归族注记、未登记严重度注记、待回填登记、报告非空）
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
 // no_std 下 std prelude 不存在：`String` 与 `format!`/`vec!` 都得显式引入。
 // 宿主 `cargo test` 有 std prelude 会掩盖这一点，整树 `cargo check --lib`
 // 才暴露——两处都写上，两条链路都成立。
-use alloc::vec;
 
 use super::vec16_report::*;
 use crate::checks::CheckSet;

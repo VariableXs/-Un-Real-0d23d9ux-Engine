@@ -5,6 +5,9 @@
 //! 生命周期审计深化（登记→清理→对拍→零残留断言）、资产按需装载
 //! 优先级队列、冲突版本协商深化、20 档分辨率矩阵生成、同步阶段计时账。
 
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::fnv1a64;
 use crate::stareco::syncroam::{adaptive_crop, RoamChoice, RoamSession, RESOLUTION_STEPS, SYNC_TARGET_SECONDS};

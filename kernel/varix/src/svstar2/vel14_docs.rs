@@ -51,6 +51,7 @@
 //! **无障碍（锚点原文）**：全文档替述可读（每行 text 非空即判据）；
 //! 摄影与粒子术语配通俗解释（g 项）；无敏感信息。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

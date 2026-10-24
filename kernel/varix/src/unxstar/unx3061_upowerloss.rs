@@ -37,13 +37,12 @@
 //!
 //! =====================================================================================
 #![allow(dead_code)]
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 extern crate alloc;
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
 
 // ===========================================================================
 // 1. 常量表

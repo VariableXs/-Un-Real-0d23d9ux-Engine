@@ -47,6 +47,10 @@
 //! 需求文档读屏可达（域本色）：三问册与声明卡都有 [`screen_line`] 人话
 //! 摘要（判据核非空且含关键词）；无隐私面。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 use super::vez50_arch::Layer;

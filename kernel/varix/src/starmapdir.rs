@@ -8,6 +8,8 @@
 //!
 //! 零堆纪律：无 Vec/String/Box/format!，定长数组 + 字节串。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::sdkmanifest::valid_id;
 

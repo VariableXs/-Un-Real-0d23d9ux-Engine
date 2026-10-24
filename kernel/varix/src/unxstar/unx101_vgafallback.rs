@@ -25,6 +25,7 @@
 //! 诊断枚举 VgaCode 十六码（0x31 段 0x3100..=0x310F 互异 +
 //! [`segment_guard`]）。no_std 零 unwrap 零 panic 面。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

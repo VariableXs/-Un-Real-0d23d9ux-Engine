@@ -56,9 +56,10 @@
 //!    **常量化**且与采集函数逐处引用一致（判据对账）。
 //! 5. **"入册守卫"**。环境四要素缺一拒册、口径唯一、去重、基线移动超线
 //!    必须带 ADR——四闸逐条真触发（好条目过、坏条目各被各闸拦下）。
+use alloc::string::String;
+use alloc::string::ToString;
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use super::vek04_bloom::{composite_weights, half_res_cost_ratio, MIP_LEVELS_MAX};

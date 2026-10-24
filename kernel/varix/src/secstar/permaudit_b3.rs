@@ -138,7 +138,7 @@ impl RetentionRing {
 
     /// 今日需归档的日号数（审计页「已归档 N 天」数字的来源）。
     pub fn archive_due_count(&self, today: u32) -> usize {
-        (0..self.n).filter(|i| self.archive_due(self.days[*i].unwrap(), today)).count()
+        (0..self.n).filter(|i| self.days.get(*i).map_or(false, |&d| self.archive_due(d, today))).count()
     }
 }
 

@@ -114,13 +114,12 @@
 //! 本单为「册内自足模块」：在探针 crate 中以私有 `mod` 引入时，全部 `pub` 项
 //! 都会被判为未可达；这是引入方式使然，不是本单死代码。
 #![allow(dead_code)]
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 extern crate alloc;
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
 
 // ===========================================================================
 // 1. 常量表
@@ -2975,7 +2974,6 @@ pub const RECON_ROWS: usize = 9;
 pub fn reconcile(s: &Scheme) -> DcResult<Vec<String>> {
     let mut v: Vec<String> = Vec::new();
     let led = &s.ledger;
-
 
     // —— 恒等式 1：件数守恒（从 0 起算，与分配同步）——
     let e1 = led.kit_registered.wrapping_add(led.kit_pending);

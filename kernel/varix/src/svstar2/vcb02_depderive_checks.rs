@@ -16,11 +16,11 @@
 //! **判据设计硬规矩**：期望值判据侧独立手算；不变量两头都测（不漏+不滥）；
 //! 判据区零 panic 面。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vcb01_framegraph as fg;
 use crate::svstar2::vcb02_depderive as dd;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

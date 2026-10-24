@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! =====================================================================================
 //! 任务单：UNX-F2321 · 交接收官轴总控（联签编排三段）
 //! 域/批：CoRun·UNX-A3-B37（消费域移交联签与移交包终验 · 交接收官轴一）
@@ -49,11 +50,10 @@
 //!
 //! 本单为「册内自足模块」：以私有 `mod` 引入探针 crate 时全部 `pub` 项会被判
 //! 未可达，属引入方式使然，不是死代码，故整文件 `allow(dead_code)`。
-#![allow(dead_code)]
+use alloc::vec;
 extern crate alloc;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ===========================================================================

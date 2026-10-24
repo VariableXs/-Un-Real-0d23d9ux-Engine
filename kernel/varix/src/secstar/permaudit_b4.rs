@@ -14,6 +14,7 @@
 //!
 //! 零堆纪律：定长扫描账 + 定长矩阵，无 alloc。
 
+use alloc::vec::Vec;
 use super::permaudit::{CapKind, ARCHIVE_RETENTION_DAYS};
 use crate::checks::CheckSet;
 

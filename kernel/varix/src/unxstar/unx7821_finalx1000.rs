@@ -4,7 +4,11 @@
 //! 恰入一账无漏无重）③段封存完整（五段标记全落）；与 F7799 预告 diff ×1 一致
 //! （预告口径串与本批口径串全等）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9C80;
 

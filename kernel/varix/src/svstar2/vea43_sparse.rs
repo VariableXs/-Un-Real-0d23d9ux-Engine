@@ -26,6 +26,7 @@
 //!
 //! 诊断段：0x1E00 基址（全域核查无占用）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

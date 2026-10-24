@@ -47,6 +47,7 @@
 //! F1460（功耗-频率联合选点——画像消费方）。零 panic 面、零 IO、
 //! 零墙钟（tick 注入）、零浮点、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

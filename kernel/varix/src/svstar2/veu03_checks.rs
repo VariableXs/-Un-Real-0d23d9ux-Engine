@@ -15,12 +15,12 @@
 //! 自检项按**判据族收敛播报**（细项逐条判定不减少；全绿族并为一行，
 //! 有红族逐条出声）——口径与理由见 `veu01_checks.rs` 的 `FamilyTally`。
 
+use alloc::vec;
 use super::veu02_model::DomainTag;
 use super::veu03_registry::*;
 use crate::checks::CheckSet;
 
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 判据族前缀表（长前缀在前）。

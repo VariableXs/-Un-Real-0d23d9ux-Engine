@@ -3,7 +3,11 @@
 //! 反向：r_offset 越出目标段界三形注入（越上界/越下界/回绕）全拒且错误码与
 //! Linux 对照一致，双判据缺一即批内红灯。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB540;
 

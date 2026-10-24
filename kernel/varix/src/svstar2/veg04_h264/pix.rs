@@ -5,9 +5,9 @@
 //! 由 `veg04_h264.rs` 按职责拆分而来（L5 子模块拆分，行为保持）。
 //! 全部符号经 `veg04_h264` 的 `pub use` 再导出，对外路径不变。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::core::{DiagCode, Failure, R, checked_mul};

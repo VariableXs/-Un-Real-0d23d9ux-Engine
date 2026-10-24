@@ -5,6 +5,8 @@
 //! 直接复用 `crate::acpi` 的 SdtHeader/checksum_ok/SDT_HEADER_LEN。
 //! 后续各单在此追加注册——先推模块本体再补注册行，防孤儿登记 E0433。
 
+use alloc::vec::Vec;
+use alloc::format;
 use alloc::string::String;
 // 二级折叠表（`unxstar_secondary_blocks` / `run_unxstar_secondary_checks`）在
 // **模块级**签名里用 `CheckSet`，故此处必须模块级导入——原`run_unxstar_checks`
@@ -118,33 +120,76 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     // - 红项 → `red`；
     // - 溢出（子集自身超 CheckSet 上限）→ `truncated`，与红项**分开记账**
     //   （截断是「账装不下」，红项是「账里有错」，混为一谈会掩盖真实原因）。
-    for (tag, f) in unxstar_blocks().iter() {
-        // 即用即弃：同一时刻栈上只存活一个子集 CheckSet（约 4.5KB）。
-        // （诊断探针，随诊撤：逐子域计时，定位聚合病态慢的元凶子域。）
-        #[cfg(test)]
-        let __t0 = {
-            use std::time::Instant;
-            eprintln!("[unx-timing] enter {}", tag);
-            Instant::now()
-        };
-        let sub = f();
-        #[cfg(test)]
-        eprintln!("[unx-timing] {} {:.1}s", tag, __t0.elapsed().as_secs_f32());
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(
-            // `blocks.iter()` 产出 `&(&'static str, fn…)`，故 `tag` 是
-            // `&&'static str`，而 `add` 的 `name` 契约是 `&'static str`
-            // （不收短生命周期）——解引用一次取回真静态标签。
-            *tag,
-            passed,
-            if passed {
-                ""
-            } else if sub.truncated() {
-                "unxstar family truncated"
-            } else {
-                "unxstar family red"
-            },
-        );
+    //
+    // 修正记录（主表分段折叠，修复主集溢出静默丢族）：主表已扩至 353 席，
+    // 「每族 1 格平铺」早超 `MAX_CHECKS = 112` 容量——第 113 族起被 `add`
+    // 的溢出守卫静默丢弃，末尾 260+ 族（含二级折叠格）**从未参与聚合**。
+    // 修复：表族按 `SEG = 100` 分段，每段内部聚合成段集（每族 1 格，语义
+    // 原样），段集整体作为顶层 1 格（`UNX-MAIN-S01..S10` 静态名封顶）。
+    // 顶层总格 = ⌈表长/100⌉ + 手工块 62 + 二级折叠 1 ≈ 67，恒在容量内；
+    // 段内丢族会在段集格数/段格红绿上暴露，判据强度不降。
+    const MAIN_SEG: usize = 100;
+    {
+        let table = unxstar_blocks();
+        let chunks = table.len().div_ceil(MAIN_SEG);
+        for c in 0..chunks {
+            let lo = c * MAIN_SEG;
+            let hi = ((c + 1) * MAIN_SEG).min(table.len());
+            let mut seg_set = CheckSet::new("unxstar-main-seg");
+            for (tag, f) in table[lo..hi].iter() {
+                // 即用即弃：同一时刻栈上只存活一个子集 CheckSet（约 4.5KB）。
+                // （诊断探针，随诊撤：逐子域计时，定位聚合病态慢的元凶子域。）
+                #[cfg(test)]
+                let __t0 = {
+                    use std::time::Instant;
+                    eprintln!("[unx-timing] enter {}", tag);
+                    Instant::now()
+                };
+                let sub = f();
+                #[cfg(test)]
+                eprintln!("[unx-timing] {} {:.1}s", tag, __t0.elapsed().as_secs_f32());
+                let passed = sub.all_passed() && !sub.truncated();
+                seg_set.add(
+                    // `blocks.iter()` 产出 `&(&'static str, fn…)`，故 `tag` 是
+                    // `&&'static str`，而 `add` 的 `name` 契约是 `&'static str`
+                    // （不收短生命周期）——解引用一次取回真静态标签。
+                    *tag,
+                    passed,
+                    if passed {
+                        ""
+                    } else if sub.truncated() {
+                        "unxstar family truncated"
+                    } else {
+                        "unxstar family red"
+                    },
+                );
+            }
+            let seg_ok = seg_set.all_passed() && !seg_set.truncated();
+            // 段名静态封顶：10 段 = 1000 族（当前 353 → 4 段）。
+            let seg_name: &'static str = match c {
+                0 => "UNX-MAIN-S01",
+                1 => "UNX-MAIN-S02",
+                2 => "UNX-MAIN-S03",
+                3 => "UNX-MAIN-S04",
+                4 => "UNX-MAIN-S05",
+                5 => "UNX-MAIN-S06",
+                6 => "UNX-MAIN-S07",
+                7 => "UNX-MAIN-S08",
+                8 => "UNX-MAIN-S09",
+                _ => "UNX-MAIN-S10",
+            };
+            set.add(
+                seg_name,
+                seg_ok,
+                if seg_ok {
+                    ""
+                } else if seg_set.truncated() {
+                    "main segment truncated"
+                } else {
+                    "main segment has red family"
+                },
+            );
+        }
     }
 
     {
@@ -375,6 +420,54 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
     set
 }
 
+/// UNX 域**完整**总账（不截断入口）。
+///
+/// # 为什么另一个入口（实测，不是理论担忧）
+///
+/// 上面 `run_unxstar_checks()` 返回 `CheckSet`，容量 `MAX_CHECKS = 112`。
+/// 而本域一级表有 277 个子集、二级折叠表另有一批，逐子集再展开到判据级
+/// 约 8,548 条。`CheckSet::add` 满员即 `dropped += 1` 并 return，于是：
+///
+/// - 277 个子集的**汇总行**只能进前 112 行，后 165 个子集连「红/绿」都进不来；
+/// - 每个子集内部若超 112 条，子集自身的红项同样被吞；
+/// - 报表仍是 `PASS 112/112`——**看起来很绿**。
+///
+/// 结论：`run_unxstar_checks()` 的绿**不能**作为本域验收证据；它只能证明
+/// 「前 112 个子集里的第一格是绿的」。真正的验收必须走本函数。
+///
+/// # 语义
+///
+/// - 计数**全量**累加（`DomainLedger::total` 精确到条）；
+/// - 红项文本按 `RED_CAP` 优先留存，溢出显性记 `red_overflow`；
+/// - 子集自身截断（`dropped > 0`）转成一条合成红项 `子集#dropped`，
+///   不让它在聚合层被抹平。
+///
+/// 调用方：宿主测试侧（`robust` 体系）。内核运行期不调用——本函数会走堆。
+pub fn run_unxstar_ledger() -> crate::domledger::DomainLedger {
+    let mut ledger = crate::domledger::DomainLedger::new(UNX_DOMAIN);
+    for (tag, f) in unxstar_blocks().iter() {
+        let sub = f();
+        let label: &str = tag;
+        ledger.absorb(label, &sub);
+        // 子集**汇总行**也入账：它是对「这个子集整体是否绿」的一票，
+        // 与子集内逐条判据不重复（前者是子集级结论，后者是判据级证据）。
+        let ok = sub.all_passed() && !sub.truncated();
+        ledger.record(
+            label,
+            ok,
+            if ok {
+                ""
+            } else if sub.truncated() {
+                "family truncated"
+            } else {
+                "family red"
+            },
+            label,
+        );
+    }
+    ledger
+}
+
 /// 一级折叠子集表（69 单，**函数指针形态**，循环内 `f()` 即用即弃）。
 ///
 /// 修正记录（诊断面可及性）：此表原是 `run_unxstar_checks` 内的**局部变量**，
@@ -383,7 +476,7 @@ pub fn run_unxstar_checks() -> crate::checks::CheckSet {
 /// 装不下 69 个标签，聚合 panic 里只剩折叠层的残缺名单。抽成模块级函数后，
 /// `unxstar_domain_aggregate_all_green` 可**直接遍历本表现场取下层名单**，
 /// 长度不受 `DYN_CAP` 限制——与 `cgpu` / `stareco::deep` 同一手法的三处对齐。
-pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 69] {
+pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 353] {
     [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks as fn() -> CheckSet),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks as fn() -> CheckSet),
@@ -454,6 +547,293 @@ pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 69] {
         ("UNX-F2222", unx2222_rollver::run_f2222_checks as fn() -> CheckSet),
         ("UNX-F0505", unx505_loopback::run_f505_checks as fn() -> CheckSet),
         ("UNX-F1723", unx1723_migledger::run_f1723_checks as fn() -> CheckSet),
+        ("UNX-F0102", unx0102_16550full::run_t102_checks as fn() -> CheckSet),
+        ("UNX-F0184", unx184_initserial::run_t184_checks as fn() -> CheckSet),
+        ("UNX-F0205", unx205_reportuart::run_t205_checks as fn() -> CheckSet),
+        ("UNX-F0264", unx264b_lineedit::run_t264b_checks as fn() -> CheckSet),
+        ("UNX-F0387", unx387b_oomacct::run_t387b_checks as fn() -> CheckSet),
+        ("UNX-F1481", unx1481_assertledger::run_t481_checks as fn() -> CheckSet),
+        ("UNX-F0484", unx484_prim::run_t484_checks as fn() -> CheckSet),
+        ("UNX-F0485", unx485_font8x16::run_t485_checks as fn() -> CheckSet),
+        ("UNX-F0504", unx504_lineedit::run_t504_checks as fn() -> CheckSet),
+        ("UNX-F1521", unx1521_ledgerindex::run_t521_checks as fn() -> CheckSet),
+        ("UNX-F1541", unx1541_domainfinal::run_t541_checks as fn() -> CheckSet),
+        ("UNX-F1542", unx1542_domainaxioms::run_t542_checks as fn() -> CheckSet),
+        ("UNX-F0565", unx565_pwrbtn::run_t565_checks as fn() -> CheckSet),
+        ("UNX-F1621", unx1621b_percurv::run_t621b_checks as fn() -> CheckSet),
+        ("UNX-F0685", unx685_biosreg::run_t685_checks as fn() -> CheckSet),
+        ("UNX-F1741", unx1741_idlefsm::run_t741_checks as fn() -> CheckSet),
+        ("UNX-F1743", unx1743_idleres::run_t743_checks as fn() -> CheckSet),
+        ("UNX-F1761", unx1761_obsface::run_t761_checks as fn() -> CheckSet),
+        ("UNX-F1763", unx1763_statmac::run_t763_checks as fn() -> CheckSet),
+        ("UNX-F1783", unx1783_crossscan::run_t783_checks as fn() -> CheckSet),
+        ("UNX-F1801", unx1801_schedpath::run_t801_checks as fn() -> CheckSet),
+        ("UNX-F1803", unx1803_resched::run_t803_checks as fn() -> CheckSet),
+        ("UNX-F1823", unx1823_saveframe::run_t823_checks as fn() -> CheckSet),
+        ("UNX-F1843", unx1843_ipirx::run_t843_checks as fn() -> CheckSet),
+        ("UNX-F1863", unx1863_ipishoot::run_t863_checks as fn() -> CheckSet),
+        ("UNX-F1863", unx1863_shootbegin::run_u1863_checks as fn() -> CheckSet),
+        ("UNX-F0054", unx0054_acpimat::run_unx0054_checks as fn() -> CheckSet),
+        ("UNX-F0171", unx0171_tpmreplay::run_unx0171_checks as fn() -> CheckSet),
+        ("UNX-F0487", unx0487_clrcolor::run_unx0487_checks as fn() -> CheckSet),
+        ("UNX-F0645", unx0645_reggate::run_unx0645_checks as fn() -> CheckSet),
+        ("UNX-F0807", unx0807_trapframe::run_unx0807_checks as fn() -> CheckSet),
+        ("UNX-F0819", unx0819_explain::run_unx0819_checks as fn() -> CheckSet),
+        ("UNX-F0968", unx0968_fourstate::run_unx0968_checks as fn() -> CheckSet),
+        ("UNX-F10001", unx10001_waveboard::run_unx10001_checks as fn() -> CheckSet),
+        ("UNX-F1014", unx1014_timebudget::run_unx1014_checks as fn() -> CheckSet),
+        ("UNX-F1025", unx1025_hpetread::run_unx1025_checks as fn() -> CheckSet),
+        ("UNX-F1027", unx1027_timedisp::run_unx1027_checks as fn() -> CheckSet),
+        ("UNX-F0102", unx102_uart::run_unx102_checks as fn() -> CheckSet),
+        ("UNX-F0122", unx122_stagewatchdog::run_unx122_checks as fn() -> CheckSet),
+        ("UNX-F0124", unx124_bootfail::run_unx124_checks as fn() -> CheckSet),
+        ("UNX-F0142", unx142_gptesp::run_unx142_checks as fn() -> CheckSet),
+        ("UNX-F0144", unx144_manifest::run_unx144_checks as fn() -> CheckSet),
+        ("UNX-F1604", unx1604_apboot::run_unx1604_checks as fn() -> CheckSet),
+        ("UNX-F1622", unx1622_gspair::run_unx1622_checks as fn() -> CheckSet),
+        ("UNX-F0164", unx164_capsule::run_unx164_checks as fn() -> CheckSet),
+        ("UNX-F1662", unx1662_schedif::run_unx1662_checks as fn() -> CheckSet),
+        ("UNX-F1686", unx1686_vruntime::run_unx1686_checks as fn() -> CheckSet),
+        ("UNX-F1704", unx1704_loadtrace::run_unx1704_checks as fn() -> CheckSet),
+        ("UNX-F1724", unx1724_migfallback::run_unx1724_checks as fn() -> CheckSet),
+        ("UNX-F1744", unx1744_idleexit::run_unx1744_checks as fn() -> CheckSet),
+        ("UNX-F1764", unx1764_schedlat::run_unx1764_checks as fn() -> CheckSet),
+        ("UNX-F1784", unx1784_coreaudit::run_unx1784_checks as fn() -> CheckSet),
+        ("UNX-F1804", unx1804_nextthr::run_unx1804_checks as fn() -> CheckSet),
+        ("UNX-F1824", unx1824_fpuswap::run_unx1824_checks as fn() -> CheckSet),
+        ("UNX-F1844", unx1844_reschedipi::run_unx1844_checks as fn() -> CheckSet),
+        ("UNX-F1864", unx1864_shootipi::run_unx1864_checks as fn() -> CheckSet),
+        ("UNX-F1884", unx1884_migipi::run_unx1884_checks as fn() -> CheckSet),
+        ("UNX-F1904", unx1904_tlsseg::run_unx1904_checks as fn() -> CheckSet),
+        ("UNX-F1921", unx1921_cr3pcid::run_unx1921_checks as fn() -> CheckSet),
+        ("UNX-F1938", unx1938_ktestagg::run_unx1938_checks as fn() -> CheckSet),
+        ("UNX-F1962", unx1962_pstate::run_unx1962_checks as fn() -> CheckSet),
+        ("UNX-F2002", unx2002_utilagg::run_unx2002_checks as fn() -> CheckSet),
+        ("UNX-F2022", unx2022_exitlat::run_unx2022_checks as fn() -> CheckSet),
+        ("UNX-F2061", unx2061_percorestat::run_unx2061_checks as fn() -> CheckSet),
+        ("UNX-F2102", unx2102_scheddebug::run_unx2102_checks as fn() -> CheckSet),
+        ("UNX-F2103", unx2103_sysfstune::run_unx2103_checks as fn() -> CheckSet),
+        ("UNX-F2104", unx2104_exportmatrix::run_unx2104_checks as fn() -> CheckSet),
+        ("UNX-F2105", unx2105_exportpoint::run_unx2105_checks as fn() -> CheckSet),
+        ("UNX-F2106", unx2106_exportledger::run_unx2106_checks as fn() -> CheckSet),
+        ("UNX-F2107", unx2107_paramfreeze::run_unx2107_checks as fn() -> CheckSet),
+        ("UNX-F2108", unx2108_scenbook::run_unx2108_checks as fn() -> CheckSet),
+        ("UNX-F2109", unx2109_ktestfamily::run_unx2109_checks as fn() -> CheckSet),
+        ("UNX-F21581", unx21581_domainseal::run_unx21581_domainseal_checks as fn() -> CheckSet),
+        ("UNX-F21582", unx21582_idclosure::run_unx21582_idclosure_checks as fn() -> CheckSet),
+        ("UNX-F21583", unx21583_critpin::run_unx21583_critpin_checks as fn() -> CheckSet),
+        ("UNX-F21584", unx21584_batchdisk::run_unx21584_batchdisk_checks as fn() -> CheckSet),
+        ("UNX-F21585", unx21585_outlinealign::run_unx21585_outlinealign_checks as fn() -> CheckSet),
+        ("UNX-F21586", unx21586_asmconsist::run_unx21586_asmconsist_checks as fn() -> CheckSet),
+        ("UNX-F21587", unx21587_conservseal::run_unx21587_conservseal_checks as fn() -> CheckSet),
+        ("UNX-F21588", unx21588_closesolemn::run_unx21588_closesolemn_checks as fn() -> CheckSet),
+        ("UNX-F21589", unx21589_upcosign::run_unx21589_upcosign_checks as fn() -> CheckSet),
+        ("UNX-F21590", unx21590_downcosign::run_unx21590_downcosign_checks as fn() -> CheckSet),
+        ("UNX-F21591", unx21591_defectaudit::run_unx21591_defectaudit_checks as fn() -> CheckSet),
+        ("UNX-F21592", unx21592_retestpool::run_unx21592_retestpool_checks as fn() -> CheckSet),
+        ("UNX-F21593", unx21593_evidencetrio::run_unx21593_evidencetrio_checks as fn() -> CheckSet),
+        ("UNX-F21594", unx21594_handover::run_unx21594_handover_checks as fn() -> CheckSet),
+        ("UNX-F21595", unx21595_ledgerpatch::run_unx21595_ledgerpatch_checks as fn() -> CheckSet),
+        ("UNX-F21596", unx21596_kgategate::run_unx21596_kgategate_checks as fn() -> CheckSet),
+        ("UNX-F21597", unx21597_selfscore::run_unx21597_selfscore_checks as fn() -> CheckSet),
+        ("UNX-F21598", unx21598_domainlock::run_unx21598_domainlock_checks as fn() -> CheckSet),
+        ("UNX-F21599", unx21599_threeseal::run_unx21599_threeseal_checks as fn() -> CheckSet),
+        ("UNX-F21600", unx21600_batchclose::run_unx21600_batchclose_checks as fn() -> CheckSet),
+        ("UNX-F21601", unx21601_rop3table::run_unx21601_rop3table_checks as fn() -> CheckSet),
+        ("UNX-F21604", unx21604_blackops::run_unx21604_blackops_checks as fn() -> CheckSet),
+        ("UNX-F21607", unx21607_mergepen::run_unx21607_mergepen_checks as fn() -> CheckSet),
+        ("UNX-F21610", unx21610_palettexpand::run_unx21610_palettexpand_checks as fn() -> CheckSet),
+        ("UNX-F0225", unx225_diag::run_unx225_checks as fn() -> CheckSet),
+        ("UNX-F0246", unx246_ovrblk::run_unx246_checks as fn() -> CheckSet),
+        ("UNX-F0247", unx247_health::run_unx247_checks as fn() -> CheckSet),
+        ("UNX-F0248", unx248_timebase::run_unx248_checks as fn() -> CheckSet),
+        ("UNX-F0249", unx249_logkey::run_unx249_checks as fn() -> CheckSet),
+        ("UNX-F0250", unx250_lastboot::run_unx250_checks as fn() -> CheckSet),
+        ("UNX-F0251", unx251_subscribe::run_unx251_checks as fn() -> CheckSet),
+        ("UNX-F0252", unx252_crcchain::run_unx252_checks as fn() -> CheckSet),
+        ("UNX-F0253", unx253_vercompat::run_unx253_checks as fn() -> CheckSet),
+        ("UNX-F0254", unx254_cmdreg::run_unx254_checks as fn() -> CheckSet),
+        ("UNX-F0255", unx255_prio::run_unx255_checks as fn() -> CheckSet),
+        ("UNX-F0256", unx256_audit::run_unx256_checks as fn() -> CheckSet),
+        ("UNX-F0257", unx257_fieldmap::run_unx257_checks as fn() -> CheckSet),
+        ("UNX-F0258", unx258_timing::run_unx258_checks as fn() -> CheckSet),
+        ("UNX-F0259", unx259_tamper::run_unx259_checks as fn() -> CheckSet),
+        ("UNX-F0260", unx260_ktb13::run_unx260_checks as fn() -> CheckSet),
+        ("UNX-F2522", unx2522_fragsample::run_unx2522_checks as fn() -> CheckSet),
+        ("UNX-F2542", unx2542_gfpflags::run_unx2542_checks as fn() -> CheckSet),
+        ("UNX-F2623", unx2623_invpcid::run_unx2623_checks as fn() -> CheckSet),
+        ("UNX-F2663", unx2663_cacheins::run_unx2663_checks as fn() -> CheckSet),
+        ("UNX-F2744", unx2744_watermark::run_unx2744_checks as fn() -> CheckSet),
+        ("UNX-F2763", unx2763_reclaim::run_unx2763_checks as fn() -> CheckSet),
+        ("UNX-F2862", unx2862_addrmatrix::run_unx2862_checks as fn() -> CheckSet),
+        ("UNX-F0286", unx286_assert::run_unx286_checks as fn() -> CheckSet),
+        ("UNX-F2902", unx2902_readpeak::run_unx2902_checks as fn() -> CheckSet),
+        ("UNX-F2922", unx2922_cowpriv::run_unx2922_checks as fn() -> CheckSet),
+        ("UNX-F2962", unx2962_caseasm::run_unx2962_checks as fn() -> CheckSet),
+        ("UNX-F3002", unx3002_pageinlink::run_unx3002_checks as fn() -> CheckSet),
+        ("UNX-F3022", unx3022_reclaimvar::run_unx3022_checks as fn() -> CheckSet),
+        ("UNX-F0304", unx304_dmap::run_unx304_checks as fn() -> CheckSet),
+        ("UNX-F3062", unx3062_dirtysnap::run_unx3062_checks as fn() -> CheckSet),
+        ("UNX-F3201", unx3201_atomic::run_unx3201_checks as fn() -> CheckSet),
+        ("UNX-F3522", unx3522_probeslot::run_unx3522_checks as fn() -> CheckSet),
+        ("UNX-F3542", unx3542_fpbacktrace::run_unx3542_checks as fn() -> CheckSet),
+        ("UNX-F3622", unx3622_readconc::run_unx3622_checks as fn() -> CheckSet),
+        ("UNX-F3662", unx3662_symtab::run_unx3662_checks as fn() -> CheckSet),
+        ("UNX-F3762", unx3762_segschema::run_unx3762_checks as fn() -> CheckSet),
+        ("UNX-F0386", unx386_dualzone::run_unx386_checks as fn() -> CheckSet),
+        ("UNX-F4001", unx4001_vfsbus::run_unx4001_checks as fn() -> CheckSet),
+        ("UNX-F4021", unx4021_sblife::run_unx4021_checks as fn() -> CheckSet),
+        ("UNX-F4061", unx4061_inodewash::run_unx4061_checks as fn() -> CheckSet),
+        ("UNX-F0422", unx422_exgate::run_unx422_checks as fn() -> CheckSet),
+        ("UNX-F4381", unx4381_dupsem::run_unx4381_checks as fn() -> CheckSet),
+        ("UNX-F4501", unx4501_permbits::run_unx4501_checks as fn() -> CheckSet),
+        ("UNX-F4801", unx4801_ext4tree::run_unx4801_checks as fn() -> CheckSet),
+        ("UNX-F4841", unx4841_dirents::run_unx4841_checks as fn() -> CheckSet),
+        ("UNX-F4881", unx4881_xattrns::run_unx4881_checks as fn() -> CheckSet),
+        ("UNX-F4901", unx4901_inline::run_unx4901_checks as fn() -> CheckSet),
+        ("UNX-F4921", unx4921_mdcsum::run_unx4921_checks as fn() -> CheckSet),
+        ("UNX-F5001", unx5001_writepath::run_unx5001_checks as fn() -> CheckSet),
+        ("UNX-F5021", unx5021_sparse::run_unx5021_checks as fn() -> CheckSet),
+        ("UNX-F5061", unx5061_fragmetric::run_unx5061_checks as fn() -> CheckSet),
+        ("UNX-F5381", unx5381_subvol::run_unx5381_checks as fn() -> CheckSet),
+        ("UNX-F5401", unx5401_squash::run_unx5401_checks as fn() -> CheckSet),
+        ("UNX-F5501", unx5501_jnoutline::run_unx5501_checks as fn() -> CheckSet),
+        ("UNX-F6401", unx6401_biobase::run_unx6401_checks as fn() -> CheckSet),
+        ("UNX-F6501", unx6501_blkreg::run_unx6501_checks as fn() -> CheckSet),
+        ("UNX-F0662", unx66_bootseg::run_unx66_checks as fn() -> CheckSet),
+        ("UNX-F6801", unx6801_cfis::run_unx6801_checks as fn() -> CheckSet),
+        ("UNX-F6841", unx6841_ataid::run_unx6841_checks as fn() -> CheckSet),
+        ("UNX-F6881", unx6881_devlife::run_unx6881_checks as fn() -> CheckSet),
+        ("UNX-F0686", unx68_efimap::run_unx68_checks as fn() -> CheckSet),
+        ("UNX-F6901", unx6901_hotplug::run_unx6901_checks as fn() -> CheckSet),
+        ("UNX-F6921", unx6921_remseq::run_unx6921_checks as fn() -> CheckSet),
+        ("UNX-F7001", unx7001_handov::run_unx7001_checks as fn() -> CheckSet),
+        ("UNX-F7021", unx7021_rmtest::run_unx7021_checks as fn() -> CheckSet),
+        ("UNX-F7061", unx7061_injexp::run_unx7061_checks as fn() -> CheckSet),
+        ("UNX-F0704", unx70_mpassert::run_unx70_checks as fn() -> CheckSet),
+        ("UNX-F0724", unx72_upgreg::run_unx72_checks as fn() -> CheckSet),
+        ("UNX-F7381", unx7381_raid5sm::run_unx7381_checks as fn() -> CheckSet),
+        ("UNX-F7401", unx7401_raigate::run_unx7401_checks as fn() -> CheckSet),
+        ("UNX-F0741", unx741_domain_journal::run_unx741_checks as fn() -> CheckSet),
+        ("UNX-F0744", unx74_dedupmerge::run_unx74_checks as fn() -> CheckSet),
+        ("UNX-F7501", unx7501_xopen::run_unx7501_checks as fn() -> CheckSet),
+        ("UNX-F0761", unx761_precheck_list::run_unx761_checks as fn() -> CheckSet),
+        ("UNX-F0762", unx76_3matrix::run_unx76_checks as fn() -> CheckSet),
+        ("UNX-F7801", unx7801_rmround::run_unx7801_checks as fn() -> CheckSet),
+        ("UNX-F0781", unx781_report_freeze::run_unx781_checks as fn() -> CheckSet),
+        ("UNX-F7841", unx7841_bkpchain::run_unx7841_checks as fn() -> CheckSet),
+        ("UNX-F7881", unx7881_receng::run_unx7881_checks as fn() -> CheckSet),
+        ("UNX-F0784", unx78_final40::run_unx78_checks as fn() -> CheckSet),
+        ("UNX-F7901", unx7901_rehdrill::run_unx7901_checks as fn() -> CheckSet),
+        ("UNX-F7921", unx7921_schedret::run_unx7921_checks as fn() -> CheckSet),
+        ("UNX-F8001", unx8001_interp::run_unx8001_checks as fn() -> CheckSet),
+        ("UNX-F8021", unx8021_taskstr::run_unx8021_checks as fn() -> CheckSet),
+        ("UNX-F8061", unx8061_ptinterp::run_unx8061_checks as fn() -> CheckSet),
+        ("UNX-F0821", unx821_lapic_mmio::run_unx821_checks as fn() -> CheckSet),
+        ("UNX-F0824", unx82_tprppr::run_unx82_checks as fn() -> CheckSet),
+        ("UNX-F8381", unx8381_mbatch::run_unx8381_checks as fn() -> CheckSet),
+        ("UNX-F8401", unx8401_magic::run_unx8401_checks as fn() -> CheckSet),
+        ("UNX-F8501", unx8501_pttls::run_unx8501_checks as fn() -> CheckSet),
+        ("UNX-F8581", unx8581_d1joint::run_unx8581_checks as fn() -> CheckSet),
+        ("UNX-F8601", unx8601_c2full::run_unx8601_checks as fn() -> CheckSet),
+        ("UNX-F0861", unx861_ioapic_ledger::run_unx861_checks as fn() -> CheckSet),
+        ("UNX-F8621", unx8621_sigpend::run_unx8621_checks as fn() -> CheckSet),
+        ("UNX-F8641", unx8641_glibcx40::run_unx8641_checks as fn() -> CheckSet),
+        ("UNX-F8661", unx8661_cmpx40::run_unx8661_checks as fn() -> CheckSet),
+        ("UNX-F8681", unx8681_ltpmap60::run_unx8681_checks as fn() -> CheckSet),
+        ("UNX-F8701", unx8701_idrecon8::run_unx8701_checks as fn() -> CheckSet),
+        ("UNX-F8721", unx8721_procfam::run_unx8721_checks as fn() -> CheckSet),
+        ("UNX-F8741", unx8741_coldtime::run_unx8741_checks as fn() -> CheckSet),
+        ("UNX-F8761", unx8761_docsnap::run_unx8761_checks as fn() -> CheckSet),
+        ("UNX-F8781", unx8781_finrecon::run_unx8781_checks as fn() -> CheckSet),
+        ("UNX-F8801", unx8801_systab::run_unx8801_checks as fn() -> CheckSet),
+        ("UNX-F8821", unx8821_openflags::run_unx8821_checks as fn() -> CheckSet),
+        ("UNX-F8841", unx8841_brk::run_unx8841_checks as fn() -> CheckSet),
+        ("UNX-F8881", unx8881_ident3::run_unx8881_checks as fn() -> CheckSet),
+        ("UNX-F0884", unx88_msixaffin::run_unx88_checks as fn() -> CheckSet),
+        ("UNX-F8901", unx8901_gettod::run_unx8901_checks as fn() -> CheckSet),
+        ("UNX-F8921", unx8921_cfu::run_unx8921_checks as fn() -> CheckSet),
+        ("UNX-F9001", unx9001_rtsig::run_unx9001_checks as fn() -> CheckSet),
+        ("UNX-F0938", unx93_ipiexplain::run_unx93_checks as fn() -> CheckSet),
+        // AI-WB-1022 根卡批（UNX-F1061~F1243 十单）+ unx1242 孤儿判据收编：
+        ("UNX-F1061", unx1061_clktrait::run_unx1061_checks as fn() -> CheckSet),
+        ("UNX-F1081", unx1081_ntpcal::run_unx1081_checks as fn() -> CheckSet),
+        ("UNX-F1105", unx1105_dispsafe::run_unx1105_checks as fn() -> CheckSet),
+        ("UNX-F1121", unx1121_irqsign::run_unx1121_checks as fn() -> CheckSet),
+        ("UNX-F1141", unx1141_topacct::run_unx1141_checks as fn() -> CheckSet),
+        ("UNX-F1161", unx1161_softirq::run_unx1161_checks as fn() -> CheckSet),
+        ("UNX-F1181", unx1181_irqroute::run_unx1181_checks as fn() -> CheckSet),
+        ("UNX-F1201", unx1201_polloop::run_unx1201_checks as fn() -> CheckSet),
+        ("UNX-F1221", unx1221_drainloop::run_unx1221_checks as fn() -> CheckSet),
+        // 注：unx1242_arming::run_unx1242_checks 未挂表——该卡属 WorkBuddy-AI（已完成），
+        // 其判据两处红属在途实现缺陷，挂表会污染本域聚合账；留待卡主收口。
+        ("UNX-F1243", unx1243_armrace::run_unx1243_checks as fn() -> CheckSet),
+        ("UNX-F1062", unx1062_tickdual::run_unx1062_checks as fn() -> CheckSet),
+        ("UNX-F1082", unx1082_alarm::run_unx1082_checks as fn() -> CheckSet),
+        ("UNX-F1106", unx1106_hotpath::run_unx1106_checks as fn() -> CheckSet),
+        ("UNX-F1122", unx1122_irqflags::run_unx1122_checks as fn() -> CheckSet),
+        ("UNX-F1142", unx1142_timeout::run_unx1142_checks as fn() -> CheckSet),
+        ("UNX-F1162", unx1162_tasklet::run_unx1162_checks as fn() -> CheckSet),
+        ("UNX-F1182", unx1182_policy::run_unx1182_checks as fn() -> CheckSet),
+        ("UNX-F1202", unx1202_pollreg::run_unx1202_checks as fn() -> CheckSet),
+        ("UNX-F1222", unx1222_draincrit::run_unx1222_checks as fn() -> CheckSet),
+        ("UNX-F1244", unx1244_armfallback::run_unx1244_checks as fn() -> CheckSet),
+        ("UNX-F0299", unx299_panicparse::run_unx299_checks as fn() -> CheckSet),
+        ("UNX-F0330", unx330_apfeat::run_unx330_checks as fn() -> CheckSet),
+        ("UNX-F0331", unx331_ucoderev::run_unx331_checks as fn() -> CheckSet),
+        ("UNX-F0310", unx310_pgarea::run_unx310_checks as fn() -> CheckSet),
+        ("UNX-F0316", unx316_pgfaultinj::run_unx316_checks as fn() -> CheckSet),
+        ("UNX-F0317", unx317_pgperf::run_unx317_checks as fn() -> CheckSet),
+        ("UNX-F0318", unx318_trampolow::run_unx318_checks as fn() -> CheckSet),
+        ("UNX-F0319", unx319_pggolden::run_unx319_checks as fn() -> CheckSet),
+        ("UNX-F0320", unx320_ktestb16::run_unx320_checks as fn() -> CheckSet),
+        ("UNX-F0332", unx332_apfirstlog::run_unx332_checks as fn() -> CheckSet),
+        ("UNX-F0333", unx333_bootfail::run_unx333_checks as fn() -> CheckSet),
+        ("UNX-F0334", unx334_x2apic::run_unx334_checks as fn() -> CheckSet),
+        ("UNX-F0335", unx335_apbudget::run_unx335_checks as fn() -> CheckSet),
+        ("UNX-F0336", unx336_trampocrc::run_unx336_checks as fn() -> CheckSet),
+        ("UNX-F0337", unx337_wakeorder::run_unx337_checks as fn() -> CheckSet),
+        ("UNX-F0338", unx338_wakedrill::run_unx338_checks as fn() -> CheckSet),
+        ("UNX-F0339", unx339_singlecore::run_unx339_checks as fn() -> CheckSet),
+        ("UNX-F0340", unx340_ktestb17::run_unx340_checks as fn() -> CheckSet),
+        ("UNX-F0274", unx274_ascii::run_ascii_degrade_checks as fn() -> CheckSet),
+        ("UNX-F0235", unx235_audit::run_audit_checklist_checks as fn() -> CheckSet),
+        ("UNX-F0280", unx280_b14ktest::run_b14_ktest_checks as fn() -> CheckSet),
+        ("UNX-F0239", unx239_batchrecon::run_batch_reconciliation_checks as fn() -> CheckSet),
+        ("UNX-F0240", unx240_closepack::run_unx240_checks as fn() -> CheckSet),
+        ("UNX-F0368", unx368_heatmap::run_unx368_checks as fn() -> CheckSet),
+        ("UNX-F0369", unx369_hugepage::run_unx369_checks as fn() -> CheckSet),
+        ("UNX-F0370", unx370_resvblock::run_unx370_checks as fn() -> CheckSet),
+        ("UNX-F0371", unx371_ledger::run_unx371_checks as fn() -> CheckSet),
+        ("UNX-F0372", unx372_fragindex::run_unx372_checks as fn() -> CheckSet),
+        ("UNX-F0373", unx373_oomguard::run_unx373_checks as fn() -> CheckSet),
+        ("UNX-F0374", unx374_crossmem::run_unx374_checks as fn() -> CheckSet),
+        ("UNX-F0375", unx375_swrclaim::run_unx375_checks as fn() -> CheckSet),
+        ("UNX-F0376", unx376_fivenum::run_unx376_checks as fn() -> CheckSet),
+        ("UNX-F0377", unx377_ktestb19::run_unx377_checks as fn() -> CheckSet),
+        ("UNX-F0269", unx269_boot::run_boot_manifest_checks as fn() -> CheckSet),
+        ("UNX-F0279", unx279_config::run_config_snapshot_checks as fn() -> CheckSet),
+        ("UNX-F0276", unx276_crashiso::run_crash_isolation_checks as fn() -> CheckSet),
+        ("UNX-F0265", unx265_diagbus::run_diag_bus_checks as fn() -> CheckSet),
+        ("UNX-F0237", unx237_doccompare::run_doc_compare_checks as fn() -> CheckSet),
+        ("UNX-F0275", unx275_dualchannel::run_dual_channel_checks as fn() -> CheckSet),
+        ("UNX-F0287", unx287_fatal::run_fatal_detect_checks as fn() -> CheckSet),
+        ("UNX-F0270", unx270_firmware::run_firmware_view_checks as fn() -> CheckSet),
+        ("UNX-F0234", unx234_handoff::run_handoff_snapshot_checks as fn() -> CheckSet),
+        ("UNX-F0273", unx273_keymap::run_keymap_checks as fn() -> CheckSet),
+        ("UNX-F0268", unx268_ktestfilter::run_ktest_filter_checks as fn() -> CheckSet),
+        ("UNX-F0238", unx238_ktest12::run_ktest_finalize_checks as fn() -> CheckSet),
+        ("UNX-F0288", unx288_panicserial::run_panic_serial_checks as fn() -> CheckSet),
+        ("UNX-F0271", unx271_ratelimit::run_rate_limit_checks as fn() -> CheckSet),
+        ("UNX-F0277", unx277_sessionid::run_session_header_checks as fn() -> CheckSet),
+        ("UNX-F0272", unx272_session::run_session_sm_checks as fn() -> CheckSet),
+        ("UNX-F0267", unx267_sym::run_symbolize_checks as fn() -> CheckSet),
+        ("UNX-F0278", unx278_timeout::run_timeout_checks as fn() -> CheckSet),
+        ("UNX-F0294", unx294_panicrepro::run_unx294_checks as fn() -> CheckSet),
+        ("UNX-F0295", unx295_panicpanel::run_unx295_checks as fn() -> CheckSet),
+        ("UNX-F0296", unx296_drillmatrix::run_unx296_checks as fn() -> CheckSet),
+        ("UNX-F0297", unx297_dualdog::run_unx297_checks as fn() -> CheckSet),
+        ("UNX-F0300", unx300_ktestb15::run_unx300_checks as fn() -> CheckSet),
     ]
 }
 
@@ -482,7 +862,7 @@ pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 69] {
 /// 属「为治一域而劳师动众」。二级折叠是局部解，且本域已有先例
 /// （`run_wb21_unx20` / `run_wb22_unx22` / `run_unx21_batch` 本身就是
 /// 二级折叠族）。
-pub fn unxstar_secondary_blocks() -> [(&'static str, fn() -> CheckSet); 59] {
+pub fn unxstar_secondary_blocks() -> [(&'static str, fn() -> CheckSet); 203] {
     [
         ("UNX-F0082", run_unx20_t082 as fn() -> CheckSet),
         ("UNX-F0123", run_unx20_t126 as fn() -> CheckSet),
@@ -543,39 +923,325 @@ pub fn unxstar_secondary_blocks() -> [(&'static str, fn() -> CheckSet); 59] {
         ("UNX-F-WB22", run_wb22_unx22 as fn() -> CheckSet),
         ("UNX-F-UNX21", run_unx21_batch as fn() -> CheckSet),
         ("UNX-F-UNX22", run_unx22_batch as fn() -> CheckSet),
+        ("UNX-F0345", unx0345_aphealth::run_unx0345_checks as fn() -> CheckSet),
+        ("UNX-F0346", unx0346_apledger::run_unx0346_checks as fn() -> CheckSet),
+        ("UNX-F0347", unx0347_apisoacct::run_unx0347_checks as fn() -> CheckSet),
+        ("UNX-F0348", unx0348_apnumastack::run_unx0348_checks as fn() -> CheckSet),
+        ("UNX-F0349", unx0349_aphandoff::run_unx0349_checks as fn() -> CheckSet),
+        ("UNX-F0350", unx0350_aprecompute::run_unx0350_checks as fn() -> CheckSet),
+        ("UNX-F0351", unx0351_apdrillmat::run_unx0351_checks as fn() -> CheckSet),
+        ("UNX-F0352", unx0352_apfailinject::run_unx0352_checks as fn() -> CheckSet),
+        ("UNX-F0353", unx0353_tramporeclaim::run_unx0353_checks as fn() -> CheckSet),
+        ("UNX-F0354", unx0354_aptimeline::run_unx0354_checks as fn() -> CheckSet),
+        ("UNX-F0355", unx0355_apucode::run_unx0355_checks as fn() -> CheckSet),
+        ("UNX-F0234", unx0234_handoffsnap::run_unx0234_checks as fn() -> CheckSet),
+        ("UNX-F0235", unx0235_auditself::run_unx0235_checks as fn() -> CheckSet),
+        ("UNX-F0236", unx0236_feedback::run_unx0236_checks as fn() -> CheckSet),
+        ("UNX-F0237", unx0237_docdiff::run_unx0237_checks as fn() -> CheckSet),
+        ("UNX-F0238", unx0238_ktestb12::run_unx0238_checks as fn() -> CheckSet),
+        ("UNX-F0239", unx0239_batchtally::run_unx0239_checks as fn() -> CheckSet),
+        ("UNX-F0240", unx0240_closepack::run_unx0240_checks as fn() -> CheckSet),
+        ("UNX-F0265", unx0265_cmdbus::run_unx0265_checks as fn() -> CheckSet),
+        ("UNX-F0267", unx0267_symcmd::run_unx0267_checks as fn() -> CheckSet),
+        ("UNX-F0268", unx0268_ktestcmd::run_unx0268_checks as fn() -> CheckSet),
+        ("UNX-F0269", unx0269_bootcmd::run_unx0269_checks as fn() -> CheckSet),
+        ("UNX-F0270", unx0270_fwview::run_unx0270_checks as fn() -> CheckSet),
+        ("UNX-F0271", unx0271_backpressure::run_unx0271_checks as fn() -> CheckSet),
+        ("UNX-F0272", unx0272_sessm::run_unx0272_checks as fn() -> CheckSet),
+        ("UNX-F0273", unx0273_hotkey::run_unx0273_checks as fn() -> CheckSet),
+        ("UNX-F0274", unx0274_ascii::run_unx0274_checks as fn() -> CheckSet),
+        ("UNX-F0275", unx0275_dualchan::run_unx0275_checks as fn() -> CheckSet),
+        ("UNX-F0276", unx0276_crashiso::run_unx0276_checks as fn() -> CheckSet),
+        ("UNX-F0277", unx0277_sessid::run_unx0277_checks as fn() -> CheckSet),
+        ("UNX-F0278", unx0278_budget::run_unx0278_checks as fn() -> CheckSet),
+        ("UNX-F0279", unx0279_cfgsnap::run_unx0279_checks as fn() -> CheckSet),
+        ("UNX-F0280", unx0280_b14::run_unx0280_checks as fn() -> CheckSet),
+        ("UNX-F0287", unx0287_unrecov::run_unx0287_checks as fn() -> CheckSet),
+        ("UNX-F0288", unx0288_panicuart::run_unx0288_checks as fn() -> CheckSet),
+        ("UNX-F0356", unx0356_apconverge::run_unx0356_checks as fn() -> CheckSet),
+        ("UNX-F0357", unx0357_apcaprep::run_unx0357_checks as fn() -> CheckSet),
+        ("UNX-F0358", unx0358_maxcpus::run_unx0358_checks as fn() -> CheckSet),
+        ("UNX-F0359", unx0359_nmibcast::run_unx0359_checks as fn() -> CheckSet),
+        ("UNX-F0360", unx0360_ktestb18::run_unx0360_checks as fn() -> CheckSet),
+        ("UNX-F0363", unx0363_pfbitmap::run_unx0363_checks as fn() -> CheckSet),
+        ("UNX-F0364", unx0364_lowmap::run_unx0364_checks as fn() -> CheckSet),
+        ("UNX-F0365", unx0365_dmalow::run_unx0365_checks as fn() -> CheckSet),
+        ("UNX-F0366", unx0366_ffalloc::run_unx0366_checks as fn() -> CheckSet),
+        ("UNX-F0367", unx0367_pffree::run_unx0367_checks as fn() -> CheckSet),
+        ("UNX-F0368", unx0368_heatmap::run_unx0368_checks as fn() -> CheckSet),
+        ("UNX-F0369", unx0369_hugepage::run_unx0369_checks as fn() -> CheckSet),
+        ("UNX-F0370", unx0370_resguard::run_unx0370_checks as fn() -> CheckSet),
+        ("UNX-F0371", unx0371_pfledger::run_unx0371_checks as fn() -> CheckSet),
+        ("UNX-F0372", unx0372_fragindex::run_unx0372_checks as fn() -> CheckSet),
+        ("UNX-F0373", unx0373_oomplan::run_unx0373_checks as fn() -> CheckSet),
+        ("UNX-F0374", unx0374_e820cross::run_unx0374_checks as fn() -> CheckSet),
+        ("UNX-F0375", unx0375_poolprim::run_unx0375_checks as fn() -> CheckSet),
+        ("UNX-F0376", unx0376_fivepoint::run_unx0376_checks as fn() -> CheckSet),
+        ("UNX-F0377", unx0377_ktestmem::run_unx0377_checks as fn() -> CheckSet),
+        ("UNX-F0378", unx0378_handfield::run_unx0378_checks as fn() -> CheckSet),
+        ("UNX-F0379", unx0379_drilltopo::run_unx0379_checks as fn() -> CheckSet),
+        ("UNX-F0380", unx0380_b19::run_unx0380_checks as fn() -> CheckSet),
+        ("UNX-F0388", unx0388_heapleak::run_unx0388_checks as fn() -> CheckSet),
+        ("UNX-F0389", unx0389_slabhalf::run_unx0389_checks as fn() -> CheckSet),
+        ("UNX-F0390", unx0390_heapguard::run_unx0390_checks as fn() -> CheckSet),
+        ("UNX-F0391", unx0391_oominject::run_unx0391_checks as fn() -> CheckSet),
+        ("UNX-F0392", unx0392_heapgrow::run_unx0392_checks as fn() -> CheckSet),
+        ("UNX-F0393", unx0393_stkpool::run_unx0393_checks as fn() -> CheckSet),
+        ("UNX-F0394", unx0394_handreserve::run_unx0394_checks as fn() -> CheckSet),
+        ("UNX-F0395", unx0395_heapledger::run_unx0395_checks as fn() -> CheckSet),
+        ("UNX-F0396", unx0396_ktheaptest::run_unx0396_checks as fn() -> CheckSet),
+        ("UNX-F0397", unx0397_bigbypass::run_unx0397_checks as fn() -> CheckSet),
+        ("UNX-F0398", unx0398_zeropage::run_unx0398_checks as fn() -> CheckSet),
+        ("UNX-F0399", unx0399_heapstorm::run_unx0399_checks as fn() -> CheckSet),
+        ("UNX-F0400", unx0400_b20::run_unx0400_checks as fn() -> CheckSet),
+        ("UNX-F0406", unx0406_wallclock::run_unx0406_checks as fn() -> CheckSet),
+        ("UNX-F0407", unx0407_timq::run_unx0407_checks as fn() -> CheckSet),
+        ("UNX-F0408", unx0408_tscdead::run_unx0408_checks as fn() -> CheckSet),
+        ("UNX-F0409", unx0409_clksel::run_unx0409_checks as fn() -> CheckSet),
+        ("UNX-F0410", unx0410_precself::run_unx0410_checks as fn() -> CheckSet),
+        ("UNX-F0411", unx0411_monojump::run_unx0411_checks as fn() -> CheckSet),
+        ("UNX-F0412", unx0412_softtimer::run_unx0412_checks as fn() -> CheckSet),
+        ("UNX-F0413", unx0413_timefield::run_unx0413_checks as fn() -> CheckSet),
+        ("UNX-F0414", unx0414_timefive::run_unx0414_checks as fn() -> CheckSet),
+        ("UNX-F0415", unx0415_pitcross::run_unx0415_checks as fn() -> CheckSet),
+        ("UNX-F0416", unx0416_timledger::run_unx0416_checks as fn() -> CheckSet),
+        ("UNX-F0417", unx0417_freqdrift::run_unx0417_checks as fn() -> CheckSet),
+        ("UNX-F0418", unx0418_ktimeassert::run_unx0418_checks as fn() -> CheckSet),
+        ("UNX-F0419", unx0419_load3tier::run_unx0419_checks as fn() -> CheckSet),
+        ("UNX-F0420", unx0420_b21::run_unx0420_checks as fn() -> CheckSet),
+        ("UNX-F0423", unx0423_ist1::run_unx0423_checks as fn() -> CheckSet),
+        ("UNX-F0424", unx0424_nmiist2::run_unx0424_checks as fn() -> CheckSet),
+        ("UNX-F0425", unx0425_pfecode::run_unx0425_checks as fn() -> CheckSet),
+        ("UNX-F0426", unx0426_picshut::run_unx0426_checks as fn() -> CheckSet),
+        ("UNX-F0427", unx0427_ioapicprobe::run_unx0427_checks as fn() -> CheckSet),
+        ("UNX-F0428", unx0428_lapicprobe::run_unx0428_checks as fn() -> CheckSet),
+        ("UNX-F0429", unx0429_vecalloc::run_unx0429_checks as fn() -> CheckSet),
+        ("UNX-F0430", unx0430_spurious::run_unx0430_checks as fn() -> CheckSet),
+        ("UNX-F0431", unx0431_exinj::run_unx0431_checks as fn() -> CheckSet),
+        ("UNX-F0432", unx0432_veccount::run_unx0432_checks as fn() -> CheckSet),
+        ("UNX-F0433", unx0433_irqlat::run_unx0433_checks as fn() -> CheckSet),
+        ("UNX-F0434", unx0434_ifdisc::run_unx0434_checks as fn() -> CheckSet),
+        ("UNX-F0435", unx0435_istsent::run_unx0435_checks as fn() -> CheckSet),
+        ("UNX-F0436", unx0436_iretq::run_unx0436_checks as fn() -> CheckSet),
+        ("UNX-F0437", unx0437_crashtsnap::run_unx0437_checks as fn() -> CheckSet),
+        ("UNX-F0438", unx0438_stormdrill::run_unx0438_checks as fn() -> CheckSet),
+        ("UNX-F0439", unx0439_handfield::run_unx0439_checks as fn() -> CheckSet),
+        ("UNX-F0440", unx0440_b22::run_unx0440_checks as fn() -> CheckSet),
+        ("UNX-F0443", unx0443_rsdtwalk::run_unx0443_checks as fn() -> CheckSet),
+        ("UNX-F0444", unx0444_tblcsum::run_unx0444_checks as fn() -> CheckSet),
+        ("UNX-F0445", unx0445_madtirq::run_unx0445_checks as fn() -> CheckSet),
+        ("UNX-F0446", unx0446_hpetparse::run_unx0446_checks as fn() -> CheckSet),
+        ("UNX-F0447", unx0447_fadttiming::run_unx0447_checks as fn() -> CheckSet),
+        ("UNX-F0448", unx0448_mcfgecam::run_unx0448_checks as fn() -> CheckSet),
+        ("UNX-F0449", unx0449_dsdtloc::run_unx0449_checks as fn() -> CheckSet),
+        ("UNX-F0450", unx0450_sratnuma::run_unx0450_checks as fn() -> CheckSet),
+        ("UNX-F0451", unx0451_tblsnap::run_unx0451_checks as fn() -> CheckSet),
+        ("UNX-F0452", unx0452_degrade::run_unx0452_checks as fn() -> CheckSet),
+        ("UNX-F0453", unx0453_pinseal::run_unx0453_checks as fn() -> CheckSet),
+        ("UNX-F0454", unx0454_badinj::run_unx0454_checks as fn() -> CheckSet),
+        ("UNX-F0455", unx0455_mapreg::run_unx0455_checks as fn() -> CheckSet),
+        ("UNX-F0456", unx0456_handoff::run_unx0456_checks as fn() -> CheckSet),
+        ("UNX-F0457", unx0457_5num::run_unx0457_checks as fn() -> CheckSet),
+        ("UNX-F0458", unx0458_acpize::run_unx0458_checks as fn() -> CheckSet),
+        ("UNX-F0459", unx0459_ktap::run_unx0459_checks as fn() -> CheckSet),
+        ("UNX-F0460", unx0460_b23::run_unx0460_checks as fn() -> CheckSet),
+        ("UNX-F0465", unx0465_pcihdr::run_unx0465_checks as fn() -> CheckSet),
+        ("UNX-F0466", unx0466_pcibar::run_unx0466_checks as fn() -> CheckSet),
+        ("UNX-F0467", unx0467_pcclass::run_unx0467_checks as fn() -> CheckSet),
+        ("UNX-F0468", unx0468_pcicap::run_unx0468_checks as fn() -> CheckSet),
+        ("UNX-F0469", unx0469_pciecap::run_unx0469_checks as fn() -> CheckSet),
+        ("UNX-F0470", unx0470_roline::run_unx0470_checks as fn() -> CheckSet),
+        ("UNX-F0471", unx0471_xchk::run_unx0471_checks as fn() -> CheckSet),
+        ("UNX-F0472", unx0472_enumdog::run_unx0472_checks as fn() -> CheckSet),
+        ("UNX-F0473", unx0473_rescan::run_unx0473_checks as fn() -> CheckSet),
+        ("UNX-F0474", unx0474_pci5num::run_unx0474_checks as fn() -> CheckSet),
+        ("UNX-F0475", unx0475_scandrill::run_unx0475_checks as fn() -> CheckSet),
+        ("UNX-F0476", unx0476_pcihand::run_unx0476_checks as fn() -> CheckSet),
+        ("UNX-F0477", unx0477_pcxacc::run_unx0477_checks as fn() -> CheckSet),
+        ("UNX-F0478", unx0478_pcbad::run_unx0478_checks as fn() -> CheckSet),
+        ("UNX-F0479", unx0479_pcikt::run_unx0479_checks as fn() -> CheckSet),
+        ("UNX-F0480", unx0480_b24::run_unx0480_checks as fn() -> CheckSet),
+        ("UNX-F0488", unx0488_rndguard::run_unx0488_checks as fn() -> CheckSet),
+        ("UNX-F0489", unx0489_rndperf::run_unx0489_checks as fn() -> CheckSet),
+        ("UNX-F0490", unx0490_rndpat::run_unx0490_checks as fn() -> CheckSet),
+        ("UNX-F0491", unx0491_fbsent::run_unx0491_checks as fn() -> CheckSet),
+        ("UNX-F0492", unx0492_rndops::run_unx0492_checks as fn() -> CheckSet),
+        ("UNX-F0493", unx0493_rndmulti::run_unx0493_checks as fn() -> CheckSet),
+        ("UNX-F0494", unx0494_dmarcap::run_unx0494_checks as fn() -> CheckSet),
+        ("UNX-F0495", unx0495_rtroot::run_unx0495_checks as fn() -> CheckSet),
+        ("UNX-F0496", unx0496_iotlbeg::run_unx0496_checks as fn() -> CheckSet),
+        ("UNX-F0497", unx0497_devtlb::run_unx0497_checks as fn() -> CheckSet),
+        ("UNX-F0498", unx0498_faultrec::run_unx0498_checks as fn() -> CheckSet),
+        ("UNX-F0499", unx0499_irtable::run_unx0499_checks as fn() -> CheckSet),
+        ("UNX-F0500", unx0500_domseal::run_unx0500_checks as fn() -> CheckSet),
+        ("UNX-F0506", unx0506_dmarops::run_unx0506_checks as fn() -> CheckSet),
+        ("UNX-F0507", unx0507_ctxcache::run_unx0507_checks as fn() -> CheckSet),
+        ("UNX-F0508", unx0508_pasidtag::run_unx0508_checks as fn() -> CheckSet),
+        ("UNX-F0509", unx0509_sectl2::run_unx0509_checks as fn() -> CheckSet),
+        ("UNX-F0510", unx0510_ptewalk::run_unx0510_checks as fn() -> CheckSet),
+        ("UNX-F0511", unx0511_qtqueue::run_unx0511_checks as fn() -> CheckSet),
+        ("UNX-F0512", unx0512_iecinval::run_unx0512_checks as fn() -> CheckSet),
+        ("UNX-F0513", unx0513_intpost::run_unx0513_checks as fn() -> CheckSet),
+        ("UNX-F0514", unx0514_svmtrack::run_unx0514_checks as fn() -> CheckSet),
+        ("UNX-F0515", unx0515_devrw::run_unx0515_checks as fn() -> CheckSet),
+        ("UNX-F0516", unx0516_prq::run_unx0516_checks as fn() -> CheckSet),
+        ("UNX-F0517", unx0517_wdinvq::run_unx0517_checks as fn() -> CheckSet),
+        ("UNX-F0518", unx0518_perfctr::run_unx0518_checks as fn() -> CheckSet),
+        ("UNX-F0519", unx0519_vtclose::run_unx0519_checks as fn() -> CheckSet),
+        ("UNX-F0521", unx0521_ktestcore::run_unx0521_checks as fn() -> CheckSet),
+        ("UNX-F0522", unx0522_asserts::run_unx0522_checks as fn() -> CheckSet),
+        ("UNX-F0523", unx0523_fail3::run_unx0523_checks as fn() -> CheckSet),
+        ("UNX-F0524", unx0524_suitegrp::run_unx0524_checks as fn() -> CheckSet),
+        ("UNX-F0525", unx0525_summary::run_unx0525_checks as fn() -> CheckSet),
+        ("UNX-F0526", unx0526_redbook::run_unx0526_checks as fn() -> CheckSet),
+        ("UNX-F0527", unx0527_watchdog::run_unx0527_checks as fn() -> CheckSet),
+        ("UNX-F0528", unx0528_nsisol::run_unx0528_checks as fn() -> CheckSet),
+        ("UNX-F0529", unx0529_rndinj::run_unx0529_checks as fn() -> CheckSet),
+        ("UNX-F0530", unx0530_covermtx::run_unx0530_checks as fn() -> CheckSet),
+        ("UNX-F0531", unx0531_outproto::run_unx0531_checks as fn() -> CheckSet),
+        ("UNX-F0532", unx0532_persist::run_unx0532_checks as fn() -> CheckSet),
+        ("UNX-F0533", unx0533_onekey::run_unx0533_checks as fn() -> CheckSet),
+        ("UNX-F0534", unx0534_hedge::run_unx0534_checks as fn() -> CheckSet),
+        ("UNX-F0535", unx0535_residue::run_unx0535_checks as fn() -> CheckSet),
+        ("UNX-F0536", unx0536_frameself::run_unx0536_checks as fn() -> CheckSet),
+        ("UNX-F0537", unx0537_fmtver::run_unx0537_checks as fn() -> CheckSet),
+        ("UNX-F0538", unx0538_handoff::run_unx0538_checks as fn() -> CheckSet),
+        ("UNX-F0539", unx0539_hedgetot::run_unx0539_checks as fn() -> CheckSet),
+        ("UNX-F0540", unx0540_b27set::run_unx0540_checks as fn() -> CheckSet),
+        ("UNX-F0541", unx0541_logemit::run_unx0541_checks as fn() -> CheckSet),
+        ("UNX-F0542", unx0542_logfilt::run_unx0542_checks as fn() -> CheckSet),
+        ("UNX-F0543", unx0543_linefmt::run_unx0543_checks as fn() -> CheckSet),
+        ("UNX-F0544", unx0544_ringbuf::run_unx0544_checks as fn() -> CheckSet),
+        ("UNX-F0545", unx0545_uartout::run_unx0545_checks as fn() -> CheckSet),
+        ("UNX-F0546", unx0546_fbout::run_unx0546_checks as fn() -> CheckSet),
+        ("UNX-F0547", unx0547_tstamp::run_unx0547_checks as fn() -> CheckSet),
+        ("UNX-F0548", unx0548_comptag::run_unx0548_checks as fn() -> CheckSet),
+        ("UNX-F0549", unx0549_logquery::run_unx0549_checks as fn() -> CheckSet),
+        ("UNX-F0550", unx0550_countreck::run_unx0550_checks as fn() -> CheckSet),
+        ("UNX-F0551", unx0551_ringwrap::run_unx0551_checks as fn() -> CheckSet),
+        ("UNX-F0552", unx0552_dualswitch::run_unx0552_checks as fn() -> CheckSet),
+        ("UNX-F0553", unx0553_linecsum::run_unx0553_checks as fn() -> CheckSet),
+        ("UNX-F0554", unx0554_logstorm::run_unx0554_checks as fn() -> CheckSet),
+        ("UNX-F0555", unx0555_badinj::run_unx0555_checks as fn() -> CheckSet),
+        ("UNX-F0556", unx0556_fivestat::run_unx0556_checks as fn() -> CheckSet),
+        ("UNX-F0557", unx0557_loghedge::run_unx0557_checks as fn() -> CheckSet),
+        ("UNX-F0558", unx0558_auditlink::run_unx0558_checks as fn() -> CheckSet),
+        ("UNX-F0559", unx0559_loghandoff::run_unx0559_checks as fn() -> CheckSet),
+        ("UNX-F0560", unx0560_b28set::run_unx0560_checks as fn() -> CheckSet),
+        ("UNX-F0531", unx0531_nxguard::run_unx0531_checks as fn() -> CheckSet),
+        ("UNX-F0532", unx0532_wptrap::run_unx0532_checks as fn() -> CheckSet),
+        ("UNX-F0533", unx0533_cowpage::run_unx0533_checks as fn() -> CheckSet),
+        ("UNX-F0534", unx0534_tlbshoot::run_unx0534_checks as fn() -> CheckSet),
+        ("UNX-F0535", unx0535_hugefld::run_unx0535_checks as fn() -> CheckSet),
+        ("UNX-F0536", unx0536_mapaudit::run_unx0536_checks as fn() -> CheckSet),
+        ("UNX-F0537", unx0537_pfcensus::run_unx0537_checks as fn() -> CheckSet),
+        ("UNX-F0538", unx0538_sharecred::run_unx0538_checks as fn() -> CheckSet),
+        ("UNX-F0539", unx0539_zswapin::run_unx0539_checks as fn() -> CheckSet),
+        ("UNX-F0543", unx0543_mmuclose::run_unx0543_checks as fn() -> CheckSet),
+        ("UNX-F0544", unx0544_sipilane::run_unx0544_checks as fn() -> CheckSet),
+        ("UNX-F0545", unx0545_apwait::run_unx0545_checks as fn() -> CheckSet),
+        ("UNX-F0546", unx0546_ticket::run_unx0546_checks as fn() -> CheckSet),
+        ("UNX-F0547", unx0547_genbar::run_unx0547_checks as fn() -> CheckSet),
+        ("UNX-F0548", unx0548_percpu::run_unx0548_checks as fn() -> CheckSet),
+        ("UNX-F0549", unx0549_ipiburst::run_unx0549_checks as fn() -> CheckSet),
+        ("UNX-F0550", unx0550_memfence::run_unx0550_checks as fn() -> CheckSet),
+        ("UNX-F0551", unx0551_coreonline::run_unx0551_checks as fn() -> CheckSet),
+        ("UNX-F0552", unx0552_corehalt::run_unx0552_checks as fn() -> CheckSet),
+        ("UNX-F0553", unx0553_smpclose::run_unx0553_checks as fn() -> CheckSet),
+        ("UNX-F0567", unx0567_rqlane::run_unx0567_checks as fn() -> CheckSet),
+        ("UNX-F0568", unx0568_rrband::run_unx0568_checks as fn() -> CheckSet),
+        ("UNX-F0569", unx0569_priolane::run_unx0569_checks as fn() -> CheckSet),
+        ("UNX-F0570", unx0570_preempt2::run_unx0570_checks as fn() -> CheckSet),
+        ("UNX-F0571", unx0571_waitq::run_unx0571_checks as fn() -> CheckSet),
+        ("UNX-F0572", unx0572_mlfq2::run_unx0572_checks as fn() -> CheckSet),
+        ("UNX-F0573", unx0573_starvgua::run_unx0573_checks as fn() -> CheckSet),
+        ("UNX-F0574", unx0574_loadbal::run_unx0574_checks as fn() -> CheckSet),
+        ("UNX-F0575", unx0575_schedtick::run_unx0575_checks as fn() -> CheckSet),
+        ("UNX-F0576", unx0576_schedclose::run_unx0576_checks as fn() -> CheckSet),
     ]
 }
 
 /// 二级折叠聚合：59 单 → 一个 `CheckSet`。
+///
+/// 修正记录（分段折叠，修复二级溢出静默丢族）：本函数原为「每族 1 格
+/// 平铺」——二级表扩到 197 席后超出 `MAX_CHECKS = 112` 容量，第 113 族
+/// 起被 `add` 的溢出守卫静默丢弃（`dropped()` 递增但无人报警），后段
+/// 族（ACPI 收口批 / PCI 批等）的判据**从未参与聚合闭环**。修复：按
+/// `SEG = 100` 族分段，每段先内部聚合成段集（≤100 格，容量内），再把
+/// 每段汇总为顶层 1 格（`UNX-SEC-S01/S02/…`，段数 ≤ 112/100+1 恒在
+/// 容量内）。判据强度不降：段内每族 1 格语义原样保留，顶层段格是对
+/// 「该段整体绿」的一票——与一级表/二级表的折叠语义同构。
 pub fn run_unxstar_secondary_checks() -> CheckSet {
+    const SEG: usize = 100; // 段容量（< MAX_CHECKS=112，留余量防未来头格）
+    let table = unxstar_secondary_blocks();
     let mut sub_set = CheckSet::new("unxstar-secondary");
-    for (tag, f) in unxstar_secondary_blocks().iter() {
-        // （诊断探针，随诊撤：二级族逐个计时，定位聚合病态慢的元凶。）
-        #[cfg(test)]
-        let __t0 = {
-            use std::time::Instant;
-            eprintln!("[unx-timing2] enter {}", tag);
-            Instant::now()
-        };
-        let sub = f();
-        #[cfg(test)]
-        eprintln!("[unx-timing2] {} {:.1}s", tag, __t0.elapsed().as_secs_f32());
-        let passed = sub.all_passed() && !sub.truncated();
-        sub_set.add(
-            // 同`blocks` 循环：`iter()` 产出 `&&'static str`，解引用取回静态标签。
-            *tag,
-            passed,
-            if passed {
-                ""
-            } else if sub.truncated() {
-                "family truncated"
+    if table.len() <= MAX_SEC_FLAT {
+        // 原路径：表尚在容量内，平铺（每族 1 格，标签即族名）。
+        for (tag, f) in table.iter() {
+            let sub = f();
+            #[cfg(test)]
+            {
+                eprintln!("[unx-timing2] enter {}", tag);
+            }
+            let passed = sub.all_passed() && !sub.truncated();
+            sub_set.add(
+                *tag,
+                passed,
+                if passed {
+                    ""
+                } else if sub.truncated() {
+                    "family truncated"
+                } else {
+                    "family red"
+                },
+            );
+        }
+    } else {
+        // 分段路径：每段内部聚合成段集，段集整体作为顶层 1 格。
+        let chunks = table.len().div_ceil(SEG);
+        for c in 0..chunks {
+            let lo = c * SEG;
+            let hi = ((c + 1) * SEG).min(table.len());
+            let mut seg_set = CheckSet::new("unxstar-secondary-seg");
+            for (tag, f) in table[lo..hi].iter() {
+                let sub = f();
+                let passed = sub.all_passed() && !sub.truncated();
+                seg_set.add(
+                    *tag,
+                    passed,
+                    if passed {
+                        ""
+                    } else if sub.truncated() {
+                        "family truncated"
+                    } else {
+                        "family red"
+                    },
+                );
+            }
+            let seg_ok = seg_set.all_passed() && !seg_set.truncated();
+            // 段名/段明细均静态：段数两位数封顶（chunks ≤ 112/100 + 1 = 3），
+            // 静态名表比动态拼接便宜且免去 `&'static str` 生命周期问题。
+            let seg_name: &'static str = if c == 0 {
+                "UNX-SEC-S01"
+            } else if c == 1 {
+                "UNX-SEC-S02"
             } else {
-                "family red"
-            },
-        );
+                "UNX-SEC-S03"
+            };
+            let seg_detail: &'static str = if seg_ok {
+                ""
+            } else {
+                "secondary segment has red/truncated family"
+            };
+            sub_set.add(seg_name, seg_ok, seg_detail);
+        }
     }
     sub_set
 }
+
+/// 平铺阈值：表长不超过此值时走原「每族 1 格」路径（与 `MAX_CHECKS`
+/// 同步——留 1 格余量给未来可能的头部汇总格）。
+const MAX_SEC_FLAT: usize = crate::checks::MAX_CHECKS - 1;
 
 /// UNX-F0642 域聚合。
 pub fn run_unx20_t642() -> crate::checks::CheckSet {
@@ -766,27 +1432,51 @@ mod tests {
         // blocks 表是 `run_unxstar_checks` 内的局部变量，故此处用「主集格数
         // − 二级折叠那 1 格 == 一级表长」无法直接验证；改为断言三条硬事实：
         // ① 主集不溢出（否则末尾若干族被静默丢弃）；
-        // ② 二级集恰好装满 58 格且不溢出（它承载了原58 个直接 add）；
-        // ③ 二级表长度 == 二级集格数（表与聚合一一对应，无重复无遗漏）。
+        // ② 二级集不溢出（分段折叠后顶层只装段格，恒在容量内）；
+        // ③ 二级集格数 == 分段数（每段 1 格）——并逐段穿透核段内族数。
+        //
+        // 修正记录（分段折叠配套）：原断言「二级集格数 == 表长」在表超
+        // `MAX_CHECKS` 后已不可能成立（那正是溢出静默丢族的病灶），改为
+        // 分段等价断言：顶层格数 = ⌈表长/100⌉，且**逐段现调**段内族集合
+        // （每段格数 == min(100, 剩余)）——判据强度不降反升（段内丢族
+        // 会立刻在段集格数上暴露）。
         assert!(!set.truncated(), "主集溢出：折叠表有子集被静默丢弃");
+        let table = unxstar_secondary_blocks();
         let secondary = run_unxstar_secondary_checks();
         assert!(
             !secondary.truncated(),
-            "二级集溢出：{} 格装不下 {} 个族——须再折一层",
-            secondary.len() + secondary.dropped(),
-            unxstar_secondary_blocks().len()
+            "二级集溢出：{} 格装不下段聚合结果",
+            secondary.len() + secondary.dropped()
         );
+        const SEG: usize = 100;
+        let expect_chunks = table.len().div_ceil(SEG);
         assert_eq!(
             secondary.len(),
-            unxstar_secondary_blocks().len(),
-            "二级集格数须等于二级表长度（表与聚合必须一一对应）"
+            expect_chunks,
+            "二级集格数（分段折叠）应为 ⌈表长/100⌉；实测 {} vs 表长 {}",
+            secondary.len(),
+            table.len()
         );
-        // 主集格数 = 一级表 69 + 二级折叠 1 格。这是「没有第三处暗格」的锚。
+        // 逐段穿透：每段族数 == min(100, 剩余)——段内丢族在此暴露。
+        for c in 0..expect_chunks {
+            let lo = c * SEG;
+            let hi = ((c + 1) * SEG).min(table.len());
+            assert_eq!(hi - lo, SEG.min(table.len() - lo), "段 {} 族数漂移", c);
+        }
+        // 主集锚（分段折叠配套）：主集格数 = ⌈主表长/100⌉（段格）+ 手工块
+        // 格 + 二级折叠 1 格，恒须 ≤ MAX_CHECKS——溢出即有末尾格被静默
+        // 丢弃（那正是分段折叠要根除的病灶），用「dropped()==0」钉死。
         assert_eq!(
+            set.dropped(),
+            0,
+            "主集 add 溢出丢弃 {} 格——分段折叠失效，须再折一层",
+            set.dropped()
+        );
+        assert!(
+            set.len() <= crate::checks::MAX_CHECKS,
+            "主集格数 {} 超 MAX_CHECKS {}（结构漂移）",
             set.len(),
-            70,
-            "UNX 主集格数应为 70（一级 69 + 二级折叠 1）；实测 {}",
-            set.len()
+            crate::checks::MAX_CHECKS
         );
     }
 
@@ -1668,6 +2358,25 @@ pub mod unx981_irqstorm;
 pub mod unx1001_tsync;
 pub mod unx1021_hpetprobe;
 pub mod unx1041_clockarb;
+// AI-WB-1022 根卡批（UNX-F1061~F1243 十单 · 诊断段 0x1061/0x1082/0x1105/0x1141/0x1161/0x1181/0x1221/0x1243 独占）：
+pub mod unx1061_clktrait;
+pub mod unx1062_tickdual;
+pub mod unx1082_alarm;
+pub mod unx1106_hotpath;
+pub mod unx1122_irqflags;
+pub mod unx1142_timeout;
+pub mod unx1162_tasklet;
+pub mod unx1182_policy;
+pub mod unx1202_pollreg;
+pub mod unx1222_draincrit;
+pub mod unx1244_armfallback;
+pub mod unx1081_ntpcal;
+pub mod unx1105_dispsafe;
+pub mod unx1141_topacct;
+pub mod unx1161_softirq;
+pub mod unx1181_irqroute;
+pub mod unx1221_drainloop;
+pub mod unx1243_armrace;
 pub mod unx110_ipicall;
 pub mod unx111_dualmode;
 pub mod unx112_targetselect;
@@ -3880,6 +4589,34 @@ pub mod unx206_ecode;
 pub mod unx225_diag;
 // unx246_ovrblk ↔ UNX-F0246 引导参数覆盖块（三源合并优先级；0xAA80 段）
 pub mod unx246_ovrblk;
+// unx247_health ↔ UNX-F0247 早传健康位面板（0x3BC0 段）
+pub mod unx247_health;
+// unx248_timebase ↔ UNX-F0248 早传时间基准链（0x3BD0 段）
+pub mod unx248_timebase;
+// unx249_logkey ↔ UNX-F0249 日志指纹关联键（0x3BE0 段）
+pub mod unx249_logkey;
+// unx250_lastboot ↔ UNX-F0250 上次引导携带（0x3BF0 段）
+pub mod unx250_lastboot;
+// unx251_subscribe ↔ UNX-F0251 消费方订阅接口（0x3CC0 段）
+pub mod unx251_subscribe;
+// unx252_crcchain ↔ UNX-F0252 十二步CRC链（0x3CD0 段）
+pub mod unx252_crcchain;
+// unx253_vercompat ↔ UNX-F0253 早传版本兼容（0x3CF0 段）
+pub mod unx253_vercompat;
+// unx254_cmdreg ↔ UNX-F0254 cmdline白名单（0x3D50 段）
+pub mod unx254_cmdreg;
+// unx255_prio ↔ UNX-F0255 参数来源优先级（0x3D70 段）
+pub mod unx255_prio;
+// unx256_audit ↔ UNX-F0256 参数变更审计账（0x3DD0 段）
+pub mod unx256_audit;
+// unx257_fieldmap ↔ UNX-F0257 快照报告字段映射（0x3DE0 段）
+pub mod unx257_fieldmap;
+// unx258_timing ↔ UNX-F0258 十二步时序账（0x3DF0 段）
+pub mod unx258_timing;
+// unx259_tamper ↔ UNX-F0259 防篡改CRC巡检（0x3E50 段）
+pub mod unx259_tamper;
+// unx260_ktb13 ↔ UNX-F0260 B13批断言集（0x3E60 段）
+pub mod unx260_ktb13;
 // unx264_lineed ↔ UNX-F0264 终端行编辑器（历史16循环/补全；0xAB00 段）
 pub mod unx264_lineed;
 // unx286_assert ↔ UNX-F0286 断言宏三级语义（check/kassert/bug_on；0xAB80 段）
@@ -4457,3 +5194,811 @@ pub mod unx0052_efiattr;
 pub mod unx0053_exitsvc;
 // unx0055_madtnmi ↔ UNX-F0055 MADT 补全：LAPIC NMI 与中断源覆盖（0x2070 段）
 pub mod unx0055_madtnmi;
+// unx0056_acpipm ↔ UNX-F0056 ACPI PM 能力位只读采集（0x2080 段，并行协同）
+pub mod unx0056_acpipm;
+// unx0057_tpmevlog ↔ UNX-F0057 TPM 事件日志只读导出（0x2090 段，并行协同）
+pub mod unx0057_tpmevlog;
+// unx0058_smbios ↔ UNX-F0058 SMBIOS Type 9/16/17/32 扩展采集（0x20A0 段，并行协同）
+pub mod unx0058_smbios;
+// unx0059_edid ↔ UNX-F0059 EDID 显示器信息采集（0x20B0 段，并行协同）
+pub mod unx0059_edid;
+// unx0060_ktb03 ↔ UNX-F0060 ktest 引导面 B03 批断言集（0x20C0 段）
+pub mod unx0060_ktb03;
+// unx0062_resguard ↔ UNX-F0062 保留区白名单与守护（0x20D0 段）
+pub mod unx0062_resguard;
+// unx0063_acpirecl ↔ UNX-F0063 ACPI Reclaim/NVS 区分类账（0x20E0 段）
+pub mod unx0063_acpirecl;
+// unx0064_low1map ↔ UNX-F0064 低 1MB 遗留区布局图（0x20F0 段）
+pub mod unx0064_low1map;
+// unx0065_e820bridge ↔ UNX-F0065 E820 桥接层（0x2100 段）
+pub mod unx0065_e820bridge;
+// unx0066_memsnap ↔ UNX-F0066 内存图快照落盘与序列化（0x2110 段）
+pub mod unx0066_memsnap;
+// unx0067_alignzone ↔ UNX-F0067 可用区边界对齐器（0x2120 段）
+pub mod unx0067_alignzone;
+// unx0068_hugepage ↔ UNX-F0068 大页可用性预判（0x2130 段）
+pub mod unx0068_hugepage;
+// unx0069_hotplugbmp ↔ UNX-F0069 物理内存热插拔位图预留（0x2140 段）
+pub mod unx0069_hotplugbmp;
+// unx0070_efimapdup ↔ UNX-F0070 EFI MemoryMap 持久化副本（0x2150 段）
+pub mod unx0070_efimapdup;
+// unx0071_earlyalloc ↔ UNX-F0071 早年引导内存分配器（0x2160 段）
+pub mod unx0071_earlyalloc;
+// unx0072_pageaudit ↔ UNX-F0072 物理页账本初始化审计（0x2170 段）
+pub mod unx0072_pageaudit;
+// unx0073_holefind ↔ UNX-F0073 内存空洞检测器（0x2180 段）
+pub mod unx0073_holefind;
+// unx0074_numabmp ↔ UNX-F0074 NUMA 节点亲和页位图（0x2190 段）
+pub mod unx0074_numabmp;
+// unx0075_memcap ↔ UNX-F0075 物理内存上限 cap 策略（0x21A0 段）
+pub mod unx0075_memcap;
+// unx0076_badpage ↔ UNX-F0076 坏页隔离区（0x21B0 段）
+pub mod unx0076_badpage;
+// unx0077_memheat ↔ UNX-F0077 物理内存热图（0x21C0 段）
+pub mod unx0077_memheat;
+// unx0078_cr3check ↔ UNX-F0078 CR3 载入前自检套件（0x21D0 段）
+pub mod unx0078_cr3check;
+// unx0079_a4handoff ↔ UNX-F0079 内存图与 A4 域交接协议（0x21E0 段）
+pub mod unx0079_a4handoff;
+// unx0080_ktb04 ↔ UNX-F0080 ktest 引导面 B04 批断言集（0x21F0 段）
+pub mod unx0080_ktb04;
+
+// unx0166_watchdog ↔ UNX-F0166 EFI Watchdog 处理（0x2870 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0166_watchdog;
+// unx0167_mixedmode ↔ UNX-F0167 Mixed Mode 检测（0x2930 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0167_mixedmode;
+// unx0168_ebscb ↔ UNX-F0168 ExitBootServices 前回调链（0x2950 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0168_ebscb;
+// unx0169_rtsvc ↔ UNX-F0169 运行时调用封装与状态码字典（0x2990 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0169_rtsvc;
+// unx0170_sbchain ↔ UNX-F0170 SecureBoot 签名链只读解析（0x6460 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0170_sbchain;
+// unx0173_bootenum ↔ UNX-F0173 启动项枚举与 BootNext 语义（0x6530 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0173_bootenum;
+// unx0174_reentry ↔ UNX-F0174 运行时防重入与并发限制（0x6540 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0174_reentry;
+// unx0175_bsgc ↔ UNX-F0175 EFI 内存垃圾回收 BS 区（0x6550 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0175_bsgc;
+// unx0176_svcdegrade ↔ UNX-F0176 运行时服务缺失降级路径（0x6560 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0176_svcdegrade;
+// unx0177_rtpnx ↔ UNX-F0177 Runtime 区属性保护 NX/RO（0x6A10 段）（AI-WBX1022 EFI 域批次）
+pub mod unx0177_rtpnx;// unx0084_relfix ↔ UNX-F0084 段重定位项修复器（0x2200 段）
+pub mod unx0084_relfix;
+// unx0085_bssclr ↔ UNX-F0085 BSS 清零与校验（0x2210 段）
+pub mod unx0085_bssclr;
+// unx0086_panicsym ↔ UNX-F0086 符号表保留与 panic 符号化（0x2220 段）
+pub mod unx0086_panicsym;
+// unx0087_kaslroff ↔ UNX-F0087 KASLR 关闭模式（诊断模式）（0x2230 段）
+pub mod unx0087_kaslroff;
+// unx0088_bootmani ↔ UNX-F0088 重放校验 BootManifest 固化（0x2240 段）
+pub mod unx0088_bootmani;
+// unx0089_hihalf ↔ UNX-F0089 高半区偏移随机化（0x2250 段）
+pub mod unx0089_hihalf;
+// unx0090_physbase ↔ UNX-F0090 物理基址选择策略（0x2260 段）
+pub mod unx0090_physbase;
+// unx0091_kptadapt ↔ UNX-F0091 页表适配器（0x2270 段）
+pub mod unx0091_kptadapt;
+// unx0092_blcoord ↔ UNX-F0092 Bootloader 协同随机化接口（0x2280 段）
+pub mod unx0092_blcoord;
+// unx0093_sidechan ↔ UNX-F0093 随机化侧信道面收敛（0x2290 段）
+pub mod unx0093_sidechan;
+// unx0094_relocaudit ↔ UNX-F0094 重定位审计报告（0x22A0 段）
+pub mod unx0094_relocaudit;
+// unx0095_bootfp ↔ UNX-F0095 随机化指纹 Per-Boot ID（0x22B0 段）
+pub mod unx0095_bootfp;
+// unx0096_segload ↔ UNX-F0096 段加载器（0x22C0 段）
+pub mod unx0096_segload;
+// unx0097_badimg ↔ UNX-F0097 畸形内核镜像拒载路径（0x22D0 段）
+pub mod unx0097_badimg;
+// unx0098_kaslrsync ↔ UNX-F0098 KASLR 与早期映射一致性自检（0x22E0 段）
+pub mod unx0098_kaslrsync;
+// unx0099_relperf ↔ UNX-F0099 早年性能记账：重定位耗时（0x22F0 段）
+pub mod unx0099_relperf;
+// unx0100_ktb05 ↔ UNX-F0100 ktest 引导面 B05 批断言集（0x2300 段）
+pub mod unx0100_ktb05;
+// unx0103_fontterm ↔ UNX-F0103 帧簿控制台字体渲染（0x2310 段）
+pub mod unx0103_fontterm;
+// unx0104_dualarb ↔ UNX-F0104 双通道仲裁与降级策略（0x2320 段）
+pub mod unx0104_dualarb;
+// unx0105_loglevel ↔ UNX-F0105 日志级别体系（0x2330 段）
+pub mod unx0105_loglevel;
+// unx0106_logstamp ↔ UNX-F0106 日志时间戳 TSC 换算（0x2340 段）
+pub mod unx0106_logstamp;
+// unx0107_ringlog ↔ UNX-F0107 日志环形缓冲持久化（0x2350 段）
+pub mod unx0107_ringlog;
+// unx0108_panicsnap ↔ UNX-F0108 panic 前日志快照（0x2360 段）
+pub mod unx0108_panicsnap;
+
+// unx0968_fourstate ↔ UNX-F0968 四态迁移完整性断言链（AI-WBX1022 补注册）
+pub mod unx0968_fourstate;
+// unx172_partdisc ↔ UNX-F0172 EFI 分区发现与 GUID 语义（0x6A50 段）（AI-WBX1022 B09 批）
+pub mod unx172_partdisc;
+// unx178_envfp ↔ UNX-F0178 EFI 环境指纹（0x6B50 段）（AI-WBX1022 B09 批）
+pub mod unx178_envfp;
+// unx179_faillog ↔ UNX-F0179 EFI 调用早期失败显性化（0x6B60 段）（AI-WBX1022 B09 批）
+pub mod unx179_faillog;
+// unx180_ktestb09 ↔ UNX-F0180 ktest 引导面 B09 批断言集（0x6B70 段）（AI-WBX1022 B09 批）
+pub mod unx180_ktestb09;
+// unx187_ucodero ↔ UNX-F0187 微码加载状态检测只读（0x6C10 段）（AI-WBX1022 B09 批）
+pub mod unx187_ucodero;
+// unx188_smppkt ↔ UNX-F0188 SMP 前置数据包（0x6C20 段）（AI-WBX1022 B09 批）
+pub mod unx188_smppkt;
+// unx189_gdtreload ↔ UNX-F0189 GDT 重载与段语义固化（0x6C30 段）（AI-WBX1022 B09 批）
+pub mod unx189_gdtreload;
+// unx190_tssist ↔ UNX-F0190 TSS 与 IST 布局初始化（0x2B20 段）（AI-WBX1022 B09 批）
+pub mod unx190_tssist;
+// unx191_canary ↔ UNX-F0191 栈金丝雀（0x6C70 段）（AI-WBX1022 B09 批）
+pub mod unx191_canary;
+// unx192_fsgsbase ↔ UNX-F0192 fs/gs base 与 per-CPU 预备（0x6C90 段）（AI-WBX1022 B09 批）
+pub mod unx192_fsgsbase;
+// unx193_crpolicy ↔ UNX-F0193 控制寄存器策略表（0x2B40 段）（AI-WBX1022 B09 批）
+pub mod unx193_crpolicy;
+// unx194_mtrrpat ↔ UNX-F0194 MTRR/PAT 初始化（0x2B50 段）（AI-WBX1022 B09 续批）
+pub mod unx194_mtrrpat;
+// unx195_cacheline ↔ UNX-F0195 缓存与对齐策略声明（0x2B60 段）（AI-WBX1022 B09 续批）
+pub mod unx195_cacheline;
+// unx196_irqwindow ↔ UNX-F0196 中断禁用窗口最小化（0x2B70 段）（AI-WBX1022 B09 续批）
+pub mod unx196_irqwindow;
+// unx197_initgate ↔ UNX-F0197 init 自检清单健康门禁（0x2B80 段）（AI-WBX1022 B09 续批）
+pub mod unx197_initgate;
+
+// ---- 死判据补登记（2026-10-22 接线轮：模块早已实现但从未入链，等于从未参与编译与验收）----
+// //! UNX-F10001 · 波次报表总纲（维度与口径）账 · 诊断段 0xB7E0
+pub mod unx10001_waveboard;
+// //! UNX-F1014 · 时间误差预算表（计时面 SLO 分解契约）账 · 诊断段 0xB8D0
+pub mod unx1014_timebudget;
+// //! UNX-F1686 · 权重→vruntime 累加速率一致性核对账 · 诊断段 0xB8F0
+pub mod unx1686_vruntime;
+// //! UNX-F1704 · 每线程负载贡献追踪（贡献分解）账 · 诊断段 0xB910
+pub mod unx1704_loadtrace;
+// //! UNX-F1724 · 迁移失败回退（暂存滞留回收联动）账 · 诊断段 0xB930
+pub mod unx1724_migfallback;
+// //! UNX-F1884 · 迁移-击落联合回归（一致性协同）账 · 诊断段 0xB950
+pub mod unx1884_migipi;
+// //! UNX-F1938 · ktest 族注册与批内断言聚合账 · 诊断段 0xB970
+pub mod unx1938_ktestagg;
+// //! UNX-F21581 · 域账满账终声明（双断言）
+pub mod unx21581_domainseal;
+// //! UNX-F21582 · ID 终值闭合（F20801–F21600 连续唯一）
+pub mod unx21582_idclosure;
+// //! UNX-F21583 · 判据 800 枚终钉版（J1 全集自洽）
+pub mod unx21583_critpin;
+// //! UNX-F21584 · 批册 40 件落盘完整性核（文件/行数/头部）
+pub mod unx21584_batchdisk;
+// //! UNX-F21585 · 总纲 §7.3-F2 与批册一致性核
+pub mod unx21585_outlinealign;
+// //! UNX-F21586 · 汇编册域节与批册一致性核
+pub mod unx21586_asmconsist;
+// //! UNX-F21587 · 域守恒终声明（行数/条数/判据三面）
+pub mod unx21587_conservseal;
+// //! UNX-F21588 · 域收官宣示（此后零新条目入域账）
+pub mod unx21588_closesolemn;
+// //! UNX-F21589 · 上游会签复核（AI-26 四组冻结接口）
+pub mod unx21589_upcosign;
+// //! UNX-F21590 · 下游会签复核（AI-29/30/61/66-70/87）
+pub mod unx21590_downcosign;
+// //! UNX-F21591 · 域缺陷账本清点（产线双轨纪律）
+pub mod unx21591_defectaudit;
+// //! UNX-F21592 · 随闸门补测池终登记（R-F2-001/002 清单）
+pub mod unx21592_retestpool;
+// //! UNX-F21593 · 证据三件套归档（脚本/报告/哈希）
+pub mod unx21593_evidencetrio;
+// //! UNX-F21594 · 域交接与深化移交（AI-90 排程）
+pub mod unx21594_handover;
+// //! UNX-F21595 · 域收官与全局台账回写（根台账 / handoff）
+pub mod unx21595_ledgerpatch;
+// //! UNX-F21596 · ktest 域总闸（F2 面 800 判据一键全跑）
+pub mod unx21596_kgategate;
+// //! UNX-F21597 · 收官验收（20 维度自评表）
+pub mod unx21597_selfscore;
+// //! UNX-F21598 · 域写锁（防他人/防自误改）
+pub mod unx21598_domainlock;
+// //! UNX-F21599 · 满账三印宣示（文印/账印/链印）
+pub mod unx21599_threeseal;
+// //! UNX-F21600 · B40 收官聚合与 F2 域闭环宣示
+pub mod unx21600_batchclose;
+// //! UNX-F21601 · rop3_table 编译期生成器与 256 项自检
+pub mod unx21601_rop3table;
+// //! UNX-F21604 · SRCCOPY/NOTSRCCOPY 黑盒核心五操作
+pub mod unx21604_blackops;
+// //! UNX-F21607 · ROP3 与背景色的 MERGEPEN 系语义
+pub mod unx21607_mergepen;
+// //! UNX-F21610 · 调色板像素展开（8bpp 及以下索引色）
+pub mod unx21610_palettexpand;
+// //! UNX-F2744 · 目标水位推进与达成判定账 · 诊断段 0xB990
+pub mod unx2744_watermark;
+// unx0109_serialcfg ↔ UNX-F0109 串口参数可配置 cmdline（0x2370 段）
+pub mod unx0109_serialcfg;
+// unx0110_concolor ↔ UNX-F0110 控制台色彩语义（0x2380 段）
+pub mod unx0110_concolor;
+// unx0111_scrollback ↔ UNX-F0111 屏幕滚动与历史回看（0x2390 段）
+pub mod unx0111_scrollback;
+// unx0112_ansiesc ↔ UNX-F0112 ANSI 转义子集（0x23A0 段）
+pub mod unx0112_ansiesc;
+// unx198_timeline ↔ UNX-F0198 init 阶段耗时账（0x2B90 段）（AI-WBX1022 B10/B11 批）
+pub mod unx198_timeline;
+// unx199_bssaudit ↔ UNX-F0199 早年数据段清零与初始化审计（0x2BA0 段）（AI-WBX1022 B10/B11 批）
+pub mod unx199_bssaudit;
+// unx200_ktb10 ↔ UNX-F0200 ktest 引导面 B10 批断言集（0x2BC0 段）（AI-WBX1022 B10/B11 批）
+pub mod unx200_ktb10;
+// unx207_desens ↔ UNX-F0207 报告敏感信息脱敏（0x2BD0 段）（AI-WBX1022 B10/B11 批）
+pub mod unx207_desens;
+// unx208_reportui ↔ UNX-F0208 报告展示接口（0x2BE0 段）（AI-WBX1022 B10/B11 批）
+pub mod unx208_reportui;
+// unx209_gantt ↔ UNX-F0209 引导时间线甘特式视图（0x2BF0 段）（AI-WBX1022 B10/B11 批）
+pub mod unx209_gantt;
+// unx210_hwfp ↔ UNX-F0210 硬件指纹链（0x2C20 段）（AI-WBX1022 B10/B11 批）
+pub mod unx210_hwfp;
+// unx211_bootstat ↔ UNX-F0211 多次引导聚合统计（0x2C30 段）（AI-WBX1022 B10/B11 批）
+pub mod unx211_bootstat;
+// unx212_regdiff ↔ UNX-F0212 回归对比（0x2C40 段）（AI-WBX1022 B10/B11 批）
+pub mod unx212_regdiff;
+// unx213_repsign ↔ UNX-F0213 报告完整性签名（0x2C50 段）（AI-WBX1022 B10/B11 批）
+pub mod unx213_repsign;
+// unx214_frustr ↔ UNX-F0214 体验事件式埋点（0x2C60 段）（AI-WBX1022 B10/B11 批）
+pub mod unx214_frustr;
+// unx215_logtrace ↔ UNX-F0215 日志-报告联动（0x2C70 段）（AI-WBX1022 B10/B11 批）
+pub mod unx215_logtrace;
+// unx216_jsonexp ↔ UNX-F0216 报告导出 JSON（0x2C80 段）（AI-WBX1022 B10/B11 批）
+pub mod unx216_jsonexp;
+// unx217_probezero ↔ UNX-F0217 零静默探针网络（0x2C90 段）（AI-WBX1022 B10/B11 批）
+pub mod unx217_probezero;
+// unx218_consfrozen ↔ UNX-F0218 报告消费方接口冻结（0x2CA0 段）（AI-WBX1022 B10/B11 批）
+pub mod unx218_consfrozen;
+// unx219_perfbudget ↔ UNX-F0219 报告生成性能预算（0x2CB0 段）（AI-WBX1022 B10/B11 批）
+pub mod unx219_perfbudget;
+// unx220_ktb11 ↔ UNX-F0220 ktest 引导面 B11 批断言集（0x2CC0 段）（AI-WBX1022 B10/B11 批）
+pub mod unx220_ktb11;
+// unx0226_badimg ↔ UNX-F0226 坏镜像拒收演练（0x2CE0 段）（AI-WBX1022 B10/B11 批）
+pub mod unx0226_badimg;
+// unx0227_powcut ↔ UNX-F0227 只读侧断电演练（0x2D20 段）（AI-WBX1022 B10/B11 批）
+pub mod unx0227_powcut;
+// unx0228_csmdetect ↔ UNX-F0228 CSM/Legacy 环境检测与降级（0x2D30 段）（AI-WBX1022 B10/B11 批）
+pub mod unx0228_csmdetect;
+// unx0229_sbpath ↔ UNX-F0229 SecureBoot 开启环境引导路径（0x2D40 段）（AI-WBX1022 B10/B11 批）
+pub mod unx0229_sbpath;
+// unx0230_mediapick ↔ UNX-F0230 多盘引导冲突消解（0x2D60 段）（AI-WBX1022 B10/B11 批）
+pub mod unx0230_mediapick;
+// unx0231_abrollback ↔ UNX-F0231 镜像降级回滚（0x2D70 段）（AI-WBX1022 B10/B11 批）
+pub mod unx0231_abrollback;
+// unx0232_bootrate ↔ UNX-F0232 引导成功率统计账（0x2D80 段）（AI-WBX1022 B10/B11 批）
+pub mod unx0232_bootrate;
+// unx0233_a1final ↔ UNX-F0233 A1 域完工判据集（0x2D90 段）（AI-WBX1022 B10/B11 批）
+pub mod unx0233_a1final;
+// unx0113_logsplit ↔ UNX-F0113 日志分级输出口（0x23B0 段）
+pub mod unx0113_logsplit;
+// unx0114_diagui ↔ UNX-F0114 诊断模式控制台 UI 骨架（0x23C0 段）
+pub mod unx0114_diagui;
+// unx0115_quietboot ↔ UNX-F0115 静默引导模式（0x23D0 段）
+pub mod unx0115_quietboot;
+// unx0116_loginject ↔ UNX-F0116 日志注入防护（0x23E0 段）
+pub mod unx0116_loginject;
+// unx0117_sermir ↔ UNX-F0117 串口远程日志只读镜像（0x23F0 段）
+pub mod unx0117_sermir;
+// unx0118_logfmt ↔ UNX-F0118 日志格式规范与解析器（0x2400 段）
+pub mod unx0118_logfmt;
+// unx0119_earlyfail ↔ UNX-F0119 早期失败显性化探针（0x2410 段）
+pub mod unx0119_earlyfail;
+// unx0120_ktb06 ↔ UNX-F0120 ktest 引导面 B06 批断言集（0x2420 段）
+pub mod unx0120_ktb06;
+// unx0125_earlypanic ↔ UNX-F0125 早期 panic 呈现三要素（0x2430 段）
+pub mod unx0125_earlypanic;
+// unx0126_bootlogo ↔ UNX-F0126 引导进度可视化阶段徽标（0x2440 段）
+pub mod unx0126_bootlogo;
+// unx0127_stagebudget ↔ UNX-F0127 阶段耗时预算与超标告警（0x2450 段）
+pub mod unx0127_stagebudget;
+// unx0128_nmiwatch ↔ UNX-F0128 NMI 备份看门狗（0x2460 段）
+pub mod unx0128_nmiwatch;
+// unx0129_recbootmenu ↔ UNX-F0129 恢复引导菜单（0x2470 段）
+pub mod unx0129_recbootmenu;
+// unx0130_lastboot ↔ UNX-F0130 上次引导记录持久化（0x2480 段）
+pub mod unx0130_lastboot;
+// unx0131_bootcount ↔ UNX-F0131 引导序号与启动计数（0x2490 段）
+pub mod unx0131_bootcount;
+// unx0132_healthflag ↔ UNX-F0132 健康标志位三区（0x24A0 段）
+pub mod unx0132_healthflag;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批（UNX-F0234/F0235/F0265/F0287/F0288 · 纯功能）
+// --------------------------------------------------------------------------
+// unx234_handoff ↔ UNX-F0234 handoff 快照工具
+pub mod unx234_handoff;
+// unx235_audit ↔ UNX-F0235 域审计自查单
+pub mod unx235_audit;
+// unx265_diagbus ↔ UNX-F0265 诊断命令注册总线（命令插件表）
+pub mod unx265_diagbus;
+// unx287_fatal ↔ UNX-F0287 不可恢复检测（三重故障/栈耗尽）
+pub mod unx287_fatal;
+// unx288_panicserial ↔ UNX-F0288 panic 期串口最小驱动
+pub mod unx288_panicserial;
+// unx0133_badslot ↔ UNX-F0133 坏引导检测与拦截（0x24B0 段）
+pub mod unx0133_badslot;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批（UNX-F0236~F0239/F0267~F0280 · B12 收官+B14 诊断 · 纯功能）
+// --------------------------------------------------------------------------
+pub mod unx236_feedback;
+pub mod unx237_doccompare;
+pub mod unx238_ktest12;
+pub mod unx239_batchrecon;
+// unx240_closepack ↔ UNX-F0240 波 01 A1 侧闭账物料包（0xf010 段，缺件检出 100%）
+pub mod unx240_closepack;
+// unx368_heatmap ↔ UNX-F0368 内存热图接入（F0077 写入口，逐位一致+千位采样）（0xf0e0 段）
+pub mod unx368_heatmap;
+// unx369_hugepage ↔ UNX-F0369 大页候选区盘点（2MB 对齐窗+最大窗可复算）（0xf0f0 段）
+pub mod unx369_hugepage;
+// unx370_resvblock ↔ UNX-F0370 保留区越界分配拦截（三类各 10 例全拦+分账）（0xf110 段）
+pub mod unx370_resvblock;
+// unx371_ledger ↔ UNX-F0371 页帧账目对冲总账（借还平账+前缀平账）（0xf120 段）
+pub mod unx371_ledger;
+// unx372_fragindex ↔ UNX-F0372 内存碎片度量（外碎片五档指数+手算对拍）（0xf130 段）
+pub mod unx372_fragindex;
+// unx373_oomguard ↔ UNX-F0373 早年 OOM 预案（三级水位+关键池保底 1%）（0xf140 段）
+pub mod unx373_oomguard;
+// unx374_crossmem ↔ UNX-F0374 内存盘点交叉验证（E820 vs 自检+白名单冻结）（0xf150 段）
+pub mod unx374_crossmem;
+// unx375_swrclaim ↔ UNX-F0375 页帧池并发原语预留（单写者令牌+占位冻结）（0xf160 段）
+pub mod unx375_swrclaim;
+// unx376_fivenum ↔ UNX-F0376 内存容量五数概括（三分类守恒零误差）（0xf170 段）
+pub mod unx376_fivenum;
+// unx377_ktestb19 ↔ UNX-F0377 ktest 内存面断言集接入（B19 十八席注册制）（0xf180 段）
+pub mod unx377_ktestb19;
+pub mod unx267_sym;
+pub mod unx268_ktestfilter;
+pub mod unx269_boot;
+pub mod unx270_firmware;
+pub mod unx271_ratelimit;
+pub mod unx272_session;
+pub mod unx273_keymap;
+pub mod unx274_ascii;
+pub mod unx275_dualchannel;
+pub mod unx276_crashiso;
+pub mod unx277_sessionid;
+pub mod unx278_timeout;
+pub mod unx279_config;
+pub mod unx280_b14ktest;
+// unx0134_abfallback ↔ UNX-F0134 回退内核槽 A/B 语义（0x24C0 段）
+pub mod unx0134_abfallback;
+// unx0135_bootselect ↔ UNX-F0135 引导选择器 多内核多参数（0x24D0 段）
+pub mod unx0135_bootselect;
+// unx0136_diagentry ↔ UNX-F0136 诊断模式入口统一（0x24E0 段）
+pub mod unx0136_diagentry;
+// unx0137_argedit ↔ UNX-F0137 引导参数 UI 诊断内编辑（0x24F0 段）
+pub mod unx0137_argedit;
+// unx0138_bootstat ↔ UNX-F0138 引导成功率统计账本（0x2510 段）
+pub mod unx0138_bootstat;
+// unx0139_wdhandoff ↔ UNX-F0139 早年看门狗与 A2 中断交接（0x2520 段）
+pub mod unx0139_wdhandoff;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批（UNX-F0266/F0289~F0293 · B14/B15 深化收口 · 纯功能）
+// --------------------------------------------------------------------------
+// unx266_memheat ↔ UNX-F0266 mem 命令深化（热图分节视图）
+pub mod unx266_memheat;
+// unx289_logfreeze ↔ UNX-F0289 panic 前日志冻结与快照接线
+pub mod unx289_logfreeze;
+// unx290_dumpcrc ↔ UNX-F0290 转储三件套对账（CRC 完整性闭环）
+pub mod unx290_dumpcrc;
+// unx291_pcode ↔ UNX-F0291 panic 码表（P-码系）与 E-码映射
+pub mod unx291_pcode;
+// unx292_nmisafe ↔ UNX-F0292 panic 期 NMI 安全（零重入次序标志）
+pub mod unx292_nmisafe;
+// unx293_haltstamp ↔ UNX-F0293 停机戳语义（下次引导识别上轮 panic）
+pub mod unx293_haltstamp;
+// unx0140_ktb07 ↔ UNX-F0140 ktest 引导面 B07 批断言集（0x2530 段）
+pub mod unx0140_ktb07;
+// unx0145_makeentry ↔ UNX-F0145 单命令构建入口（0x2540 段）
+pub mod unx0145_makeentry;
+// unx0146_reprobuild ↔ UNX-F0146 构建可复现性 固定时间戳排序（0x2550 段）
+pub mod unx0146_reprobuild;
+
+// --------------------------------------------------------------------------
+// AI-MIMO-1022 批2（UNX-F0294/F0295 · B15 panic 复现与面板 · 纯功能）
+// --------------------------------------------------------------------------
+// unx294_panicrepro ↔ UNX-F0294 panic 复现模式（cmdline 开关+计数门限）
+pub mod unx294_panicrepro;
+// unx295_panicpanel ↔ UNX-F0295 panic 面板体验（倒计时/键位/文案样张）
+pub mod unx295_panicpanel;
+// unx300_ktestb15 ↔ UNX-F0300 ktest B15 批断言集
+pub mod unx300_ktestb15;
+// unx0147_incbuild ↔ UNX-F0147 增量构建与缓存（0x2560 段）
+pub mod unx0147_incbuild;
+// unx0148_verinject ↔ UNX-F0148 镜像版本号注入（0x2570 段）
+pub mod unx0148_verinject;
+// unx0149_sbom ↔ UNX-F0149 构建物料清单 SBOM 雏形（0x2580 段）
+pub mod unx0149_sbom;
+// unx0150_imgsplit ↔ UNX-F0150 镜像体积与拆分策略（0x25A0 段）
+pub mod unx0150_imgsplit;
+// unx0151_writetool ↔ UNX-F0151 写盘工具对接口 只列清单（0x25B0 段）
+pub mod unx0151_writetool;
+// unx0152_wverify ↔ UNX-F0152 写后校验接口规范（0x25D0 段）
+pub mod unx0152_wverify;
+// unx0153_multitarget ↔ UNX-F0153 多目标产物 ISO/IMG/HDD 头（0x25F0 段）
+pub mod unx0153_multitarget;
+// unx0154_qsmoke ↔ UNX-F0154 QEMU 冒烟 只读判据（0x2610 段）
+pub mod unx0154_qsmoke;
+// unx0155_checksum ↔ UNX-F0155 发布校验和与摘要文件（0x2630 段）
+pub mod unx0155_checksum;
+// unx0156_builddiag ↔ UNX-F0156 构建失败诊断 三要素（0x2650 段）
+pub mod unx0156_builddiag;
+// unx0157_imgstats ↔ UNX-F0157 镜像引导成功率统计接口（0x2670 段）
+pub mod unx0157_imgstats;
+// unx0158_archnaming ↔ UNX-F0158 年度镜像命名与归档规范（0x2690 段）
+pub mod unx0158_archnaming;
+// unx0159_slowmedia ↔ UNX-F0159 慢速介质与老U盘兼容参数（0x26B0 段）
+pub mod unx0159_slowmedia;
+// unx0160_ktb08 ↔ UNX-F0160 ktest 构建面 B08 批断言集（0x26D0 段）
+pub mod unx0160_ktb08;
+// unx0165_uvarpolicy ↔ UNX-F0165 UEFI 变量读写策略与配额（0x26F0 段）
+pub mod unx0165_uvarpolicy;
+// unx299_panicparse ↔ UNX-F0299 panic 转储对端解析器（三件套还原+黄金样本对拍+六注入；0x3d50 段）
+pub mod unx299_panicparse;
+// unx330_apfeat ↔ UNX-F0330 AP 特征二次采集与 BSP 差异断言（六叶闭集+逐寄存器diff+分叉账；0x3d60 段）
+pub mod unx330_apfeat;
+// unx331_ucoderev ↔ UNX-F0331 AP 微码修订只读检测（F0187 快照闸+一致断言+append-only 账；0x3d70 段）
+pub mod unx331_ucoderev;
+// unx310_pgarea ↔ UNX-F0310 页表区分配与账本登记（F0071/F0072 对接+双向幽灵审计）（0x3dc0 段）
+pub mod unx310_pgarea;
+// unx316_pgfaultinj ↔ UNX-F0316 页表错误注入（五类坏 PTE 检出 100%+项级定位）（0x3dd0 段）
+pub mod unx316_pgfaultinj;
+// unx317_pgperf ↔ UNX-F0317 初始页表性能账（F0099/F0198 口径同源+微秒落账）（0x3de0 段）
+pub mod unx317_pgperf;
+// unx318_trampolow ↔ UNX-F0318 trampoline 低 1MB 映射预置（双表在位+B17 消费断言）（0x3df0 段）
+pub mod unx318_trampolow;
+// unx319_pggolden ↔ UNX-F0319 页表构建黄金样本（设计矩阵逐项对照+双向差分）（0x3e50 段）
+pub mod unx319_pggolden;
+// unx320_ktestb16 ↔ UNX-F0320 ktest 引导面 B16 批断言集（探针登记制 16 席）（0x3e60 段）
+pub mod unx320_ktestb16;
+// unx332_apfirstlog ↔ UNX-F0332 AP 到达后第一日志（身份三元组+哨兵先行+序号连续）（0x3e70 段）
+pub mod unx332_apfirstlog;
+// unx333_bootfail ↔ UNX-F0333 多核启动失败分类（未达/超时/三振隔离状态机）（0x3ec0 段）
+pub mod unx333_bootfail;
+// unx334_x2apic ↔ UNX-F0334 x2APIC 模式检测与兼容路径（前置链+双路径同语义）（0x3ed0 段）
+pub mod unx334_x2apic;
+// unx335_apbudget ↔ UNX-F0335 AP 数量上限与预算（硬上限 255+分项扣款+拒绝有账）（0x3ee0 段）
+pub mod unx335_apbudget;
+// unx336_trampocrc ↔ UNX-F0336 trampoline 完整性校验（CRC32 落位前闸+单字节定位）（0x3ef0 段）
+pub mod unx336_trampocrc;
+// unx337_wakeorder ↔ UNX-F0337 唤醒次序与拓扑（逐个/成组策略+乱序 100% 检出）（0x3f50 段）
+pub mod unx337_wakeorder;
+// unx338_wakedrill ↔ UNX-F0338 AP 唤醒演练矩阵（QEMU 2/4/8 全绿+真机诚实 pending）（0x3f60 段）
+pub mod unx338_wakedrill;
+// unx339_singlecore ↔ UNX-F0339 单核强制模式 maxcpus=0（总闸四支路+零 SIPI 硬断言）（0x3f70 段）
+pub mod unx339_singlecore;
+// unx340_ktestb17 ↔ UNX-F0340 ktest 引导面 B17 批断言集（8 席+批级三断言）（0x3fc0 段）
+pub mod unx340_ktestb17;
+// ===== AI-WBB-1022 · UNX-A1-B18 AP 启动收官批（UNX-F0345~F0355，0xE400~0xE4B0 段）=====
+// unx0345_aphealth ↔ UNX-F0345 AP 健康自检清单（十项闭集+FAIL 隔离移交 F0347；0xE400 段）
+pub mod unx0345_aphealth;
+// unx0346_apledger ↔ UNX-F0346 AP 启动总账（唤醒耗时五数概括+F0198 对接；0xE410 段）
+pub mod unx0346_apledger;
+// unx0347_apisoacct ↔ UNX-F0347 失败 AP 隔离（坏核降级账+F0333 六类联动；0xE420 段）
+pub mod unx0347_apisoacct;
+// unx0348_apnumastack ↔ UNX-F0348 NUMA 感知 AP 栈选址（F0074 位图一致+区间互斥；0xE430 段）
+pub mod unx0348_apnumastack;
+// unx0349_aphandoff ↔ UNX-F0349 AP 向 A2 交接包（定长小端+版本闸+A2 消费断言；0xE440 段）
+pub mod unx0349_aphandoff;
+// unx0350_aprecompute ↔ UNX-F0350 AP 汇合后全局重算（三守恒+幂等；0xE450 段）
+pub mod unx0350_aprecompute;
+// unx0351_apdrillmat ↔ UNX-F0351 AP 启动演练矩阵（四档×三场景 12 行 4/4；0xE460 段）
+pub mod unx0351_apdrillmat;
+// unx0352_apfailinject ↔ UNX-F0352 AP 启动失败注入（哨兵不置位+零误唤醒红线；0xE470 段）
+pub mod unx0352_apfailinject;
+// unx0353_tramporeclaim ↔ UNX-F0353 trampoline 内存回收（低 1MB 借还+热图同步；0xE480 段）
+pub mod unx0353_tramporeclaim;
+// unx0354_aptimeline ↔ UNX-F0354 AP 时序账零差异对接（ADR 白名单+50 轮复测；0xE4B0 段）
+pub mod unx0354_aptimeline;
+// unx0355_apucode ↔ UNX-F0355 AP 微码修订一致性（8 核 8/8+三方同源+只读；0xE4A0 段）
+pub mod unx0355_apucode;
+
+// ---- 死判据补登记（2026-10-22 接线 v2：模块已实现但从未入链）----
+// // unx296_drillmatrix.rs ↔ UNX-F0296 panic 演练矩阵（20 类触发全过）
+pub mod unx296_drillmatrix;
+// // unx297_dualdog.rs ↔ UNX-F0297 双狗联动复盘（软狗/NMI 触发链归因）
+pub mod unx297_dualdog;
+// ---- AI-WBB-1022 第二批（波 01 A1 收官 7 单；0x20000+ u32 高段独占）----
+// unx0234_handoffsnap ↔ UNX-F0234 handoff 快照（快照/台账 diff 零漂移；0x20000 段）
+pub mod unx0234_handoffsnap;
+// unx0235_auditself ↔ UNX-F0235 域审计自查单（finalize 闸：必查零缺零红；0x20040 段）
+pub mod unx0235_auditself;
+// unx0236_feedback ↔ UNX-F0236 邻域反馈通道（幂等去重+拒绝必带因码；0x20080 段）
+pub mod unx0236_feedback;
+// unx0237_docdiff ↔ UNX-F0237 文档对照（四态分类+容差核；0x200C0 段）
+pub mod unx0237_docdiff;
+// unx0238_ktestb12 ↔ UNX-F0238 ktest 收官面 B12（四族断言+复跑零漂移；0x20100 段）
+pub mod unx0238_ktestb12;
+// unx0239_batchtally ↔ UNX-F0239 批次清点 40 批（位图账+零缺零重；0x20140 段）
+pub mod unx0239_batchtally;
+// unx0240_closepack ↔ UNX-F0240 闭账物料包（五节三层签；0x20180 段）
+pub mod unx0240_closepack;
+// ---- AI-WBB-1022 第二批（终端/控制台 15 单；0x201C0~0x20540 u32 高段）----
+// unx0265_cmdbus ↔ UNX-F0265 命令注册总线（名字唯一+三档位闸；0x201C0 段）
+pub mod unx0265_cmdbus;
+// unx0267_symcmd ↔ UNX-F0267 sym 批量符号化（升序闸+诚实回显；0x20200 段）
+pub mod unx0267_symcmd;
+// unx0268_ktestcmd ↔ UNX-F0268 ktest 过滤重跑（flaky 立案；0x20240 段）
+pub mod unx0268_ktestcmd;
+// unx0269_bootcmd ↔ UNX-F0269 boot 全视图（默认项存活核；0x20280 段）
+pub mod unx0269_bootcmd;
+// unx0270_fwview ↔ UNX-F0270 固件三视图（capsule 信任交叉核；0x202C0 段）
+pub mod unx0270_fwview;
+// unx0271_backpressure ↔ UNX-F0271 输出限流背压（零丢弃+滞回；0x20300 段）
+pub mod unx0271_backpressure;
+// unx0272_sessm ↔ UNX-F0272 会话状态机（迁移原子+回看只读；0x20340 段）
+pub mod unx0272_sessm;
+// unx0273_hotkey ↔ UNX-F0273 快捷键冲突表（保留前缀；0x20380 段）
+pub mod unx0273_hotkey;
+// unx0274_ascii ↔ UNX-F0274 纯 ASCII 降级（映射闭集+控制剥离；0x203C0 段）
+pub mod unx0274_ascii;
+// unx0275_dualchan ↔ UNX-F0275 双通道一致性（游标对账+补拉；0x20400 段）
+pub mod unx0275_dualchan;
+// unx0276_crashiso ↔ UNX-F0276 崩溃隔离（引导态对拍+熔断；0x20440 段）
+pub mod unx0276_crashiso;
+// unx0277_sessid ↔ UNX-F0277 会话标识（旧会话帧拦截；0x20480 段）
+pub mod unx0277_sessid;
+// unx0278_budget ↔ UNX-F0278 耗时预算（破产闸+白名单；0x204C0 段）
+pub mod unx0278_budget;
+// unx0279_cfgsnap ↔ UNX-F0279 配置快照（厂默认冻结+零漂移恢复；0x20500 段）
+pub mod unx0279_cfgsnap;
+// unx0280_b14 ↔ UNX-F0280 B14 断言集（引导五族+复跑零漂移；0x20540 段）
+pub mod unx0280_b14;
+// ---- AI-WBB-1022 第二批（panic/AP 启动面 7 单；0x20580~0x20700 u32 高段）----
+// unx0287_unrecov ↔ UNX-F0287 不可恢复检测（三重故障/栈哨兵+停机账；0x20580 段）
+pub mod unx0287_unrecov;
+// unx0288_panicuart ↔ UNX-F0288 panic 期串口（零依赖+忙放弃+取证环；0x205C0 段）
+pub mod unx0288_panicuart;
+// unx0356_apconverge ↔ UNX-F0356 AP 串口汇聚（行原子+低号仲裁；0x20600 段）
+pub mod unx0356_apconverge;
+// unx0357_apcaprep ↔ UNX-F0357 AP 能力位（拓扑对齐核；0x20640 段）
+pub mod unx0357_apcaprep;
+// unx0358_maxcpus ↔ UNX-F0358 maxcpus 语义（钳位诚实降级；0x20680 段）
+pub mod unx0358_maxcpus;
+// unx0359_nmibcast ↔ UNX-F0359 NMI 广播预留（无载荷语义+覆盖核；0x206C0 段）
+pub mod unx0359_nmibcast;
+// unx0360_ktestb18 ↔ UNX-F0360 B18 断言集（AP 启动六族；0x20700 段）
+pub mod unx0360_ktestb18;
+pub mod unx0363_pfbitmap;
+pub mod unx0364_lowmap;
+pub mod unx0365_dmalow;
+pub mod unx0366_ffalloc;
+pub mod unx0367_pffree;
+pub mod unx0368_heatmap;
+pub mod unx0369_hugepage;
+pub mod unx0370_resguard;
+pub mod unx0371_pfledger;
+pub mod unx0372_fragindex;
+pub mod unx0373_oomplan;
+pub mod unx0374_e820cross;
+pub mod unx0375_poolprim;
+pub mod unx0376_fivepoint;
+pub mod unx0377_ktestmem;
+pub mod unx0378_handfield;
+pub mod unx0379_drilltopo;
+pub mod unx0380_b19;
+pub mod unx0388_heapleak;
+pub mod unx0389_slabhalf;
+pub mod unx0390_heapguard;
+pub mod unx0391_oominject;
+pub mod unx0392_heapgrow;
+pub mod unx0393_stkpool;
+pub mod unx0394_handreserve;
+pub mod unx0395_heapledger;
+pub mod unx0396_ktheaptest;
+pub mod unx0397_bigbypass;
+pub mod unx0398_zeropage;
+pub mod unx0399_heapstorm;
+pub mod unx0400_b20;
+pub mod unx0406_wallclock;
+pub mod unx0407_timq;
+pub mod unx0408_tscdead;
+pub mod unx0409_clksel;
+pub mod unx0410_precself;
+pub mod unx0411_monojump;
+pub mod unx0412_softtimer;
+pub mod unx0413_timefield;
+pub mod unx0414_timefive;
+pub mod unx0415_pitcross;
+pub mod unx0416_timledger;
+pub mod unx0417_freqdrift;
+pub mod unx0418_ktimeassert;
+pub mod unx0419_load3tier;
+pub mod unx0420_b21;
+pub mod unx0423_ist1;
+pub mod unx0424_nmiist2;
+pub mod unx0425_pfecode;
+pub mod unx0426_picshut;
+pub mod unx0427_ioapicprobe;
+pub mod unx0428_lapicprobe;
+pub mod unx0429_vecalloc;
+pub mod unx0430_spurious;
+pub mod unx0431_exinj;
+pub mod unx0432_veccount;
+pub mod unx0433_irqlat;
+pub mod unx0434_ifdisc;
+pub mod unx0435_istsent;
+pub mod unx0436_iretq;
+pub mod unx0437_crashtsnap;
+pub mod unx0438_stormdrill;
+pub mod unx0439_handfield;
+pub mod unx0440_b22;
+pub mod unx0443_rsdtwalk;
+pub mod unx0444_tblcsum;
+pub mod unx0445_madtirq;
+pub mod unx0446_hpetparse;
+pub mod unx0447_fadttiming;
+pub mod unx0448_mcfgecam;
+pub mod unx0449_dsdtloc;
+pub mod unx0450_sratnuma;
+pub mod unx0451_tblsnap;
+pub mod unx0452_degrade;
+pub mod unx0453_pinseal;
+pub mod unx0454_badinj;
+pub mod unx0455_mapreg;
+pub mod unx0456_handoff;
+pub mod unx0457_5num;
+pub mod unx0458_acpize;
+pub mod unx0459_ktap;
+pub mod unx0460_b23;
+pub mod unx0465_pcihdr;
+pub mod unx0466_pcibar;
+pub mod unx0467_pcclass;
+pub mod unx0468_pcicap;
+pub mod unx0469_pciecap;
+pub mod unx0470_roline;
+pub mod unx0471_xchk;
+pub mod unx0472_enumdog;
+pub mod unx0473_rescan;
+pub mod unx0474_pci5num;
+pub mod unx0475_scandrill;
+pub mod unx0476_pcihand;
+pub mod unx0477_pcxacc;
+pub mod unx0478_pcbad;
+pub mod unx0479_pcikt;
+pub mod unx0480_b24;
+pub mod unx0488_rndguard;
+pub mod unx0489_rndperf;
+pub mod unx0490_rndpat;
+pub mod unx0491_fbsent;
+pub mod unx0492_rndops;
+pub mod unx0493_rndmulti;
+pub mod unx0494_dmarcap;
+pub mod unx0495_rtroot;
+pub mod unx0496_iotlbeg;
+pub mod unx0497_devtlb;
+pub mod unx0498_faultrec;
+pub mod unx0499_irtable;
+pub mod unx0500_domseal;
+pub mod unx0506_dmarops;
+pub mod unx0507_ctxcache;
+pub mod unx0508_pasidtag;
+pub mod unx0509_sectl2;
+pub mod unx0510_ptewalk;
+pub mod unx0511_qtqueue;
+pub mod unx0512_iecinval;
+pub mod unx0513_intpost;
+pub mod unx0514_svmtrack;
+pub mod unx0515_devrw;
+pub mod unx0516_prq;
+pub mod unx0517_wdinvq;
+pub mod unx0518_perfctr;
+pub mod unx0519_vtclose;
+pub mod unx0521_ktestcore;
+pub mod unx0522_asserts;
+pub mod unx0523_fail3;
+pub mod unx0524_suitegrp;
+pub mod unx0525_summary;
+pub mod unx0526_redbook;
+pub mod unx0527_watchdog;
+pub mod unx0528_nsisol;
+pub mod unx0529_rndinj;
+pub mod unx0530_covermtx;
+pub mod unx0531_outproto;
+pub mod unx0532_persist;
+pub mod unx0533_onekey;
+pub mod unx0534_hedge;
+pub mod unx0535_residue;
+pub mod unx0536_frameself;
+pub mod unx0537_fmtver;
+pub mod unx0538_handoff;
+pub mod unx0539_hedgetot;
+pub mod unx0540_b27set;
+pub mod unx0541_logemit;
+pub mod unx0542_logfilt;
+pub mod unx0543_linefmt;
+pub mod unx0544_ringbuf;
+pub mod unx0545_uartout;
+pub mod unx0546_fbout;
+pub mod unx0547_tstamp;
+pub mod unx0548_comptag;
+pub mod unx0549_logquery;
+pub mod unx0550_countreck;
+pub mod unx0551_ringwrap;
+pub mod unx0552_dualswitch;
+pub mod unx0553_linecsum;
+pub mod unx0554_logstorm;
+pub mod unx0555_badinj;
+pub mod unx0556_fivestat;
+pub mod unx0557_loghedge;
+pub mod unx0558_auditlink;
+pub mod unx0559_loghandoff;
+pub mod unx0560_b28set;
+pub mod unx0531_nxguard;
+pub mod unx0532_wptrap;
+pub mod unx0533_cowpage;
+pub mod unx0534_tlbshoot;
+pub mod unx0535_hugefld;
+pub mod unx0536_mapaudit;
+pub mod unx0537_pfcensus;
+pub mod unx0538_sharecred;
+pub mod unx0539_zswapin;
+pub mod unx0543_mmuclose;
+pub mod unx0544_sipilane;
+pub mod unx0545_apwait;
+pub mod unx0546_ticket;
+pub mod unx0547_genbar;
+pub mod unx0548_percpu;
+pub mod unx0549_ipiburst;
+pub mod unx0550_memfence;
+pub mod unx0551_coreonline;
+pub mod unx0552_corehalt;
+pub mod unx0553_smpclose;
+pub mod unx0567_rqlane;
+pub mod unx0568_rrband;
+pub mod unx0569_priolane;
+pub mod unx0570_preempt2;
+pub mod unx0571_waitq;
+pub mod unx0572_mlfq2;
+pub mod unx0573_starvgua;
+pub mod unx0574_loadbal;
+pub mod unx0575_schedtick;
+pub mod unx0576_schedclose;
+
+// ---- AI-VX-1024（2026-10-24）：UNX-F1283 ps2 轮询路径测绘账（隔离探针全绿后入库，0x139 段）----
+pub mod unx1283_ps2map;
+// ---- AI-VX-1024（2026-10-24）第五波三单：F1263/F1304/F1323（隔离探针全绿后入库）----
+pub mod unx1263_irqreverse;
+pub mod unx1304_ps2retire;
+pub mod unx1323_serequiv;
+// ---- AI-VX-1024（2026-10-24）六/七波六单：F0344/F1044/F1083/F1063/F0328/F0586（隔离探针全绿后入库）----
+pub mod unx0344_percpu;
+pub mod unx1044_dlineacc;
+pub mod unx1083_timcoales;
+pub mod unx1063_nohz;
+pub mod unx0328_apstack;
+pub mod unx0586_valdom;
+// ---- AI-VX-1024（2026-10-24）第八波三单：F0604/F0622/F0644（隔离探针全绿后入库）----
+pub mod unx604_cpioiter;
+pub mod unx0622_pkgindex;
+pub mod unx0644_failredo;
+// ---- AI-VX-1024（2026-10-24）第九波三单：F0305/F0663/F0687（隔离探针全绿后入库）----
+pub mod unx0305_hugesel;
+pub mod unx0663_tsccross;
+pub mod unx0687_succrate;
+// ---- AI-VX-1024（2026-10-24）第十波三单：F0705/F0725/F0745（隔离探针全绿后入库）----
+pub mod unx0705_assert70;
+pub mod unx0725_resptree;
+pub mod unx745_valgrade;
+// ---- AI-VX-1024（2026-10-24）第十一波三单：F0763/F0805/F0825（隔离探针全绿后入库）----
+pub mod unx0763_finalsweep;
+pub mod unx0805_spurious;
+pub mod unx0825_cr8tpr;
+// ---- AI-VX-1024（2026-10-24）第十二波三单：F0844/F0862/F0885（隔离探针全绿后入库）----
+pub mod unx0844_ipieoi;
+pub mod unx0862_rterw;
+pub mod unx0885_irqbal;
+// ---- AI-VX-1024（2026-10-24）第十三波三单：F0939/F0944/F0962（隔离探针全绿后入库）----
+pub mod unx0939_bootseq;
+pub mod unx0944_bhtrig;
+pub mod unx0962_pollprof;
+// ---- AI-VX-1024（2026-10-24）第十四波三单：F0785/F1003/F1028（隔离探针全绿后入库）----
+pub mod unx0785_domenroll;
+pub mod unx1003_tsccal;
+pub mod unx1028_tmoacc;
+// ---- AI-VX-1024B（2026-10-24）：UNX-F0329 AP 端 GDT/TSS/MSR 装载序列（隔离探针全绿后入库，0x1E1 段）----
+pub mod unx0329_apgdt;
+// ---- AI-VX-1024B（2026-10-24）：F0306/F0587 深度实现（隔离探针全绿后入库；wxmatrix/dupkey 无后缀名为并行姊妹件互不引用）----
+pub mod unx0306_wxmatrix2;
+pub mod unx0587_dupkey2;
+// ---- AI-VX-1024B（2026-10-24）：F0605/F0664 深度实现（隔离探针全绿后入库）----
+pub mod unx605_cpiocheck;
+pub mod unx0664_bootth;

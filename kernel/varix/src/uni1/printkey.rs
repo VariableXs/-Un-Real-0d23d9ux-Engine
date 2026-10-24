@@ -7,6 +7,7 @@
 //! 引导）；四常用项（页码范围/份数/单双面/方向）；分页预览（页码范围
 //! 解析与页数核算一致性）；PDF 产物落文档目录；Ctrl+P 注册。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::uni1::ubase::{Chord, HotkeyTable, MOD_CTRL};
 

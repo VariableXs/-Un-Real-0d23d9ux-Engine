@@ -10,13 +10,14 @@
 //! ENOEXEC 族错误码）+ 错误码对照表（Linux ENOEXEC=8 冻结）+
 //! 双判据红灯闸 + 注入核（四形变体/短路装载/空档/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA380 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA380;
 pub const XC_MG_NOEXEC: u32 = SEG_BASE + 0x01; // ENOEXEC
 pub const XC_MG_SHORT: u32 = SEG_BASE + 0x02; // 短档

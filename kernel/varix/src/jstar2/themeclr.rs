@@ -18,6 +18,8 @@
 //! F629 系统按令牌派生（Derived）——两条路都通向方案库；派生是赠品
 //! 不是绑定（删除派生方案不影响主题）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::{
     contrast_x100, CursorFrame, CursorSchemeModel, OriginKind, PixBuf, Rgb, fnv1a64,

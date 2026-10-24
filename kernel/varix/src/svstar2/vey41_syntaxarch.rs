@@ -9,6 +9,7 @@
 //! 义分析（AST 到含义）/类型检查（类型安全网）；四件共用五律宪法与 Y02 token
 //! 契约；文法歧义→五律裁决；契约失配→版本拦截。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

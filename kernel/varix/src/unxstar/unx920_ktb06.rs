@@ -13,12 +13,12 @@
 //!   - 注入核 5 项。
 //! ═══════════════════════════════════════════════════════════════════════
 
-use crate::alloc::string::String;
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段基址。
+
 pub const SEG_BASE: u16 = 0xB080;
 
 /// 断言族名（本批 19 条判据的族划分）。

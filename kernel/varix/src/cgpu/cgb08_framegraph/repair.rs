@@ -4,6 +4,7 @@
 //! 七、映射开销账（判据四；口径复用 F2408：步=0.1% 帧预算，Σ=10 步红线，实测全上游注入——零墙钟）；
 //! 十一、跨卡搬运计划器；十二、队列实例路由（slot → 实例号）；十三、负载分布统计（全部无浮点）。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

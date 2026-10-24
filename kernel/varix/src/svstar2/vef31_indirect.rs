@@ -32,6 +32,8 @@
 //!
 //! 判据（21 项）映射见 `vef31_indirect_checks.rs` 头注。
 
+use alloc::format;
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 

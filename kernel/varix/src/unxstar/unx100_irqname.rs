@@ -30,10 +30,10 @@
 //! 往返；错误全显性带诊断码与建议。诊断码段 0x44（0x43 为 F0910
 //! 所取）。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 模块版本。

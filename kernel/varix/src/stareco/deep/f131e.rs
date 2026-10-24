@@ -4,6 +4,8 @@
 //! DCO 签名链与 CLA 合规、回馈日志 append-only 持久化、PR 被拒后的本地
 //! 补丁维护册（fork 责任）、安全件同步披露窗口（F142 联动）、CI 三态。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase;
 

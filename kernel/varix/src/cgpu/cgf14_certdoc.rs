@@ -14,8 +14,8 @@
 //! 的和代码做的不许两套账）；规则表条目闭集（表外触发类型拒绝入文档）。
 //! 诊断码段 0x6401~0x6405。
 
-use alloc::string::String;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

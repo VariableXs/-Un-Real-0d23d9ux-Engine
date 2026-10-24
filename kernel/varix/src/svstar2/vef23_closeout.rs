@@ -38,6 +38,7 @@
 //! **对接**：上游 I01 全组（F1611~F1620）；下游 I02 顶点流水线组
 //! （F1621~，在 vmesh 数据结构上运行）。零 panic 面、零 IO、零墙钟、
 //! 无全局可变状态、no_std 零 std 依赖。
+use alloc::format;
 
 use alloc::string::String;
 use alloc::vec::Vec;

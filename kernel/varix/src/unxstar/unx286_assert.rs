@@ -9,12 +9,13 @@
 //! 分流出账）+ 误用检出核（Check 用于不可继续路径 / BugOn 用于可
 //! 恢复路径 = 误用）+ 注入核（级别越界/误用漏检/账破缺/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAB80 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAB80;
 pub const XC_AS_LEVEL: u32 = SEG_BASE + 0x01; // 级别越界
 pub const XC_AS_MISUSE: u32 = SEG_BASE + 0x02; // 误用

@@ -129,9 +129,9 @@
 //! 与 F2604 世代戳合并同一口径）；遍历显式栈（无递归，故超深树不炸栈）。
 //! 同输入同输出，回归可复现。生产面零 panic、零 `unsafe`、零 `unwrap`。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::svstar2::ven02_tree::ControlTree;

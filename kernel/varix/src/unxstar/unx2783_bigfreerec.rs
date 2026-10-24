@@ -3,7 +3,10 @@
 //! 大页由 512 个 4KB 子页组成；回收判定：整页 512 子页均无引用才可整块逐出；
 //! 任一子页被引用即判"碎块"，拒绝回收并留诊断账（拒因：碎块）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x7800;
 

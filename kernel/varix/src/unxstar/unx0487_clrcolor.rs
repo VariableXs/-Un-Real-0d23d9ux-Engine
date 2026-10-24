@@ -1,8 +1,10 @@
 //! UNX-F0487 · 清屏与配色原语账 · 诊断段 0xB830
 //! 验收锚点：清屏（全屏单色填充）后位图零残留（回读全等），
 //! 前景/背景色对账齐（16 色表内），双判据缺一即批内红灯。
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::String;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB830;
 
@@ -43,7 +45,7 @@ pub struct Cell {
 
 impl Cell {
     pub fn new(ch: u8, fg: u8, bg: u8) -> Result<Self, u16> {
-        if fg >= VGA_COLORS || bg >= VGA_COLORS {
+        if fg as usize >= VGA_COLORS || bg as usize >= VGA_COLORS {
             return Err(E_COLOR);
         }
         Ok(Cell { ch, attr: (bg << 4) | fg })

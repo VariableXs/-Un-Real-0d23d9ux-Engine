@@ -21,6 +21,7 @@
 //! 由后续任务接入时收编。目标态消费者串行（单核 boot 链）；future shell
 //! 跨线程接入时由调用方持锁（宿主竞态用例示范 Mutex 外层防护）。
 
+use alloc::vec;
 use crate::fb::Surface;
 
 /// 脏矩形登记容量；满后转全屏合并（绝不丢脏区）。

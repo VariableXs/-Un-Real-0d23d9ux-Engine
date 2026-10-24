@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! VE-F1611 · 网格流式容器（VE-I 域 · I01 网格格式与几何基础组 · 目标 320 行）
 //!
 //! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F1611`
@@ -51,9 +52,8 @@
 //! 渲染的块 = 释放后 use-after-free）。判据 `I1611-预算-不卸在用块`
 //! 直接断言这条性质——它是最容易被「优化」掉的安全网。
 
-#![allow(clippy::needless_range_loop)]
-
 use alloc::vec;
+
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

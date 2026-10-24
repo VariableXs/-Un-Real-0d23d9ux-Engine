@@ -13,6 +13,7 @@
 //! 落盘语义：历史与无痕开关状态都走 [`super::hbase::PersistKv`]——
 //! 「无痕不落盘」= 开关后 record 不产生任何写/冲刷增量（判据直接对账）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::hbase::PersistKv;

@@ -2,7 +2,9 @@
 //! 验收锚点：UNX-F8141-J1 五批装载类判据聚合入一键跑（宿主单测 + 引导面双面），
 //! 聚合计数与分批计数一致（Σ批计数 == 聚合计数），100% 绿才收口。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB2C0;
 

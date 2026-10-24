@@ -28,6 +28,7 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::veu02_model::DomainTag;
 use super::veu03_registry::{ContractMeta, ContractRegistry, Lifecycle};
 use super::veu05_flow::*;
@@ -36,7 +37,6 @@ use crate::checks::CheckSet;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 判据族前缀表（长前缀在前）。

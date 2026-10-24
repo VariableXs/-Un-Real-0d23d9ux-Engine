@@ -3,6 +3,8 @@
 //! 装配与跨域接口件：tracker 统计 → F120 诊断中心体检灯（四灯阈值）、
 //! 报告入口深链数据、单条报告摘要行装配。
 
+use alloc::format;
+use alloc::vec::Vec;
 use super::f139g::weekly_stats;
 use crate::checks::CheckSet;
 

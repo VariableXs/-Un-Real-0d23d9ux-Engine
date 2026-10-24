@@ -13,6 +13,7 @@
 /// 注入）；冷/热启动分账（进程已在 → 无装载段）；首窗优先（次要窗在
 /// 首窗就绪前不出现——排队保证）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

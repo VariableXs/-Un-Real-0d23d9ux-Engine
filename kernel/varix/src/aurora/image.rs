@@ -696,9 +696,6 @@ fn qoi_put_rgba(out: &mut [u8], pos: &mut usize, rgba: [u8; 4]) {
 /// alpha 不变时的差分编码：QOI_OP_DIFF → QOI_OP_LUMA → 兜底 QOI_OP_RGB。
 /// （私有参数收敛：rgb 三通道与差分三分量各打包为定长数组，8 参 → 4 参。）
 fn qoi_put_diff(out: &mut [u8], pos: &mut usize, rgb: [u8; 3], diff: [i16; 3]) {
-    let r = rgb[0];
-    let g = rgb[1];
-    let b = rgb[2];
     let dr = diff[0];
     let dg = diff[1];
     let db = diff[2];

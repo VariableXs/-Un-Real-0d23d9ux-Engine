@@ -5,6 +5,9 @@
 //! 注入测试框架（检出率 100% 判据）、文章分级前置知识判据、ADR 导读
 //! 生成器、抽查复核抽样器、反馈聚合到 F139 编号。
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::TraceId;
 use crate::stareco::eduportfolio::{desensitized, Portfolio, THEMES};

@@ -318,6 +318,7 @@ pub fn render_seq(idx: usize, buf: &mut [u8]) -> usize {
 
 #[cfg(test)]
 mod tests {
+use alloc::string::String;
     use super::*;
 
     #[test]

@@ -3,7 +3,8 @@
 //! 勾稽总和断言（五账轮数合计 == 聚合总轮次）；矩阵外轮次零容忍（任何轮号
 //! 不在分账矩阵内即拒）；聚合确定性断言（同输入重放同结果）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9C00;
 

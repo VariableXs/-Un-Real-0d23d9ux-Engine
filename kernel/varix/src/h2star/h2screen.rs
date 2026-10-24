@@ -13,6 +13,8 @@
 //! 几何纪律：屏幕矩形用 [`h2geo::Rect`]（与贴靠/拼接同一坐标系）；
 //! 指纹用 FNV-1a（与 h2persist 校验和同族算法——域内自足）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h2star::h2geo::Rect;
 use crate::h2star::h2persist::fnv1a64;

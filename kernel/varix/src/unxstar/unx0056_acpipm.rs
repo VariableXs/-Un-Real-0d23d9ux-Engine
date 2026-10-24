@@ -3,7 +3,10 @@
 //! 支持集与节能能力台账判据通过；只读——零写寄存器路径。
 //! 纯功能代码 ≥220 行。零浮点、零 unwrap、零 expect。
 
-use crate::alloc::{format, string::{String, ToString}, vec::Vec};
+
+use alloc::format;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 
 pub const SEG_BASE: u16 = 0x2080;
 
@@ -190,13 +193,13 @@ impl PmCapabilityLedger {
         }
         if self.sleeps.iter().any(|s| s.s_type == s_type) {
             self.rejected.push((s_type, E_S_DUP));
-            return Ok(false);
+            return Ok(());
         }
         if s_type == S5 {
             self.s5_present = true;
         }
         self.sleeps.push(SleepObject { s_type, slp_typ_a: typ_a, slp_typ_b: typ_b });
-        Ok(true)
+        Ok(())
     }
 
     /// 唤醒向量一致性：S1..S3 声明运行时唤醒则须有对应支持账。

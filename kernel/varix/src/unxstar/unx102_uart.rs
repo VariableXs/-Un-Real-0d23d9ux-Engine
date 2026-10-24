@@ -10,12 +10,13 @@
 //! 压测核（字节序完整 + 零丢 + 零错位）+ 注入核（除数漂移/DLAB
 //! 未锁/LSR 溢出/计数破缺/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA780 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA780;
 pub const XC_UA_DIV: u32 = SEG_BASE + 0x01; // 除数漂移
 pub const XC_UA_DLAB: u32 = SEG_BASE + 0x02; // DLAB 未锁

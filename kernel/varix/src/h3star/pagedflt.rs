@@ -13,11 +13,12 @@
 //! 数据面在 [`super::hbase::SettingRegistry`]（改动追踪唯一源）；本模块
 //! 实现确认流状态机（预览→确认/取消）与标记点视图。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::hbase::{SettingRegistry, INSTANT_FEEDBACK_MS};
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

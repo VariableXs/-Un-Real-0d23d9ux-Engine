@@ -35,9 +35,9 @@
 //! 逻辑 tick 注入、零墙钟；零 IO；只用 `alloc` 容器（无 HashMap——内核无 hasher
 //! 依赖，线性扫描并诚实标注复杂度）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

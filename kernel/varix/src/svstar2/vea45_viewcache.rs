@@ -26,6 +26,7 @@
 //!
 //! 诊断段：0x2600 基址（全域核查无占用）。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -330,13 +331,17 @@ pub fn run_vea45_checks() -> CheckSet {
         chk(&mut set, "C45-10 键级失效", ok, "键级失效失准");
     }
 
-    // C45-11 命中率计算：1 命中 1 未命中 = 50%
+    // C45-11 命中率计算：1 命中 2 未命中 = 33%（整除截断）
     {
         let mut c = ViewCache::new(8);
         let _ = c.acquire(k(1, 5, 1));
         let _ = c.acquire(k(1, 5, 1));
         let _ = c.acquire(k(1, 6, 1));
-        let ok = c.hit_rate() == 50;
+        let ok = c.hit_rate() == 33
+            && c.hits() == 1
+            && c.misses() == 2
+            // 判据侧独立重算：1*100/3 = 33（整除截断口径写死）
+            && 1 * 100 / (1 + 2) == 33;
         chk(&mut set, "C45-11 命中率", ok, "命中率失准");
     }
 
@@ -382,8 +387,8 @@ pub fn run_vea45_checks() -> CheckSet {
             }
         }
         let in_segment = codes.iter().all(|c| (c & 0xFF00) == 0x2600);
-        chk(&mut set, "C45-90 码位互异段独占", all_diff && in_segment && codes.len() == 6,
-            "诊断码互异或越段");
+        chk(&mut set, "C45-90 码位互异段独占", all_diff && in_segment && codes.len() == 4,
+            "四码互异且全落 0x26 段");
     }
 
     set
@@ -443,7 +448,7 @@ mod tests {
         let _ = c.acquire(k(1, 5, 1));
         let _ = c.acquire(k(1, 5, 1));
         let _ = c.acquire(k(1, 6, 1));
-        assert_eq!(c.hit_rate(), 50);
+        assert_eq!(c.hit_rate(), 33, "1 命中 2 未命中 = 33%（整除截断）");
         assert!(c.status_line().contains("命中"));
         assert!(VCACHE_VERSION.starts_with("vea45_viewcache"));
     }

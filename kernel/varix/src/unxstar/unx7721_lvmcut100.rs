@@ -3,7 +3,8 @@
 //! 落账禁混报；元数据写窗口注入覆盖断言（写窗口 0~99% 全带覆盖）；每轮校验和
 //! 基线对照（crash 前基线 == 重放后校验和，全绿）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x9980;
 

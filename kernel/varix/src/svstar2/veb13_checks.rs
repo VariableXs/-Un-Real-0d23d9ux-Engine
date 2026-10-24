@@ -26,13 +26,13 @@
 //! ④ **边界判据用表外真实形态**（第 5 个 DTD 槽越界、非 DTD 描述符、
 //!    bit15 置位的厂商码、校验和被破坏的块），不用表内枚举自证。
 
+use alloc::vec;
 use super::veb01_device::DisplayCfg;
 use super::veb02_proto::{CMD_GET_EDID, CMD_SET_SCANOUT, EDID_LEN};
 use super::veb11_irq::{Event, EventKind};
 use super::veb13_heads::*;
 use crate::checks::CheckSet;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

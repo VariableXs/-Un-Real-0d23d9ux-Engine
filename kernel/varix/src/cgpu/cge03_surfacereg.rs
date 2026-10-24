@@ -46,6 +46,7 @@
 //! F0644（渲染调度，消费注册表的激活表面集）；F0647（遥测，注册表
 //! 规模与协商拒绝率）。零 panic 面、零 IO、零墙钟、no_std。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

@@ -5,6 +5,7 @@
 //! lessons & boundaries, the roadmap, version lifecycle, community feedback,
 //! defect retrospection, the quality-metrics dashboard and the domain gates.
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@
 //!   浏览器的事浏览器管）；
 //! - 互通层只做「把文件送到网页手上」。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

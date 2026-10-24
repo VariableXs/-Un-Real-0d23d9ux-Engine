@@ -2,8 +2,9 @@
 //! 验收锚点：UNX-F8621-J1 标准信号 pending 集合去重（同号不叠），
 //! 实时信号排队（同号可叠），队列满 SIGRTMIN+n 上限溢出 EAGAIN，
 //! 三语义并行自洽，双判据缺一即批内红灯。
+use alloc::vec::Vec;
+use alloc::string::String;
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
 
 pub const SEG_BASE: u16 = 0xB640;
 
@@ -265,7 +266,7 @@ pub fn run_unx8621_checks() -> crate::checks::CheckSet {
         }
     }
     let std_untouched = mr2.std.count() == 0 && mr2.rt.len() == RT_QUEUE_CAP;
-    s.add("SIG-队满隔离", eagain_hit && std_untouched,
+    s.add_dyn("SIG-队满隔离", eagain_hit && std_untouched,
         if eagain_hit && std_untouched { "" } else { "队满波及标准域" });
 
     // 10. LCG 随机混合压测：计数对账

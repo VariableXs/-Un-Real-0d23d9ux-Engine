@@ -16,6 +16,7 @@
 //! 零墙钟、零 IO，回归可复现。**空集判「无数据」而非「通过」**——
 //! 任何一处枚举塌成空集时，对应断言必须转红。
 
+use alloc::vec;
 use super::vep02_lang::*;
 
 use crate::checks::CheckSet;
@@ -23,7 +24,6 @@ use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 判据一：四原则各有可失败的判定口径。
 ///

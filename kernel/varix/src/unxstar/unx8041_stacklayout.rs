@@ -3,7 +3,10 @@
 //! argv 指针/argc）自高向低落位，逐字节断言与 SysV ABI 布局图一致，
 //! 20/20 样本零偏差。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB220;
 

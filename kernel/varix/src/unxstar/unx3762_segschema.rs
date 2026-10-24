@@ -12,8 +12,8 @@
 //   * 显式映射表：段字段 ← 域账字段（投影逐字段对账 ==）；
 //   * 注入核：未知字段/投影缺列/段号越界/封账后投影 四类必抓。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
 // ── 诊断段（0xFF00 独占） ─────────────────────────────────────────────

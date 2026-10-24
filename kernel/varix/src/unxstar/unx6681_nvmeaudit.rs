@@ -14,13 +14,11 @@
 //!   - 注入核 5 项。
 //! ═══════════════════════════════════════════════════════════════════════
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段基址。
+use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
 pub const SEG_BASE: u16 = 0xA280;
 
 /// 加倍抽检密度（普通 2 × 2）。

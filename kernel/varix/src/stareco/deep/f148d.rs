@@ -4,6 +4,9 @@
 //! 版本册（修订留痕）、公示渲染（裁决编号可查）、回避制度（利益
 //! 相关者不进三人组）。
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::stareco::ebase::TraceId;
 use crate::stareco::governance::{Governance, CaseStage, GOV_DOCS, ARBITRATION_SLA_DAYS};

@@ -27,6 +27,9 @@
 //! 与 CGPU 册（0x50..0x5D）/cga02（0x39）/VE 册（0x43/0x44）等互不
 //! 重叠；本模块零 panic 面——所有输入不可信（固件表可被改坏）。
 
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::acpi::{checksum_ok, SdtHeader, SDT_HEADER_LEN};
 use alloc::string::String;
 use alloc::string::ToString;

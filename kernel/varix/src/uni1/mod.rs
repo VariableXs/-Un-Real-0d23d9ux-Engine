@@ -45,6 +45,7 @@
 //! | [`shake`]      | F425 Aero Shake 晃动 | [`stickkeys`] | F450 粘滞键与筛选键 |
 //! | [`ubase`]      | 共享底盘：Chord/HotkeyTable（F244 唯一落位）、LayerStack、RingLog、Knob | | |
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 pub mod altrprop;

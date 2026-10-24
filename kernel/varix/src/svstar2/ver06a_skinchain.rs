@@ -38,10 +38,10 @@
 //!
 //! 无 `unwrap()`/`expect()`/`panic!`/切片索引；所有取用走 `get()`/`match`。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::ver01e_typetree::TokenKind;

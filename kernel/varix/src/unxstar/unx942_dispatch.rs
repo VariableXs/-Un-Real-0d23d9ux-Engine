@@ -58,13 +58,11 @@
 //! 声明皆可错），错误一律 Err + 中文诊断，禁 unwrap/expect/panic!，
 //! 禁 IO、真实 IDT/端口操作——IDT 与分发全部语义模型，全确定性、禁浮点。
 
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
 
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
+use alloc::format;
 // ---------------------------------------------------------------------------
 // 一、诊断码闭集（独占 0x8Cxx 段——17 码互异，grep 同目录核对无撞）
 // ---------------------------------------------------------------------------

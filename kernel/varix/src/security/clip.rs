@@ -15,6 +15,7 @@
 //! - 与 Windows 侧剪贴板行为差异公示见
 //!   `docs/双域-任务34-剪贴板语义差异清单-2026-09-17.md`。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::drivers::blk::BlockDevice;
 use crate::vfsguard::{self, AuditJournal, Decision, Op};

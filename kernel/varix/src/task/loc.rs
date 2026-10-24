@@ -601,6 +601,7 @@ fn get_u64(buf: &[u8], off: usize) -> u64 {
 
 #[cfg(test)]
 mod tests {
+use alloc::string::String;
     use super::*;
 
     #[test]

@@ -29,6 +29,7 @@
 //! **零浮点纪律**：内部一律 **F26Dot6 定点**（i32，1/64 像素单位），仅在
 //! 对拍/上报时转浮点——内核无浮点依赖，且定点保证跨机器回归可复现。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
@@ -790,7 +791,6 @@ pub fn run_vee03_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     fn e() -> Extractor {
         Extractor::new()

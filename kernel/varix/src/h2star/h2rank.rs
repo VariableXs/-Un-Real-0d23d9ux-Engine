@@ -15,6 +15,8 @@
 //! 排序纪律：所有排序**稳定**（同键保持插入序——分组稳定性与推荐区
 //! 「数量稳定」的机制保证）；全引擎纯函数，注入偏好，不读全局状态。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

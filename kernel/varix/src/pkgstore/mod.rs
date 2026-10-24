@@ -6,6 +6,8 @@
 //! `crate::galaxy::rt::DetPrng`。导出 `pub fn run_pkgstore_checks()`
 //! （域标签 "aurora-pkgstore"）覆盖全部 25 项。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

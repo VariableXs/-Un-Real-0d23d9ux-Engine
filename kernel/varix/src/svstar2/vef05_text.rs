@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! VE-F1005 · PNG 文本块族（tEXt/iTXt/zTXt，目标 320 行）
 //!
 //! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F1005`
@@ -84,10 +85,9 @@
 //! 故 [`validate_utf8`] 自写，返回**首个非法序列的字节偏移**，
 //! 使错误可定位到具体字节而非只报一个 bool。
 
-#![allow(clippy::needless_range_loop)]
+use alloc::vec;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::perfstar::frameledger_ext;

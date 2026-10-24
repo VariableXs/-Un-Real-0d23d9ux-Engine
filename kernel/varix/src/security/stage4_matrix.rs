@@ -6,6 +6,7 @@
 
 #[cfg(test)]
 mod tests {
+use alloc::vec;
     use crate::clipsrv::{ClipAcl, ClipFormat, ClipStore};
     use crate::drivers::blk::BlockDevice;
     use crate::msgchan::{ChanError, MsgBus};

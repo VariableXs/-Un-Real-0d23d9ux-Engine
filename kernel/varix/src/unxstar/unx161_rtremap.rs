@@ -31,6 +31,7 @@
 //! 诊断枚举 RemapCode 十六码（0x34 段 0x3400..=0x340F 互异 +
 //! [`segment_guard`]）。no_std 零 unwrap 零 panic 面。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

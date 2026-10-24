@@ -13,6 +13,7 @@
 //!
 //! 时间纪律：分钟戳调用方注入；字节量以 u64 记账。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

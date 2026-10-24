@@ -4,6 +4,8 @@
 //! API 版本协商（取公共最大）、镜像清单差异计算、配额管理（窗口
 //! 计数/字节）、降级决策树。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -66,7 +68,7 @@ pub fn negotiate_api(host_supports: &[u32], plugin_wants: &[u32]) -> Result<u32,
     if common.is_empty() {
         return Err("无公共 API 版本：协商失败（诚实拒绝，不降级猜测）");
     }
-    Ok(*common.iter().max().expect("non-empty"))
+    Ok(common.iter().copied().max().unwrap_or(0))
 }
 
 // ---------------------------------------------------------------------------

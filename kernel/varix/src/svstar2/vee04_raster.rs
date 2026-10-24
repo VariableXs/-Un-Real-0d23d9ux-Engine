@@ -1573,7 +1573,6 @@ pub fn run_vee04_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     /// 造一个 16×16 像素的正方形字形轮廓（外轮廓，逆时针）。
     fn square_16() -> ContourSet {

@@ -12,8 +12,8 @@
 //! 手算；坏表翻转字节位置判据侧自定；码段判据 `!=` 防自判死
 //! （0x39/0x43/0x44/0x50..0x5D 全排除）。
 
-use alloc::string::ToString;
 use alloc::vec;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

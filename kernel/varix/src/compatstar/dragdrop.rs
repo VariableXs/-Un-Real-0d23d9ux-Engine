@@ -22,9 +22,10 @@
 //!
 //! 零堆纪律：会话表定长、报文环定长，无 Vec/String/Box/format!。
 
+use alloc::string::String;
+use alloc::vec;
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）

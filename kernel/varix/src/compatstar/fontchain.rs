@@ -20,6 +20,8 @@
 //!
 //! 零堆纪律：映射表静态、pt 换算纯算术，无 Vec/String/Box/format!。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

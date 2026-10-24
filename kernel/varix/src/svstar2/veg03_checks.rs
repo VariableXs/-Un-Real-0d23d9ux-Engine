@@ -26,11 +26,11 @@
 //! 语料全部由本文件内的构造器生成（EBML 字节流合成器），跨平台逐位可复现，
 //! 零IO、零墙钟、不依赖 ffprobe 可执行文件（对拍事实以 fixture 登记）。
 
+use alloc::vec;
 use super::veg03_webm_mkv::*;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

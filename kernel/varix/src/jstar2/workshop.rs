@@ -34,6 +34,8 @@
 //!   是隐形缺陷——拒绝并列出帧号）；`into_scheme_multi()` 一稿多态
 //!   导出（同一作品铺 Normal/Link/… 多态，内容逐字节同源）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::{
     fill_ellipse, fill_rect, stroke_line, stroke_rect, CursorFrame, CursorSchemeModel,

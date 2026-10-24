@@ -23,9 +23,10 @@
 //! 只管「墙钟对不对」，不反向污染单调钟。宿主测试一切时间注入。
 //! 依赖锚点：F022（tzdata）、F117（网络步后向导）、F121（快照覆盖）、F101（天气联动）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::sbase::RingLog;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

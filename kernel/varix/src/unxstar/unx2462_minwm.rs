@@ -13,11 +13,13 @@
 //!   - 注入核 5 项。
 //! ═══════════════════════════════════════════════════════════════════════
 
-use crate::alloc::vec::Vec;
-use crate::alloc::string::{String, ToString};
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段基址。
+
 pub const SEG_BASE: u16 = 0x8680;
 
 /// min 水线（页）。

@@ -8,6 +8,7 @@
 //! 由 F074 引擎注入口送入（同源——同一 Vec 切片）；「关闭所有」多窗
 //! 未保存时逐窗 F310 三问（确认链状态机）；菜单项数 ≤8 审计。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

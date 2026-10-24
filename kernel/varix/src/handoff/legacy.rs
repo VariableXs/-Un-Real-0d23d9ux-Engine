@@ -26,6 +26,8 @@
 //! 不可用）一律**如实降级到内核自绘 ushell** 并打 WARN——宁可让用户看到
 //! 一个能用的 ushell，也不留一块黑屏或死循环。
 
+use alloc::format;
+use alloc::vec;
 use crate::fb::{Color, Surface};
 
 /// A 卡路径的终点。

@@ -60,6 +60,8 @@
 //! F0167（B 域失败处置——超时处置 F0328 的上游语义）；F0322-F0480
 //! （八模块兑现区间）。零 panic 面、零 IO、零墙钟、no_std。
 
+use alloc::format;
+use alloc::string::ToString;
 use alloc::string::String;
 use alloc::vec::Vec;
 

@@ -7,11 +7,12 @@
 //! - 版本戳（含对端降级）→ `B06-版本-*`
 //! - 黄金流比对 / 绑定去重收益 → `B06-黄金-*` / `B06-去重-*`
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::veb06_stream::*;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
-use alloc::vec::Vec;
+use alloc::format;
 
 /// VE-F0206 域自检。
 pub fn run_veb06_checks() -> CheckSet {
@@ -265,7 +266,6 @@ pub fn run_veb06_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
 
     /// 域自检必须全绿——红项即施工未完成。
     #[test]

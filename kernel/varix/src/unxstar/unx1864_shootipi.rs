@@ -1,3 +1,4 @@
+use alloc::vec;
 // unx1864_shootipi —— UNX-F1864 击落 IPI 消费端（F1846 登记向量执行）
 // 判据原文 UNX-F1864-J1：击落处理体（mask 位或+本地 flush+应答）断言全过，
 // 与 F1846 交接件状态位联动一致。
@@ -12,7 +13,6 @@
 //   * 指纹冻结 + 注入核 10/10。
 
 use crate::checks::CheckSet;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ── 诊断段（0xF380 独占） ─────────────────────────────────────────────

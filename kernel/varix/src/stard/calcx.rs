@@ -21,6 +21,7 @@
 //!   显式可见；结果复制 Ctrl+C 带全精度。
 //!
 
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::galaxy::math as m;
 
@@ -483,10 +484,13 @@ pub fn to_rpn(toks: &[Tok]) -> Result<Vec<Tok>, CalcError> {
             }
             _ => {
                 let my = precedence(t);
-                while let Some(top) = ops.last() {
+                loop {
+                    let Some(top) = ops.last() else { break; };
                     let tp = precedence(*top);
                     if *top != Tok::LParen && (tp > my || (tp == my && t != Tok::Pow)) {
-                        out.push(ops.pop().unwrap());
+                        if let Some(op) = ops.pop() {
+                            out.push(op);
+                        }
                     } else {
                         break;
                     }

@@ -22,12 +22,13 @@
 //! 时间注入式，宿主测试确定复现。无外部依赖（schema 校验自研轻量
 //! 实现——字段类型/必填/值域三查，JSON Schema 标准语义子集）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use crate::svstar::vbase;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源）

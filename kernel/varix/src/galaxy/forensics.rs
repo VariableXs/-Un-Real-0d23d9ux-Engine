@@ -38,11 +38,14 @@ impl CrashDump {
             b.copy_from_slice(&buf[16 + i * 8..16 + (i + 1) * 8]);
             regs[i] = u64::from_le_bytes(b);
         }
+        // 定长 88B 布局：直接下标展开（总量、零 panic——原 try_into().unwrap()
+        // 在定长数组切片上永不失败，属纯语法性 panic 点）。
+        let u64_at = |o: usize| u64::from_le_bytes([buf[o], buf[o + 1], buf[o + 2], buf[o + 3], buf[o + 4], buf[o + 5], buf[o + 6], buf[o + 7]]);
         CrashDump {
-            panic_pc: u64::from_le_bytes(buf[0..8].try_into().unwrap()),
-            fault_addr: u64::from_le_bytes(buf[8..16].try_into().unwrap()),
+            panic_pc: u64_at(0),
+            fault_addr: u64_at(8),
             regs,
-            timestamp_ms: u64::from_le_bytes(buf[80..88].try_into().unwrap()),
+            timestamp_ms: u64_at(80),
         }
     }
 }

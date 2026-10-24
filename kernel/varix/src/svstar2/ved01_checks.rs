@@ -12,10 +12,10 @@
 //!
 //! 零墙钟、零 IO，回归可复现。
 
+use alloc::vec;
 use super::ved01_tree::*;
 use crate::checks::CheckSet;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 标准树：Root(0) → 容器(1) → [容器(2) → 表面(4), 表面(3)]。

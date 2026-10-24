@@ -19,6 +19,7 @@
 //! **依赖锚点**：`crate::h1star::h1base`（Rect）。
 //! 时间纪律：一切时间由调用方注入毫秒戳，模块不持时钟。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::h1star::h1base::Rect;
 

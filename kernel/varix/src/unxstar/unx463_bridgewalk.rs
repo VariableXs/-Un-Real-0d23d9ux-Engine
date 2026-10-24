@@ -1,3 +1,4 @@
+#![forbid(unsafe_op_in_unsafe_fn)]
 //! UNX-F0463 · 桥展开多总线扫描（只读递归）（CoRun·Unxreal · UNX-A1-B05 · PCI 深化之二）
 //!
 //! **锚点**：`docs/Varix/CoRun Varix STAR II · Unxreal/CoRun Varix STAR II · Unxreal.md#UNX-F0463`
@@ -47,11 +48,10 @@
 //! 13. **诊断码独占 0x7Cxx 段**：unx462（0x7Bxx）相邻段，grep 同目录
 //!     核对无诊断码占用（0x463x 已被 unx574 T574 段占用——以 grep 为准）。
 
-#![forbid(unsafe_op_in_unsafe_fn)]
+use alloc::vec;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

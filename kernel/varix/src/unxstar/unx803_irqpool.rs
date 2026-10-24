@@ -18,6 +18,7 @@
 //! 诊断码段：0xD350（0xD351~0xD359 闭集；全域 grep 确认独占）。
 //! 纯功能线：no_std + alloc，无 unwrap/expect/panic，整数算术，确定性。
 
+use alloc::format;
 use alloc::vec::Vec;
 use alloc::string::String;
 

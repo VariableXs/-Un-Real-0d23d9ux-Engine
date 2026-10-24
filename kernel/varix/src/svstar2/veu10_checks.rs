@@ -12,8 +12,8 @@
 //! 覆盖断言在缺料子集上必须报缺，无料红线对未入库语言必须阻断，撤回在
 //! 注入无依据条目后必须计数，锚定对篡改库必须报漂移。正向恒绿没有意义。
 
-use alloc::string::ToString;
 use alloc::vec;
+use alloc::string::ToString;
 
 use crate::checks::CheckSet;
 

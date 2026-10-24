@@ -11,6 +11,7 @@
 //!
 //! 纯静态注册表校验，无时钟无 IO，回归可复现。
 
+use alloc::vec;
 use super::vec01_constitution::*;
 use crate::checks::CheckSet;
 

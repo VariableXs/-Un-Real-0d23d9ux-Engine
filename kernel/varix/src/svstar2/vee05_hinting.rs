@@ -51,6 +51,7 @@
 //! 无裸 `[i]` 索引（越界即视为畸形并中止）。自检断言集中在
 //! `run_vee05_checks()` 内。
 
+use alloc::vec;
 extern crate alloc;
 
 use alloc::vec::Vec;

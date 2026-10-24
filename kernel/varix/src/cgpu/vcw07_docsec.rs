@@ -18,10 +18,10 @@
 //! 4. **测试一组**（判据三）：过滤正确性自证（干净文档零误滤 / 带密文档
 //!    零漏滤）+ 复用一致性三面对拍，全内置零 IO。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 
 /// 模块版本。
 pub const WS_VERSION: &str = "vcw07_docsec-v1";

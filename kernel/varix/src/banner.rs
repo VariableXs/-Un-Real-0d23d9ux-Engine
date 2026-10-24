@@ -34,6 +34,7 @@ pub fn epoch_to_utc(epoch: i64) -> (i64, u32, u32, u32, u32, u32) {
     )
 }
 
+use alloc::vec;
 use crate::fb::{Color, Surface};
 use crate::font;
 

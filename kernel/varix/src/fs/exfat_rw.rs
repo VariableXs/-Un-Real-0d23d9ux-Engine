@@ -22,10 +22,11 @@
 //! 布局常量与 [`super::exfat_ro`] 同源（exFAT spec 1.00 / GRUB 交叉）；
 //! 挂载定位复用 `exfat_ro::gpt_first_basic_data`。
 
+use alloc::format;
+use alloc::vec;
 use super::exfat_ro::{gpt_first_basic_data, Bpb, FsError};
 use crate::drivers::blk::{BlockDevice, BlockError};
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 单次数据窗口上限（= MSC 单命令 4KiB 缓冲；契约文件均远小于此）。

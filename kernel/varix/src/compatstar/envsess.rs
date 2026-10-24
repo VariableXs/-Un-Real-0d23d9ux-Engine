@@ -20,8 +20,8 @@
 //!
 //! 零堆纪律：变量表定长槽 + 定长值，展开链定长，无 Vec/String/Box/format!。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};
 

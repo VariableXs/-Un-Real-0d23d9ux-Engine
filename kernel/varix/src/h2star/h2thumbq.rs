@@ -14,6 +14,7 @@
 //!
 //! 时间纪律：无时钟；优先级由调用方按可视区结论注入。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

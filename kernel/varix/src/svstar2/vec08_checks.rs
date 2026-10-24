@@ -6,8 +6,8 @@
 //! - 元数据分离 → `C08-分离-*`（文档注释不进 comments 流、独立元数据流）
 //! - 零语义 → `C08-零语义-*`（注释内容任意、字符串保护）
 
-use super::vec08_comment::*;
 use alloc::vec;
+use super::vec08_comment::*;
 use crate::checks::CheckSet;
 use alloc::vec::Vec;
 

@@ -10,6 +10,8 @@
 //! 与 cgf03_probedomain（F0803 能力探测）分工——彼探测硬件能力、此认证整机
 //! 体验达标。冻结指纹 FNV-1a 独立实现（常数写死可对拍）。诊断码段 0x3Exx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 套件版本（冻结账与分发包携带，对账用）。

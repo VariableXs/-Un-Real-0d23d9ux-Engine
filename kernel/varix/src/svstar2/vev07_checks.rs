@@ -18,10 +18,11 @@
 //! 频次提示（反恒假门禁——先证明该状态真会出现）；主流程两读数源
 //! 分立（登记值/物理采样）——共用一源则告警路径不可达。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vev07_multisync as ms;
 use alloc::string::{String, ToString};
-use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 判据侧独立真值区（字面量写死——被测常量改了这里必红）

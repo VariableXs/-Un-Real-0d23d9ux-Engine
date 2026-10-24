@@ -15,6 +15,8 @@
 //! （F1282）与 cgi03_bwaccount（F1283 账户层）——本模块是拷贝时间片调度层，
 //! 不重定义带宽物理量。诊断码段 0x44xx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 // 链路口径：声明式复用 cgi02_pciebw（F1282）。

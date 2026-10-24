@@ -293,3 +293,68 @@ impl MemLedger {
         self.peaks.len()
     }
 }
+
+
+// ===== 深化块（cga127_memledger · 内存账深化审计）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_memledger {
+    //! 内存账深化审计 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 泄漏探针：分配-释放差值终态必须收敛到 0，不收敛即泄漏。
+    pub fn leak_probe(deltas: &[i64]) -> Result<(), u16> {
+        if deltas.is_empty() {
+            return Err(1);
+        }
+        let mut net: i64 = 0;
+        let mut peak: i64 = 0;
+        for &d in deltas {
+            net += d;
+            if net > peak {
+                peak = net;
+            }
+        }
+        // 终态未归零 = 泄漏；峰值超过 4096 页 = 洪峰失控。
+        if net != 0 {
+            return Err(2);
+        }
+        if peak > 4096 {
+            return Err(3);
+        }
+        Ok(())
+    }
+
+    /// 双账对拍：声明容量 vs 实测占用，容差内放行，超差立案。
+    pub fn ledger_reconcile(declared_pages: u64, measured_pages: u64, tol_permille: u64) -> Result<(), u16> {
+        if tol_permille > 1000 {
+            return Err(1);
+        }
+        let diff = if declared_pages > measured_pages { declared_pages - measured_pages } else { measured_pages - declared_pages };
+        let denom = if declared_pages == 0 { 1 } else { declared_pages };
+        if diff * 1000 > denom * tol_permille {
+            return Err(2);
+        }
+        Ok(())
+    }
+
+    /// 页位图审计：任意页不得同时处于「已分配」与「已保留」两账。
+    pub fn page_bitmap_disjoint(alloc: &[u64], reserve: &[u64]) -> Result<(), u16> {
+        for (i, (a, r)) in alloc.iter().zip(reserve.iter()).enumerate() {
+            if a & r != 0 {
+                return Err(1 + i as u16);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0127-深化");
+        cs.add("无泄漏序列", leak_probe(&[3, -1, -2]).is_ok(), "");
+        cs.add("泄漏检出", leak_probe(&[5, -1]).is_err(), "");
+        cs.add("对拍容差", ledger_reconcile(1000, 1005, 10).is_ok() && ledger_reconcile(1000, 1200, 10).is_err(), "");
+        cs.add("位图互斥", page_bitmap_disjoint(&[0b1100], &[0b0011]).is_ok() && page_bitmap_disjoint(&[0b1100], &[0b0100]).is_err(), "");
+        cs
+    }
+}

@@ -32,6 +32,7 @@
 //!
 //! 零 panic 面、零 IO、零墙钟。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

@@ -52,6 +52,7 @@
 //! 「创建数 == 销毁数」对账，对不上即 [`Verdict::Fail`]——
 //! **清理是收尾步的职责，不是用例的职责。**
 
+use alloc::vec;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

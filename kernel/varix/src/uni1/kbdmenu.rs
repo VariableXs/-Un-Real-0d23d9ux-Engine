@@ -8,6 +8,7 @@
 //! 全链（方向键/首字母跳项/Enter/Esc）；子菜单（右方向进/左方向退）；
 //! 两级封顶（F215）；热键标注账（F205）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

@@ -8,6 +8,8 @@
 //!
 //! 两项合模块：路径引号化是共享核心（一处一事实）——复制地址与终端拖
 //! 入共用同一引号策略，互通四入口挂同一工作目录账。
+use alloc::vec;
+use alloc::format;
 
 use crate::checks::CheckSet;
 

@@ -7,7 +7,6 @@
 
 
 use alloc::string::String;
-use alloc::vec::Vec;
 
 // 修正记录：本模块复用同族 `unx1141_pervec` 的执行账类型，类型本身是
 // `pub`，但缺 `use` 导致 E0425/E0433（4 个报错同源）。显式引入。

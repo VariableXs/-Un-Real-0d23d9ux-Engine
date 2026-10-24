@@ -9,6 +9,7 @@
 //! 架构三层：度量层（逐特效埋点）→预算层（分域预算表）→治理层（降级与清账）
 //! ——层间接口冻结；预算失守→治理排程；漂移→对拍重绘。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

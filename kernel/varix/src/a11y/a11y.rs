@@ -6,6 +6,7 @@
 //! Everything is pure logic over fixed-capacity structures so the host test
 //! suite exercises the whole domain without hardware.
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

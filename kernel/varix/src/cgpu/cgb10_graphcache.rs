@@ -28,8 +28,8 @@
 //! 判据总入口 [`run_f0170_checks`]，七族三十四条，全部零 panic 面
 //! （无 unwrap/expect/index 越界），预期常量独立给定不从被测反推。
 
-use crate::checks::CheckSet;
 use alloc::vec;
+use crate::checks::CheckSet;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,8 @@
 //! long（长测，0x02）；测试状态机 idle→running→completed 合法迁移三边 + abort 边
 //! （running→idle，记中止）；已完成测试留结果码，禁止 running 中重复启动。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xAF00;
 

@@ -10,6 +10,8 @@
 //!
 //! 零堆纪律：定长路径缓冲，无 alloc。
 
+use alloc::vec::Vec;
+use alloc::string::ToString;
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------

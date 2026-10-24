@@ -30,11 +30,12 @@
 //!
 //! **诊断码**：X 域 `0x3Axx` 段续编（0x3A10..0x3A19），与 F4801 十码同段
 //! 不重号。
+use alloc::vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
 use crate::checks::CheckSet;
 use alloc::format;
-use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 use super::vey01_xarch::fnv1a;
 

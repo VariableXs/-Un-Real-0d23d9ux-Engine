@@ -28,6 +28,7 @@
 //! `crate::star::sbase::{KnobReg, RingLog}`（旋钮化/帧账本）。
 //! 时间纪律：一切时间由调用方注入毫秒戳，模块不持时钟。
 
+use alloc::vec::Vec;
 use crate::checks::{push_str, push_usize, CheckSet};
 use crate::h1star::h1base::{Curve, MotionPolicy, Rect};
 use crate::star::sbase::{KnobReg, RingLog};

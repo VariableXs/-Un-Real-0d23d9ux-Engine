@@ -48,6 +48,7 @@
 // [`ClockProbe`] 单调性验证（同源时钟读数只增不减——跨引擎
 // 时间戳只在同源时钟上可比）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

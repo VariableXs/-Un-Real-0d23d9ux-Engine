@@ -36,6 +36,7 @@
 //! 节点数上限（内核不做无界分配）；重复键一律拒绝（写方永不产生，读方
 //! 见到即视为脏数据——integrity 的剥除规则依赖确定性序列化）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

@@ -308,3 +308,43 @@ impl FreezeAudit {
         self.consumed.len()
     }
 }
+
+
+// ===== 深化块（cga142_freezeaudit · 冻结审计深化）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_freezeaudit {
+    //! 冻结审计深化 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 冻结漂移检测：冻结指纹两次采样不一致 = 有人改了冻结面。
+    pub fn drift_detected(h1: u64, h2: u64) -> Result<(), u16> {
+        if h1 == 0 || h2 == 0 {
+            return Err(1);
+        }
+        if h1 != h2 {
+            return Err(2);
+        }
+        Ok(())
+    }
+
+    /// 审计留痕完整性：审计项必须带理由，空理由 = 审计作废。
+    pub fn audit_reasoned(entries: &[(u64, bool)]) -> Result<(), u16> {
+        for (i, (reason, _)) in entries.iter().enumerate() {
+            if *reason == 0 {
+                return Err(1 + i as u16);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0142-深化");
+        cs.add("指纹一致放行", drift_detected(0xA1B2, 0xA1B2).is_ok(), "");
+        cs.add("漂移检出", drift_detected(0xA1B2, 0xC3D4).is_err(), "");
+        cs.add("空指纹拒", drift_detected(0, 1).is_err(), "");
+        cs.add("留痕必须带因", audit_reasoned(&[(1, true), (2, false)]).is_ok() && audit_reasoned(&[(0, true)]).is_err(), "");
+        cs
+    }
+}

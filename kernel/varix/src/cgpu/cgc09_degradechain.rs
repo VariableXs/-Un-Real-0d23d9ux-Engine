@@ -45,6 +45,7 @@
 //! 口径与违约计数）；F0007（归因引擎——降质反噬归因消费本链动作）；
 //! F0004（成本模型——预算基线）。零 panic 面、零 IO、零墙钟
 //! （tick 注入）、零浮点、no_std。
+use alloc::format;
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -992,3 +993,17 @@ impl ProbeExt for Result<DegradationChain, XcCode> {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// 旧式判据桥接（2026-10-22 接线轮补）：run_cgc09_checks 返回 CheckSet 之前的旧式
+// Vec<(&'static str, bool)>，不能直接进 CheckSet 函数指针表；此桥逐项转入
+// CheckSetBuilder（语义等价：判据名/通过位一一对应，零信息丢失）。
+// ---------------------------------------------------------------------------
+pub fn run_cgc09_checks_cs() -> crate::checks::CheckSet {
+    let mut b = crate::checks::CheckSetBuilder::new("CGPU-F0008", "旧式判据桥接");
+    for (name, ok) in run_cgc09_checks() {
+        b.ok(name, ok, "");
+    }
+    b.done()
+}
+

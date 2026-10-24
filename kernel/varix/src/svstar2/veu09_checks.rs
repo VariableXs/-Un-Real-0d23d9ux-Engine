@@ -23,9 +23,9 @@
 //!    不会外扩），故断言用单边符号而非宽双边阈值——双边阈值一旦宽过正确
 //!    实现的高估幅度，缺陷就从缝里钻过去了。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

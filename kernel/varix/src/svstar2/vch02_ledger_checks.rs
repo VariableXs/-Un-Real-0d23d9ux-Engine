@@ -5,10 +5,10 @@
 //! 实时双源一致 + 与 vch01 池对账）、账单联动（BillFeedV1 字段冻结 +
 //! 数据源一致性）、判据自检。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::svstar2::vch01_budgetpool::{PoolKind, PoolSet};
 use crate::svstar2::vch02_ledger as lg;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 判据侧独立重放（第三份：不复用 lg::query_at 的循环，直接扫池过滤）。

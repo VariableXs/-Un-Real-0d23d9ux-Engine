@@ -38,6 +38,8 @@
 //! 逻辑 tick 注入、零墙钟；零 IO；只用 `alloc` 容器（无 HashMap——内核无hasher
 //! 依赖，线性扫描并诚实标注复杂度）。
 
+use alloc::format;
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -745,7 +747,6 @@ pub fn run_vee02_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     fn d() -> Decoder {
         Decoder::new()

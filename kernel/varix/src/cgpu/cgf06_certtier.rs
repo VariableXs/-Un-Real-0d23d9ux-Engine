@@ -5,12 +5,12 @@
 //! 分级公开（认证等级随硬件公开可查——F0808 透明）；分级与降质链联动（铜级→O 域降质配方预载——联动声明）；
 //! 分级争议处理（复核流程预留）。
 
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 // 补宏导入：`use alloc::vec::Vec;` 只导**类型**不导**宏**，而本模块在
 // 公开函数（非 cfg(test) 区）里裸用 `vec![…]`，no_std 下宏须显式导入。
 
-use alloc::vec;
 
 /// 认证分级诊断码闭集（0x7B51~0x7B58 八码）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

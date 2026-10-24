@@ -2,7 +2,8 @@
 //! 验收锚点：UNX-F8361-J1 钉版协议成文（样本版本/校验和/来源三注记逐样本），
 //! 版本漂移注入 10/10 显性暴露，协议与 C5 联签双认。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB4A0;
 

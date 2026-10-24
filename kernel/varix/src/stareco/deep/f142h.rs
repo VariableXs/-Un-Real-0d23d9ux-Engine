@@ -3,6 +3,8 @@
 //! 装配与跨域接口件：漏洞知识库 → F120 诊断中心/F193 安全模式的面板
 //! 数据行、导出脱敏行（版本号保留、内部代号硬删）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f142g::{fix_priority, VulnStatus};
 use crate::checks::CheckSet;
 

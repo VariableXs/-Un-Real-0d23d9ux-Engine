@@ -1169,3 +1169,17 @@ pub fn run_vck10_checks() -> Vec<(&'static str, bool)> {
 
     out
 }
+
+// ---------------------------------------------------------------------------
+// 旧式判据桥接（2026-10-22 接线轮补）：run_vck10_checks 返回 CheckSet 之前的旧式
+// Vec<(&'static str, bool)>，不能直接进 CheckSet 函数指针表；此桥逐项转入
+// CheckSetBuilder（语义等价：判据名/通过位一一对应，零信息丢失）。
+// ---------------------------------------------------------------------------
+pub fn run_vck10_checks_cs() -> crate::checks::CheckSet {
+    let mut b = crate::checks::CheckSetBuilder::new("CGPU-F1763", "旧式判据桥接");
+    for (name, ok) in run_vck10_checks() {
+        b.ok(name, ok, "");
+    }
+    b.done()
+}
+

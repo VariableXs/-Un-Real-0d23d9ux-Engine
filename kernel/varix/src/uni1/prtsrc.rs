@@ -11,6 +11,7 @@
 //! 诚实拒绝）；无活动窗口时 Alt+PrtSc 诚实提示（不假装截到）；即存
 //! 文件名序号化防覆盖 + 截图历史账（封顶 20）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 use crate::uni1::ubase::{Chord, HotkeyTable, MOD_ALT, MOD_WIN};
 

@@ -12,6 +12,8 @@
 //! 诊断码段 0x0920（本模块独占：0x0920~0x092F）。
 //! no_std + alloc 零 unwrap（测试除外），全部 Result 化。
 
+use alloc::format;
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 

@@ -7,6 +7,7 @@
 //! 暂存移动意图（源文件保留，粘贴时才动——可反悔）；粘贴冲突钩子
 //! （F087 面板）；禁用场景（只读）快捷键静默无效（不弹错误）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

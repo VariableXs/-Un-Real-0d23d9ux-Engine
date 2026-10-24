@@ -18,6 +18,7 @@
 //! 交接核（上段末条 +1 == 下段首条）刻意独立于「与批册对拍」：两侧同时抄错同一
 //! 处时对拍全绿，但段间已断开。段序、交接、段数守恒三条都必须各自成立。
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 

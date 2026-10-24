@@ -10,6 +10,8 @@
 //! 三项合模块：预览渲染器单点（F340）正是 F339 的引擎、F338 的体积账与
 //! F339 的翻阅共用文件清单面——一处账本三处消费。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use super::hbase::Clock;

@@ -25,6 +25,7 @@
 //! 3. 七个诊断码逐个**真跑造出来**（有短码 ≠ 可达）；
 //! 4. 判据区零 panic 面：越界一律 match/`.get()` 记红。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::svstar2::ver01k_dualtheme::{contrast_permille, PairTable, ThemeSide, CONTRAST_AAA_PERMILLE, RGB888};
 use crate::svstar2::ver01l_highcontrast::*;

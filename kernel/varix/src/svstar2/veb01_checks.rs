@@ -11,13 +11,15 @@
 //!
 //! 全部确定性：快照注入、逻辑成本计时、无墙钟。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::veb01_device::*;
 use super::veb01_init::*;
 use super::veb01_report::{a11y_summary, register_with_a_domain};
 use super::vea01_probe::AdapterClass;
 use crate::checks::CheckSet;
 
-use alloc::{format, vec};
+use alloc::format;
 use alloc::string::ToString;
 
 /// QEMU 现代版对拍基准快照。

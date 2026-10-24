@@ -22,6 +22,8 @@
 //! 引擎依赖以显式参数承接（`&mut RecentEngine` / `&RecentEngine`），不持
 //! 有、不复制——三消费面共享同一份事实。帧序/钟注入式，无外部依赖。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::star::recenteng::{RecentEngine, ViewRow};
 

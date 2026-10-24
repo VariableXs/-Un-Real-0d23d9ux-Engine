@@ -9,6 +9,7 @@
 //! 改运行时判定（沙箱三律恒在）/集成不夺编辑器权（绑定关系编辑器可视可管）；
 //! 集成越权→拦截记录。
 
+use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

@@ -33,6 +33,7 @@
 //!
 //! 逻辑时钟注入，零墙钟；零外部依赖，只依赖 `crate::checks`（测试侧）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;

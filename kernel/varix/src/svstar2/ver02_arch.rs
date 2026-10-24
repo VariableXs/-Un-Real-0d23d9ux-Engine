@@ -157,11 +157,11 @@
 //! O(十项)、`audit_boards` 是 O(板块数 × 落点数)——它们**只在开工与收口时跑**，
 //! 不在帧路径。这条区分写进 [`COMPLEXITY_DOC`]，不让「全是 O(1)」变成空话。
 
+use alloc::vec;
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

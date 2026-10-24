@@ -10,6 +10,8 @@
 //! 判据对账：主册 G-A-23【设计细节】+ MS WSABUF/select/inet_pton（RFC 3493）
 //! 语义对拍。零堆纪律：定长数组，无 Vec/String/Box/format!。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 /// WSABUF 段数定长（MS WSABUF scatter/gather，域内口径 8）。
 pub const WSA_BUF_SLOTS: usize = 8;

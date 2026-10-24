@@ -53,13 +53,13 @@
 //! **确定性**：同输入同输出（纯函数式状态机，无时钟无 IO，遍历序固定）。
 //! 零外部依赖，只用 `alloc` 与 `crate::checks`（自检侧）。
 
+use alloc::vec;
 use crate::perfstar::imgsimd;
 use crate::perfstar::mech_inflate;
 use crate::svstar2::vef01_pngdec as dec;
 use crate::svstar2::vef03_adam7 as ad7;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // 一、错误面（五元组：码/原因/建议/人话/详情）

@@ -41,6 +41,7 @@
 //! 解析用 `split_once` / `strip_prefix` 返回 `Option`，全程无索引越界；
 //! 定点对比度用 `u64` 且先钳位再乘，不会溢出。测试区除外。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

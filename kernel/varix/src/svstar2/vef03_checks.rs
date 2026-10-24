@@ -22,11 +22,11 @@
 //!
 //! 纯函数校验，无时钟无 IO，回归可复现。语料全部由本文件内的构造器生成。
 
+use alloc::vec;
 use crate::svstar2::vef01_pngdec as dec;
 use crate::svstar2::vef02_pngenc as enc;
 use crate::svstar2::vef03_adam7 as a7;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

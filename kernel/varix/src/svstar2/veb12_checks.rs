@@ -15,11 +15,11 @@
 //!    `n*CONST` 自证式算术；
 //! ④ 边界判据用表外真实形态（越界队列号、超容真值、非法错误码窗口）。
 
+use alloc::vec;
 use super::veb12_recovery::*;
 use crate::checks::CheckSet;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 构造一条资源行（测试用真值/本地区分靠 id 与页数）。

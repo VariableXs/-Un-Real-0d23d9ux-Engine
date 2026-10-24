@@ -24,6 +24,7 @@
 //!
 //! 钟注入式（ms 实参），无外部依赖。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

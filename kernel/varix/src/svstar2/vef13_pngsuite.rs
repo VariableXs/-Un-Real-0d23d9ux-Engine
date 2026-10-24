@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! VE-F1011 · PNG 互操作测试集（PngSuite 全集，目标 380 行）
 //!
 //! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F1011`
@@ -68,11 +69,10 @@
 //! 生产代码无 `unwrap` / `expect` / `panic!`：畸形语料是本单的**输入常态**，
 //! 任何一次 panic 都会让「畸形图全拒绝」这条判据变成「进程死」。
 
-#![allow(clippy::needless_range_loop)]
+use alloc::vec;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::vef01_pngdec as dec;

@@ -34,6 +34,7 @@
 //! 诊断枚举 IsoCode 十六码（0x33 段 0x3300..=0x330F 互异 +
 //! [`segment_guard`]）。no_std 零 unwrap 零 panic 面。
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

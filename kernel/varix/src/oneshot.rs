@@ -35,6 +35,8 @@
 //! 判定全部落在可宿主测试的纯函数上。20 组注入矩阵（B-105）在此全量执行
 //! ——实机/QEMU 对练（WP-102 接线后）复用同一判定面。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::bootconf::{self, BootConf, EntryRender};
 
 /// 标记帧魔法值（"VX1SHOT1"—— Varix OneShot v1）。

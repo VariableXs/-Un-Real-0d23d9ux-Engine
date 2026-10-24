@@ -38,6 +38,7 @@
 //!
 //! 无索引、无 `unwrap`、无浮点。
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -371,7 +372,7 @@ mod tests {
     fn budget_degrades_sampling() {
         let mut s = DebugSession::open(3).unwrap();
         let pts = vec![(0u32, 3400u32), (360, 3400), (420, 6500), (1320, 6500)];
-        s.edit_curve(pts);
+        s.edit_curve(pts.clone());
         let _ = s.preview();
         s.charge("synthetic", 999);
         assert!(s.degraded());
@@ -382,6 +383,6 @@ mod tests {
 
     #[test]
     fn zero_session_rejected() {
-        assert_eq!(DebugSession::open(0), Err(DebugCode::BadSession));
+        assert!(matches!(DebugSession::open(0), Err(DebugCode::BadSession)));
     }
 }

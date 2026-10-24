@@ -7,6 +7,7 @@
 //! (ext2, exFAT, NTFS) can never be opened for writing, and the journal is the
 //! only thing Varix trusts to be mid-update after a crash.
 
+use alloc::vec;
 use core::cmp::Reverse;
 
 pub const MAX_DEVICES: usize = 16;

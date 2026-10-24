@@ -34,6 +34,7 @@
 //!
 //! 诊断枚举 ScoreCode 十六码（0x6E 段 0x6E00..=0x6E0F 互异 +
 //! [`segment_guard`] 段守恒对账）。
+use alloc::format;
 
 use alloc::string::String;
 use alloc::vec::Vec;

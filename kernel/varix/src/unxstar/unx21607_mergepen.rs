@@ -19,8 +19,8 @@
 //! 掩码写反时结果是「另一个 ROP」而不是报错，所以保留逐像素标量参考做对拍——两条路径
 //! 的失效模式不同，256 个 fn 全字节比对能在无 GPU 的 no_std 环境里稳定抓住这类错。
 
-use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

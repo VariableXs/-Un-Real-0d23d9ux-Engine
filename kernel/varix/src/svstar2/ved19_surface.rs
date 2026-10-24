@@ -141,11 +141,11 @@
 //!
 //! 逻辑 tick 注入，零墙钟；零 IO。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

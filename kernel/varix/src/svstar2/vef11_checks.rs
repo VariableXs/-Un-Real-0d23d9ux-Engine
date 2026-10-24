@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! VE-F1009 · 域自检（判据逐条对应，见 `vef11_wide.rs` 头注）
 //!
 //! 判据映射（锚点原文 → 自检项）：
@@ -30,11 +31,10 @@
 //!    **独立探针**（`_attic/.../probe/p11_reg.rs`）从**真 mod.rs 切段**
 //!    后喂进no_std 校验函数，并配变异双向验证。判据层只负责
 //!    「判据集自己没被截断」。
-#![allow(clippy::needless_range_loop)]
+use alloc::vec;
 
 // 判据层只用 `vec!`（元数据/样本构造），不需要 `format!`——
 // `detail` 必须是 `&'static str`，本层不拼串。
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;

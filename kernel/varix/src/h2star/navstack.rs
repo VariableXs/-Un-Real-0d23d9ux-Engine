@@ -12,6 +12,7 @@
 //! （后退/前进多步一次到位）；岔路改向清前进栈；栈深 100 淘汰最旧；
 //! 每标签页独立实例（类型即隔离——判据的结构保证）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

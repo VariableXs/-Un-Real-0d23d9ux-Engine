@@ -7,6 +7,8 @@
 //! 不碰 `src/`、`src-tauri/`（回滚：只增不删）。每项功能自带可复现断言，
 //! 域自检 `run_srv_checks()` 25 项全绿方算完成。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 pub mod ipc;

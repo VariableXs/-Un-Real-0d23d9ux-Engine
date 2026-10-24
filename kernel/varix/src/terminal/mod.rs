@@ -7,6 +7,8 @@
 //! 纪律：纯逻辑 + 固定容量数组；无 Vec/String/Box/alloc/外部 crate；
 //! ASCII 匹配使用 `crate::galaxy::{ascii_contains_ci, ascii_starts_with_ci, ascii_eq_ci}`。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::galaxy::rt::DetPrng;
 use crate::galaxy::{ascii_starts_with_ci, ascii_eq_ci};

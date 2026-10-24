@@ -9,6 +9,8 @@
 //! ③「无去处应用回退」的**回退账**——target=None 的点击走首页回退，
 //!   回退逐笔入账（回退是降级路径，不许静默装作直达成功）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use alloc::string::String;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;

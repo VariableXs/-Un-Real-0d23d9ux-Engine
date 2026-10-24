@@ -10,12 +10,13 @@
 //! 步留账）+ 演练记录（(步, 动作, 结果) 落账）+ 注入核（跳步/重复/
 //! 未知步/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xAA00 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xAA00;
 pub const XC_DG_SKIP: u32 = SEG_BASE + 0x01;
 pub const XC_DG_DUP: u32 = SEG_BASE + 0x02;

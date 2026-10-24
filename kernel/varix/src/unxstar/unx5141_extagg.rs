@@ -3,7 +3,10 @@
 //! B12 分裂/B13 删除/B14 深度/B15 缓存/B16 崩溃）各 20 条，图谱批号-ID 区间对照
 //! 与台账一致率 100%，图谱可导出（批号→[起 ID, 止 ID] 升序枚举）。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0x8100;
 

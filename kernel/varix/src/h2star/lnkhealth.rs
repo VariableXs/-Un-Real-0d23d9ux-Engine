@@ -13,6 +13,7 @@
 //! 出路（定位目标/删除——没有第三条静默路）；循环检测（链上环——
 //! 不递归直接标坏）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

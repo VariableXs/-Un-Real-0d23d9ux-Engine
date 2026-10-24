@@ -15,6 +15,7 @@
 //! - 异常：浮窗避让屏幕右缘（自动左移）；全屏应用降级为 F106 角标模式；
 //!   程序不支持 IME 组合（F027 降级路径）→ 浮窗灰显说明。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

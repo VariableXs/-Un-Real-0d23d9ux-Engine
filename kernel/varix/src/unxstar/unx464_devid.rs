@@ -45,10 +45,10 @@
 //! 清单可被喂坏），错误一律 Err + 中文诊断；逻辑 tick u64，禁 IO/墙钟，
 //! 全确定性，禁浮点。
 
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

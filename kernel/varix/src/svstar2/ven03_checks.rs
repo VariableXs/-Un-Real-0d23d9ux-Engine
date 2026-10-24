@@ -32,6 +32,7 @@
 //!
 //! 逻辑 tick 注入、零墙钟，回归可复现。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -829,11 +830,6 @@ pub fn run_ven02_checks() -> crate::checks::CheckSet {
     );
 
     set
-}
-
-/// 兼容入口：一次跑完两批（供独立调用方使用；聚合器注册的是 a/b 两档）。
-pub fn run_ven03_all_checks() -> (crate::checks::CheckSet, crate::checks::CheckSet) {
-    (run_ven03_checks_a(), run_ven03_checks_b())
 }
 
 /// 供诊断文案用的格式化辅助（避免各调用方重复拼串）。

@@ -30,9 +30,11 @@
 //! 无上下文（translators notes 为空）阻断提交（红线实测）；
 //! 回注译文必须保留占位符集合（回注格式错→校验——占位符丢了
 //! 就是格式串炸裂的起点）。
+use alloc::vec;
+use alloc::string::String;
+use alloc::string::ToString;
 
 use alloc::format;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::svstar2::vei02_locale::{parse_lenient, ParseBudget};

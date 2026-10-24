@@ -38,6 +38,7 @@
 //!   FNV-1a 64 封印 + 篡改检出。
 //! ============================================================
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 

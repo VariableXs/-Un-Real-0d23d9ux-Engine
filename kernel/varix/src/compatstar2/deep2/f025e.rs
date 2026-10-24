@@ -14,6 +14,8 @@
 //! 零堆纪律：定长纸张表/段表，无 Vec/String/Box/format!，拒绝一律
 //! Err(&'static str) 或计数账面。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 纸张表容量。

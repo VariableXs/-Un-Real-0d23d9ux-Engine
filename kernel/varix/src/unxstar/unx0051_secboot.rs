@@ -3,6 +3,7 @@
 //! 联合推导与矛盾显性化，派生规则判据通过；纯功能代码 ≥220 行。
 //! 纪律：只读采集——零写入、零固件副作用。
 
+
 use crate::alloc::{format, string::{String, ToString}, vec::Vec};
 
 pub const SEG_BASE: u16 = 0x2040;

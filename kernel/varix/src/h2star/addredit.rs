@@ -13,6 +13,7 @@
 //! 灰色段=已完成前缀之外的剩余字符（结构化输出供渲染层着色）；下一级
 //! 候选列表（反斜杠触发）；Esc 退出语义。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

@@ -73,11 +73,11 @@
 //! **零外部依赖**，只依赖 `crate::checks`（自检侧）与 `alloc`。
 //! 确定性：逻辑 tick 注入、零墙钟、零 IO，回归可复现（对拍红线）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

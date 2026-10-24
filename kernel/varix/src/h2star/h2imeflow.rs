@@ -16,6 +16,8 @@
 //! 状态机：Idle→Composing→Committed/Aborted 每条路径有出口；
 //! 焦点丢失 = Aborted（组合丢弃 + 显性化——不静默吞组合）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

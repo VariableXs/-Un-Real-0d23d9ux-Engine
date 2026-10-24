@@ -9,6 +9,7 @@
 //! ③三入口链路**一致性**——应用/终端/脚本三类入口走同一确认联动，
 //!   会话记录必须如实带出入口类型（三链路一个语义，不许各搞一套）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::istar::adminrun::{AdminRun, EntryKind, PrivSession, REASON_UNSTATED};
 use crate::istar::ibase::ISTAR_DOMAIN;

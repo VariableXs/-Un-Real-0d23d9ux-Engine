@@ -2,7 +2,11 @@
 //! 验收锚点：UNX-F8161-J1 语义档三件套（正常路径/错误矩阵/边界行为）成文且与
 //! man 2 execve 逐项双向核对（来源注版本），三件套缺一即批内红灯。
 
-use crate::alloc::{format, string::{String, ToString}, vec, vec::Vec};
+
+use alloc::string::{String, ToString};
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub const SEG_BASE: u16 = 0xB2E0;
 

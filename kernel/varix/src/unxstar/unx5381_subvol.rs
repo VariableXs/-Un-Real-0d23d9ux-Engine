@@ -9,11 +9,11 @@
 //! 接收/清理五树逐树对齐）+ 总纲导出（可序列化文本）+ 注入核
 //! （root key 冲突/跨卷 inode 串号/只读破例/导出漂移）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 /// 诊断段（0xC500 独占 0x80）。
 pub const SEG_BASE: u32 = 0xC500;

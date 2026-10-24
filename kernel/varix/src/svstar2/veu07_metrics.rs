@@ -50,12 +50,15 @@
 //!
 //! 指标族含无障碍一致率**单列**（域本色主场指标，见上）；数据合成——
 //! 全部输入是计数整数，无用户内容。
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use crate::checks::CheckSet;
 
 use super::veu01_arch::{fnv1a64_hex, Severity};
 use super::veu02_model::DomainTag;
-use super::veu04_engine::{Rule, RuleEngine, RuleSource};
+use super::veu04_engine::{Rule, RuleEngine, RuleSource, SourceRef};
 use super::veu06_scan::{NormalizedFinding, ScanReport};
 
 // ---------------------------------------------------------------------------
@@ -288,7 +291,7 @@ pub fn recompute(m: &DomainMetrics) -> [MetricValue; 4] {
 ///
 /// 返回 `Err` 即立案（调用方**重算并暂缓发布**——发布不一致的两套数字
 /// 等于把选择权交给读者的偏见）。
-pub const fn verify_recompute(main: [MetricValue; 4], re: [MetricValue; 4]) -> Result<(), &'static str> {
+pub fn verify_recompute(main: [MetricValue; 4], re: [MetricValue; 4]) -> Result<(), &'static str> {
     let mut i = 0usize;
     while i < 4 {
         if main[i] != re[i] {

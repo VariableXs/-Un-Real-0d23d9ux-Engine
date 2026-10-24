@@ -33,12 +33,12 @@
 //!
 //! 逻辑时钟注入，不用墙钟；零外部依赖，只依赖 `crate::checks`（测试侧）。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 use alloc::collections::VecDeque;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 一、规格常量（参数唯一源）

@@ -7,6 +7,7 @@
 //! 方向键预览代值）；预览态（高亮即临时代值，确认才落定，Esc 恢复原值
 //! ——无损反悔）；滚动跟随（预览位联动视窗顶）；展开 <100ms 记账。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::vec::Vec;

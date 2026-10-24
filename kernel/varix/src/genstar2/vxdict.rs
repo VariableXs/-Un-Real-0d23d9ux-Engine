@@ -127,8 +127,7 @@ impl DictStore {
     }
 
     fn find(&self, w: &str) -> Option<usize> {
-        (0..self.n).filter(|&i| self.entries[i].is_some())
-            .find(|&i| self.entries[i].as_ref().unwrap().as_str() == w)
+        (0..self.n).find(|&i| self.entries[i].as_ref().map_or(false, |e| e.as_str() == w))
     }
 
     pub fn count(&self) -> usize {
@@ -165,13 +164,18 @@ impl DictStore {
             };
             match self.find(e.as_str()) {
                 Some(i) => {
-                    // 合并：同词保高频（冲突计数）。
-                    let mut cur = self.entries[i].unwrap();
-                    if e.freq > cur.freq {
-                        cur.freq = e.freq;
+                    // 合并：同词保高频（冲突计数）；缺槽（不可达）计拒绝。
+                    match self.entries[i].as_mut() {
+                        Some(cur) => {
+                            if e.freq > cur.freq {
+                                cur.freq = e.freq;
+                            }
+                            rep.merged += 1;
+                        }
+                        None => {
+                            rep.rejected += 1; // find 命中位缺槽 = 不变量缺口
+                        }
                     }
-                    self.entries[i] = Some(cur);
-                    rep.merged += 1;
                 }
                 None => {
                     if self.insert(e) {

@@ -54,6 +54,7 @@
 //! **性能（锚点原文）**：冻结静态核对构建期；钩子毫秒级；运行时成本
 //! 在实现条目分摊——本模块零运行时热路径（纯簿记与核验）。
 
+use alloc::vec;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

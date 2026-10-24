@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! VE-F1011 · 独立**参考解码器**与独立**语料字节生成器**（本单的第一路与第二路）
 //!
 //! **锚点**：`docs/Varix/VE-STAR-II/VE Varix STAR II · 总纲与施工书.md#VE-F1011`
@@ -27,9 +28,8 @@
 //! 无 `unwrap` / `expect` / `panic!`（[`Huff::build`] 的 `fixed_tables` 走
 //! `unwrap_or` 空表分支，随后解码立刻报 [`RefError::ZlibStream`] 而不是 panic）。
 
-#![allow(clippy::needless_range_loop)]
-
 use alloc::vec;
+
 use alloc::vec::Vec;
 
 // ===========================================================================

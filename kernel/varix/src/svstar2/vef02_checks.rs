@@ -21,11 +21,11 @@
 //! 结构说明：`run_vef02_checks` 只做判据编排，每条判据的核算逻辑放在
 //! 同文件私有 `chk_*` 函数中（单一职责），判据名与断言语义保持不变。
 
+use alloc::vec;
 use super::vef02_pngenc::*;
 use crate::checks::CheckSet;
 use crate::perfstar::mech_inflate;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

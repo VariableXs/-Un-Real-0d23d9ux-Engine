@@ -12,6 +12,7 @@
 //! 无则不占位——Option 语义）；诊断器（按信号质量输出人话）；改名
 //! （持久化快照可逆）；离线灰显（不删除记录）。
 
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

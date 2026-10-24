@@ -4,6 +4,7 @@
 //! 码段 0x56 五码），不复用实现侧常量。聚合防自调：族内判据只调另一族
 //! standalone + 进行中 set 自身 tally，守恒断言归 CI 探针层。
 
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 use super::veab02_devices as dev;

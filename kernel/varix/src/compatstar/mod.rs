@@ -35,6 +35,8 @@
 //! - **诚实边界**：拒绝/降级/差异全部显性化——差异表登记、不静默吞错
 //!   （十三·补 异常零静默纪律在本域的落点）。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 pub mod clipfmt;
 pub mod comdlg;
 pub mod comloc;

@@ -16,10 +16,10 @@
 //!
 //! 底盘自身不实现任何 F 项判据——判据全部在各功能模块内。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

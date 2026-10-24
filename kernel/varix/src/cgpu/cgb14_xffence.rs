@@ -424,23 +424,23 @@ impl FenceSnap {
         let mut s = String::from("[栅栏 ");
         s.push_str(&self.engine);
         s.push_str(" 纪元=");
-        s.push_str(itoa(self.epoch));
+        s.push_str(&itoa(self.epoch));
         s.push_str(" 槽=");
-        s.push_str(itoa(self.pool_size));
+        s.push_str(&itoa(self.pool_size));
         s.push_str(" 空=");
-        s.push_str(itoa(self.free));
+        s.push_str(&itoa(self.free));
         s.push_str(" 布防=");
-        s.push_str(itoa(self.armed));
+        s.push_str(&itoa(self.armed));
         s.push_str(" 等待=");
-        s.push_str(itoa(self.waiters));
+        s.push_str(&itoa(self.waiters));
         s.push_str(" 触发=");
-        s.push_str(itoa(self.signals));
+        s.push_str(&itoa(self.signals));
         s.push_str(" 合并=");
-        s.push_str(itoa(self.merges));
+        s.push_str(&itoa(self.merges));
         s.push_str(" 静拦=");
-        s.push_str(itoa(self.static_blocks));
+        s.push_str(&itoa(self.static_blocks));
         s.push_str(" 运拦=");
-        s.push_str(itoa(self.runtime_blocks));
+        s.push_str(&itoa(self.runtime_blocks));
         s.push_str("]");
         s
     }

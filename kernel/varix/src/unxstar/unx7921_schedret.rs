@@ -9,12 +9,13 @@
 //! 主题边界声明（策略面 ⊂ 备份校验链运维延伸）+ 三面混写注入
 //! ×10 检出核（跨面操作错配全报）+ 注入核（缺面/越界/混写/封账）。
 
-use crate::alloc::format;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xA100 独占 0x80）。
+
 pub const SEG_BASE: u32 = 0xA100;
 pub const XC_SR_NOFACE: u32 = SEG_BASE + 0x01; // 缺面
 pub const XC_SR_BOUND: u32 = SEG_BASE + 0x02; // 边界越界

@@ -14,6 +14,7 @@
 //! fsync，其覆盖块在 ack 时刻必须已全部落盘；未 ack 的可丢（诚实语义）。
 //! 断电对练在任意点注入断电，恒等式被破坏即违例。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 // no_std 态（kernel-image / integration tests 编译 lib 时）走 alloc 的
 // Vec 与 vec! 宏；test 态 alloc 同样可达——一个 use 两态通吃

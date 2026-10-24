@@ -14,6 +14,8 @@
 //!
 //! 时间纪律：分钟戳；星期计算以天序 0=周一（与 F296 首日周一同源）。
 
+use alloc::vec::Vec;
+use alloc::format;
 use crate::checks::CheckSet;
 
 use alloc::string::String;

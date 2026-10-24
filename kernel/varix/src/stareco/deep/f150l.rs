@@ -4,6 +4,8 @@
 //! 修理工单生成（域内缺陷账 → 结构化工单）、域术语词典（一名一义
 //! 复核）、90% 线闸门复证（跨线判定 + 收口措辞）。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use super::f150i::DOMAIN_SNAPSHOT;
 use crate::checks::CheckSet;
 

@@ -51,13 +51,13 @@
 //! 4. **方向性判据须用可区分语料**：`sort_unstable` 的方向判据必须造
 //!    **同层多分支**语料；纯链语料的拓扑序唯一，倒序实现输出仍相同。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::ktrace;
 use crate::svstar2::ver01h_evalperf::*;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

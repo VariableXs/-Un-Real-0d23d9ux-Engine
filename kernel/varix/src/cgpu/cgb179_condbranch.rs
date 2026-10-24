@@ -356,3 +356,42 @@ pub fn cascade_depth(g: &CondGraph, seed: u32) -> Result<usize, u16> {
     }
     Ok(depth)
 }
+
+
+// ===== 深化块（cgb179_condbranch · 条件分支深化）：补充审计面，与主体判据同源同纪律 =====
+pub mod deepen_condbranch {
+    //! 条件分支深化 —— 深化审计面：纯函数 + 常量表，零外部依赖。
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use crate::checks::CheckSet;
+
+    /// 分支覆盖统计：真/假两臂都被命中才算覆盖（单臂 = 潜在死逻辑）。
+    pub fn branch_covered(taken: &[bool]) -> Result<(), u16> {
+        let t = taken.iter().filter(|&&b| b).count();
+        let f = taken.len() - t;
+        if t == 0 || f == 0 {
+            return Err(1);
+        }
+        Ok(())
+    }
+
+    /// 分支密度红线：分支数 / 语句数 不得超过上限（防面条逻辑）。
+    pub fn branch_density(branches: u32, statements: u32, cap_permille: u32) -> Result<(), u16> {
+        if statements == 0 {
+            return Err(1);
+        }
+        if branches * 1000 > statements * cap_permille {
+            return Err(2);
+        }
+        Ok(())
+    }
+
+    pub fn run_deepen_checks() -> CheckSet {
+        let mut cs = CheckSet::new("CGPU-F0179-深化");
+        cs.add("双臂覆盖", branch_covered(&[true, false, true]).is_ok(), "");
+        cs.add("单臂检出", branch_covered(&[true, true]).is_err(), "");
+        cs.add("密度红线", branch_density(30, 100, 400).is_ok() && branch_density(60, 100, 400).is_err(), "");
+        cs
+    }
+}

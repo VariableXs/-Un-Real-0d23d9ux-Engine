@@ -10,6 +10,7 @@
 //! - 误触防护：直接关闭仅对无未保存窗生效——有未保存窗必走三问；
 //! - 开关可关（非中键用户零感知）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::istar::ibase::ISTAR_DOMAIN;
 

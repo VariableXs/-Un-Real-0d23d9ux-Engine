@@ -16,10 +16,10 @@
 //! 盘面定位：先探测 GPT（"EFI PART"），按 Microsoft Basic Data 类型
 //! GUID 取首个分区；无 GPT 则整盘即卷（QEMU 测试卷布局）。
 
+use alloc::vec;
 use crate::drivers::blk::{fnv1a64, BlockDevice, BlockError};
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 文件系统错误口径。

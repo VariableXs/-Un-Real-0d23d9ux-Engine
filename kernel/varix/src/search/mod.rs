@@ -7,6 +7,8 @@
 //!
 //! 全部为纯逻辑 + 固定容量数组；不依赖 Vec/String/Box/alloc/std。
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 pub const QUERY_CAP: usize = 64;

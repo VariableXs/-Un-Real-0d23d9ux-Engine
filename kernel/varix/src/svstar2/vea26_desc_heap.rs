@@ -46,11 +46,11 @@
 //!   与总量对账。判据用「中间挖一个洞后碎片率确实上升」这条**可失败的算术**
 //!   钉住，而不是断言碎片率大于零（那对单段布局恒真）。
 
+use alloc::vec;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------

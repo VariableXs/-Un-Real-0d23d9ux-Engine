@@ -73,13 +73,13 @@
 //!
 //! 零墙钟、零 IO、无随机源，回归可复现。
 
+use alloc::vec;
 use super::ver01b_parser::Site;
 use super::ver01e_typetree::*;
 use crate::checks::CheckSet;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// 语料：一张覆盖六类的正常声明表（**先建好，再在上面验**）。

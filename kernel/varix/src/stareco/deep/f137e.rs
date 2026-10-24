@@ -5,6 +5,8 @@
 //! 级两年僵尸检测、破面通知三渠道状态机、安全加速 ADR（时窗压缩、
 //! 双读仍强制）、迁移窗倒计时深面。
 
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 use crate::stareco::apistab::{ApiRegistry, Stability};
 

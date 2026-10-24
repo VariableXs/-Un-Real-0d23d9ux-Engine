@@ -9,6 +9,8 @@
 //! 划（只重测受影响项）+有效期公开卡。与 cgf07_certgrade（F0806 判级）分工
 //! ——彼定级、此管级的时效与再触发。诊断码段 0x4Bxx。
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// 模块版本。

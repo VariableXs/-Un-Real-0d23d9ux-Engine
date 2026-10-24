@@ -20,6 +20,8 @@
 //! 三面差异只在容量语义：Data/Config 无限账、Cache 有界 FIFO 淘汰
 //! （缓存本来就该让位——最旧先走，确定性可对拍）。
 //! 零 panic（无 unwrap/expect）；诊断码段 0x54（字符串码）。
+use alloc::format;
+use alloc::string::String;
 
 use alloc::vec::Vec;
 

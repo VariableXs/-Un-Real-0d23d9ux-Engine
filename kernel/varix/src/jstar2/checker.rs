@@ -24,6 +24,8 @@
 //! 方案库详情页；库房侧 `set_report` 记录最近体检结果（对账口径两处
 //! 同一指纹）。
 
+use alloc::format;
+use alloc::vec;
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::{
     builtin_default_scheme, resample_lanczos3, vxcur_fingerprint, CursorFrame, CursorSchemeModel,

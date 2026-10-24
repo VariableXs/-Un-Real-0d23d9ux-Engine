@@ -196,7 +196,7 @@ pub fn integ_print_scan_periph() -> bool {
     let mut devices: crate::printing::DeviceTable = [None; crate::printing::MAX_DEVICES];
     let slot = crate::printing::plug(&mut devices, 0x03F0, 0x1112, crate::printing::DevClass::Printer, "hp-laser");
     let enum_ok = crate::printing::enumerate(&devices) == 1
-        && slot.map(|s| devices[s as usize].unwrap().driver != crate::printing::DriverKind::None).unwrap_or(false);
+        && slot.map(|s| devices[s as usize].as_ref().map_or(false, |d| d.driver != crate::printing::DriverKind::None)).unwrap_or(false);
     deq && waiting && scan_ok && enum_ok
 }
 

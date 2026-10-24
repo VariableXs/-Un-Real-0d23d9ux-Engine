@@ -8,10 +8,10 @@
 //! + 盐化语义（crc32c(seed, data)，上游 ext4_chksum 同构）+ 20 样本对照
 //! + 标准测试向量（"123456789" → 0xE3069283）+ 注入核（向量漂移/盐漂移/
 //! 序列号丢失/封账写）。
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use alloc::format;
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0xC300 独占 0x80）。

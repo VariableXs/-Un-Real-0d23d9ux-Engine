@@ -10,6 +10,9 @@
 //!   折叠超出总案范围，如实声明；符号链接在 exFAT 无对象，`..` 规范化阶段
 //!   按组件逐级解析，越根即**拒绝不钳制**——逃逸无构造路径）。
 
+use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::String;
 use crate::drivers::blk::{fnv1a64, BlockDevice, BlockError};
 use crate::fs::fs23_disk::{DiskJournal, OpenReport};
 use crate::fs::fs23_journal::{JOURNAL_DEFAULT, LogOp};
