@@ -6009,3 +6009,5 @@ pub mod unx0706_assert40;
 pub mod unx0726_panicreg;
 // ---- AI-VX-1024B（2026-10-24）：F0786 深度实现（隔离探针全绿后入库，0x277 段）----
 pub mod unx0786_verdict1;
+// ---- AI-VX-1024B（2026-10-24）：F0746 深度实现（隔离探针全绿后入库，0x279 段）----
+pub mod unx746_fmtspec;
