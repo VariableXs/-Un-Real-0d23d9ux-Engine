@@ -5999,3 +5999,6 @@ pub mod unx0329_apgdt;
 // ---- AI-VX-1024B（2026-10-24）：F0306/F0587 深度实现（隔离探针全绿后入库；wxmatrix/dupkey 无后缀名为并行姊妹件互不引用）----
 pub mod unx0306_wxmatrix2;
 pub mod unx0587_dupkey2;
+// ---- AI-VX-1024B（2026-10-24）：F0605/F0664 深度实现（隔离探针全绿后入库）----
+pub mod unx605_cpiocheck;
+pub mod unx0664_bootth;
