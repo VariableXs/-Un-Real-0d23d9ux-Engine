@@ -6017,6 +6017,9 @@ pub mod unx0806_iststack;
 pub mod unx0826_isrbitmap;
 // ---- AI-VX-1024B（2026-10-24）：F0845 spurious 五态处置（探针 27/27 全绿，0x28B 段）----
 pub mod unx0845_spurfive;
+// ---- AI-VX-1024B（2026-10-24）：F0863/F0886 深度实现（代理首报丢失后主会话修复，探针全绿）----
+pub mod unx0863_gsimap;
+pub mod unx0886_topoaff;
 // ---- AI-WB-1024（2026-10-24）：F0588~F0597 参数账十单（0x4A/0x4C 段，引号→行长→缺省→互斥→消费→封账→复扫→注入→五数→对冲链）----
 pub mod unx0588_quote;
 pub mod unx0589_linelen;
