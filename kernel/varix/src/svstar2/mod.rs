@@ -4918,3 +4918,6 @@ pub mod vez52_langlaw;
 pub mod vead12_phystest;
 // ---- AI-VX-1024B（2026-10-24）：VE-F4608 插件事件总线（隔离探针全绿后入库，0x1C1 段）----
 pub mod vev10_evtbus;
+// ---- AI-VX-1024B（2026-10-24）：F5004/F6013 深度实现（隔离探针全绿后入库；vez53/vead13 为并行姊妹件互不引用）----
+pub mod vez54_sysbound2;
+pub mod vead14_physexample;

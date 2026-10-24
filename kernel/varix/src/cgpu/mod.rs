@@ -1556,3 +1556,5 @@ pub mod vcn06_effbench;
 pub mod cgj10_jointsample;
 pub mod vck71_partgpu;
 pub mod cgm10_disppwr;
+// ---- AI-VX-1024B（2026-10-24）：CGPU-F2087 效果性能预算（隔离探针全绿后入库，0x1DB 段）----
+pub mod vcn07_effbudget;
