@@ -6015,6 +6015,8 @@ pub mod unx746_fmtspec;
 pub mod unx0806_iststack;
 // ---- AI-VX-1024B（2026-10-24）：F0826 ISR/IRR/TMR 位图（亲自手写，探针 13/13 全绿，0x289 段）----
 pub mod unx0826_isrbitmap;
+// ---- AI-VX-1024B（2026-10-24）：F0845 spurious 五态处置（探针 27/27 全绿，0x28B 段）----
+pub mod unx0845_spurfive;
 // ---- AI-WB-1024（2026-10-24）：F0588~F0597 参数账十单（0x4A/0x4C 段，引号→行长→缺省→互斥→消费→封账→复扫→注入→五数→对冲链）----
 pub mod unx0588_quote;
 pub mod unx0589_linelen;
