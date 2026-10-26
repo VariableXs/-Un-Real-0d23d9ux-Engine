@@ -6031,3 +6031,27 @@ pub mod unx0594_rescan;
 pub mod unx0595_inject;
 pub mod unx0596_fivestat;
 pub mod unx0597_hedge;
+
+// ---- AI-VX-1027（2026-10-27）：A4-B01 内存域 22 单（F2404~F2428，0x6D20~0x6EE0 段）----
+pub mod unx2404_pfnprim;
+pub mod unx2405_asid;
+pub mod unx2406_cpuidmem;
+pub mod unx2407_buddymeta;
+pub mod unx2408_freearea;
+pub mod unx2409_split;
+pub mod unx2410_merge;
+pub mod unx2411_degrade;
+pub mod unx2412_buddyprobe;
+pub mod unx2413_migtype;
+pub mod unx2414_unmoviso;
+pub mod unx2415_ordersem;
+pub mod unx2416_zeropage;
+pub mod unx2417_badpage;
+pub mod unx2418_earlyself;
+pub mod unx2419_domstate;
+pub mod unx2420_ktb01;
+pub mod unx2424_order10;
+pub mod unx2425_ordermap;
+pub mod unx2426_buddymath;
+pub mod unx2427_spechist;
+pub mod unx2428_migroute;
