@@ -6055,3 +6055,17 @@ pub mod unx2425_ordermap;
 pub mod unx2426_buddymath;
 pub mod unx2427_spechist;
 pub mod unx2428_migroute;
+
+// ---- AI-VX-1027（2026-10-27）：A4-B02 反碎片批 12 单（F2429~F2440，0x6EF0~0x6FEF 段）----
+pub mod unx2429_migrate;
+pub mod unx2430_antifrag;
+pub mod unx2431_leakpair;
+pub mod unx2432_dblfreeall;
+pub mod unx2433_zonelock;
+pub mod unx2434_lockorder;
+pub mod unx2435_highorderwarn;
+pub mod unx2436_fragindex;
+pub mod unx2437_bootbudget;
+pub mod unx2438_offlinereg;
+pub mod unx2439_allocstress;
+pub mod unx2440_ktb02;
