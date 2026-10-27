@@ -6069,3 +6069,22 @@ pub mod unx2437_bootbudget;
 pub mod unx2438_offlinereg;
 pub mod unx2439_allocstress;
 pub mod unx2440_ktb02;
+
+// ---- AI-VX-1027（2026-10-27）：A4-B03 池域 17 单（F2444~F2460，0x7020~0x71BF 段）----
+pub mod unx2444_poolxfer;
+pub mod unx2445_poolbalance;
+pub mod unx2446_atomicpath;
+pub mod unx2447_numalocal;
+pub mod unx2448_poolwarn;
+pub mod unx2449_starvation;
+pub mod unx2450_poolstats;
+pub mod unx2451_ipisync;
+pub mod unx2452_poolselftest;
+pub mod unx2453_reservepool;
+pub mod unx2454_poolcap;
+pub mod unx2455_noblock;
+pub mod unx2456_raceinject;
+pub mod unx2457_fastpath;
+pub mod unx2458_emergpool;
+pub mod unx2459_dryreclaim;
+pub mod unx2460_ktb03;
