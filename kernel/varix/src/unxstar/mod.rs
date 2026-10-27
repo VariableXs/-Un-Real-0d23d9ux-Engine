@@ -476,7 +476,7 @@ pub fn run_unxstar_ledger() -> crate::domledger::DomainLedger {
 /// 装不下 69 个标签，聚合 panic 里只剩折叠层的残缺名单。抽成模块级函数后，
 /// `unxstar_domain_aggregate_all_green` 可**直接遍历本表现场取下层名单**，
 /// 长度不受 `DYN_CAP` 限制——与 `cgpu` / `stareco::deep` 同一手法的三处对齐。
-pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 353] {
+pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 1058] {
     [
         ("UNX-F0041", unx041_dsdt_checks::run_unx041_checks as fn() -> CheckSet),
         ("UNX-F0041-DEEP", unx041_dsdt_deep::run_unx041b_checks as fn() -> CheckSet),
@@ -834,6 +834,711 @@ pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 353] {
         ("UNX-F0296", unx296_drillmatrix::run_unx296_checks as fn() -> CheckSet),
         ("UNX-F0297", unx297_dualdog::run_unx297_checks as fn() -> CheckSet),
         ("UNX-F0300", unx300_ktestb15::run_unx300_checks as fn() -> CheckSet),
+        ("UNX-F46401", unx46401_pinset::run_unx46401_checks as fn() -> CheckSet),
+        ("UNX-F46402", unx46402_shalock::run_unx46402_checks as fn() -> CheckSet),
+        ("UNX-F46403", unx46403_triconst::run_unx46403_checks as fn() -> CheckSet),
+        ("UNX-F46404", unx46404_dumpmach::run_unx46404_checks as fn() -> CheckSet),
+        ("UNX-F46405", unx46405_gcclayout::run_unx46405_checks as fn() -> CheckSet),
+        ("UNX-F46406", unx46406_clangdrv::run_unx46406_checks as fn() -> CheckSet),
+        ("UNX-F46407", unx46407_rustspec::run_unx46407_checks as fn() -> CheckSet),
+        ("UNX-F46408", unx46408_linkpath::run_unx46408_checks as fn() -> CheckSet),
+        ("UNX-F46409", unx46409_layout4::run_unx46409_checks as fn() -> CheckSet),
+        ("UNX-F46410", unx46410_c5recon::run_unx46410_checks as fn() -> CheckSet),
+        ("UNX-F46411", unx46411_compat5x5::run_unx46411_checks as fn() -> CheckSet),
+        ("UNX-F46412", unx46412_followsla::run_unx46412_checks as fn() -> CheckSet),
+        ("UNX-F46413", unx46413_licfield::run_unx46413_checks as fn() -> CheckSet),
+        ("UNX-F46414", unx46414_obspoint::run_unx46414_checks as fn() -> CheckSet),
+        ("UNX-F46415", unx46415_mixdetect::run_unx46415_checks as fn() -> CheckSet),
+        ("UNX-F46416", unx46416_alarmbook::run_unx46416_checks as fn() -> CheckSet),
+        ("UNX-F46417", unx46417_constwl::run_unx46417_checks as fn() -> CheckSet),
+        ("UNX-F46418", unx46418_pinexport::run_unx46418_checks as fn() -> CheckSet),
+        ("UNX-F46419", unx46419_b01grep::run_unx46419_checks as fn() -> CheckSet),
+        ("UNX-F46420", unx46420_b01seal::run_unx46420_checks as fn() -> CheckSet),
+        ("UNX-F46401", unx46401_pinset::run_unx46401_checks as fn() -> CheckSet),
+        ("UNX-F46402", unx46402_shalock::run_unx46402_checks as fn() -> CheckSet),
+        ("UNX-F46403", unx46403_triconst::run_unx46403_checks as fn() -> CheckSet),
+        ("UNX-F46404", unx46404_dumpmach::run_unx46404_checks as fn() -> CheckSet),
+        ("UNX-F46405", unx46405_gcclayout::run_unx46405_checks as fn() -> CheckSet),
+        ("UNX-F46406", unx46406_clangdrv::run_unx46406_checks as fn() -> CheckSet),
+        ("UNX-F46407", unx46407_rustspec::run_unx46407_checks as fn() -> CheckSet),
+        ("UNX-F46408", unx46408_linkpath::run_unx46408_checks as fn() -> CheckSet),
+        ("UNX-F46409", unx46409_layout4::run_unx46409_checks as fn() -> CheckSet),
+        ("UNX-F46410", unx46410_c5recon::run_unx46410_checks as fn() -> CheckSet),
+        ("UNX-F46411", unx46411_compat5x5::run_unx46411_checks as fn() -> CheckSet),
+        ("UNX-F46412", unx46412_followsla::run_unx46412_checks as fn() -> CheckSet),
+        ("UNX-F46413", unx46413_licfield::run_unx46413_checks as fn() -> CheckSet),
+        ("UNX-F46414", unx46414_obspoint::run_unx46414_checks as fn() -> CheckSet),
+        ("UNX-F46415", unx46415_mixdetect::run_unx46415_checks as fn() -> CheckSet),
+        ("UNX-F46416", unx46416_alarmbook::run_unx46416_checks as fn() -> CheckSet),
+        ("UNX-F46417", unx46417_constwl::run_unx46417_checks as fn() -> CheckSet),
+        ("UNX-F46418", unx46418_pinexport::run_unx46418_checks as fn() -> CheckSet),
+        ("UNX-F46419", unx46419_b01grep::run_unx46419_checks as fn() -> CheckSet),
+        ("UNX-F46420", unx46420_b01seal::run_unx46420_checks as fn() -> CheckSet),
+        ("UNX-F46421", unx46421_headscan::run_unx46421_checks as fn() -> CheckSet),
+        ("UNX-F46422", unx46422_posixhead::run_unx46422_checks as fn() -> CheckSet),
+        ("UNX-F46423", unx46423_headver::run_unx46423_checks as fn() -> CheckSet),
+        ("UNX-F46424", unx46424_sysrootsem::run_unx46424_checks as fn() -> CheckSet),
+        ("UNX-F46425", unx46425_chresolve::run_unx46425_checks as fn() -> CheckSet),
+        ("UNX-F56001", unx56001_envfreeze::run_unx56001_checks as fn() -> CheckSet),
+        ("UNX-F56002", unx56002_envhash::run_unx56002_checks as fn() -> CheckSet),
+        ("UNX-F56003", unx56003_probegate::run_unx56003_checks as fn() -> CheckSet),
+        ("UNX-F56004", unx56004_dualtopo::run_unx56004_checks as fn() -> CheckSet),
+        ("UNX-F56005", unx56005_fwanchor::run_unx56005_checks as fn() -> CheckSet),
+        ("UNX-F56006", unx56006_powerfreeze::run_unx56006_checks as fn() -> CheckSet),
+        ("UNX-F56007", unx56007_proclist::run_unx56007_checks as fn() -> CheckSet),
+        ("UNX-F56008", unx56008_fslayout::run_unx56008_checks as fn() -> CheckSet),
+        ("UNX-F56009", unx56009_tsccalib::run_unx56009_checks as fn() -> CheckSet),
+        ("UNX-F56010", unx56010_winrecord::run_unx56010_checks as fn() -> CheckSet),
+        ("UNX-F56011", unx56011_rerunflow::run_unx56011_checks as fn() -> CheckSet),
+        ("UNX-F56012", unx56012_updwin::run_unx56012_checks as fn() -> CheckSet),
+        ("UNX-F56013", unx56013_rejectaudit::run_unx56013_checks as fn() -> CheckSet),
+        ("UNX-F56014", unx56014_perisilence::run_unx56014_checks as fn() -> CheckSet),
+        ("UNX-F56016", unx56016_envctl::run_unx56016_checks as fn() -> CheckSet),
+        ("UNX-F56017", unx56017_equivbook::run_unx56017_checks as fn() -> CheckSet),
+        ("UNX-F56018", unx56018_frozendoc::run_unx56018_checks as fn() -> CheckSet),
+        ("UNX-F56019", unx56019_probecheck::run_unx56019_checks as fn() -> CheckSet),
+        ("UNX-F56020", unx56020_b01seal::run_unx56020_checks as fn() -> CheckSet),
+        ("UNX-F56021", unx56021_sysdelay::run_unx56021_checks as fn() -> CheckSet),
+        ("UNX-F56022", unx56022_getpidbench::run_unx56022_checks as fn() -> CheckSet),
+        ("UNX-F56023", unx56023_rwbench::run_unx56023_checks as fn() -> CheckSet),
+        ("UNX-F56024", unx56024_mmapbench::run_unx56024_checks as fn() -> CheckSet),
+        ("UNX-F56025", unx56025_ctxbench::run_unx56025_checks as fn() -> CheckSet),
+        ("UNX-F56026", unx56026_migfilter::run_unx56026_checks as fn() -> CheckSet),
+        ("UNX-F56027", unx56027_warmwin::run_unx56027_checks as fn() -> CheckSet),
+        ("UNX-F56028", unx56028_outlier::run_unx56028_checks as fn() -> CheckSet),
+        ("UNX-F56029", unx56029_segstats::run_unx56029_checks as fn() -> CheckSet),
+        ("UNX-F56030", unx56030_ntapimap::run_unx56030_checks as fn() -> CheckSet),
+        ("UNX-F56031", unx56031_selfisolate::run_unx56031_checks as fn() -> CheckSet),
+        ("UNX-F56032", unx56032_irqcomply::run_unx56032_checks as fn() -> CheckSet),
+        ("UNX-F56033", unx56033_samplearch::run_unx56033_checks as fn() -> CheckSet),
+        ("UNX-F56034", unx56034_dualorch::run_unx56034_checks as fn() -> CheckSet),
+        ("UNX-F56035", unx56035_cmpgen::run_unx56035_checks as fn() -> CheckSet),
+        ("UNX-F56036", unx56036_verdict::run_unx56036_checks as fn() -> CheckSet),
+        ("UNX-F56037", unx56037_failtrace::run_unx56037_checks as fn() -> CheckSet),
+        ("UNX-F56038", unx56038_loadfreeze::run_unx56038_checks as fn() -> CheckSet),
+        ("UNX-F56039", unx56039_o2prelink::run_unx56039_checks as fn() -> CheckSet),
+        ("UNX-F56040", unx56040_b02seal::run_unx56040_checks as fn() -> CheckSet),
+        ("UNX-F56041", unx56041_bootfive::run_unx56041_checks as fn() -> CheckSet),
+        ("UNX-F56042", unx56042_bootstub::run_unx56042_checks as fn() -> CheckSet),
+        ("UNX-F56043", unx56043_kernfirst::run_unx56043_checks as fn() -> CheckSet),
+        ("UNX-F56044", unx56044_loginfirst::run_unx56044_checks as fn() -> CheckSet),
+        ("UNX-F56045", unx56045_deskfirst::run_unx56045_checks as fn() -> CheckSet),
+        ("UNX-F56046", unx56046_clickready::run_unx56046_checks as fn() -> CheckSet),
+        ("UNX-F56047", unx56047_sumcheck::run_unx56047_checks as fn() -> CheckSet),
+        ("UNX-F56068", unx56068_clockbase::run_unx56068_checks as fn() -> CheckSet),
+        ("UNX-F56069", unx56069_procgroup::run_unx56069_checks as fn() -> CheckSet),
+        ("UNX-F56070", unx56070_o2memcalib::run_unx56070_checks as fn() -> CheckSet),
+        ("UNX-F56071", unx56071_memsnapaudit::run_unx56071_checks as fn() -> CheckSet),
+        ("UNX-F56072", unx56072_memnadisc::run_unx56072_checks as fn() -> CheckSet),
+        ("UNX-F56073", unx56073_memfailtrace::run_unx56073_checks as fn() -> CheckSet),
+        ("UNX-F56074", unx56074_memduo::run_unx56074_checks as fn() -> CheckSet),
+        ("UNX-F56075", unx56075_memrowvault::run_unx56075_checks as fn() -> CheckSet),
+        ("UNX-F56076", unx56076_hugepage::run_unx56076_checks as fn() -> CheckSet),
+        ("UNX-F56077", unx56077_memlowpct::run_unx56077_checks as fn() -> CheckSet),
+        ("UNX-F56078", unx56078_memprotocol::run_unx56078_checks as fn() -> CheckSet),
+        ("UNX-F56079", unx56079_memdemo::run_unx56079_checks as fn() -> CheckSet),
+        ("UNX-F56080", unx56080_b04seal::run_unx56080_checks as fn() -> CheckSet),
+        ("UNX-F56081", unx56081_colliface::run_unx56081_checks as fn() -> CheckSet),
+        ("UNX-F56082", unx56082_collreg::run_unx56082_checks as fn() -> CheckSet),
+        ("UNX-F56083", unx56083_pipesched::run_unx56083_checks as fn() -> CheckSet),
+        ("UNX-F56084", unx56084_windowlock::run_unx56084_checks as fn() -> CheckSet),
+        ("UNX-F56085", unx56085_o2probeall::run_unx56085_checks as fn() -> CheckSet),
+        ("UNX-F56086", unx56086_samplegate::run_unx56086_checks as fn() -> CheckSet),
+        ("UNX-F56087", unx56087_distforce::run_unx56087_checks as fn() -> CheckSet),
+        ("UNX-F56088", unx56088_conintval::run_unx56088_checks as fn() -> CheckSet),
+        ("UNX-F56089", unx56089_envhashcmp::run_unx56089_checks as fn() -> CheckSet),
+        ("UNX-F56090", unx56090_collresume::run_unx56090_checks as fn() -> CheckSet),
+        ("UNX-F56091", unx56091_pipebeat::run_unx56091_checks as fn() -> CheckSet),
+        ("UNX-F56092", unx56092_sumchain::run_unx56092_checks as fn() -> CheckSet),
+        ("UNX-F56093", unx56093_duomaster::run_unx56093_checks as fn() -> CheckSet),
+        ("UNX-F56094", unx56094_timeslotrule::run_unx56094_checks as fn() -> CheckSet),
+        ("UNX-F56095", unx56095_loadsig::run_unx56095_checks as fn() -> CheckSet),
+        ("UNX-F56096", unx56096_schemafreeze::run_unx56096_checks as fn() -> CheckSet),
+        ("UNX-F56097", unx56097_verdictfreeze::run_unx56097_checks as fn() -> CheckSet),
+        ("UNX-F56098", unx56098_faulttree::run_unx56098_checks as fn() -> CheckSet),
+        ("UNX-F56099", unx56099_smokee2e::run_unx56099_checks as fn() -> CheckSet),
+        ("UNX-F56100", unx56100_b05seal::run_unx56100_checks as fn() -> CheckSet),
+        ("UNX-F56101", unx56101_iofivecoll::run_unx56101_checks as fn() -> CheckSet),
+        ("UNX-F56102", unx56102_iorand4kr::run_unx56102_checks as fn() -> CheckSet),
+        ("UNX-F56103", unx56103_iorand4kw::run_unx56103_checks as fn() -> CheckSet),
+        ("UNX-F56104", unx56104_ioseq1mr::run_unx56104_checks as fn() -> CheckSet),
+        ("UNX-F56105", unx56105_ioseq1mw::run_unx56105_checks as fn() -> CheckSet),
+        ("UNX-F56106", unx56106_iomix7030::run_unx56106_checks as fn() -> CheckSet),
+        ("UNX-F56107", unx56107_qdepthctrl::run_unx56107_checks as fn() -> CheckSet),
+        ("UNX-F56108", unx56108_diskprime::run_unx56108_checks as fn() -> CheckSet),
+        ("UNX-F56109", unx56109_iorowgen::run_unx56109_checks as fn() -> CheckSet),
+        ("UNX-F56110", unx56110_ioscriptlib::run_unx56110_checks as fn() -> CheckSet),
+        ("UNX-F56111", unx56111_iocleanroom::run_unx56111_checks as fn() -> CheckSet),
+        ("UNX-F56112", unx56112_ioduo::run_unx56112_checks as fn() -> CheckSet),
+        ("UNX-F56113", unx56113_iooutlier::run_unx56113_checks as fn() -> CheckSet),
+        ("UNX-F56114", unx56114_tpcurline::run_unx56114_checks as fn() -> CheckSet),
+        ("UNX-F56115", unx56115_ionadisc::run_unx56115_checks as fn() -> CheckSet),
+        ("UNX-F56116", unx56116_iofailtrace::run_unx56116_checks as fn() -> CheckSet),
+        ("UNX-F56117", unx56117_iovault::run_unx56117_checks as fn() -> CheckSet),
+        ("UNX-F56118", unx56118_iodemo::run_unx56118_checks as fn() -> CheckSet),
+        ("UNX-F56119", unx56119_ioocalib::run_unx56119_checks as fn() -> CheckSet),
+        ("UNX-F56120", unx56120_b06seal::run_unx56120_checks as fn() -> CheckSet),
+        ("UNX-F56121", unx56121_fpscoll::run_unx56121_checks as fn() -> CheckSet),
+        ("UNX-F56122", unx56122_lowpctfps::run_unx56122_checks as fn() -> CheckSet),
+        ("UNX-F56123", unx56123_fpsscenes::run_unx56123_checks as fn() -> CheckSet),
+        ("UNX-F56124", unx56124_glitchclass::run_unx56124_checks as fn() -> CheckSet),
+        ("UNX-F56125", unx56125_fpsrowgen::run_unx56125_checks as fn() -> CheckSet),
+        ("UNX-F56135", unx56135_o2framecalib::run_unx56135_checks as fn() -> CheckSet),
+        ("UNX-F56136", unx56136_bottlescan::run_unx56136_checks as fn() -> CheckSet),
+        ("UNX-F56137", unx56137_sampleledger::run_unx56137_checks as fn() -> CheckSet),
+        ("UNX-F56138", unx56138_dryrun::run_unx56138_checks as fn() -> CheckSet),
+        ("UNX-F56139", unx56139_o2reserv::run_unx56139_checks as fn() -> CheckSet),
+        ("UNX-F56140", unx56140_b07seal::run_unx56140_checks as fn() -> CheckSet),
+        ("UNX-F56141", unx56141_cmpentry::run_unx56141_checks as fn() -> CheckSet),
+        ("UNX-F56142", unx56142_appendexec::run_unx56142_checks as fn() -> CheckSet),
+        ("UNX-F56143", unx56143_verdictgate::run_unx56143_checks as fn() -> CheckSet),
+        ("UNX-F56144", unx56144_aisign::run_unx56144_checks as fn() -> CheckSet),
+        ("UNX-F56145", unx56145_envgate::run_unx56145_checks as fn() -> CheckSet),
+        ("UNX-F56146", unx56146_nagate::run_unx56146_checks as fn() -> CheckSet),
+        ("UNX-F56147", unx56147_fivemetric::run_unx56147_checks as fn() -> CheckSet),
+        ("UNX-F56148", unx56148_p95hook::run_unx56148_checks as fn() -> CheckSet),
+        ("UNX-F56149", unx56149_auditsnap::run_unx56149_checks as fn() -> CheckSet),
+        ("UNX-F56150", unx56150_discipline::run_unx56150_checks as fn() -> CheckSet),
+        ("UNX-F56151", unx56151_antidress::run_unx56151_checks as fn() -> CheckSet),
+        ("UNX-F56152", unx56152_versioning::run_unx56152_checks as fn() -> CheckSet),
+        ("UNX-F56153", unx56153_reconcile::run_unx56153_checks as fn() -> CheckSet),
+        ("UNX-F56154", unx56154_replay::run_unx56154_checks as fn() -> CheckSet),
+        ("UNX-F56155", unx56155_export::run_unx56155_checks as fn() -> CheckSet),
+        ("UNX-F56156", unx56156_f8seal::run_unx56156_checks as fn() -> CheckSet),
+        ("UNX-F56157", unx56157_dry15::run_unx56157_checks as fn() -> CheckSet),
+        ("UNX-F56158", unx56158_storagelayout::run_unx56158_checks as fn() -> CheckSet),
+        ("UNX-F56159", unx56159_healthcheck::run_unx56159_checks as fn() -> CheckSet),
+        ("UNX-F56160", unx56160_b08seal::run_unx56160_checks as fn() -> CheckSet),
+        ("UNX-F56161", unx56161_syslatagg::run_unx56161_checks as fn() -> CheckSet),
+        ("UNX-F56162", unx56162_tailpct::run_unx56162_checks as fn() -> CheckSet),
+        ("UNX-F56163", unx56163_latencyhist::run_unx56163_checks as fn() -> CheckSet),
+        ("UNX-F56164", unx56164_ctxswitch::run_unx56164_checks as fn() -> CheckSet),
+        ("UNX-F56165", unx56165_mmapdual::run_unx56165_checks as fn() -> CheckSet),
+        ("UNX-F56166", unx56166_o2calib::run_unx56166_checks as fn() -> CheckSet),
+        ("UNX-F56167", unx56167_entryprof::run_unx56167_checks as fn() -> CheckSet),
+        ("UNX-F56168", unx56168_schedwait::run_unx56168_checks as fn() -> CheckSet),
+        ("UNX-F56169", unx56169_ticketconv::run_unx56169_checks as fn() -> CheckSet),
+        ("UNX-F56170", unx56170_deeprowgen::run_unx56170_checks as fn() -> CheckSet),
+        ("UNX-F56171", unx56171_replayexec::run_unx56171_checks as fn() -> CheckSet),
+        ("UNX-F56172", unx56172_aggsnap::run_unx56172_checks as fn() -> CheckSet),
+        ("UNX-F56173", unx56173_nainstance::run_unx56173_checks as fn() -> CheckSet),
+        ("UNX-F56174", unx56174_loadscript::run_unx56174_checks as fn() -> CheckSet),
+        ("UNX-F56175", unx56175_trendwatch::run_unx56175_checks as fn() -> CheckSet),
+        ("UNX-F56176", unx56176_assembler::run_unx56176_checks as fn() -> CheckSet),
+        ("UNX-F56177", unx56177_m9health::run_unx56177_checks as fn() -> CheckSet),
+        ("UNX-F56178", unx56178_perfself::run_unx56178_checks as fn() -> CheckSet),
+        ("UNX-F56179", unx56179_archive::run_unx56179_checks as fn() -> CheckSet),
+        ("UNX-F56180", unx56180_b09seal::run_unx56180_checks as fn() -> CheckSet),
+        ("UNX-F56181", unx56181_bootlocator::run_unx56181_checks as fn() -> CheckSet),
+        ("UNX-F56182", unx56182_bootprof::run_unx56182_checks as fn() -> CheckSet),
+        ("UNX-F56183", unx56183_kernprof::run_unx56183_checks as fn() -> CheckSet),
+        ("UNX-F56184", unx56184_logondesk::run_unx56184_checks as fn() -> CheckSet),
+        ("UNX-F56185", unx56185_readyprof::run_unx56185_checks as fn() -> CheckSet),
+        ("UNX-F56186", unx56186_subdomap::run_unx56186_checks as fn() -> CheckSet),
+        ("UNX-F56187", unx56187_prolinegen::run_unx56187_checks as fn() -> CheckSet),
+        ("UNX-F56188", unx56188_winmap::run_unx56188_checks as fn() -> CheckSet),
+        ("UNX-F56189", unx56189_replay::run_unx56189_checks as fn() -> CheckSet),
+        ("UNX-F56190", unx56190_attr2fct::run_unx56190_checks as fn() -> CheckSet),
+        ("UNX-F56191", unx56191_sampdeep::run_unx56191_checks as fn() -> CheckSet),
+        ("UNX-F56192", unx56192_aggshot::run_unx56192_checks as fn() -> CheckSet),
+        ("UNX-F56193", unx56193_o2deep::run_unx56193_checks as fn() -> CheckSet),
+        ("UNX-F56194", unx56194_ledgerasm::run_unx56194_checks as fn() -> CheckSet),
+        ("UNX-F56195", unx56195_nasideep::run_unx56195_checks as fn() -> CheckSet),
+        ("UNX-F56196", unx56196_noisedeep::run_unx56196_checks as fn() -> CheckSet),
+        ("UNX-F56197", unx56197_vardeep::run_unx56197_checks as fn() -> CheckSet),
+        ("UNX-F56198", unx56198_b10body::run_unx56198_checks as fn() -> CheckSet),
+        ("UNX-F56199", unx56199_arvidx::run_unx56199_checks as fn() -> CheckSet),
+        ("UNX-F56200", unx56200_b10seal::run_unx56200_checks as fn() -> CheckSet),
+        ("UNX-F36001", unx36001_sidcore::run_unx36001_checks as fn() -> CheckSet),
+        ("UNX-F36002", unx36002_sidlayout::run_unx36002_checks as fn() -> CheckSet),
+        ("UNX-F36003", unx36003_sidstr::run_unx36003_checks as fn() -> CheckSet),
+        ("UNX-F36004", unx36004_wellknown::run_unx36004_checks as fn() -> CheckSet),
+        ("UNX-F36005", unx36005_issuer::run_unx36005_checks as fn() -> CheckSet),
+        ("UNX-F36006", unx36006_sidcompare::run_unx36006_checks as fn() -> CheckSet),
+        ("UNX-F36007", unx36007_subauth::run_unx36007_checks as fn() -> CheckSet),
+        ("UNX-F36008", unx36008_sidhash::run_unx36008_checks as fn() -> CheckSet),
+        ("UNX-F36009", unx36009_sidref::run_unx36009_checks as fn() -> CheckSet),
+        ("UNX-F36010", unx36010_wxpolicy::run_unx36010_checks as fn() -> CheckSet),
+        ("UNX-F36011", unx36011_groupsid::run_unx36011_checks as fn() -> CheckSet),
+        ("UNX-F36012", unx36012_integrity::run_unx36012_checks as fn() -> CheckSet),
+        ("UNX-F36013", unx36013_servicesid::run_unx36013_checks as fn() -> CheckSet),
+        ("UNX-F36014", unx36014_restricted::run_unx36014_checks as fn() -> CheckSet),
+        ("UNX-F36015", unx36015_sidserde::run_unx36015_checks as fn() -> CheckSet),
+        ("UNX-F36016", unx36016_sidaudit::run_unx36016_checks as fn() -> CheckSet),
+        ("UNX-F36017", unx36017_sidpool::run_unx36017_checks as fn() -> CheckSet),
+        ("UNX-F36018", unx36018_posixbridge::run_unx36018_checks as fn() -> CheckSet),
+        ("UNX-F36019", unx36019_b01ktest::run_unx36019_checks as fn() -> CheckSet),
+        ("UNX-F36020", unx36020_b01close::run_unx36020_checks as fn() -> CheckSet),
+        ("UNX-F36021", unx36021_tokencore::run_unx36021_checks as fn() -> CheckSet),
+        ("UNX-F36022", unx36022_tokbuild::run_unx36022_checks as fn() -> CheckSet),
+        ("UNX-F36023", unx36023_toktype::run_unx36023_checks as fn() -> CheckSet),
+        ("UNX-F36024", unx36024_tokgroups::run_unx36024_checks as fn() -> CheckSet),
+        ("UNX-F36025", unx36025_tokpriv::run_unx36025_checks as fn() -> CheckSet),
+        ("UNX-F36026", unx36026_tokowner::run_unx36026_checks as fn() -> CheckSet),
+        ("UNX-F36027", unx36027_toksession::run_unx36027_checks as fn() -> CheckSet),
+        ("UNX-F36028", unx36028_tokrefcnt::run_unx36028_checks as fn() -> CheckSet),
+        ("UNX-F36029", unx36029_tokdestroy::run_unx36029_checks as fn() -> CheckSet),
+        ("UNX-F36030", unx36030_tokinteg::run_unx36030_checks as fn() -> CheckSet),
+        ("UNX-F36031", unx36031_tokinherit::run_unx36031_checks as fn() -> CheckSet),
+        ("UNX-F36032", unx36032_tokrestrict::run_unx36032_checks as fn() -> CheckSet),
+        ("UNX-F36033", unx36033_tokquery::run_unx36033_checks as fn() -> CheckSet),
+        ("UNX-F36034", unx36034_tokstats::run_unx36034_checks as fn() -> CheckSet),
+        ("UNX-F36035", unx36035_tokwx::run_unx36035_checks as fn() -> CheckSet),
+        ("UNX-F36036", unx36036_tokevent::run_unx36036_checks as fn() -> CheckSet),
+        ("UNX-F36037", unx36037_tokfuzz::run_unx36037_checks as fn() -> CheckSet),
+        ("UNX-F36038", unx36038_tokpool::run_unx36038_checks as fn() -> CheckSet),
+        ("UNX-F36039", unx36039_b02ktest::run_unx36039_checks as fn() -> CheckSet),
+        ("UNX-F36040", unx36040_b02close::run_unx36040_checks as fn() -> CheckSet),
+        ("UNX-F36041", unx36041_privtable::run_unx36041_checks as fn() -> CheckSet),
+        ("UNX-F36042", unx36042_privcheck::run_unx36042_checks as fn() -> CheckSet),
+        ("UNX-F36043", unx36043_privnotheld::run_unx36043_checks as fn() -> CheckSet),
+        ("UNX-F36044", unx36044_privadjust::run_unx36044_checks as fn() -> CheckSet),
+        ("UNX-F36045", unx36045_privdisable::run_unx36045_checks as fn() -> CheckSet),
+        ("UNX-F36046", unx36046_privacl::run_unx36046_checks as fn() -> CheckSet),
+        ("UNX-F36047", unx36047_privaudit::run_unx36047_checks as fn() -> CheckSet),
+        ("UNX-F36048", unx36048_privprop::run_unx36048_checks as fn() -> CheckSet),
+        ("UNX-F36049", unx36049_privquery::run_unx36049_checks as fn() -> CheckSet),
+        ("UNX-F36050", unx36050_privluid::run_unx36050_checks as fn() -> CheckSet),
+        ("UNX-F36051", unx36051_privlookup::run_unx36051_checks as fn() -> CheckSet),
+        ("UNX-F36052", unx36052_privfuzz::run_unx36052_checks as fn() -> CheckSet),
+        ("UNX-F36053", unx36053_privperf::run_unx36053_checks as fn() -> CheckSet),
+        ("UNX-F36054", unx36054_privimpersonate::run_unx36054_checks as fn() -> CheckSet),
+        ("UNX-F36055", unx36055_privdiag::run_unx36055_checks as fn() -> CheckSet),
+        ("UNX-F36056", unx36056_privversion::run_unx36056_checks as fn() -> CheckSet),
+        ("UNX-F36057", unx36057_privhook::run_unx36057_checks as fn() -> CheckSet),
+        ("UNX-F36058", unx36058_privselftest::run_unx36058_checks as fn() -> CheckSet),
+        ("UNX-F36059", unx36059_b03ktest::run_unx36059_checks as fn() -> CheckSet),
+        ("UNX-F36060", unx36060_b03close::run_unx36060_checks as fn() -> CheckSet),
+        ("UNX-F56015", unx56015_timewindow::run_unx56015_checks as fn() -> CheckSet),
+        ("UNX-F56048", unx56048_varbook::run_unx56048_checks as fn() -> CheckSet),
+        ("UNX-F56049", unx56049_winmap::run_unx56049_checks as fn() -> CheckSet),
+        ("UNX-F56050", unx56050_bootcmp::run_unx56050_checks as fn() -> CheckSet),
+        ("UNX-F56051", unx56051_coldhot::run_unx56051_checks as fn() -> CheckSet),
+        ("UNX-F56052", unx56052_bootorch::run_unx56052_checks as fn() -> CheckSet),
+        ("UNX-F56053", unx56053_bootnoise::run_unx56053_checks as fn() -> CheckSet),
+        ("UNX-F56054", unx56054_bottleneck::run_unx56054_checks as fn() -> CheckSet),
+        ("UNX-F56055", unx56055_bootarch::run_unx56055_checks as fn() -> CheckSet),
+        ("UNX-F56056", unx56056_bootload::run_unx56056_checks as fn() -> CheckSet),
+        ("UNX-F56057", unx56057_bootzero::run_unx56057_checks as fn() -> CheckSet),
+        ("UNX-F56058", unx56058_bootdoc::run_unx56058_checks as fn() -> CheckSet),
+        ("UNX-F56059", unx56059_booto2cal::run_unx56059_checks as fn() -> CheckSet),
+        ("UNX-F56060", unx56060_b03seal::run_unx56060_checks as fn() -> CheckSet),
+        ("UNX-F56061", unx56061_rssprobe::run_unx56061_checks as fn() -> CheckSet),
+        ("UNX-F56062", unx56062_mempeak::run_unx56062_checks as fn() -> CheckSet),
+        ("UNX-F56063", unx56063_driftdays::run_unx56063_checks as fn() -> CheckSet),
+        ("UNX-F56064", unx56064_pgcachehit::run_unx56064_checks as fn() -> CheckSet),
+        ("UNX-F56065", unx56065_memscript::run_unx56065_checks as fn() -> CheckSet),
+        ("UNX-F56066", unx56066_rsseq::run_unx56066_checks as fn() -> CheckSet),
+        ("UNX-F56067", unx56067_memcmp::run_unx56067_checks as fn() -> CheckSet),
+        ("UNX-F56126", unx56126_fpscosign::run_unx56126_checks as fn() -> CheckSet),
+        ("UNX-F56127", unx56127_fpsisol::run_unx56127_checks as fn() -> CheckSet),
+        ("UNX-F56128", unx56128_vrrnote::run_unx56128_checks as fn() -> CheckSet),
+        ("UNX-F56129", unx56129_resmatrix::run_unx56129_checks as fn() -> CheckSet),
+        ("UNX-F56130", unx56130_fpsoutlier::run_unx56130_checks as fn() -> CheckSet),
+        ("UNX-F56131", unx56131_fpsvault::run_unx56131_checks as fn() -> CheckSet),
+        ("UNX-F56132", unx56132_fpsnadisc::run_unx56132_checks as fn() -> CheckSet),
+        ("UNX-F56133", unx56133_fpsfailtrace::run_unx56133_checks as fn() -> CheckSet),
+        ("UNX-F56134", unx56134_fpsduo::run_unx56134_checks as fn() -> CheckSet),
+        ("UNX-F9002", unx9002_rt_sigprocmask::run_unx9002_checks as fn() -> CheckSet),
+        ("UNX-F9003", unx9003_kill_tgkill_tkill::run_unx9003_checks as fn() -> CheckSet),
+        ("UNX-F9004", unx9004_raise_pidfd_send_signal::run_unx9004_checks as fn() -> CheckSet),
+        ("UNX-F9005", unx9005_sigreturn_abi::run_unx9005_checks as fn() -> CheckSet),
+        ("UNX-F9006", unx9006_sig_dfl_sig_ign_sig_err::run_unx9006_checks as fn() -> CheckSet),
+        ("UNX-F9007", unx9007_s_131_3464::run_unx9007_checks as fn() -> CheckSet),
+        ("UNX-F9008", unx9008_rt::run_unx9008_checks as fn() -> CheckSet),
+        ("UNX-F9009", unx9009_sigkill_sigstop::run_unx9009_checks as fn() -> CheckSet),
+        ("UNX-F9010", unx9010_sigaltstack_sa_onstack::run_unx9010_checks as fn() -> CheckSet),
+        ("UNX-F9011", unx9011_sigpending_sigtimedwait_si::run_unx9011_checks as fn() -> CheckSet),
+        ("UNX-F9012", unx9012_clone_clone_sighand::run_unx9012_checks as fn() -> CheckSet),
+        ("UNX-F9013", unx9013_eintr_sa_restart::run_unx9013_checks as fn() -> CheckSet),
+        ("UNX-F9014", unx9014_guardrs_cap_sigprof_sigalr::run_unx9014_checks as fn() -> CheckSet),
+        ("UNX-F9015", unx9015_setitimer_getitimer::run_unx9015_checks as fn() -> CheckSet),
+        ("UNX-F9016", unx9016_alarm::run_unx9016_checks as fn() -> CheckSet),
+        ("UNX-F9017", unx9017_einval_esrch_eperm_ebadf::run_unx9017_checks as fn() -> CheckSet),
+        ("UNX-F9018", unx9018_signalfd_ppoll::run_unx9018_checks as fn() -> CheckSet),
+        ("UNX-F9019", unx9019_ktest::run_unx9019_checks as fn() -> CheckSet),
+        ("UNX-F9020", unx9020_ktest_syscall_b11::run_unx9020_checks as fn() -> CheckSet),
+        ("UNX-F9021", unx9021_eintr_sa_restart_f8948::run_unx9021_checks as fn() -> CheckSet),
+        ("UNX-F9022", unx9022_restart_syscall::run_unx9022_checks as fn() -> CheckSet),
+        ("UNX-F9023", unx9023_pipe_pipe2_pipetable::run_unx9023_checks as fn() -> CheckSet),
+        ("UNX-F9024", unx9024_f_setpipe_sz::run_unx9024_checks as fn() -> CheckSet),
+        ("UNX-F9025", unx9025_socket_socket_bind_listen::run_unx9025_checks as fn() -> CheckSet),
+        ("UNX-F9026", unx9026_socket_connect_accept_send::run_unx9026_checks as fn() -> CheckSet),
+        ("UNX-F9027", unx9027_sendmsg_recvmsg_msghdr_abi::run_unx9027_checks as fn() -> CheckSet),
+        ("UNX-F9028", unx9028_unix_af_unix::run_unx9028_checks as fn() -> CheckSet),
+        ("UNX-F9029", unx9029_sysv_semget_semop::run_unx9029_checks as fn() -> CheckSet),
+        ("UNX-F9030", unx9030_sysv_shmget_shmat::run_unx9030_checks as fn() -> CheckSet),
+        ("UNX-F9031", unx9031_sysv_msgget_msgsnd::run_unx9031_checks as fn() -> CheckSet),
+        ("UNX-F9032", unx9032_posix_mqueue_mq_open_mq_se::run_unx9032_checks as fn() -> CheckSet),
+        ("UNX-F9033", unx9033_ipc_ftok::run_unx9033_checks as fn() -> CheckSet),
+        ("UNX-F9034", unx9034_ipc_rlimit_msgmnb_semmns::run_unx9034_checks as fn() -> CheckSet),
+        ("UNX-F9035", unx9035_ipc_eidrm_ekeyexpired_enos::run_unx9035_checks as fn() -> CheckSet),
+        ("UNX-F9036", unx9036_ipc_ipc_64::run_unx9036_checks as fn() -> CheckSet),
+        ("UNX-F9037", unx9037_pipeepoll::run_unx9037_checks as fn() -> CheckSet),
+        ("UNX-F9038", unx9038_ipc_f8923::run_unx9038_checks as fn() -> CheckSet),
+        ("UNX-F9039", unx9039_ipc_ktest::run_unx9039_checks as fn() -> CheckSet),
+        ("UNX-F9040", unx9040_ktest_syscall_b12::run_unx9040_checks as fn() -> CheckSet),
+        ("UNX-F9041", unx9041_s_30::run_unx9041_checks as fn() -> CheckSet),
+        ("UNX-F9042", unx9042_open_close_read_write::run_unx9042_checks as fn() -> CheckSet),
+        ("UNX-F9043", unx9043_mmap_munmap_mprotect::run_unx9043_checks as fn() -> CheckSet),
+        ("UNX-F9044", unx9044_fork_execve_wait4::run_unx9044_checks as fn() -> CheckSet),
+        ("UNX-F9045", unx9045_getpid_setuid::run_unx9045_checks as fn() -> CheckSet),
+        ("UNX-F9046", unx9046_clock_gettime_nanosleep_ge::run_unx9046_checks as fn() -> CheckSet),
+        ("UNX-F9047", unx9047_dup_fcntl_ioctl::run_unx9047_checks as fn() -> CheckSet),
+        ("UNX-F9048", unx9048_getdents64_mkdir_unlink::run_unx9048_checks as fn() -> CheckSet),
+        ("UNX-F9049", unx9049_epoll_epoll_create1_ctl_wa::run_unx9049_checks as fn() -> CheckSet),
+        ("UNX-F9050", unx9050_eventfd2_timerfd_create_si::run_unx9050_checks as fn() -> CheckSet),
+        ("UNX-F9051", unx9051_rt_sigaction_kill_sigprocm::run_unx9051_checks as fn() -> CheckSet),
+        ("UNX-F9052", unx9052_ipc_pipe_shmget_msgget::run_unx9052_checks as fn() -> CheckSet),
+        ("UNX-F9053", unx9053_sys::run_unx9053_checks as fn() -> CheckSet),
+        ("UNX-F9054", unx9054_sys::run_unx9054_checks as fn() -> CheckSet),
+        ("UNX-F9055", unx9055_ktest::run_unx9055_checks as fn() -> CheckSet),
+        ("UNX-F9056", unx9056_s_30::run_unx9056_checks as fn() -> CheckSet),
+        ("UNX-F9057", unx9057_b02b12::run_unx9057_checks as fn() -> CheckSet),
+        ("UNX-F9058", unx9058_int_max_null_fd::run_unx9058_checks as fn() -> CheckSet),
+        ("UNX-F9059", unx9059_s_30::run_unx9059_checks as fn() -> CheckSet),
+        ("UNX-F9060", unx9060_ktest_syscall_b13::run_unx9060_checks as fn() -> CheckSet),
+        ("UNX-F9061", unx9061_glibc_syscall::run_unx9061_checks as fn() -> CheckSet),
+        ("UNX-F9062", unx9062_glibc_open_read_write_clos::run_unx9062_checks as fn() -> CheckSet),
+        ("UNX-F9063", unx9063_glibc_malloc_brk_mmap_b03::run_unx9063_checks as fn() -> CheckSet),
+        ("UNX-F9064", unx9064_glibc_fork_exec_wait_b04::run_unx9064_checks as fn() -> CheckSet),
+        ("UNX-F9065", unx9065_glibc_b05_getuid_setuid::run_unx9065_checks as fn() -> CheckSet),
+        ("UNX-F9066", unx9066_glibc_b06_clock_gettime_gm::run_unx9066_checks as fn() -> CheckSet),
+        ("UNX-F9067", unx9067_glibc_errno_libc_errno_err::run_unx9067_checks as fn() -> CheckSet),
+        ("UNX-F9068", unx9068_glibc_dup_fcntl_b08::run_unx9068_checks as fn() -> CheckSet),
+        ("UNX-F9069", unx9069_glibc_opendir_readdir_getd::run_unx9069_checks as fn() -> CheckSet),
+        ("UNX-F9070", unx9070_glibc_epoll_epoll_waitpoll::run_unx9070_checks as fn() -> CheckSet),
+        ("UNX-F9071", unx9071_glibc_pthread_clone_futex::run_unx9071_checks as fn() -> CheckSet),
+        ("UNX-F9072", unx9072_futex_glibc_pthread::run_unx9072_checks as fn() -> CheckSet),
+        ("UNX-F9073", unx9073_glibc_sigaction_raise::run_unx9073_checks as fn() -> CheckSet),
+        ("UNX-F9074", unx9074_glibc_dlopen_elf_mmap::run_unx9074_checks as fn() -> CheckSet),
+        ("UNX-F9075", unx9075_glibc_nss_getpwuid::run_unx9075_checks as fn() -> CheckSet),
+        ("UNX-F9076", unx9076_glibc_printf_stdio_write::run_unx9076_checks as fn() -> CheckSet),
+        ("UNX-F9077", unx9077_sys::run_unx9077_checks as fn() -> CheckSet),
+        ("UNX-F9078", unx9078_busybox::run_unx9078_checks as fn() -> CheckSet),
+        ("UNX-F9079", unx9079_glibc_231_235::run_unx9079_checks as fn() -> CheckSet),
+        ("UNX-F9080", unx9080_ktest_syscall_b14::run_unx9080_checks as fn() -> CheckSet),
+        ("UNX-F9081", unx9081_ltp::run_unx9081_checks as fn() -> CheckSet),
+        ("UNX-F9082", unx9082_ltp_open_read_write_stat::run_unx9082_checks as fn() -> CheckSet),
+        ("UNX-F9083", unx9083_ltp_mmap_mprotect::run_unx9083_checks as fn() -> CheckSet),
+        ("UNX-F9084", unx9084_ltp_fork_exec_wait::run_unx9084_checks as fn() -> CheckSet),
+        ("UNX-F9085", unx9085_ltp_clock_gettime_nanoslee::run_unx9085_checks as fn() -> CheckSet),
+        ("UNX-F9086", unx9086_ltp_sigaction_kill::run_unx9086_checks as fn() -> CheckSet),
+        ("UNX-F9087", unx9087_ltp_epoll_select_poll::run_unx9087_checks as fn() -> CheckSet),
+        ("UNX-F9088", unx9088_ltp_ipc_pipe_msg_shm_sem::run_unx9088_checks as fn() -> CheckSet),
+        ("UNX-F9089", unx9089_ltp_sysinfo_uname_getrusag::run_unx9089_checks as fn() -> CheckSet),
+        ("UNX-F9090", unx9090_uname::run_unx9090_checks as fn() -> CheckSet),
+        ("UNX-F9091", unx9091_getrusage::run_unx9091_checks as fn() -> CheckSet),
+        ("UNX-F9092", unx9092_prlimit64_rlimit::run_unx9092_checks as fn() -> CheckSet),
+        ("UNX-F9093", unx9093_b01b15_300::run_unx9093_checks as fn() -> CheckSet),
+        ("UNX-F9094", unx9094_f8801f9100::run_unx9094_checks as fn() -> CheckSet),
+        ("UNX-F9095", unx9095_a1_a4_b1_a2_c2::run_unx9095_checks as fn() -> CheckSet),
+        ("UNX-F9096", unx9096_s_05::run_unx9096_checks as fn() -> CheckSet),
+        ("UNX-F9097", unx9097_open_risks_handoff::run_unx9097_checks as fn() -> CheckSet),
+        ("UNX-F9098", unx9098_p99_windows_15::run_unx9098_checks as fn() -> CheckSet),
+        ("UNX-F9099", unx9099_c2::run_unx9099_checks as fn() -> CheckSet),
+        ("UNX-F9100", unx9100_ktest_syscall_b15::run_unx9100_checks as fn() -> CheckSet),
+        ("UNX-F9101", unx9101_fcntl_f_getfd_f_setfd_f_ge::run_unx9101_checks as fn() -> CheckSet),
+        ("UNX-F9102", unx9102_fcntl_f_dupfd_f_dupfd_cloe::run_unx9102_checks as fn() -> CheckSet),
+        ("UNX-F9103", unx9103_fcntl_f_getlk_f_setlk_f_se::run_unx9103_checks as fn() -> CheckSet),
+        ("UNX-F9104", unx9104_fcntl_f_setfl_o_nonblock_o::run_unx9104_checks as fn() -> CheckSet),
+        ("UNX-F9105", unx9105_fcntl_ebadf_einval_eintr_e::run_unx9105_checks as fn() -> CheckSet),
+        ("UNX-F9106", unx9106_ioctl::run_unx9106_checks as fn() -> CheckSet),
+        ("UNX-F9107", unx9107_ioctl_tcgets_tcsets_tiocgw::run_unx9107_checks as fn() -> CheckSet),
+        ("UNX-F9108", unx9108_ioctl_fionbio_fioasync::run_unx9108_checks as fn() -> CheckSet),
+        ("UNX-F9109", unx9109_ioctl_enotty::run_unx9109_checks as fn() -> CheckSet),
+        ("UNX-F9110", unx9110_fcntl_f_getown_f_setown::run_unx9110_checks as fn() -> CheckSet),
+        ("UNX-F9111", unx9111_fcntl_f_setlkw_eintr::run_unx9111_checks as fn() -> CheckSet),
+        ("UNX-F9112", unx9112_flock_posix::run_unx9112_checks as fn() -> CheckSet),
+        ("UNX-F9113", unx9113_dup3_o_cloexec_dup::run_unx9113_checks as fn() -> CheckSet),
+        ("UNX-F9114", unx9114_fcntl_f_getpipe_sz_f_setpi::run_unx9114_checks as fn() -> CheckSet),
+        ("UNX-F9115", unx9115_fcntl_f_add_seals_f_get_se::run_unx9115_checks as fn() -> CheckSet),
+        ("UNX-F9116", unx9116_ioctl_copy_from_user_copy_::run_unx9116_checks as fn() -> CheckSet),
+        ("UNX-F9117", unx9117_fcntl_ioctl_nargs3::run_unx9117_checks as fn() -> CheckSet),
+        ("UNX-F9118", unx9118_fcntl_glibc_file::run_unx9118_checks as fn() -> CheckSet),
+        ("UNX-F9119", unx9119_fcntl_ioctl_int_0x80::run_unx9119_checks as fn() -> CheckSet),
+        ("UNX-F9120", unx9120_ktest_syscall_b16::run_unx9120_checks as fn() -> CheckSet),
+        ("UNX-F9121", unx9121_mremap_mremap_maymove_mrem::run_unx9121_checks as fn() -> CheckSet),
+        ("UNX-F9122", unx9122_mremap_a4::run_unx9122_checks as fn() -> CheckSet),
+        ("UNX-F9123", unx9123_mremap_einval_enomem_eperm::run_unx9123_checks as fn() -> CheckSet),
+        ("UNX-F9124", unx9124_madvise::run_unx9124_checks as fn() -> CheckSet),
+        ("UNX-F9125", unx9125_madvise_madv_dontneed::run_unx9125_checks as fn() -> CheckSet),
+        ("UNX-F9126", unx9126_madvise_madv_willneed::run_unx9126_checks as fn() -> CheckSet),
+        ("UNX-F9127", unx9127_madvise_madv_sequential_ra::run_unx9127_checks as fn() -> CheckSet),
+        ("UNX-F9128", unx9128_madvise_einval_enomem_eacc::run_unx9128_checks as fn() -> CheckSet),
+        ("UNX-F9129", unx9129_msync_ms_sync_ms_async_ms_::run_unx9129_checks as fn() -> CheckSet),
+        ("UNX-F9130", unx9130_mlock_munlock_rlimit_memlo::run_unx9130_checks as fn() -> CheckSet),
+        ("UNX-F9131", unx9131_mlockall_munlockall::run_unx9131_checks as fn() -> CheckSet),
+        ("UNX-F9132", unx9132_mincore::run_unx9132_checks as fn() -> CheckSet),
+        ("UNX-F9133", unx9133_mprotect_pf::run_unx9133_checks as fn() -> CheckSet),
+        ("UNX-F9134", unx9134_map_noreserve_map_populate::run_unx9134_checks as fn() -> CheckSet),
+        ("UNX-F9135", unx9135_oom_enomem::run_unx9135_checks as fn() -> CheckSet),
+        ("UNX-F9136", unx9136_addr_length::run_unx9136_checks as fn() -> CheckSet),
+        ("UNX-F9137", unx9137_glibc_malloc::run_unx9137_checks as fn() -> CheckSet),
+        ("UNX-F9138", unx9138_sys::run_unx9138_checks as fn() -> CheckSet),
+        ("UNX-F9139", unx9139_windows_virtualalloc::run_unx9139_checks as fn() -> CheckSet),
+        ("UNX-F9140", unx9140_ktest_syscall_b17::run_unx9140_checks as fn() -> CheckSet),
+        ("UNX-F9141", unx9141_wait4::run_unx9141_checks as fn() -> CheckSet),
+        ("UNX-F9142", unx9142_waitpid_wait3_wnohang_wunt::run_unx9142_checks as fn() -> CheckSet),
+        ("UNX-F9143", unx9143_waitid_p_pid_p_pgid_p_all::run_unx9143_checks as fn() -> CheckSet),
+        ("UNX-F9144", unx9144_exitstatus::run_unx9144_checks as fn() -> CheckSet),
+        ("UNX-F9145", unx9145_wait_echild_eintr_einval::run_unx9145_checks as fn() -> CheckSet),
+        ("UNX-F9146", unx9146_setpgid_getpgid::run_unx9146_checks as fn() -> CheckSet),
+        ("UNX-F9147", unx9147_setsid::run_unx9147_checks as fn() -> CheckSet),
+        ("UNX-F9148", unx9148_getppid_set_tid_address::run_unx9148_checks as fn() -> CheckSet),
+        ("UNX-F9149", unx9149_vfork::run_unx9149_checks as fn() -> CheckSet),
+        ("UNX-F9150", unx9150_execve_c1::run_unx9150_checks as fn() -> CheckSet),
+        ("UNX-F9151", unx9151_execveat_at_empty_path_at_::run_unx9151_checks as fn() -> CheckSet),
+        ("UNX-F9152", unx9152_c4::run_unx9152_checks as fn() -> CheckSet),
+        ("UNX-F9153", unx9153_init::run_unx9153_checks as fn() -> CheckSet),
+        ("UNX-F9154", unx9154_wait_sigchld::run_unx9154_checks as fn() -> CheckSet),
+        ("UNX-F9155", unx9155_esrch_eperm::run_unx9155_checks as fn() -> CheckSet),
+        ("UNX-F9156", unx9156_sys::run_unx9156_checks as fn() -> CheckSet),
+        ("UNX-F9157", unx9157_wait_shell::run_unx9157_checks as fn() -> CheckSet),
+        ("UNX-F9158", unx9158_proc::run_unx9158_checks as fn() -> CheckSet),
+        ("UNX-F9159", unx9159_windows_waitforsingleobjec::run_unx9159_checks as fn() -> CheckSet),
+        ("UNX-F9160", unx9160_ktest_syscall_b18::run_unx9160_checks as fn() -> CheckSet),
+        ("UNX-F9161", unx9161_setrlimit_getrlimit_rlimit::run_unx9161_checks as fn() -> CheckSet),
+        ("UNX-F9162", unx9162_rlimit_nofile_core_stack::run_unx9162_checks as fn() -> CheckSet),
+        ("UNX-F9163", unx9163_rlimit_as_data_rss::run_unx9163_checks as fn() -> CheckSet),
+        ("UNX-F9164", unx9164_rlimit_cpu_nproc_sigpendin::run_unx9164_checks as fn() -> CheckSet),
+        ("UNX-F9165", unx9165_rlimit_fsize_locks_msgqueu::run_unx9165_checks as fn() -> CheckSet),
+        ("UNX-F9166", unx9166_prlimit64_setrlimit_abi::run_unx9166_checks as fn() -> CheckSet),
+        ("UNX-F9167", unx9167_einval_eperm_enomem::run_unx9167_checks as fn() -> CheckSet),
+        ("UNX-F9168", unx9168_rlim_infinity::run_unx9168_checks as fn() -> CheckSet),
+        ("UNX-F9169", unx9169_setpriority_getpriority_ni::run_unx9169_checks as fn() -> CheckSet),
+        ("UNX-F9170", unx9170_eacces_eperm::run_unx9170_checks as fn() -> CheckSet),
+        ("UNX-F9171", unx9171_sched_yield_a1::run_unx9171_checks as fn() -> CheckSet),
+        ("UNX-F9172", unx9172_times_tms_clk_tck::run_unx9172_checks as fn() -> CheckSet),
+        ("UNX-F9173", unx9173_getrusage_children_wait::run_unx9173_checks as fn() -> CheckSet),
+        ("UNX-F9174", unx9174_a2::run_unx9174_checks as fn() -> CheckSet),
+        ("UNX-F9175", unx9175_sys::run_unx9175_checks as fn() -> CheckSet),
+        ("UNX-F9176", unx9176_shell_ulimit::run_unx9176_checks as fn() -> CheckSet),
+        ("UNX-F9177", unx9177_sys::run_unx9177_checks as fn() -> CheckSet),
+        ("UNX-F9178", unx9178_windows::run_unx9178_checks as fn() -> CheckSet),
+        ("UNX-F9179", unx9179_getrusage_rusage_self_b15::run_unx9179_checks as fn() -> CheckSet),
+        ("UNX-F9180", unx9180_ktest_syscall_b19::run_unx9180_checks as fn() -> CheckSet),
+        ("UNX-F9181", unx9181_setuid_setreuid::run_unx9181_checks as fn() -> CheckSet),
+        ("UNX-F9182", unx9182_setresuid_setfsuid::run_unx9182_checks as fn() -> CheckSet),
+        ("UNX-F9183", unx9183_setgid_setregid_setresgid::run_unx9183_checks as fn() -> CheckSet),
+        ("UNX-F9184", unx9184_eperm::run_unx9184_checks as fn() -> CheckSet),
+        ("UNX-F9185", unx9185_getgroups_setgroups::run_unx9185_checks as fn() -> CheckSet),
+        ("UNX-F9186", unx9186_umask::run_unx9186_checks as fn() -> CheckSet),
+        ("UNX-F9187", unx9187_b5::run_unx9187_checks as fn() -> CheckSet),
+        ("UNX-F9188", unx9188_nanosleep_timespec::run_unx9188_checks as fn() -> CheckSet),
+        ("UNX-F9189", unx9189_nanosleep_eintr_remaining::run_unx9189_checks as fn() -> CheckSet),
+        ("UNX-F9190", unx9190_clock_nanosleep_timer_abst::run_unx9190_checks as fn() -> CheckSet),
+        ("UNX-F9191", unx9191_a2::run_unx9191_checks as fn() -> CheckSet),
+        ("UNX-F9192", unx9192_a2_jitter::run_unx9192_checks as fn() -> CheckSet),
+        ("UNX-F9193", unx9193_c1::run_unx9193_checks as fn() -> CheckSet),
+        ("UNX-F9194", unx9194_einval_enomem::run_unx9194_checks as fn() -> CheckSet),
+        ("UNX-F9195", unx9195_setuid_execve_s::run_unx9195_checks as fn() -> CheckSet),
+        ("UNX-F9196", unx9196_sys::run_unx9196_checks as fn() -> CheckSet),
+        ("UNX-F9197", unx9197_shell_sleep::run_unx9197_checks as fn() -> CheckSet),
+        ("UNX-F9198", unx9198_b5::run_unx9198_checks as fn() -> CheckSet),
+        ("UNX-F9199", unx9199_windows::run_unx9199_checks as fn() -> CheckSet),
+        ("UNX-F9200", unx9200_ktest_syscall_b20_m::run_unx9200_checks as fn() -> CheckSet),
+        ("UNX-F9201", unx9201_e::run_unx9201_checks as fn() -> CheckSet),
+        ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
+        ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
+        ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
+        ("UNX-F24004", unx24004_kmd_pci::run_unx24004_checks as fn() -> CheckSet),
+        ("UNX-F24005", unx24005_kmd_pci::run_unx24005_checks as fn() -> CheckSet),
+        ("UNX-F24006", unx24006_kmd_pci::run_unx24006_checks as fn() -> CheckSet),
+        ("UNX-F24007", unx24007_kmd_pci::run_unx24007_checks as fn() -> CheckSet),
+        ("UNX-F24008", unx24008_kmd_pci::run_unx24008_checks as fn() -> CheckSet),
+        ("UNX-F24009", unx24009_kmd_pci::run_unx24009_checks as fn() -> CheckSet),
+        ("UNX-F24010", unx24010_kmd_pci::run_unx24010_checks as fn() -> CheckSet),
+        ("UNX-F24011", unx24011_kmd_pci::run_unx24011_checks as fn() -> CheckSet),
+        ("UNX-F24012", unx24012_kmd_pci::run_unx24012_checks as fn() -> CheckSet),
+        ("UNX-F24013", unx24013_kmd_pci::run_unx24013_checks as fn() -> CheckSet),
+        ("UNX-F24014", unx24014_kmd_pci::run_unx24014_checks as fn() -> CheckSet),
+        ("UNX-F24015", unx24015_kmd_pci::run_unx24015_checks as fn() -> CheckSet),
+        ("UNX-F24016", unx24016_kmd_pci::run_unx24016_checks as fn() -> CheckSet),
+        ("UNX-F24017", unx24017_kmd_pci::run_unx24017_checks as fn() -> CheckSet),
+        ("UNX-F24018", unx24018_kmd_pci::run_unx24018_checks as fn() -> CheckSet),
+        ("UNX-F24019", unx24019_kmd_pci::run_unx24019_checks as fn() -> CheckSet),
+        ("UNX-F24020", unx24020_kmd_pci::run_unx24020_checks as fn() -> CheckSet),
+        ("UNX-F24021", unx24021_dev_mmio::run_unx24021_checks as fn() -> CheckSet),
+        ("UNX-F24022", unx24022_dev_mmio::run_unx24022_checks as fn() -> CheckSet),
+        ("UNX-F24023", unx24023_dev_mmio::run_unx24023_checks as fn() -> CheckSet),
+        ("UNX-F24024", unx24024_dev_mmio::run_unx24024_checks as fn() -> CheckSet),
+        ("UNX-F24025", unx24025_dev_mmio::run_unx24025_checks as fn() -> CheckSet),
+        ("UNX-F24026", unx24026_dev_mmio::run_unx24026_checks as fn() -> CheckSet),
+        ("UNX-F24027", unx24027_dev_mmio::run_unx24027_checks as fn() -> CheckSet),
+        ("UNX-F24028", unx24028_dev_mmio::run_unx24028_checks as fn() -> CheckSet),
+        ("UNX-F24029", unx24029_dev_mmio::run_unx24029_checks as fn() -> CheckSet),
+        ("UNX-F24030", unx24030_dev_mmio::run_unx24030_checks as fn() -> CheckSet),
+        ("UNX-F24031", unx24031_dev_mmio::run_unx24031_checks as fn() -> CheckSet),
+        ("UNX-F24032", unx24032_dev_mmio::run_unx24032_checks as fn() -> CheckSet),
+        ("UNX-F24033", unx24033_dev_mmio::run_unx24033_checks as fn() -> CheckSet),
+        ("UNX-F24034", unx24034_dev_mmio::run_unx24034_checks as fn() -> CheckSet),
+        ("UNX-F24035", unx24035_dev_mmio::run_unx24035_checks as fn() -> CheckSet),
+        ("UNX-F24036", unx24036_dev_mmio::run_unx24036_checks as fn() -> CheckSet),
+        ("UNX-F24037", unx24037_dev_mmio::run_unx24037_checks as fn() -> CheckSet),
+        ("UNX-F24038", unx24038_dev_mmio::run_unx24038_checks as fn() -> CheckSet),
+        ("UNX-F24039", unx24039_dev_mmio::run_unx24039_checks as fn() -> CheckSet),
+        ("UNX-F24040", unx24040_dev_mmio::run_unx24040_checks as fn() -> CheckSet),
+        ("UNX-F24041", unx24041_drv_pmops::run_unx24041_checks as fn() -> CheckSet),
+        ("UNX-F24042", unx24042_drv_pmops::run_unx24042_checks as fn() -> CheckSet),
+        ("UNX-F24043", unx24043_drv_pmops::run_unx24043_checks as fn() -> CheckSet),
+        ("UNX-F24044", unx24044_drv_pmops::run_unx24044_checks as fn() -> CheckSet),
+        ("UNX-F24045", unx24045_drv_pmops::run_unx24045_checks as fn() -> CheckSet),
+        ("UNX-F24046", unx24046_drv_pmops::run_unx24046_checks as fn() -> CheckSet),
+        ("UNX-F24047", unx24047_drv_pmops::run_unx24047_checks as fn() -> CheckSet),
+        ("UNX-F24048", unx24048_drv_pmops::run_unx24048_checks as fn() -> CheckSet),
+        ("UNX-F24049", unx24049_drv_pmops::run_unx24049_checks as fn() -> CheckSet),
+        ("UNX-F24050", unx24050_drv_pmops::run_unx24050_checks as fn() -> CheckSet),
+        ("UNX-F24051", unx24051_drv_pmops::run_unx24051_checks as fn() -> CheckSet),
+        ("UNX-F24052", unx24052_drv_pmops::run_unx24052_checks as fn() -> CheckSet),
+        ("UNX-F24053", unx24053_drv_pmops::run_unx24053_checks as fn() -> CheckSet),
+        ("UNX-F24054", unx24054_drv_pmops::run_unx24054_checks as fn() -> CheckSet),
+        ("UNX-F24055", unx24055_drv_pmops::run_unx24055_checks as fn() -> CheckSet),
+        ("UNX-F24056", unx24056_drv_pmops::run_unx24056_checks as fn() -> CheckSet),
+        ("UNX-F24057", unx24057_drv_pmops::run_unx24057_checks as fn() -> CheckSet),
+        ("UNX-F24058", unx24058_drv_pmops::run_unx24058_checks as fn() -> CheckSet),
+        ("UNX-F24059", unx24059_drv_pmops::run_unx24059_checks as fn() -> CheckSet),
+        ("UNX-F24060", unx24060_drv_pmops::run_unx24060_checks as fn() -> CheckSet),
+        ("UNX-F24061", unx24061_gem_obj::run_unx24061_checks as fn() -> CheckSet),
+        ("UNX-F24062", unx24062_gem_obj::run_unx24062_checks as fn() -> CheckSet),
+        ("UNX-F24063", unx24063_gem_obj::run_unx24063_checks as fn() -> CheckSet),
+        ("UNX-F24064", unx24064_gem_obj::run_unx24064_checks as fn() -> CheckSet),
+        ("UNX-F24065", unx24065_gem_obj::run_unx24065_checks as fn() -> CheckSet),
+        ("UNX-F24066", unx24066_gem_obj::run_unx24066_checks as fn() -> CheckSet),
+        ("UNX-F24067", unx24067_gem_obj::run_unx24067_checks as fn() -> CheckSet),
+        ("UNX-F24068", unx24068_gem_obj::run_unx24068_checks as fn() -> CheckSet),
+        ("UNX-F24069", unx24069_gem_obj::run_unx24069_checks as fn() -> CheckSet),
+        ("UNX-F24070", unx24070_gem_obj::run_unx24070_checks as fn() -> CheckSet),
+        ("UNX-F24071", unx24071_gem_obj::run_unx24071_checks as fn() -> CheckSet),
+        ("UNX-F24072", unx24072_gem_obj::run_unx24072_checks as fn() -> CheckSet),
+        ("UNX-F24073", unx24073_gem_obj::run_unx24073_checks as fn() -> CheckSet),
+        ("UNX-F24074", unx24074_gem_obj::run_unx24074_checks as fn() -> CheckSet),
+        ("UNX-F24075", unx24075_gem_obj::run_unx24075_checks as fn() -> CheckSet),
+        ("UNX-F24076", unx24076_gem_obj::run_unx24076_checks as fn() -> CheckSet),
+        ("UNX-F24077", unx24077_gem_obj::run_unx24077_checks as fn() -> CheckSet),
+        ("UNX-F24078", unx24078_gem_obj::run_unx24078_checks as fn() -> CheckSet),
+        ("UNX-F24079", unx24079_gem_obj::run_unx24079_checks as fn() -> CheckSet),
+        ("UNX-F24080", unx24080_gem_obj::run_unx24080_checks as fn() -> CheckSet),
+        ("UNX-F24081", unx24081_vram_buddy::run_unx24081_checks as fn() -> CheckSet),
+        ("UNX-F24082", unx24082_vram_buddy::run_unx24082_checks as fn() -> CheckSet),
+        ("UNX-F24083", unx24083_vram_buddy::run_unx24083_checks as fn() -> CheckSet),
+        ("UNX-F24084", unx24084_vram_buddy::run_unx24084_checks as fn() -> CheckSet),
+        ("UNX-F24085", unx24085_vram_buddy::run_unx24085_checks as fn() -> CheckSet),
+        ("UNX-F24086", unx24086_vram_buddy::run_unx24086_checks as fn() -> CheckSet),
+        ("UNX-F24087", unx24087_vram_buddy::run_unx24087_checks as fn() -> CheckSet),
+        ("UNX-F24088", unx24088_vram_buddy::run_unx24088_checks as fn() -> CheckSet),
+        ("UNX-F24089", unx24089_vram_buddy::run_unx24089_checks as fn() -> CheckSet),
+        ("UNX-F24090", unx24090_vram_buddy::run_unx24090_checks as fn() -> CheckSet),
+        ("UNX-F24091", unx24091_vram_buddy::run_unx24091_checks as fn() -> CheckSet),
+        ("UNX-F24092", unx24092_vram_buddy::run_unx24092_checks as fn() -> CheckSet),
+        ("UNX-F24093", unx24093_vram_buddy::run_unx24093_checks as fn() -> CheckSet),
+        ("UNX-F24094", unx24094_vram_buddy::run_unx24094_checks as fn() -> CheckSet),
+        ("UNX-F24095", unx24095_vram_buddy::run_unx24095_checks as fn() -> CheckSet),
+        ("UNX-F24096", unx24096_vram_buddy::run_unx24096_checks as fn() -> CheckSet),
+        ("UNX-F24097", unx24097_vram_buddy::run_unx24097_checks as fn() -> CheckSet),
+        ("UNX-F24098", unx24098_vram_buddy::run_unx24098_checks as fn() -> CheckSet),
+        ("UNX-F24099", unx24099_vram_buddy::run_unx24099_checks as fn() -> CheckSet),
+        ("UNX-F24100", unx24100_vram_buddy::run_unx24100_checks as fn() -> CheckSet),
+        ("UNX-F24101", unx24101_gtt_map::run_unx24101_checks as fn() -> CheckSet),
+        ("UNX-F24102", unx24102_gtt_map::run_unx24102_checks as fn() -> CheckSet),
+        ("UNX-F24103", unx24103_gtt_map::run_unx24103_checks as fn() -> CheckSet),
+        ("UNX-F24104", unx24104_gtt_map::run_unx24104_checks as fn() -> CheckSet),
+        ("UNX-F24105", unx24105_gtt_map::run_unx24105_checks as fn() -> CheckSet),
+        ("UNX-F24106", unx24106_gtt_map::run_unx24106_checks as fn() -> CheckSet),
+        ("UNX-F24107", unx24107_gtt_map::run_unx24107_checks as fn() -> CheckSet),
+        ("UNX-F24108", unx24108_gtt_map::run_unx24108_checks as fn() -> CheckSet),
+        ("UNX-F24109", unx24109_gtt_map::run_unx24109_checks as fn() -> CheckSet),
+        ("UNX-F24110", unx24110_gtt_map::run_unx24110_checks as fn() -> CheckSet),
+        ("UNX-F24111", unx24111_gtt_map::run_unx24111_checks as fn() -> CheckSet),
+        ("UNX-F24112", unx24112_gtt_map::run_unx24112_checks as fn() -> CheckSet),
+        ("UNX-F24113", unx24113_gtt_map::run_unx24113_checks as fn() -> CheckSet),
+        ("UNX-F24114", unx24114_gtt_map::run_unx24114_checks as fn() -> CheckSet),
+        ("UNX-F24115", unx24115_gtt_map::run_unx24115_checks as fn() -> CheckSet),
+        ("UNX-F24116", unx24116_gtt_map::run_unx24116_checks as fn() -> CheckSet),
+        ("UNX-F24117", unx24117_gtt_map::run_unx24117_checks as fn() -> CheckSet),
+        ("UNX-F24118", unx24118_gtt_map::run_unx24118_checks as fn() -> CheckSet),
+        ("UNX-F24119", unx24119_gtt_map::run_unx24119_checks as fn() -> CheckSet),
+        ("UNX-F24120", unx24120_gtt_map::run_unx24120_checks as fn() -> CheckSet),
+        ("UNX-F24121", unx24121_evict_lru::run_unx24121_checks as fn() -> CheckSet),
+        ("UNX-F24122", unx24122_evict_lru::run_unx24122_checks as fn() -> CheckSet),
+        ("UNX-F24123", unx24123_evict_lru::run_unx24123_checks as fn() -> CheckSet),
+        ("UNX-F24124", unx24124_evict_lru::run_unx24124_checks as fn() -> CheckSet),
+        ("UNX-F24125", unx24125_evict_lru::run_unx24125_checks as fn() -> CheckSet),
+        ("UNX-F24126", unx24126_evict_lru::run_unx24126_checks as fn() -> CheckSet),
+        ("UNX-F24127", unx24127_evict_lru::run_unx24127_checks as fn() -> CheckSet),
+        ("UNX-F24128", unx24128_evict_lru::run_unx24128_checks as fn() -> CheckSet),
+        ("UNX-F24129", unx24129_evict_lru::run_unx24129_checks as fn() -> CheckSet),
+        ("UNX-F24130", unx24130_evict_lru::run_unx24130_checks as fn() -> CheckSet),
+        ("UNX-F24131", unx24131_evict_lru::run_unx24131_checks as fn() -> CheckSet),
+        ("UNX-F24132", unx24132_evict_lru::run_unx24132_checks as fn() -> CheckSet),
+        ("UNX-F24133", unx24133_evict_lru::run_unx24133_checks as fn() -> CheckSet),
+        ("UNX-F24134", unx24134_evict_lru::run_unx24134_checks as fn() -> CheckSet),
+        ("UNX-F24135", unx24135_evict_lru::run_unx24135_checks as fn() -> CheckSet),
+        ("UNX-F24136", unx24136_evict_lru::run_unx24136_checks as fn() -> CheckSet),
+        ("UNX-F24137", unx24137_evict_lru::run_unx24137_checks as fn() -> CheckSet),
+        ("UNX-F24138", unx24138_evict_lru::run_unx24138_checks as fn() -> CheckSet),
+        ("UNX-F24139", unx24139_evict_lru::run_unx24139_checks as fn() -> CheckSet),
+        ("UNX-F24140", unx24140_evict_lru::run_unx24140_checks as fn() -> CheckSet),
+        ("UNX-F24141", unx24141_resv_lock::run_unx24141_checks as fn() -> CheckSet),
+        ("UNX-F24142", unx24142_resv_lock::run_unx24142_checks as fn() -> CheckSet),
+        ("UNX-F24143", unx24143_resv_lock::run_unx24143_checks as fn() -> CheckSet),
+        ("UNX-F24144", unx24144_resv_lock::run_unx24144_checks as fn() -> CheckSet),
+        ("UNX-F24145", unx24145_resv_lock::run_unx24145_checks as fn() -> CheckSet),
+        ("UNX-F24146", unx24146_resv_lock::run_unx24146_checks as fn() -> CheckSet),
+        ("UNX-F24147", unx24147_resv_lock::run_unx24147_checks as fn() -> CheckSet),
+        ("UNX-F24148", unx24148_resv_lock::run_unx24148_checks as fn() -> CheckSet),
+        ("UNX-F24149", unx24149_resv_lock::run_unx24149_checks as fn() -> CheckSet),
+        ("UNX-F24150", unx24150_resv_lock::run_unx24150_checks as fn() -> CheckSet),
+        ("UNX-F24151", unx24151_resv_lock::run_unx24151_checks as fn() -> CheckSet),
+        ("UNX-F24152", unx24152_resv_lock::run_unx24152_checks as fn() -> CheckSet),
+        ("UNX-F24153", unx24153_resv_lock::run_unx24153_checks as fn() -> CheckSet),
+        ("UNX-F24154", unx24154_resv_lock::run_unx24154_checks as fn() -> CheckSet),
+        ("UNX-F24155", unx24155_resv_lock::run_unx24155_checks as fn() -> CheckSet),
+        ("UNX-F24156", unx24156_resv_lock::run_unx24156_checks as fn() -> CheckSet),
+        ("UNX-F24157", unx24157_resv_lock::run_unx24157_checks as fn() -> CheckSet),
+        ("UNX-F24158", unx24158_resv_lock::run_unx24158_checks as fn() -> CheckSet),
+        ("UNX-F24159", unx24159_resv_lock::run_unx24159_checks as fn() -> CheckSet),
+        ("UNX-F24160", unx24160_resv_lock::run_unx24160_checks as fn() -> CheckSet),
+        ("UNX-F24161", unx24161_msix_irq::run_unx24161_checks as fn() -> CheckSet),
+        ("UNX-F24162", unx24162_msix_irq::run_unx24162_checks as fn() -> CheckSet),
+        ("UNX-F24163", unx24163_msix_irq::run_unx24163_checks as fn() -> CheckSet),
+        ("UNX-F24164", unx24164_msix_irq::run_unx24164_checks as fn() -> CheckSet),
+        ("UNX-F24165", unx24165_msix_irq::run_unx24165_checks as fn() -> CheckSet),
+        ("UNX-F24166", unx24166_msix_irq::run_unx24166_checks as fn() -> CheckSet),
+        ("UNX-F24167", unx24167_msix_irq::run_unx24167_checks as fn() -> CheckSet),
+        ("UNX-F24168", unx24168_msix_irq::run_unx24168_checks as fn() -> CheckSet),
+        ("UNX-F24169", unx24169_msix_irq::run_unx24169_checks as fn() -> CheckSet),
+        ("UNX-F24170", unx24170_msix_irq::run_unx24170_checks as fn() -> CheckSet),
+        ("UNX-F24171", unx24171_msix_irq::run_unx24171_checks as fn() -> CheckSet),
+        ("UNX-F24172", unx24172_msix_irq::run_unx24172_checks as fn() -> CheckSet),
+        ("UNX-F24173", unx24173_msix_irq::run_unx24173_checks as fn() -> CheckSet),
+        ("UNX-F24174", unx24174_msix_irq::run_unx24174_checks as fn() -> CheckSet),
+        ("UNX-F24175", unx24175_msix_irq::run_unx24175_checks as fn() -> CheckSet),
+        ("UNX-F24176", unx24176_msix_irq::run_unx24176_checks as fn() -> CheckSet),
+        ("UNX-F24177", unx24177_msix_irq::run_unx24177_checks as fn() -> CheckSet),
+        ("UNX-F24178", unx24178_msix_irq::run_unx24178_checks as fn() -> CheckSet),
+        ("UNX-F24179", unx24179_msix_irq::run_unx24179_checks as fn() -> CheckSet),
+        ("UNX-F24180", unx24180_msix_irq::run_unx24180_checks as fn() -> CheckSet),
+        ("UNX-F24181", unx24181_vblank_hpd::run_unx24181_checks as fn() -> CheckSet),
+        ("UNX-F24182", unx24182_vblank_hpd::run_unx24182_checks as fn() -> CheckSet),
+        ("UNX-F24183", unx24183_vblank_hpd::run_unx24183_checks as fn() -> CheckSet),
+        ("UNX-F24184", unx24184_vblank_hpd::run_unx24184_checks as fn() -> CheckSet),
+        ("UNX-F24185", unx24185_vblank_hpd::run_unx24185_checks as fn() -> CheckSet),
+        ("UNX-F24186", unx24186_vblank_hpd::run_unx24186_checks as fn() -> CheckSet),
+        ("UNX-F24187", unx24187_vblank_hpd::run_unx24187_checks as fn() -> CheckSet),
+        ("UNX-F24188", unx24188_vblank_hpd::run_unx24188_checks as fn() -> CheckSet),
+        ("UNX-F24189", unx24189_vblank_hpd::run_unx24189_checks as fn() -> CheckSet),
+        ("UNX-F24190", unx24190_vblank_hpd::run_unx24190_checks as fn() -> CheckSet),
+        ("UNX-F24191", unx24191_vblank_hpd::run_unx24191_checks as fn() -> CheckSet),
+        ("UNX-F24192", unx24192_vblank_hpd::run_unx24192_checks as fn() -> CheckSet),
+        ("UNX-F24193", unx24193_vblank_hpd::run_unx24193_checks as fn() -> CheckSet),
+        ("UNX-F24194", unx24194_vblank_hpd::run_unx24194_checks as fn() -> CheckSet),
+        ("UNX-F24195", unx24195_vblank_hpd::run_unx24195_checks as fn() -> CheckSet),
+        ("UNX-F24196", unx24196_vblank_hpd::run_unx24196_checks as fn() -> CheckSet),
+        ("UNX-F24197", unx24197_vblank_hpd::run_unx24197_checks as fn() -> CheckSet),
+        ("UNX-F24198", unx24198_vblank_hpd::run_unx24198_checks as fn() -> CheckSet),
+        ("UNX-F24199", unx24199_vblank_hpd::run_unx24199_checks as fn() -> CheckSet),
+        ("UNX-F24200", unx24200_vblank_hpd::run_unx24200_checks as fn() -> CheckSet),
     ]
 }
 
@@ -862,7 +1567,7 @@ pub fn unxstar_blocks() -> [(&'static str, fn() -> CheckSet); 353] {
 /// 属「为治一域而劳师动众」。二级折叠是局部解，且本域已有先例
 /// （`run_wb21_unx20` / `run_wb22_unx22` / `run_unx21_batch` 本身就是
 /// 二级折叠族）。
-pub fn unxstar_secondary_blocks() -> [(&'static str, fn() -> CheckSet); 294] {
+pub fn unxstar_secondary_blocks() -> [(&'static str, fn() -> CheckSet); 944] {
     [
         ("UNX-F0082", run_unx20_t082 as fn() -> CheckSet),
         ("UNX-F0123", run_unx20_t126 as fn() -> CheckSet),
@@ -1158,6 +1863,656 @@ pub fn unxstar_secondary_blocks() -> [(&'static str, fn() -> CheckSet); 294] {
         ("UNX-F0574", unx0574_loadbal::run_unx0574_checks as fn() -> CheckSet),
         ("UNX-F0575", unx0575_schedtick::run_unx0575_checks as fn() -> CheckSet),
         ("UNX-F0576", unx0576_schedclose::run_unx0576_checks as fn() -> CheckSet),
+        ("UNX-F56001", unx56001_envfreeze::run_unx56001_checks as fn() -> CheckSet),
+        ("UNX-F56002", unx56002_envhash::run_unx56002_checks as fn() -> CheckSet),
+        ("UNX-F56003", unx56003_probegate::run_unx56003_checks as fn() -> CheckSet),
+        ("UNX-F56004", unx56004_dualtopo::run_unx56004_checks as fn() -> CheckSet),
+        ("UNX-F56005", unx56005_fwanchor::run_unx56005_checks as fn() -> CheckSet),
+        ("UNX-F56006", unx56006_powerfreeze::run_unx56006_checks as fn() -> CheckSet),
+        ("UNX-F56007", unx56007_proclist::run_unx56007_checks as fn() -> CheckSet),
+        ("UNX-F56008", unx56008_fslayout::run_unx56008_checks as fn() -> CheckSet),
+        ("UNX-F56009", unx56009_tsccalib::run_unx56009_checks as fn() -> CheckSet),
+        ("UNX-F56010", unx56010_winrecord::run_unx56010_checks as fn() -> CheckSet),
+        ("UNX-F56011", unx56011_rerunflow::run_unx56011_checks as fn() -> CheckSet),
+        ("UNX-F56012", unx56012_updwin::run_unx56012_checks as fn() -> CheckSet),
+        ("UNX-F56013", unx56013_rejectaudit::run_unx56013_checks as fn() -> CheckSet),
+        ("UNX-F56014", unx56014_perisilence::run_unx56014_checks as fn() -> CheckSet),
+        ("UNX-F56016", unx56016_envctl::run_unx56016_checks as fn() -> CheckSet),
+        ("UNX-F56017", unx56017_equivbook::run_unx56017_checks as fn() -> CheckSet),
+        ("UNX-F56018", unx56018_frozendoc::run_unx56018_checks as fn() -> CheckSet),
+        ("UNX-F56019", unx56019_probecheck::run_unx56019_checks as fn() -> CheckSet),
+        ("UNX-F56020", unx56020_b01seal::run_unx56020_checks as fn() -> CheckSet),
+        ("UNX-F56021", unx56021_sysdelay::run_unx56021_checks as fn() -> CheckSet),
+        ("UNX-F56022", unx56022_getpidbench::run_unx56022_checks as fn() -> CheckSet),
+        ("UNX-F56023", unx56023_rwbench::run_unx56023_checks as fn() -> CheckSet),
+        ("UNX-F56024", unx56024_mmapbench::run_unx56024_checks as fn() -> CheckSet),
+        ("UNX-F56025", unx56025_ctxbench::run_unx56025_checks as fn() -> CheckSet),
+        ("UNX-F56026", unx56026_migfilter::run_unx56026_checks as fn() -> CheckSet),
+        ("UNX-F56027", unx56027_warmwin::run_unx56027_checks as fn() -> CheckSet),
+        ("UNX-F56028", unx56028_outlier::run_unx56028_checks as fn() -> CheckSet),
+        ("UNX-F56029", unx56029_segstats::run_unx56029_checks as fn() -> CheckSet),
+        ("UNX-F56030", unx56030_ntapimap::run_unx56030_checks as fn() -> CheckSet),
+        ("UNX-F56031", unx56031_selfisolate::run_unx56031_checks as fn() -> CheckSet),
+        ("UNX-F56032", unx56032_irqcomply::run_unx56032_checks as fn() -> CheckSet),
+        ("UNX-F56033", unx56033_samplearch::run_unx56033_checks as fn() -> CheckSet),
+        ("UNX-F56034", unx56034_dualorch::run_unx56034_checks as fn() -> CheckSet),
+        ("UNX-F56035", unx56035_cmpgen::run_unx56035_checks as fn() -> CheckSet),
+        ("UNX-F56036", unx56036_verdict::run_unx56036_checks as fn() -> CheckSet),
+        ("UNX-F56037", unx56037_failtrace::run_unx56037_checks as fn() -> CheckSet),
+        ("UNX-F56038", unx56038_loadfreeze::run_unx56038_checks as fn() -> CheckSet),
+        ("UNX-F56039", unx56039_o2prelink::run_unx56039_checks as fn() -> CheckSet),
+        ("UNX-F56040", unx56040_b02seal::run_unx56040_checks as fn() -> CheckSet),
+        ("UNX-F56041", unx56041_bootfive::run_unx56041_checks as fn() -> CheckSet),
+        ("UNX-F56042", unx56042_bootstub::run_unx56042_checks as fn() -> CheckSet),
+        ("UNX-F56043", unx56043_kernfirst::run_unx56043_checks as fn() -> CheckSet),
+        ("UNX-F56044", unx56044_loginfirst::run_unx56044_checks as fn() -> CheckSet),
+        ("UNX-F56045", unx56045_deskfirst::run_unx56045_checks as fn() -> CheckSet),
+        ("UNX-F56046", unx56046_clickready::run_unx56046_checks as fn() -> CheckSet),
+        ("UNX-F56047", unx56047_sumcheck::run_unx56047_checks as fn() -> CheckSet),
+        ("UNX-F56068", unx56068_clockbase::run_unx56068_checks as fn() -> CheckSet),
+        ("UNX-F56069", unx56069_procgroup::run_unx56069_checks as fn() -> CheckSet),
+        ("UNX-F56070", unx56070_o2memcalib::run_unx56070_checks as fn() -> CheckSet),
+        ("UNX-F56071", unx56071_memsnapaudit::run_unx56071_checks as fn() -> CheckSet),
+        ("UNX-F56072", unx56072_memnadisc::run_unx56072_checks as fn() -> CheckSet),
+        ("UNX-F56073", unx56073_memfailtrace::run_unx56073_checks as fn() -> CheckSet),
+        ("UNX-F56074", unx56074_memduo::run_unx56074_checks as fn() -> CheckSet),
+        ("UNX-F56075", unx56075_memrowvault::run_unx56075_checks as fn() -> CheckSet),
+        ("UNX-F56076", unx56076_hugepage::run_unx56076_checks as fn() -> CheckSet),
+        ("UNX-F56077", unx56077_memlowpct::run_unx56077_checks as fn() -> CheckSet),
+        ("UNX-F56078", unx56078_memprotocol::run_unx56078_checks as fn() -> CheckSet),
+        ("UNX-F56079", unx56079_memdemo::run_unx56079_checks as fn() -> CheckSet),
+        ("UNX-F56080", unx56080_b04seal::run_unx56080_checks as fn() -> CheckSet),
+        ("UNX-F56081", unx56081_colliface::run_unx56081_checks as fn() -> CheckSet),
+        ("UNX-F56082", unx56082_collreg::run_unx56082_checks as fn() -> CheckSet),
+        ("UNX-F56083", unx56083_pipesched::run_unx56083_checks as fn() -> CheckSet),
+        ("UNX-F56084", unx56084_windowlock::run_unx56084_checks as fn() -> CheckSet),
+        ("UNX-F56085", unx56085_o2probeall::run_unx56085_checks as fn() -> CheckSet),
+        ("UNX-F56086", unx56086_samplegate::run_unx56086_checks as fn() -> CheckSet),
+        ("UNX-F56087", unx56087_distforce::run_unx56087_checks as fn() -> CheckSet),
+        ("UNX-F56088", unx56088_conintval::run_unx56088_checks as fn() -> CheckSet),
+        ("UNX-F56089", unx56089_envhashcmp::run_unx56089_checks as fn() -> CheckSet),
+        ("UNX-F56090", unx56090_collresume::run_unx56090_checks as fn() -> CheckSet),
+        ("UNX-F56091", unx56091_pipebeat::run_unx56091_checks as fn() -> CheckSet),
+        ("UNX-F56092", unx56092_sumchain::run_unx56092_checks as fn() -> CheckSet),
+        ("UNX-F56093", unx56093_duomaster::run_unx56093_checks as fn() -> CheckSet),
+        ("UNX-F56094", unx56094_timeslotrule::run_unx56094_checks as fn() -> CheckSet),
+        ("UNX-F56095", unx56095_loadsig::run_unx56095_checks as fn() -> CheckSet),
+        ("UNX-F56096", unx56096_schemafreeze::run_unx56096_checks as fn() -> CheckSet),
+        ("UNX-F56097", unx56097_verdictfreeze::run_unx56097_checks as fn() -> CheckSet),
+        ("UNX-F56098", unx56098_faulttree::run_unx56098_checks as fn() -> CheckSet),
+        ("UNX-F56099", unx56099_smokee2e::run_unx56099_checks as fn() -> CheckSet),
+        ("UNX-F56100", unx56100_b05seal::run_unx56100_checks as fn() -> CheckSet),
+        ("UNX-F56101", unx56101_iofivecoll::run_unx56101_checks as fn() -> CheckSet),
+        ("UNX-F56102", unx56102_iorand4kr::run_unx56102_checks as fn() -> CheckSet),
+        ("UNX-F56103", unx56103_iorand4kw::run_unx56103_checks as fn() -> CheckSet),
+        ("UNX-F56104", unx56104_ioseq1mr::run_unx56104_checks as fn() -> CheckSet),
+        ("UNX-F56105", unx56105_ioseq1mw::run_unx56105_checks as fn() -> CheckSet),
+        ("UNX-F56106", unx56106_iomix7030::run_unx56106_checks as fn() -> CheckSet),
+        ("UNX-F56107", unx56107_qdepthctrl::run_unx56107_checks as fn() -> CheckSet),
+        ("UNX-F56108", unx56108_diskprime::run_unx56108_checks as fn() -> CheckSet),
+        ("UNX-F56109", unx56109_iorowgen::run_unx56109_checks as fn() -> CheckSet),
+        ("UNX-F56110", unx56110_ioscriptlib::run_unx56110_checks as fn() -> CheckSet),
+        ("UNX-F56111", unx56111_iocleanroom::run_unx56111_checks as fn() -> CheckSet),
+        ("UNX-F56112", unx56112_ioduo::run_unx56112_checks as fn() -> CheckSet),
+        ("UNX-F56113", unx56113_iooutlier::run_unx56113_checks as fn() -> CheckSet),
+        ("UNX-F56114", unx56114_tpcurline::run_unx56114_checks as fn() -> CheckSet),
+        ("UNX-F56115", unx56115_ionadisc::run_unx56115_checks as fn() -> CheckSet),
+        ("UNX-F56116", unx56116_iofailtrace::run_unx56116_checks as fn() -> CheckSet),
+        ("UNX-F56117", unx56117_iovault::run_unx56117_checks as fn() -> CheckSet),
+        ("UNX-F56118", unx56118_iodemo::run_unx56118_checks as fn() -> CheckSet),
+        ("UNX-F56119", unx56119_ioocalib::run_unx56119_checks as fn() -> CheckSet),
+        ("UNX-F56120", unx56120_b06seal::run_unx56120_checks as fn() -> CheckSet),
+        ("UNX-F56121", unx56121_fpscoll::run_unx56121_checks as fn() -> CheckSet),
+        ("UNX-F56122", unx56122_lowpctfps::run_unx56122_checks as fn() -> CheckSet),
+        ("UNX-F56123", unx56123_fpsscenes::run_unx56123_checks as fn() -> CheckSet),
+        ("UNX-F56124", unx56124_glitchclass::run_unx56124_checks as fn() -> CheckSet),
+        ("UNX-F56125", unx56125_fpsrowgen::run_unx56125_checks as fn() -> CheckSet),
+        ("UNX-F56135", unx56135_o2framecalib::run_unx56135_checks as fn() -> CheckSet),
+        ("UNX-F56136", unx56136_bottlescan::run_unx56136_checks as fn() -> CheckSet),
+        ("UNX-F56137", unx56137_sampleledger::run_unx56137_checks as fn() -> CheckSet),
+        ("UNX-F56138", unx56138_dryrun::run_unx56138_checks as fn() -> CheckSet),
+        ("UNX-F56139", unx56139_o2reserv::run_unx56139_checks as fn() -> CheckSet),
+        ("UNX-F56140", unx56140_b07seal::run_unx56140_checks as fn() -> CheckSet),
+        ("UNX-F56141", unx56141_cmpentry::run_unx56141_checks as fn() -> CheckSet),
+        ("UNX-F56142", unx56142_appendexec::run_unx56142_checks as fn() -> CheckSet),
+        ("UNX-F56143", unx56143_verdictgate::run_unx56143_checks as fn() -> CheckSet),
+        ("UNX-F56144", unx56144_aisign::run_unx56144_checks as fn() -> CheckSet),
+        ("UNX-F56145", unx56145_envgate::run_unx56145_checks as fn() -> CheckSet),
+        ("UNX-F56146", unx56146_nagate::run_unx56146_checks as fn() -> CheckSet),
+        ("UNX-F56147", unx56147_fivemetric::run_unx56147_checks as fn() -> CheckSet),
+        ("UNX-F56148", unx56148_p95hook::run_unx56148_checks as fn() -> CheckSet),
+        ("UNX-F56149", unx56149_auditsnap::run_unx56149_checks as fn() -> CheckSet),
+        ("UNX-F56150", unx56150_discipline::run_unx56150_checks as fn() -> CheckSet),
+        ("UNX-F56151", unx56151_antidress::run_unx56151_checks as fn() -> CheckSet),
+        ("UNX-F56152", unx56152_versioning::run_unx56152_checks as fn() -> CheckSet),
+        ("UNX-F56153", unx56153_reconcile::run_unx56153_checks as fn() -> CheckSet),
+        ("UNX-F56154", unx56154_replay::run_unx56154_checks as fn() -> CheckSet),
+        ("UNX-F56155", unx56155_export::run_unx56155_checks as fn() -> CheckSet),
+        ("UNX-F56156", unx56156_f8seal::run_unx56156_checks as fn() -> CheckSet),
+        ("UNX-F56157", unx56157_dry15::run_unx56157_checks as fn() -> CheckSet),
+        ("UNX-F56158", unx56158_storagelayout::run_unx56158_checks as fn() -> CheckSet),
+        ("UNX-F56159", unx56159_healthcheck::run_unx56159_checks as fn() -> CheckSet),
+        ("UNX-F56160", unx56160_b08seal::run_unx56160_checks as fn() -> CheckSet),
+        ("UNX-F56161", unx56161_syslatagg::run_unx56161_checks as fn() -> CheckSet),
+        ("UNX-F56162", unx56162_tailpct::run_unx56162_checks as fn() -> CheckSet),
+        ("UNX-F56163", unx56163_latencyhist::run_unx56163_checks as fn() -> CheckSet),
+        ("UNX-F56164", unx56164_ctxswitch::run_unx56164_checks as fn() -> CheckSet),
+        ("UNX-F56165", unx56165_mmapdual::run_unx56165_checks as fn() -> CheckSet),
+        ("UNX-F56166", unx56166_o2calib::run_unx56166_checks as fn() -> CheckSet),
+        ("UNX-F56167", unx56167_entryprof::run_unx56167_checks as fn() -> CheckSet),
+        ("UNX-F56168", unx56168_schedwait::run_unx56168_checks as fn() -> CheckSet),
+        ("UNX-F56169", unx56169_ticketconv::run_unx56169_checks as fn() -> CheckSet),
+        ("UNX-F56170", unx56170_deeprowgen::run_unx56170_checks as fn() -> CheckSet),
+        ("UNX-F56171", unx56171_replayexec::run_unx56171_checks as fn() -> CheckSet),
+        ("UNX-F56172", unx56172_aggsnap::run_unx56172_checks as fn() -> CheckSet),
+        ("UNX-F56173", unx56173_nainstance::run_unx56173_checks as fn() -> CheckSet),
+        ("UNX-F56174", unx56174_loadscript::run_unx56174_checks as fn() -> CheckSet),
+        ("UNX-F56175", unx56175_trendwatch::run_unx56175_checks as fn() -> CheckSet),
+        ("UNX-F56176", unx56176_assembler::run_unx56176_checks as fn() -> CheckSet),
+        ("UNX-F56177", unx56177_m9health::run_unx56177_checks as fn() -> CheckSet),
+        ("UNX-F56178", unx56178_perfself::run_unx56178_checks as fn() -> CheckSet),
+        ("UNX-F56179", unx56179_archive::run_unx56179_checks as fn() -> CheckSet),
+        ("UNX-F56180", unx56180_b09seal::run_unx56180_checks as fn() -> CheckSet),
+        ("UNX-F56181", unx56181_bootlocator::run_unx56181_checks as fn() -> CheckSet),
+        ("UNX-F56182", unx56182_bootprof::run_unx56182_checks as fn() -> CheckSet),
+        ("UNX-F56183", unx56183_kernprof::run_unx56183_checks as fn() -> CheckSet),
+        ("UNX-F56184", unx56184_logondesk::run_unx56184_checks as fn() -> CheckSet),
+        ("UNX-F56185", unx56185_readyprof::run_unx56185_checks as fn() -> CheckSet),
+        ("UNX-F56186", unx56186_subdomap::run_unx56186_checks as fn() -> CheckSet),
+        ("UNX-F56187", unx56187_prolinegen::run_unx56187_checks as fn() -> CheckSet),
+        ("UNX-F56188", unx56188_winmap::run_unx56188_checks as fn() -> CheckSet),
+        ("UNX-F56189", unx56189_replay::run_unx56189_checks as fn() -> CheckSet),
+        ("UNX-F56190", unx56190_attr2fct::run_unx56190_checks as fn() -> CheckSet),
+        ("UNX-F56191", unx56191_sampdeep::run_unx56191_checks as fn() -> CheckSet),
+        ("UNX-F56192", unx56192_aggshot::run_unx56192_checks as fn() -> CheckSet),
+        ("UNX-F56193", unx56193_o2deep::run_unx56193_checks as fn() -> CheckSet),
+        ("UNX-F56194", unx56194_ledgerasm::run_unx56194_checks as fn() -> CheckSet),
+        ("UNX-F56195", unx56195_nasideep::run_unx56195_checks as fn() -> CheckSet),
+        ("UNX-F56196", unx56196_noisedeep::run_unx56196_checks as fn() -> CheckSet),
+        ("UNX-F56197", unx56197_vardeep::run_unx56197_checks as fn() -> CheckSet),
+        ("UNX-F56198", unx56198_b10body::run_unx56198_checks as fn() -> CheckSet),
+        ("UNX-F56199", unx56199_arvidx::run_unx56199_checks as fn() -> CheckSet),
+        ("UNX-F56200", unx56200_b10seal::run_unx56200_checks as fn() -> CheckSet),
+        ("UNX-F56015", unx56015_timewindow::run_unx56015_checks as fn() -> CheckSet),
+        ("UNX-F56048", unx56048_varbook::run_unx56048_checks as fn() -> CheckSet),
+        ("UNX-F56049", unx56049_winmap::run_unx56049_checks as fn() -> CheckSet),
+        ("UNX-F56050", unx56050_bootcmp::run_unx56050_checks as fn() -> CheckSet),
+        ("UNX-F56051", unx56051_coldhot::run_unx56051_checks as fn() -> CheckSet),
+        ("UNX-F56052", unx56052_bootorch::run_unx56052_checks as fn() -> CheckSet),
+        ("UNX-F56053", unx56053_bootnoise::run_unx56053_checks as fn() -> CheckSet),
+        ("UNX-F56054", unx56054_bottleneck::run_unx56054_checks as fn() -> CheckSet),
+        ("UNX-F56055", unx56055_bootarch::run_unx56055_checks as fn() -> CheckSet),
+        ("UNX-F56056", unx56056_bootload::run_unx56056_checks as fn() -> CheckSet),
+        ("UNX-F56057", unx56057_bootzero::run_unx56057_checks as fn() -> CheckSet),
+        ("UNX-F56058", unx56058_bootdoc::run_unx56058_checks as fn() -> CheckSet),
+        ("UNX-F56059", unx56059_booto2cal::run_unx56059_checks as fn() -> CheckSet),
+        ("UNX-F56060", unx56060_b03seal::run_unx56060_checks as fn() -> CheckSet),
+        ("UNX-F56061", unx56061_rssprobe::run_unx56061_checks as fn() -> CheckSet),
+        ("UNX-F56062", unx56062_mempeak::run_unx56062_checks as fn() -> CheckSet),
+        ("UNX-F56063", unx56063_driftdays::run_unx56063_checks as fn() -> CheckSet),
+        ("UNX-F56064", unx56064_pgcachehit::run_unx56064_checks as fn() -> CheckSet),
+        ("UNX-F56065", unx56065_memscript::run_unx56065_checks as fn() -> CheckSet),
+        ("UNX-F56066", unx56066_rsseq::run_unx56066_checks as fn() -> CheckSet),
+        ("UNX-F56067", unx56067_memcmp::run_unx56067_checks as fn() -> CheckSet),
+        ("UNX-F56126", unx56126_fpscosign::run_unx56126_checks as fn() -> CheckSet),
+        ("UNX-F56127", unx56127_fpsisol::run_unx56127_checks as fn() -> CheckSet),
+        ("UNX-F56128", unx56128_vrrnote::run_unx56128_checks as fn() -> CheckSet),
+        ("UNX-F56129", unx56129_resmatrix::run_unx56129_checks as fn() -> CheckSet),
+        ("UNX-F56130", unx56130_fpsoutlier::run_unx56130_checks as fn() -> CheckSet),
+        ("UNX-F56131", unx56131_fpsvault::run_unx56131_checks as fn() -> CheckSet),
+        ("UNX-F56132", unx56132_fpsnadisc::run_unx56132_checks as fn() -> CheckSet),
+        ("UNX-F56133", unx56133_fpsfailtrace::run_unx56133_checks as fn() -> CheckSet),
+        ("UNX-F56134", unx56134_fpsduo::run_unx56134_checks as fn() -> CheckSet),
+        ("UNX-F9002", unx9002_rt_sigprocmask::run_unx9002_checks as fn() -> CheckSet),
+        ("UNX-F9003", unx9003_kill_tgkill_tkill::run_unx9003_checks as fn() -> CheckSet),
+        ("UNX-F9004", unx9004_raise_pidfd_send_signal::run_unx9004_checks as fn() -> CheckSet),
+        ("UNX-F9005", unx9005_sigreturn_abi::run_unx9005_checks as fn() -> CheckSet),
+        ("UNX-F9006", unx9006_sig_dfl_sig_ign_sig_err::run_unx9006_checks as fn() -> CheckSet),
+        ("UNX-F9007", unx9007_s_131_3464::run_unx9007_checks as fn() -> CheckSet),
+        ("UNX-F9008", unx9008_rt::run_unx9008_checks as fn() -> CheckSet),
+        ("UNX-F9009", unx9009_sigkill_sigstop::run_unx9009_checks as fn() -> CheckSet),
+        ("UNX-F9010", unx9010_sigaltstack_sa_onstack::run_unx9010_checks as fn() -> CheckSet),
+        ("UNX-F9011", unx9011_sigpending_sigtimedwait_si::run_unx9011_checks as fn() -> CheckSet),
+        ("UNX-F9012", unx9012_clone_clone_sighand::run_unx9012_checks as fn() -> CheckSet),
+        ("UNX-F9013", unx9013_eintr_sa_restart::run_unx9013_checks as fn() -> CheckSet),
+        ("UNX-F9014", unx9014_guardrs_cap_sigprof_sigalr::run_unx9014_checks as fn() -> CheckSet),
+        ("UNX-F9015", unx9015_setitimer_getitimer::run_unx9015_checks as fn() -> CheckSet),
+        ("UNX-F9016", unx9016_alarm::run_unx9016_checks as fn() -> CheckSet),
+        ("UNX-F9017", unx9017_einval_esrch_eperm_ebadf::run_unx9017_checks as fn() -> CheckSet),
+        ("UNX-F9018", unx9018_signalfd_ppoll::run_unx9018_checks as fn() -> CheckSet),
+        ("UNX-F9019", unx9019_ktest::run_unx9019_checks as fn() -> CheckSet),
+        ("UNX-F9020", unx9020_ktest_syscall_b11::run_unx9020_checks as fn() -> CheckSet),
+        ("UNX-F9021", unx9021_eintr_sa_restart_f8948::run_unx9021_checks as fn() -> CheckSet),
+        ("UNX-F9022", unx9022_restart_syscall::run_unx9022_checks as fn() -> CheckSet),
+        ("UNX-F9023", unx9023_pipe_pipe2_pipetable::run_unx9023_checks as fn() -> CheckSet),
+        ("UNX-F9024", unx9024_f_setpipe_sz::run_unx9024_checks as fn() -> CheckSet),
+        ("UNX-F9025", unx9025_socket_socket_bind_listen::run_unx9025_checks as fn() -> CheckSet),
+        ("UNX-F9026", unx9026_socket_connect_accept_send::run_unx9026_checks as fn() -> CheckSet),
+        ("UNX-F9027", unx9027_sendmsg_recvmsg_msghdr_abi::run_unx9027_checks as fn() -> CheckSet),
+        ("UNX-F9028", unx9028_unix_af_unix::run_unx9028_checks as fn() -> CheckSet),
+        ("UNX-F9029", unx9029_sysv_semget_semop::run_unx9029_checks as fn() -> CheckSet),
+        ("UNX-F9030", unx9030_sysv_shmget_shmat::run_unx9030_checks as fn() -> CheckSet),
+        ("UNX-F9031", unx9031_sysv_msgget_msgsnd::run_unx9031_checks as fn() -> CheckSet),
+        ("UNX-F9032", unx9032_posix_mqueue_mq_open_mq_se::run_unx9032_checks as fn() -> CheckSet),
+        ("UNX-F9033", unx9033_ipc_ftok::run_unx9033_checks as fn() -> CheckSet),
+        ("UNX-F9034", unx9034_ipc_rlimit_msgmnb_semmns::run_unx9034_checks as fn() -> CheckSet),
+        ("UNX-F9035", unx9035_ipc_eidrm_ekeyexpired_enos::run_unx9035_checks as fn() -> CheckSet),
+        ("UNX-F9036", unx9036_ipc_ipc_64::run_unx9036_checks as fn() -> CheckSet),
+        ("UNX-F9037", unx9037_pipeepoll::run_unx9037_checks as fn() -> CheckSet),
+        ("UNX-F9038", unx9038_ipc_f8923::run_unx9038_checks as fn() -> CheckSet),
+        ("UNX-F9039", unx9039_ipc_ktest::run_unx9039_checks as fn() -> CheckSet),
+        ("UNX-F9040", unx9040_ktest_syscall_b12::run_unx9040_checks as fn() -> CheckSet),
+        ("UNX-F9041", unx9041_s_30::run_unx9041_checks as fn() -> CheckSet),
+        ("UNX-F9042", unx9042_open_close_read_write::run_unx9042_checks as fn() -> CheckSet),
+        ("UNX-F9043", unx9043_mmap_munmap_mprotect::run_unx9043_checks as fn() -> CheckSet),
+        ("UNX-F9044", unx9044_fork_execve_wait4::run_unx9044_checks as fn() -> CheckSet),
+        ("UNX-F9045", unx9045_getpid_setuid::run_unx9045_checks as fn() -> CheckSet),
+        ("UNX-F9046", unx9046_clock_gettime_nanosleep_ge::run_unx9046_checks as fn() -> CheckSet),
+        ("UNX-F9047", unx9047_dup_fcntl_ioctl::run_unx9047_checks as fn() -> CheckSet),
+        ("UNX-F9048", unx9048_getdents64_mkdir_unlink::run_unx9048_checks as fn() -> CheckSet),
+        ("UNX-F9049", unx9049_epoll_epoll_create1_ctl_wa::run_unx9049_checks as fn() -> CheckSet),
+        ("UNX-F9050", unx9050_eventfd2_timerfd_create_si::run_unx9050_checks as fn() -> CheckSet),
+        ("UNX-F9051", unx9051_rt_sigaction_kill_sigprocm::run_unx9051_checks as fn() -> CheckSet),
+        ("UNX-F9052", unx9052_ipc_pipe_shmget_msgget::run_unx9052_checks as fn() -> CheckSet),
+        ("UNX-F9053", unx9053_sys::run_unx9053_checks as fn() -> CheckSet),
+        ("UNX-F9054", unx9054_sys::run_unx9054_checks as fn() -> CheckSet),
+        ("UNX-F9055", unx9055_ktest::run_unx9055_checks as fn() -> CheckSet),
+        ("UNX-F9056", unx9056_s_30::run_unx9056_checks as fn() -> CheckSet),
+        ("UNX-F9057", unx9057_b02b12::run_unx9057_checks as fn() -> CheckSet),
+        ("UNX-F9058", unx9058_int_max_null_fd::run_unx9058_checks as fn() -> CheckSet),
+        ("UNX-F9059", unx9059_s_30::run_unx9059_checks as fn() -> CheckSet),
+        ("UNX-F9060", unx9060_ktest_syscall_b13::run_unx9060_checks as fn() -> CheckSet),
+        ("UNX-F9061", unx9061_glibc_syscall::run_unx9061_checks as fn() -> CheckSet),
+        ("UNX-F9062", unx9062_glibc_open_read_write_clos::run_unx9062_checks as fn() -> CheckSet),
+        ("UNX-F9063", unx9063_glibc_malloc_brk_mmap_b03::run_unx9063_checks as fn() -> CheckSet),
+        ("UNX-F9064", unx9064_glibc_fork_exec_wait_b04::run_unx9064_checks as fn() -> CheckSet),
+        ("UNX-F9065", unx9065_glibc_b05_getuid_setuid::run_unx9065_checks as fn() -> CheckSet),
+        ("UNX-F9066", unx9066_glibc_b06_clock_gettime_gm::run_unx9066_checks as fn() -> CheckSet),
+        ("UNX-F9067", unx9067_glibc_errno_libc_errno_err::run_unx9067_checks as fn() -> CheckSet),
+        ("UNX-F9068", unx9068_glibc_dup_fcntl_b08::run_unx9068_checks as fn() -> CheckSet),
+        ("UNX-F9069", unx9069_glibc_opendir_readdir_getd::run_unx9069_checks as fn() -> CheckSet),
+        ("UNX-F9070", unx9070_glibc_epoll_epoll_waitpoll::run_unx9070_checks as fn() -> CheckSet),
+        ("UNX-F9071", unx9071_glibc_pthread_clone_futex::run_unx9071_checks as fn() -> CheckSet),
+        ("UNX-F9072", unx9072_futex_glibc_pthread::run_unx9072_checks as fn() -> CheckSet),
+        ("UNX-F9073", unx9073_glibc_sigaction_raise::run_unx9073_checks as fn() -> CheckSet),
+        ("UNX-F9074", unx9074_glibc_dlopen_elf_mmap::run_unx9074_checks as fn() -> CheckSet),
+        ("UNX-F9075", unx9075_glibc_nss_getpwuid::run_unx9075_checks as fn() -> CheckSet),
+        ("UNX-F9076", unx9076_glibc_printf_stdio_write::run_unx9076_checks as fn() -> CheckSet),
+        ("UNX-F9077", unx9077_sys::run_unx9077_checks as fn() -> CheckSet),
+        ("UNX-F9078", unx9078_busybox::run_unx9078_checks as fn() -> CheckSet),
+        ("UNX-F9079", unx9079_glibc_231_235::run_unx9079_checks as fn() -> CheckSet),
+        ("UNX-F9080", unx9080_ktest_syscall_b14::run_unx9080_checks as fn() -> CheckSet),
+        ("UNX-F9081", unx9081_ltp::run_unx9081_checks as fn() -> CheckSet),
+        ("UNX-F9082", unx9082_ltp_open_read_write_stat::run_unx9082_checks as fn() -> CheckSet),
+        ("UNX-F9083", unx9083_ltp_mmap_mprotect::run_unx9083_checks as fn() -> CheckSet),
+        ("UNX-F9084", unx9084_ltp_fork_exec_wait::run_unx9084_checks as fn() -> CheckSet),
+        ("UNX-F9085", unx9085_ltp_clock_gettime_nanoslee::run_unx9085_checks as fn() -> CheckSet),
+        ("UNX-F9086", unx9086_ltp_sigaction_kill::run_unx9086_checks as fn() -> CheckSet),
+        ("UNX-F9087", unx9087_ltp_epoll_select_poll::run_unx9087_checks as fn() -> CheckSet),
+        ("UNX-F9088", unx9088_ltp_ipc_pipe_msg_shm_sem::run_unx9088_checks as fn() -> CheckSet),
+        ("UNX-F9089", unx9089_ltp_sysinfo_uname_getrusag::run_unx9089_checks as fn() -> CheckSet),
+        ("UNX-F9090", unx9090_uname::run_unx9090_checks as fn() -> CheckSet),
+        ("UNX-F9091", unx9091_getrusage::run_unx9091_checks as fn() -> CheckSet),
+        ("UNX-F9092", unx9092_prlimit64_rlimit::run_unx9092_checks as fn() -> CheckSet),
+        ("UNX-F9093", unx9093_b01b15_300::run_unx9093_checks as fn() -> CheckSet),
+        ("UNX-F9094", unx9094_f8801f9100::run_unx9094_checks as fn() -> CheckSet),
+        ("UNX-F9095", unx9095_a1_a4_b1_a2_c2::run_unx9095_checks as fn() -> CheckSet),
+        ("UNX-F9096", unx9096_s_05::run_unx9096_checks as fn() -> CheckSet),
+        ("UNX-F9097", unx9097_open_risks_handoff::run_unx9097_checks as fn() -> CheckSet),
+        ("UNX-F9098", unx9098_p99_windows_15::run_unx9098_checks as fn() -> CheckSet),
+        ("UNX-F9099", unx9099_c2::run_unx9099_checks as fn() -> CheckSet),
+        ("UNX-F9100", unx9100_ktest_syscall_b15::run_unx9100_checks as fn() -> CheckSet),
+        ("UNX-F9101", unx9101_fcntl_f_getfd_f_setfd_f_ge::run_unx9101_checks as fn() -> CheckSet),
+        ("UNX-F9102", unx9102_fcntl_f_dupfd_f_dupfd_cloe::run_unx9102_checks as fn() -> CheckSet),
+        ("UNX-F9103", unx9103_fcntl_f_getlk_f_setlk_f_se::run_unx9103_checks as fn() -> CheckSet),
+        ("UNX-F9104", unx9104_fcntl_f_setfl_o_nonblock_o::run_unx9104_checks as fn() -> CheckSet),
+        ("UNX-F9105", unx9105_fcntl_ebadf_einval_eintr_e::run_unx9105_checks as fn() -> CheckSet),
+        ("UNX-F9106", unx9106_ioctl::run_unx9106_checks as fn() -> CheckSet),
+        ("UNX-F9107", unx9107_ioctl_tcgets_tcsets_tiocgw::run_unx9107_checks as fn() -> CheckSet),
+        ("UNX-F9108", unx9108_ioctl_fionbio_fioasync::run_unx9108_checks as fn() -> CheckSet),
+        ("UNX-F9109", unx9109_ioctl_enotty::run_unx9109_checks as fn() -> CheckSet),
+        ("UNX-F9110", unx9110_fcntl_f_getown_f_setown::run_unx9110_checks as fn() -> CheckSet),
+        ("UNX-F9111", unx9111_fcntl_f_setlkw_eintr::run_unx9111_checks as fn() -> CheckSet),
+        ("UNX-F9112", unx9112_flock_posix::run_unx9112_checks as fn() -> CheckSet),
+        ("UNX-F9113", unx9113_dup3_o_cloexec_dup::run_unx9113_checks as fn() -> CheckSet),
+        ("UNX-F9114", unx9114_fcntl_f_getpipe_sz_f_setpi::run_unx9114_checks as fn() -> CheckSet),
+        ("UNX-F9115", unx9115_fcntl_f_add_seals_f_get_se::run_unx9115_checks as fn() -> CheckSet),
+        ("UNX-F9116", unx9116_ioctl_copy_from_user_copy_::run_unx9116_checks as fn() -> CheckSet),
+        ("UNX-F9117", unx9117_fcntl_ioctl_nargs3::run_unx9117_checks as fn() -> CheckSet),
+        ("UNX-F9118", unx9118_fcntl_glibc_file::run_unx9118_checks as fn() -> CheckSet),
+        ("UNX-F9119", unx9119_fcntl_ioctl_int_0x80::run_unx9119_checks as fn() -> CheckSet),
+        ("UNX-F9120", unx9120_ktest_syscall_b16::run_unx9120_checks as fn() -> CheckSet),
+        ("UNX-F9121", unx9121_mremap_mremap_maymove_mrem::run_unx9121_checks as fn() -> CheckSet),
+        ("UNX-F9122", unx9122_mremap_a4::run_unx9122_checks as fn() -> CheckSet),
+        ("UNX-F9123", unx9123_mremap_einval_enomem_eperm::run_unx9123_checks as fn() -> CheckSet),
+        ("UNX-F9124", unx9124_madvise::run_unx9124_checks as fn() -> CheckSet),
+        ("UNX-F9125", unx9125_madvise_madv_dontneed::run_unx9125_checks as fn() -> CheckSet),
+        ("UNX-F9126", unx9126_madvise_madv_willneed::run_unx9126_checks as fn() -> CheckSet),
+        ("UNX-F9127", unx9127_madvise_madv_sequential_ra::run_unx9127_checks as fn() -> CheckSet),
+        ("UNX-F9128", unx9128_madvise_einval_enomem_eacc::run_unx9128_checks as fn() -> CheckSet),
+        ("UNX-F9129", unx9129_msync_ms_sync_ms_async_ms_::run_unx9129_checks as fn() -> CheckSet),
+        ("UNX-F9130", unx9130_mlock_munlock_rlimit_memlo::run_unx9130_checks as fn() -> CheckSet),
+        ("UNX-F9131", unx9131_mlockall_munlockall::run_unx9131_checks as fn() -> CheckSet),
+        ("UNX-F9132", unx9132_mincore::run_unx9132_checks as fn() -> CheckSet),
+        ("UNX-F9133", unx9133_mprotect_pf::run_unx9133_checks as fn() -> CheckSet),
+        ("UNX-F9134", unx9134_map_noreserve_map_populate::run_unx9134_checks as fn() -> CheckSet),
+        ("UNX-F9135", unx9135_oom_enomem::run_unx9135_checks as fn() -> CheckSet),
+        ("UNX-F9136", unx9136_addr_length::run_unx9136_checks as fn() -> CheckSet),
+        ("UNX-F9137", unx9137_glibc_malloc::run_unx9137_checks as fn() -> CheckSet),
+        ("UNX-F9138", unx9138_sys::run_unx9138_checks as fn() -> CheckSet),
+        ("UNX-F9139", unx9139_windows_virtualalloc::run_unx9139_checks as fn() -> CheckSet),
+        ("UNX-F9140", unx9140_ktest_syscall_b17::run_unx9140_checks as fn() -> CheckSet),
+        ("UNX-F9141", unx9141_wait4::run_unx9141_checks as fn() -> CheckSet),
+        ("UNX-F9142", unx9142_waitpid_wait3_wnohang_wunt::run_unx9142_checks as fn() -> CheckSet),
+        ("UNX-F9143", unx9143_waitid_p_pid_p_pgid_p_all::run_unx9143_checks as fn() -> CheckSet),
+        ("UNX-F9144", unx9144_exitstatus::run_unx9144_checks as fn() -> CheckSet),
+        ("UNX-F9145", unx9145_wait_echild_eintr_einval::run_unx9145_checks as fn() -> CheckSet),
+        ("UNX-F9146", unx9146_setpgid_getpgid::run_unx9146_checks as fn() -> CheckSet),
+        ("UNX-F9147", unx9147_setsid::run_unx9147_checks as fn() -> CheckSet),
+        ("UNX-F9148", unx9148_getppid_set_tid_address::run_unx9148_checks as fn() -> CheckSet),
+        ("UNX-F9149", unx9149_vfork::run_unx9149_checks as fn() -> CheckSet),
+        ("UNX-F9150", unx9150_execve_c1::run_unx9150_checks as fn() -> CheckSet),
+        ("UNX-F9151", unx9151_execveat_at_empty_path_at_::run_unx9151_checks as fn() -> CheckSet),
+        ("UNX-F9152", unx9152_c4::run_unx9152_checks as fn() -> CheckSet),
+        ("UNX-F9153", unx9153_init::run_unx9153_checks as fn() -> CheckSet),
+        ("UNX-F9154", unx9154_wait_sigchld::run_unx9154_checks as fn() -> CheckSet),
+        ("UNX-F9155", unx9155_esrch_eperm::run_unx9155_checks as fn() -> CheckSet),
+        ("UNX-F9156", unx9156_sys::run_unx9156_checks as fn() -> CheckSet),
+        ("UNX-F9157", unx9157_wait_shell::run_unx9157_checks as fn() -> CheckSet),
+        ("UNX-F9158", unx9158_proc::run_unx9158_checks as fn() -> CheckSet),
+        ("UNX-F9159", unx9159_windows_waitforsingleobjec::run_unx9159_checks as fn() -> CheckSet),
+        ("UNX-F9160", unx9160_ktest_syscall_b18::run_unx9160_checks as fn() -> CheckSet),
+        ("UNX-F9161", unx9161_setrlimit_getrlimit_rlimit::run_unx9161_checks as fn() -> CheckSet),
+        ("UNX-F9162", unx9162_rlimit_nofile_core_stack::run_unx9162_checks as fn() -> CheckSet),
+        ("UNX-F9163", unx9163_rlimit_as_data_rss::run_unx9163_checks as fn() -> CheckSet),
+        ("UNX-F9164", unx9164_rlimit_cpu_nproc_sigpendin::run_unx9164_checks as fn() -> CheckSet),
+        ("UNX-F9165", unx9165_rlimit_fsize_locks_msgqueu::run_unx9165_checks as fn() -> CheckSet),
+        ("UNX-F9166", unx9166_prlimit64_setrlimit_abi::run_unx9166_checks as fn() -> CheckSet),
+        ("UNX-F9167", unx9167_einval_eperm_enomem::run_unx9167_checks as fn() -> CheckSet),
+        ("UNX-F9168", unx9168_rlim_infinity::run_unx9168_checks as fn() -> CheckSet),
+        ("UNX-F9169", unx9169_setpriority_getpriority_ni::run_unx9169_checks as fn() -> CheckSet),
+        ("UNX-F9170", unx9170_eacces_eperm::run_unx9170_checks as fn() -> CheckSet),
+        ("UNX-F9171", unx9171_sched_yield_a1::run_unx9171_checks as fn() -> CheckSet),
+        ("UNX-F9172", unx9172_times_tms_clk_tck::run_unx9172_checks as fn() -> CheckSet),
+        ("UNX-F9173", unx9173_getrusage_children_wait::run_unx9173_checks as fn() -> CheckSet),
+        ("UNX-F9174", unx9174_a2::run_unx9174_checks as fn() -> CheckSet),
+        ("UNX-F9175", unx9175_sys::run_unx9175_checks as fn() -> CheckSet),
+        ("UNX-F9176", unx9176_shell_ulimit::run_unx9176_checks as fn() -> CheckSet),
+        ("UNX-F9177", unx9177_sys::run_unx9177_checks as fn() -> CheckSet),
+        ("UNX-F9178", unx9178_windows::run_unx9178_checks as fn() -> CheckSet),
+        ("UNX-F9179", unx9179_getrusage_rusage_self_b15::run_unx9179_checks as fn() -> CheckSet),
+        ("UNX-F9180", unx9180_ktest_syscall_b19::run_unx9180_checks as fn() -> CheckSet),
+        ("UNX-F9181", unx9181_setuid_setreuid::run_unx9181_checks as fn() -> CheckSet),
+        ("UNX-F9182", unx9182_setresuid_setfsuid::run_unx9182_checks as fn() -> CheckSet),
+        ("UNX-F9183", unx9183_setgid_setregid_setresgid::run_unx9183_checks as fn() -> CheckSet),
+        ("UNX-F9184", unx9184_eperm::run_unx9184_checks as fn() -> CheckSet),
+        ("UNX-F9185", unx9185_getgroups_setgroups::run_unx9185_checks as fn() -> CheckSet),
+        ("UNX-F9186", unx9186_umask::run_unx9186_checks as fn() -> CheckSet),
+        ("UNX-F9187", unx9187_b5::run_unx9187_checks as fn() -> CheckSet),
+        ("UNX-F9188", unx9188_nanosleep_timespec::run_unx9188_checks as fn() -> CheckSet),
+        ("UNX-F9189", unx9189_nanosleep_eintr_remaining::run_unx9189_checks as fn() -> CheckSet),
+        ("UNX-F9190", unx9190_clock_nanosleep_timer_abst::run_unx9190_checks as fn() -> CheckSet),
+        ("UNX-F9191", unx9191_a2::run_unx9191_checks as fn() -> CheckSet),
+        ("UNX-F9192", unx9192_a2_jitter::run_unx9192_checks as fn() -> CheckSet),
+        ("UNX-F9193", unx9193_c1::run_unx9193_checks as fn() -> CheckSet),
+        ("UNX-F9194", unx9194_einval_enomem::run_unx9194_checks as fn() -> CheckSet),
+        ("UNX-F9195", unx9195_setuid_execve_s::run_unx9195_checks as fn() -> CheckSet),
+        ("UNX-F9196", unx9196_sys::run_unx9196_checks as fn() -> CheckSet),
+        ("UNX-F9197", unx9197_shell_sleep::run_unx9197_checks as fn() -> CheckSet),
+        ("UNX-F9198", unx9198_b5::run_unx9198_checks as fn() -> CheckSet),
+        ("UNX-F9199", unx9199_windows::run_unx9199_checks as fn() -> CheckSet),
+        ("UNX-F9200", unx9200_ktest_syscall_b20_m::run_unx9200_checks as fn() -> CheckSet),
+        ("UNX-F9201", unx9201_e::run_unx9201_checks as fn() -> CheckSet),
+        ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
+        ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
+        ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
+        ("UNX-F24004", unx24004_kmd_pci::run_unx24004_checks as fn() -> CheckSet),
+        ("UNX-F24005", unx24005_kmd_pci::run_unx24005_checks as fn() -> CheckSet),
+        ("UNX-F24006", unx24006_kmd_pci::run_unx24006_checks as fn() -> CheckSet),
+        ("UNX-F24007", unx24007_kmd_pci::run_unx24007_checks as fn() -> CheckSet),
+        ("UNX-F24008", unx24008_kmd_pci::run_unx24008_checks as fn() -> CheckSet),
+        ("UNX-F24009", unx24009_kmd_pci::run_unx24009_checks as fn() -> CheckSet),
+        ("UNX-F24010", unx24010_kmd_pci::run_unx24010_checks as fn() -> CheckSet),
+        ("UNX-F24011", unx24011_kmd_pci::run_unx24011_checks as fn() -> CheckSet),
+        ("UNX-F24012", unx24012_kmd_pci::run_unx24012_checks as fn() -> CheckSet),
+        ("UNX-F24013", unx24013_kmd_pci::run_unx24013_checks as fn() -> CheckSet),
+        ("UNX-F24014", unx24014_kmd_pci::run_unx24014_checks as fn() -> CheckSet),
+        ("UNX-F24015", unx24015_kmd_pci::run_unx24015_checks as fn() -> CheckSet),
+        ("UNX-F24016", unx24016_kmd_pci::run_unx24016_checks as fn() -> CheckSet),
+        ("UNX-F24017", unx24017_kmd_pci::run_unx24017_checks as fn() -> CheckSet),
+        ("UNX-F24018", unx24018_kmd_pci::run_unx24018_checks as fn() -> CheckSet),
+        ("UNX-F24019", unx24019_kmd_pci::run_unx24019_checks as fn() -> CheckSet),
+        ("UNX-F24020", unx24020_kmd_pci::run_unx24020_checks as fn() -> CheckSet),
+        ("UNX-F24021", unx24021_dev_mmio::run_unx24021_checks as fn() -> CheckSet),
+        ("UNX-F24022", unx24022_dev_mmio::run_unx24022_checks as fn() -> CheckSet),
+        ("UNX-F24023", unx24023_dev_mmio::run_unx24023_checks as fn() -> CheckSet),
+        ("UNX-F24024", unx24024_dev_mmio::run_unx24024_checks as fn() -> CheckSet),
+        ("UNX-F24025", unx24025_dev_mmio::run_unx24025_checks as fn() -> CheckSet),
+        ("UNX-F24026", unx24026_dev_mmio::run_unx24026_checks as fn() -> CheckSet),
+        ("UNX-F24027", unx24027_dev_mmio::run_unx24027_checks as fn() -> CheckSet),
+        ("UNX-F24028", unx24028_dev_mmio::run_unx24028_checks as fn() -> CheckSet),
+        ("UNX-F24029", unx24029_dev_mmio::run_unx24029_checks as fn() -> CheckSet),
+        ("UNX-F24030", unx24030_dev_mmio::run_unx24030_checks as fn() -> CheckSet),
+        ("UNX-F24031", unx24031_dev_mmio::run_unx24031_checks as fn() -> CheckSet),
+        ("UNX-F24032", unx24032_dev_mmio::run_unx24032_checks as fn() -> CheckSet),
+        ("UNX-F24033", unx24033_dev_mmio::run_unx24033_checks as fn() -> CheckSet),
+        ("UNX-F24034", unx24034_dev_mmio::run_unx24034_checks as fn() -> CheckSet),
+        ("UNX-F24035", unx24035_dev_mmio::run_unx24035_checks as fn() -> CheckSet),
+        ("UNX-F24036", unx24036_dev_mmio::run_unx24036_checks as fn() -> CheckSet),
+        ("UNX-F24037", unx24037_dev_mmio::run_unx24037_checks as fn() -> CheckSet),
+        ("UNX-F24038", unx24038_dev_mmio::run_unx24038_checks as fn() -> CheckSet),
+        ("UNX-F24039", unx24039_dev_mmio::run_unx24039_checks as fn() -> CheckSet),
+        ("UNX-F24040", unx24040_dev_mmio::run_unx24040_checks as fn() -> CheckSet),
+        ("UNX-F24041", unx24041_drv_pmops::run_unx24041_checks as fn() -> CheckSet),
+        ("UNX-F24042", unx24042_drv_pmops::run_unx24042_checks as fn() -> CheckSet),
+        ("UNX-F24043", unx24043_drv_pmops::run_unx24043_checks as fn() -> CheckSet),
+        ("UNX-F24044", unx24044_drv_pmops::run_unx24044_checks as fn() -> CheckSet),
+        ("UNX-F24045", unx24045_drv_pmops::run_unx24045_checks as fn() -> CheckSet),
+        ("UNX-F24046", unx24046_drv_pmops::run_unx24046_checks as fn() -> CheckSet),
+        ("UNX-F24047", unx24047_drv_pmops::run_unx24047_checks as fn() -> CheckSet),
+        ("UNX-F24048", unx24048_drv_pmops::run_unx24048_checks as fn() -> CheckSet),
+        ("UNX-F24049", unx24049_drv_pmops::run_unx24049_checks as fn() -> CheckSet),
+        ("UNX-F24050", unx24050_drv_pmops::run_unx24050_checks as fn() -> CheckSet),
+        ("UNX-F24051", unx24051_drv_pmops::run_unx24051_checks as fn() -> CheckSet),
+        ("UNX-F24052", unx24052_drv_pmops::run_unx24052_checks as fn() -> CheckSet),
+        ("UNX-F24053", unx24053_drv_pmops::run_unx24053_checks as fn() -> CheckSet),
+        ("UNX-F24054", unx24054_drv_pmops::run_unx24054_checks as fn() -> CheckSet),
+        ("UNX-F24055", unx24055_drv_pmops::run_unx24055_checks as fn() -> CheckSet),
+        ("UNX-F24056", unx24056_drv_pmops::run_unx24056_checks as fn() -> CheckSet),
+        ("UNX-F24057", unx24057_drv_pmops::run_unx24057_checks as fn() -> CheckSet),
+        ("UNX-F24058", unx24058_drv_pmops::run_unx24058_checks as fn() -> CheckSet),
+        ("UNX-F24059", unx24059_drv_pmops::run_unx24059_checks as fn() -> CheckSet),
+        ("UNX-F24060", unx24060_drv_pmops::run_unx24060_checks as fn() -> CheckSet),
+        ("UNX-F24061", unx24061_gem_obj::run_unx24061_checks as fn() -> CheckSet),
+        ("UNX-F24062", unx24062_gem_obj::run_unx24062_checks as fn() -> CheckSet),
+        ("UNX-F24063", unx24063_gem_obj::run_unx24063_checks as fn() -> CheckSet),
+        ("UNX-F24064", unx24064_gem_obj::run_unx24064_checks as fn() -> CheckSet),
+        ("UNX-F24065", unx24065_gem_obj::run_unx24065_checks as fn() -> CheckSet),
+        ("UNX-F24066", unx24066_gem_obj::run_unx24066_checks as fn() -> CheckSet),
+        ("UNX-F24067", unx24067_gem_obj::run_unx24067_checks as fn() -> CheckSet),
+        ("UNX-F24068", unx24068_gem_obj::run_unx24068_checks as fn() -> CheckSet),
+        ("UNX-F24069", unx24069_gem_obj::run_unx24069_checks as fn() -> CheckSet),
+        ("UNX-F24070", unx24070_gem_obj::run_unx24070_checks as fn() -> CheckSet),
+        ("UNX-F24071", unx24071_gem_obj::run_unx24071_checks as fn() -> CheckSet),
+        ("UNX-F24072", unx24072_gem_obj::run_unx24072_checks as fn() -> CheckSet),
+        ("UNX-F24073", unx24073_gem_obj::run_unx24073_checks as fn() -> CheckSet),
+        ("UNX-F24074", unx24074_gem_obj::run_unx24074_checks as fn() -> CheckSet),
+        ("UNX-F24075", unx24075_gem_obj::run_unx24075_checks as fn() -> CheckSet),
+        ("UNX-F24076", unx24076_gem_obj::run_unx24076_checks as fn() -> CheckSet),
+        ("UNX-F24077", unx24077_gem_obj::run_unx24077_checks as fn() -> CheckSet),
+        ("UNX-F24078", unx24078_gem_obj::run_unx24078_checks as fn() -> CheckSet),
+        ("UNX-F24079", unx24079_gem_obj::run_unx24079_checks as fn() -> CheckSet),
+        ("UNX-F24080", unx24080_gem_obj::run_unx24080_checks as fn() -> CheckSet),
+        ("UNX-F24081", unx24081_vram_buddy::run_unx24081_checks as fn() -> CheckSet),
+        ("UNX-F24082", unx24082_vram_buddy::run_unx24082_checks as fn() -> CheckSet),
+        ("UNX-F24083", unx24083_vram_buddy::run_unx24083_checks as fn() -> CheckSet),
+        ("UNX-F24084", unx24084_vram_buddy::run_unx24084_checks as fn() -> CheckSet),
+        ("UNX-F24085", unx24085_vram_buddy::run_unx24085_checks as fn() -> CheckSet),
+        ("UNX-F24086", unx24086_vram_buddy::run_unx24086_checks as fn() -> CheckSet),
+        ("UNX-F24087", unx24087_vram_buddy::run_unx24087_checks as fn() -> CheckSet),
+        ("UNX-F24088", unx24088_vram_buddy::run_unx24088_checks as fn() -> CheckSet),
+        ("UNX-F24089", unx24089_vram_buddy::run_unx24089_checks as fn() -> CheckSet),
+        ("UNX-F24090", unx24090_vram_buddy::run_unx24090_checks as fn() -> CheckSet),
+        ("UNX-F24091", unx24091_vram_buddy::run_unx24091_checks as fn() -> CheckSet),
+        ("UNX-F24092", unx24092_vram_buddy::run_unx24092_checks as fn() -> CheckSet),
+        ("UNX-F24093", unx24093_vram_buddy::run_unx24093_checks as fn() -> CheckSet),
+        ("UNX-F24094", unx24094_vram_buddy::run_unx24094_checks as fn() -> CheckSet),
+        ("UNX-F24095", unx24095_vram_buddy::run_unx24095_checks as fn() -> CheckSet),
+        ("UNX-F24096", unx24096_vram_buddy::run_unx24096_checks as fn() -> CheckSet),
+        ("UNX-F24097", unx24097_vram_buddy::run_unx24097_checks as fn() -> CheckSet),
+        ("UNX-F24098", unx24098_vram_buddy::run_unx24098_checks as fn() -> CheckSet),
+        ("UNX-F24099", unx24099_vram_buddy::run_unx24099_checks as fn() -> CheckSet),
+        ("UNX-F24100", unx24100_vram_buddy::run_unx24100_checks as fn() -> CheckSet),
+        ("UNX-F24101", unx24101_gtt_map::run_unx24101_checks as fn() -> CheckSet),
+        ("UNX-F24102", unx24102_gtt_map::run_unx24102_checks as fn() -> CheckSet),
+        ("UNX-F24103", unx24103_gtt_map::run_unx24103_checks as fn() -> CheckSet),
+        ("UNX-F24104", unx24104_gtt_map::run_unx24104_checks as fn() -> CheckSet),
+        ("UNX-F24105", unx24105_gtt_map::run_unx24105_checks as fn() -> CheckSet),
+        ("UNX-F24106", unx24106_gtt_map::run_unx24106_checks as fn() -> CheckSet),
+        ("UNX-F24107", unx24107_gtt_map::run_unx24107_checks as fn() -> CheckSet),
+        ("UNX-F24108", unx24108_gtt_map::run_unx24108_checks as fn() -> CheckSet),
+        ("UNX-F24109", unx24109_gtt_map::run_unx24109_checks as fn() -> CheckSet),
+        ("UNX-F24110", unx24110_gtt_map::run_unx24110_checks as fn() -> CheckSet),
+        ("UNX-F24111", unx24111_gtt_map::run_unx24111_checks as fn() -> CheckSet),
+        ("UNX-F24112", unx24112_gtt_map::run_unx24112_checks as fn() -> CheckSet),
+        ("UNX-F24113", unx24113_gtt_map::run_unx24113_checks as fn() -> CheckSet),
+        ("UNX-F24114", unx24114_gtt_map::run_unx24114_checks as fn() -> CheckSet),
+        ("UNX-F24115", unx24115_gtt_map::run_unx24115_checks as fn() -> CheckSet),
+        ("UNX-F24116", unx24116_gtt_map::run_unx24116_checks as fn() -> CheckSet),
+        ("UNX-F24117", unx24117_gtt_map::run_unx24117_checks as fn() -> CheckSet),
+        ("UNX-F24118", unx24118_gtt_map::run_unx24118_checks as fn() -> CheckSet),
+        ("UNX-F24119", unx24119_gtt_map::run_unx24119_checks as fn() -> CheckSet),
+        ("UNX-F24120", unx24120_gtt_map::run_unx24120_checks as fn() -> CheckSet),
+        ("UNX-F24121", unx24121_evict_lru::run_unx24121_checks as fn() -> CheckSet),
+        ("UNX-F24122", unx24122_evict_lru::run_unx24122_checks as fn() -> CheckSet),
+        ("UNX-F24123", unx24123_evict_lru::run_unx24123_checks as fn() -> CheckSet),
+        ("UNX-F24124", unx24124_evict_lru::run_unx24124_checks as fn() -> CheckSet),
+        ("UNX-F24125", unx24125_evict_lru::run_unx24125_checks as fn() -> CheckSet),
+        ("UNX-F24126", unx24126_evict_lru::run_unx24126_checks as fn() -> CheckSet),
+        ("UNX-F24127", unx24127_evict_lru::run_unx24127_checks as fn() -> CheckSet),
+        ("UNX-F24128", unx24128_evict_lru::run_unx24128_checks as fn() -> CheckSet),
+        ("UNX-F24129", unx24129_evict_lru::run_unx24129_checks as fn() -> CheckSet),
+        ("UNX-F24130", unx24130_evict_lru::run_unx24130_checks as fn() -> CheckSet),
+        ("UNX-F24131", unx24131_evict_lru::run_unx24131_checks as fn() -> CheckSet),
+        ("UNX-F24132", unx24132_evict_lru::run_unx24132_checks as fn() -> CheckSet),
+        ("UNX-F24133", unx24133_evict_lru::run_unx24133_checks as fn() -> CheckSet),
+        ("UNX-F24134", unx24134_evict_lru::run_unx24134_checks as fn() -> CheckSet),
+        ("UNX-F24135", unx24135_evict_lru::run_unx24135_checks as fn() -> CheckSet),
+        ("UNX-F24136", unx24136_evict_lru::run_unx24136_checks as fn() -> CheckSet),
+        ("UNX-F24137", unx24137_evict_lru::run_unx24137_checks as fn() -> CheckSet),
+        ("UNX-F24138", unx24138_evict_lru::run_unx24138_checks as fn() -> CheckSet),
+        ("UNX-F24139", unx24139_evict_lru::run_unx24139_checks as fn() -> CheckSet),
+        ("UNX-F24140", unx24140_evict_lru::run_unx24140_checks as fn() -> CheckSet),
+        ("UNX-F24141", unx24141_resv_lock::run_unx24141_checks as fn() -> CheckSet),
+        ("UNX-F24142", unx24142_resv_lock::run_unx24142_checks as fn() -> CheckSet),
+        ("UNX-F24143", unx24143_resv_lock::run_unx24143_checks as fn() -> CheckSet),
+        ("UNX-F24144", unx24144_resv_lock::run_unx24144_checks as fn() -> CheckSet),
+        ("UNX-F24145", unx24145_resv_lock::run_unx24145_checks as fn() -> CheckSet),
+        ("UNX-F24146", unx24146_resv_lock::run_unx24146_checks as fn() -> CheckSet),
+        ("UNX-F24147", unx24147_resv_lock::run_unx24147_checks as fn() -> CheckSet),
+        ("UNX-F24148", unx24148_resv_lock::run_unx24148_checks as fn() -> CheckSet),
+        ("UNX-F24149", unx24149_resv_lock::run_unx24149_checks as fn() -> CheckSet),
+        ("UNX-F24150", unx24150_resv_lock::run_unx24150_checks as fn() -> CheckSet),
+        ("UNX-F24151", unx24151_resv_lock::run_unx24151_checks as fn() -> CheckSet),
+        ("UNX-F24152", unx24152_resv_lock::run_unx24152_checks as fn() -> CheckSet),
+        ("UNX-F24153", unx24153_resv_lock::run_unx24153_checks as fn() -> CheckSet),
+        ("UNX-F24154", unx24154_resv_lock::run_unx24154_checks as fn() -> CheckSet),
+        ("UNX-F24155", unx24155_resv_lock::run_unx24155_checks as fn() -> CheckSet),
+        ("UNX-F24156", unx24156_resv_lock::run_unx24156_checks as fn() -> CheckSet),
+        ("UNX-F24157", unx24157_resv_lock::run_unx24157_checks as fn() -> CheckSet),
+        ("UNX-F24158", unx24158_resv_lock::run_unx24158_checks as fn() -> CheckSet),
+        ("UNX-F24159", unx24159_resv_lock::run_unx24159_checks as fn() -> CheckSet),
+        ("UNX-F24160", unx24160_resv_lock::run_unx24160_checks as fn() -> CheckSet),
+        ("UNX-F24161", unx24161_msix_irq::run_unx24161_checks as fn() -> CheckSet),
+        ("UNX-F24162", unx24162_msix_irq::run_unx24162_checks as fn() -> CheckSet),
+        ("UNX-F24163", unx24163_msix_irq::run_unx24163_checks as fn() -> CheckSet),
+        ("UNX-F24164", unx24164_msix_irq::run_unx24164_checks as fn() -> CheckSet),
+        ("UNX-F24165", unx24165_msix_irq::run_unx24165_checks as fn() -> CheckSet),
+        ("UNX-F24166", unx24166_msix_irq::run_unx24166_checks as fn() -> CheckSet),
+        ("UNX-F24167", unx24167_msix_irq::run_unx24167_checks as fn() -> CheckSet),
+        ("UNX-F24168", unx24168_msix_irq::run_unx24168_checks as fn() -> CheckSet),
+        ("UNX-F24169", unx24169_msix_irq::run_unx24169_checks as fn() -> CheckSet),
+        ("UNX-F24170", unx24170_msix_irq::run_unx24170_checks as fn() -> CheckSet),
+        ("UNX-F24171", unx24171_msix_irq::run_unx24171_checks as fn() -> CheckSet),
+        ("UNX-F24172", unx24172_msix_irq::run_unx24172_checks as fn() -> CheckSet),
+        ("UNX-F24173", unx24173_msix_irq::run_unx24173_checks as fn() -> CheckSet),
+        ("UNX-F24174", unx24174_msix_irq::run_unx24174_checks as fn() -> CheckSet),
+        ("UNX-F24175", unx24175_msix_irq::run_unx24175_checks as fn() -> CheckSet),
+        ("UNX-F24176", unx24176_msix_irq::run_unx24176_checks as fn() -> CheckSet),
+        ("UNX-F24177", unx24177_msix_irq::run_unx24177_checks as fn() -> CheckSet),
+        ("UNX-F24178", unx24178_msix_irq::run_unx24178_checks as fn() -> CheckSet),
+        ("UNX-F24179", unx24179_msix_irq::run_unx24179_checks as fn() -> CheckSet),
+        ("UNX-F24180", unx24180_msix_irq::run_unx24180_checks as fn() -> CheckSet),
+        ("UNX-F24181", unx24181_vblank_hpd::run_unx24181_checks as fn() -> CheckSet),
+        ("UNX-F24182", unx24182_vblank_hpd::run_unx24182_checks as fn() -> CheckSet),
+        ("UNX-F24183", unx24183_vblank_hpd::run_unx24183_checks as fn() -> CheckSet),
+        ("UNX-F24184", unx24184_vblank_hpd::run_unx24184_checks as fn() -> CheckSet),
+        ("UNX-F24185", unx24185_vblank_hpd::run_unx24185_checks as fn() -> CheckSet),
+        ("UNX-F24186", unx24186_vblank_hpd::run_unx24186_checks as fn() -> CheckSet),
+        ("UNX-F24187", unx24187_vblank_hpd::run_unx24187_checks as fn() -> CheckSet),
+        ("UNX-F24188", unx24188_vblank_hpd::run_unx24188_checks as fn() -> CheckSet),
+        ("UNX-F24189", unx24189_vblank_hpd::run_unx24189_checks as fn() -> CheckSet),
+        ("UNX-F24190", unx24190_vblank_hpd::run_unx24190_checks as fn() -> CheckSet),
+        ("UNX-F24191", unx24191_vblank_hpd::run_unx24191_checks as fn() -> CheckSet),
+        ("UNX-F24192", unx24192_vblank_hpd::run_unx24192_checks as fn() -> CheckSet),
+        ("UNX-F24193", unx24193_vblank_hpd::run_unx24193_checks as fn() -> CheckSet),
+        ("UNX-F24194", unx24194_vblank_hpd::run_unx24194_checks as fn() -> CheckSet),
+        ("UNX-F24195", unx24195_vblank_hpd::run_unx24195_checks as fn() -> CheckSet),
+        ("UNX-F24196", unx24196_vblank_hpd::run_unx24196_checks as fn() -> CheckSet),
+        ("UNX-F24197", unx24197_vblank_hpd::run_unx24197_checks as fn() -> CheckSet),
+        ("UNX-F24198", unx24198_vblank_hpd::run_unx24198_checks as fn() -> CheckSet),
+        ("UNX-F24199", unx24199_vblank_hpd::run_unx24199_checks as fn() -> CheckSet),
+        ("UNX-F24200", unx24200_vblank_hpd::run_unx24200_checks as fn() -> CheckSet),
+        ("UNX-F1240", unx1240_ktestb22::run_unx1240_checks as fn() -> CheckSet),
+        ("UNX-F1245", unx1245_armconfirm::run_unx1245_checks as fn() -> CheckSet),
+        ("UNX-F1246", unx1246_armstress::run_unx1246_checks as fn() -> CheckSet),
+        ("UNX-F1247", unx1247_arminject::run_unx1247_checks as fn() -> CheckSet),
+        ("UNX-F1248", unx1248_armlatency::run_unx1248_checks as fn() -> CheckSet),
+        ("UNX-F1249", unx1249_armchain::run_unx1249_checks as fn() -> CheckSet),
+        ("UNX-F1250", unx1250_armhealth::run_unx1250_checks as fn() -> CheckSet),
+        ("UNX-F1251", unx1251_armconfig::run_unx1251_checks as fn() -> CheckSet),
+        ("UNX-F1252", unx1252_armexplain::run_unx1252_checks as fn() -> CheckSet),
+        ("UNX-F1253", unx1253_armstats::run_unx1253_checks as fn() -> CheckSet),
+        ("UNX-F1254", unx1254_armaudit::run_unx1254_checks as fn() -> CheckSet),
+        ("UNX-F1255", unx1255_armedge::run_unx1255_checks as fn() -> CheckSet),
+        ("UNX-F1256", unx1256_armregress::run_unx1256_checks as fn() -> CheckSet),
+        ("UNX-F1257", unx1257_armboot::run_unx1257_checks as fn() -> CheckSet),
+        ("UNX-F1258", unx1258_armregirq::run_unx1258_checks as fn() -> CheckSet),
+        ("UNX-F1259", unx1259_armdoc::run_unx1259_checks as fn() -> CheckSet),
+        ("UNX-F1260", unx1260_ktestb23::run_unx1260_checks as fn() -> CheckSet),
+        ("UNX-F1264", unx1264_irqstats::run_unx1264_checks as fn() -> CheckSet),
+        ("UNX-F1265", unx1265_irqtable::run_unx1265_checks as fn() -> CheckSet),
+        ("UNX-F1266", unx1266_irqlongrun::run_unx1266_checks as fn() -> CheckSet),
+        ("UNX-F1267", unx1267_irqinject::run_unx1267_checks as fn() -> CheckSet),
+        ("UNX-F1268", unx1268_ireqlatency::run_unx1268_checks as fn() -> CheckSet),
+        ("UNX-F1269", unx1269_irqhealth::run_unx1269_checks as fn() -> CheckSet),
+        ("UNX-F1270", unx1270_irqconfig::run_unx1270_checks as fn() -> CheckSet),
+        ("UNX-F1271", unx1271_irqpanel::run_unx1271_checks as fn() -> CheckSet),
+        ("UNX-F1272", unx1272_irqaudit::run_unx1272_checks as fn() -> CheckSet),
+        ("UNX-F1273", unx1273_irqedge::run_unx1273_checks as fn() -> CheckSet),
+        ("UNX-F1274", unx1274_irqregress::run_unx1274_checks as fn() -> CheckSet),
+        ("UNX-F1275", unx1275_irqboot::run_unx1275_checks as fn() -> CheckSet),
+        ("UNX-F1276", unx1276_irqbh::run_unx1276_checks as fn() -> CheckSet),
+        ("UNX-F1277", unx1277_fourstate::run_unx1277_checks as fn() -> CheckSet),
+        ("UNX-F1278", unx1278_irqdoc::run_unx1278_checks as fn() -> CheckSet),
+        ("UNX-F1279", unx1279_readydecl::run_unx1279_checks as fn() -> CheckSet),
+        ("UNX-F1280", unx1280_ktestb24::run_unx1280_checks as fn() -> CheckSet),
+        ("UNX-F1284", unx1284_takeoverorder::run_unx1284_checks as fn() -> CheckSet),
+        ("UNX-F1285", unx1285_mapalign::run_unx1285_checks as fn() -> CheckSet),
+        ("UNX-F1286", unx1286_takemap::run_unx1286_checks as fn() -> CheckSet),
+        ("UNX-F1287", unx1287_basefreeze::run_unx1287_checks as fn() -> CheckSet),
+        ("UNX-F1288", unx1288_basesnap::run_unx1288_checks as fn() -> CheckSet),
+        ("UNX-F1289", unx1289_t16map::run_unx1289_checks as fn() -> CheckSet),
+        ("UNX-F1290", unx1290_t17map::run_unx1290_checks as fn() -> CheckSet),
+        ("UNX-F1291", unx1291_t18map::run_unx1291_checks as fn() -> CheckSet),
+        ("UNX-F1292", unx1292_t19map::run_unx1292_checks as fn() -> CheckSet),
+        ("UNX-F1293", unx1293_mapexplain::run_unx1293_checks as fn() -> CheckSet),
+        ("UNX-F1294", unx1294_maphealth::run_unx1294_checks as fn() -> CheckSet),
+        ("UNX-F1295", unx1295_mapconfig::run_unx1295_checks as fn() -> CheckSet),
+        ("UNX-F1296", unx1296_mapaudit::run_unx1296_checks as fn() -> CheckSet),
+        ("UNX-F1297", unx1297_mapstress::run_unx1297_checks as fn() -> CheckSet),
+        ("UNX-F1298", unx1298_mapregress::run_unx1298_checks as fn() -> CheckSet),
+        ("UNX-F1299", unx1299_mapdoc::run_unx1299_checks as fn() -> CheckSet),
     ]
 }
 
@@ -1693,6 +3048,66 @@ pub mod unx352_heapclass;
 pub mod unx353_heapwhitelist;
 pub mod unx354_heapalloc;
 pub mod unx355_heapsnap;
+pub mod unx36001_sidcore;
+pub mod unx36002_sidlayout;
+pub mod unx36003_sidstr;
+pub mod unx36004_wellknown;
+pub mod unx36005_issuer;
+pub mod unx36006_sidcompare;
+pub mod unx36007_subauth;
+pub mod unx36008_sidhash;
+pub mod unx36009_sidref;
+pub mod unx36010_wxpolicy;
+pub mod unx36011_groupsid;
+pub mod unx36012_integrity;
+pub mod unx36013_servicesid;
+pub mod unx36014_restricted;
+pub mod unx36015_sidserde;
+pub mod unx36016_sidaudit;
+pub mod unx36017_sidpool;
+pub mod unx36018_posixbridge;
+pub mod unx36019_b01ktest;
+pub mod unx36020_b01close;
+pub mod unx36021_tokencore;
+pub mod unx36022_tokbuild;
+pub mod unx36023_toktype;
+pub mod unx36024_tokgroups;
+pub mod unx36025_tokpriv;
+pub mod unx36026_tokowner;
+pub mod unx36027_toksession;
+pub mod unx36028_tokrefcnt;
+pub mod unx36029_tokdestroy;
+pub mod unx36030_tokinteg;
+pub mod unx36031_tokinherit;
+pub mod unx36032_tokrestrict;
+pub mod unx36033_tokquery;
+pub mod unx36034_tokstats;
+pub mod unx36035_tokwx;
+pub mod unx36036_tokevent;
+pub mod unx36037_tokfuzz;
+pub mod unx36038_tokpool;
+pub mod unx36039_b02ktest;
+pub mod unx36040_b02close;
+pub mod unx36041_privtable;
+pub mod unx36042_privcheck;
+pub mod unx36043_privnotheld;
+pub mod unx36044_privadjust;
+pub mod unx36045_privdisable;
+pub mod unx36046_privacl;
+pub mod unx36047_privaudit;
+pub mod unx36048_privprop;
+pub mod unx36049_privquery;
+pub mod unx36050_privluid;
+pub mod unx36051_privlookup;
+pub mod unx36052_privfuzz;
+pub mod unx36053_privperf;
+pub mod unx36054_privimpersonate;
+pub mod unx36055_privdiag;
+pub mod unx36056_privversion;
+pub mod unx36057_privhook;
+pub mod unx36058_privselftest;
+pub mod unx36059_b03ktest;
+pub mod unx36060_b03close;
 pub mod unx361_pitdiv;
 pub mod unx361_pitdivbgrid;
 pub mod unx361_pitdivbmxmx;
@@ -5957,6 +7372,58 @@ pub mod unx0576_schedclose;
 pub mod unx1283_ps2map;
 // ---- AI-VX-1024（2026-10-24）第五波三单：F1263/F1304/F1323（隔离探针全绿后入库）----
 pub mod unx1263_irqreverse;
+
+// ---- AI-VX-1028（2026-10-28）批1 五十单：F1240/F1245~F1260（Arming 面）、F1264~F1280（Irq 稳态面）、F1284~F1299（接管测绘面）——SEG 0xFB10~0xFE90 独占，隔离探针 50 模块 cargo check 零错零警 + 判据实跑全绿 ----
+pub mod unx1240_ktestb22;
+pub mod unx1245_armconfirm;
+pub mod unx1246_armstress;
+pub mod unx1247_arminject;
+pub mod unx1248_armlatency;
+pub mod unx1249_armchain;
+pub mod unx1250_armhealth;
+pub mod unx1251_armconfig;
+pub mod unx1252_armexplain;
+pub mod unx1253_armstats;
+pub mod unx1254_armaudit;
+pub mod unx1255_armedge;
+pub mod unx1256_armregress;
+pub mod unx1257_armboot;
+pub mod unx1258_armregirq;
+pub mod unx1259_armdoc;
+pub mod unx1260_ktestb23;
+pub mod unx1264_irqstats;
+pub mod unx1265_irqtable;
+pub mod unx1266_irqlongrun;
+pub mod unx1267_irqinject;
+pub mod unx1268_ireqlatency;
+pub mod unx1269_irqhealth;
+pub mod unx1270_irqconfig;
+pub mod unx1271_irqpanel;
+pub mod unx1272_irqaudit;
+pub mod unx1273_irqedge;
+pub mod unx1274_irqregress;
+pub mod unx1275_irqboot;
+pub mod unx1276_irqbh;
+pub mod unx1277_fourstate;
+pub mod unx1278_irqdoc;
+pub mod unx1279_readydecl;
+pub mod unx1280_ktestb24;
+pub mod unx1284_takeoverorder;
+pub mod unx1285_mapalign;
+pub mod unx1286_takemap;
+pub mod unx1287_basefreeze;
+pub mod unx1288_basesnap;
+pub mod unx1289_t16map;
+pub mod unx1290_t17map;
+pub mod unx1291_t18map;
+pub mod unx1292_t19map;
+pub mod unx1293_mapexplain;
+pub mod unx1294_maphealth;
+pub mod unx1295_mapconfig;
+pub mod unx1296_mapaudit;
+pub mod unx1297_mapstress;
+pub mod unx1298_mapregress;
+pub mod unx1299_mapdoc;
 pub mod unx1304_ps2retire;
 pub mod unx1323_serequiv;
 // ---- AI-VX-1024（2026-10-24）六/七波六单：F0344/F1044/F1083/F1063/F0328/F0586（隔离探针全绿后入库）----
@@ -6088,3 +7555,1572 @@ pub mod unx2457_fastpath;
 pub mod unx2458_emergpool;
 pub mod unx2459_dryreclaim;
 pub mod unx2460_ktb03;
+
+// ---- AI-VX-1027（2026-10-27）：A4-B04 回收批 6 单（F2463~F2468，0x71D0~0x725F 段）----
+pub mod unx2463_wakekswapd;
+pub mod unx2464_kswapdloop;
+pub mod unx2465_recquota;
+pub mod unx2466_sourceladder;
+pub mod unx2467_wmtakeover;
+pub mod unx2468_swapbnd;
+
+
+// ---- AI-WBK1027（2026-10-27）：S1 工具链域 200 单（UNX-F46401~F46600，0x40000~0x40CF0 段）----
+pub mod unx46401_pinset;
+pub mod unx46402_shalock;
+pub mod unx46403_triconst;
+pub mod unx46404_dumpmach;
+pub mod unx46405_gcclayout;
+pub mod unx46406_clangdrv;
+pub mod unx46407_rustspec;
+pub mod unx46408_linkpath;
+pub mod unx46409_layout4;
+pub mod unx46410_c5recon;
+pub mod unx46411_compat5x5;
+pub mod unx46412_followsla;
+pub mod unx46413_licfield;
+pub mod unx46414_obspoint;
+pub mod unx46415_mixdetect;
+pub mod unx46416_alarmbook;
+pub mod unx46417_constwl;
+pub mod unx46418_pinexport;
+pub mod unx46419_b01grep;
+pub mod unx46420_b01seal;
+
+// ---- AI-WBK1027（2026-10-27）：S1 工具链域 200 单（UNX-F46401~F46600，0x40000~0x40CF0 段）----
+pub mod unx46421_headscan;
+pub mod unx46422_posixhead;
+pub mod unx46423_headver;
+pub mod unx46424_sysrootsem;
+pub mod unx46425_chresolve;
+// ---- AI-WB1027-G（2026-10-27）：IDT/中断/账本/收官 200 单批（纯功能线，判据押后） ----
+pub mod unx0600_b30assert;
+pub mod unx0603_cpiomagic;
+pub mod unx0604_cpiowalk;
+pub mod unx0605_cpiocheck;
+pub mod unx0606_pathnorm;
+pub mod unx0607_trailer;
+pub mod unx0608_entryfind;
+pub mod unx0609_readwin;
+pub mod unx0610_zerowrite;
+pub mod unx0611_sizeconsv;
+pub mod unx0612_badinject;
+pub mod unx0613_manifest;
+pub mod unx0614_rescan;
+pub mod unx0615_fivestat;
+pub mod unx0616_hedge;
+pub mod unx0617_handoff;
+pub mod unx0618_napath;
+pub mod unx0619_ktassert;
+pub mod unx0620_b31batch;
+pub mod unx0621_pkgagg;
+pub mod unx0622_pkgindex_v2;
+pub mod unx0623_xpkcons;
+pub mod unx0624_a2mock;
+pub mod unx0625_a3mock;
+pub mod unx0626_latermock;
+pub mod unx0627_dhedge;
+pub mod unx0628_dfivenum;
+pub mod unx0629_dredline;
+pub mod unx0630_dmatrix;
+pub mod unx0631_dasrt;
+pub mod unx0632_dcov;
+pub mod unx0633_legacy;
+pub mod unx0634_advice;
+pub mod unx0635_dsealv1;
+pub mod unx0636_errata;
+pub mod unx0637_dsnap;
+pub mod unx0638_dreport;
+pub mod unx0639_b32wire;
+pub mod unx0640_b32batch;
+pub mod unx0643_drillbook;
+pub mod unx0644_failredo_v2;
+pub mod unx0645_reggate_v2;
+pub mod unx0646_boothist;
+pub mod unx0647_histhedge;
+pub mod unx0648_takeover;
+pub mod unx0649_dutylist;
+pub mod unx0650_fivedur;
+pub mod unx0651_logmerge;
+pub mod unx0652_regarch;
+pub mod unx0653_idemrun;
+pub mod unx0654_seedbook;
+pub mod unx0655_charagg;
+pub mod unx0656_failroute;
+pub mod unx0657_runreport;
+pub mod unx0658_mileflag;
+pub mod unx0659_ktb33;
+pub mod unx0660_closebatch;
+pub mod unx0663_tsccross_v2;
+pub mod unx0664_bootth_v2;
+pub mod unx0665_thcalib;
+pub mod unx0666_bootfive;
+pub mod unx0667_iqrout;
+pub mod unx0668_repfield;
+pub mod unx0669_machcmp;
+pub mod unx0670_coretier;
+pub mod unx0671_conscore;
+pub mod unx0672_basediff;
+pub mod unx0673_alertchain;
+pub mod unx0692_chkpt_resume;
+pub mod unx0693_iso_acct;
+pub mod unx0694_agg_report;
+pub mod unx0695_failroute;
+pub mod unx0696_idemrun;
+pub mod unx0697_dual_reg;
+pub mod unx0698_mgate;
+pub mod unx0699_arch6pcs;
+pub mod unx0700_b35ktest;
+pub mod unx0705_assert70_v2;
+pub mod unx0706_assert40_v2;
+pub mod unx0707_addonly;
+pub mod unx0708_j1maptab;
+pub mod unx0709_noempty;
+pub mod unx0710_seqfroz;
+pub mod unx0711_allgreen;
+pub mod unx0712_trielem;
+pub mod unx0713_conserv;
+pub mod unx0714_verhash;
+pub mod unx0715_driftmon;
+pub mod unx0716_layered;
+pub mod unx0717_rep7sec;
+pub mod unx0718_sealacct;
+pub mod unx0719_handover;
+pub mod unx0720_b36ktest;
+pub mod unx0732_gboundary;
+pub mod unx0733_upgmatrix;
+pub mod unx0734_slawarn;
+pub mod unx0735_regreport;
+pub mod unx0736_frozenapi;
+pub mod unx0737_graftseal;
+pub mod unx0738_ktestasrt;
+pub mod unx0739_domexp;
+pub mod unx0740_b37ktest;
+pub mod unx0745_valgrade;
+pub mod unx0746_fmtspec;
+pub mod unx0747_domidx;
+pub mod unx0748_crossmark;
+pub mod unx0749_pkglist;
+pub mod unx0750_apisnap;
+pub mod unx0751_catalog;
+pub mod unx0752_ktfreeze;
+pub mod unx0753_perfsnap;
+pub mod unx0754_domevol;
+pub mod unx0755_checksheet;
+pub mod unx0756_pkgseal;
+pub mod unx0757_errata;
+pub mod unx0758_hbdrill;
+pub mod unx0759_b38ktest;
+pub mod unx0760_b38fin;
+pub mod unx0763_ktfinal_v2;
+pub mod unx0764_bootfin;
+pub mod unx0765_apcore;
+pub mod unx0766_slafin;
+pub mod unx0767_linecons;
+pub mod unx0768_namesweep;
+pub mod unx0769_panorama;
+pub mod unx0825_cr8tpr_v2;
+pub mod unx0826_isrirrtmr;
+pub mod unx0827_esr_read2;
+pub mod unx0828_lvt_timer;
+pub mod unx0829_lvt_lint;
+pub mod unx0830_lvt_errpmu;
+pub mod unx0831_divide_cfg;
+pub mod unx0832_icr_delivery;
+pub mod unx0833_ldr_dfr;
+pub mod unx0834_lapic_id;
+pub mod unx0835_lapic_ver;
+pub mod unx0836_tmr_counts;
+pub mod unx0837_lapic_mute;
+pub mod unx0838_mmio_prim;
+pub mod unx0839_lapic_self;
+pub mod unx0840_ktb_b02;
+pub mod unx0843_msieoi;
+pub mod unx0844_ipieoi_v2;
+pub mod unx0845_spurfive_v2;
+pub mod unx0846_svreprog;
+pub mod unx0847_eoilosswd;
+pub mod unx0848_eoirefire;
+pub mod unx0849_stormcausal;
+pub mod unx0850_isrresidual;
+pub mod unx0851_eoilatency;
+pub mod unx0852_spurrate;
+pub mod unx0853_vlapicgrade;
+pub mod unx0854_eoiaudit;
+pub mod unx0855_rehangplan;
+pub mod unx0856_reinjwin;
+pub mod unx0857_lvtesr;
+pub mod unx0858_tmereoi;
+pub mod unx0859_eoimatrix;
+pub mod unx0860_ktestb03;
+
+// ---- AI-WB1027-G（2026-10-27）：IDT/中断/账本/收官 200 单批（纯功能线，判据押后） ----
+pub mod unx0770_criteval;
+pub mod unx0771_quadcheck;
+pub mod unx0772_ifaceaudit;
+pub mod unx0773_pkgconsume;
+pub mod unx0774_xdomreceipt;
+pub mod unx0775_legacyaudit;
+pub mod unx0776_riskledger;
+pub mod unx0777_scrollfinal;
+pub mod unx0778_reportdraft;
+pub mod unx0779_b39ktest;
+pub mod unx0780_b39finalize;
+
+// wb1027 批次补注册（mod.rs 被并行覆写丢失的注册行，2026-10-27 恢复）
+pub mod unx0674_dualexport;
+pub mod unx0675_driftband;
+pub mod unx0676_ktassert;
+pub mod unx0677_sealacct;
+pub mod unx0678_tlhedge;
+pub mod unx0679_bootprof;
+pub mod unx0680_ktb34;
+pub mod unx0687_succrate_v2;
+pub mod unx0688_failarc_v2;
+pub mod unx0689_zero50;
+pub mod unx0690_badtbl;
+pub mod unx0691_envcheck;
+pub mod unx0725_resptree_v2;
+pub mod unx0726_panicreg_v2;
+pub mod unx0727_abdiff;
+pub mod unx0728_followreg;
+pub mod unx0729_chglog;
+pub mod unx0730_rollback;
+pub mod unx0731_verblk;
+pub mod unx0785_domenroll_v2;
+pub mod unx0786_verdict1_v2;
+pub mod unx0787_verdict2;
+pub mod unx0788_coldboot;
+pub mod unx0789_aparrival;
+pub mod unx0790_slaverdict;
+pub mod unx0791_linecons;
+pub mod unx0792_ifacesign;
+pub mod unx0793_collabclose;
+pub mod unx0794_dometop10;
+pub mod unx0795_retroledger;
+pub mod unx0806_iststack2;
+pub mod unx0808_vecstub;
+pub mod unx0809_exctable;
+pub mod unx0810_vecpart;
+pub mod unx0811_dfault;
+pub mod unx0812_mcheck;
+pub mod unx0813_pfbus;
+pub mod unx0814_protx3;
+pub mod unx0815_dbgdr;
+pub mod unx0816_exact3;
+pub mod unx0817_idtattr;
+pub mod unx0818_isttree;
+pub mod unx0819_humandiag;
+pub mod unx0820_ktb01;
+pub mod unx0861_ioapicprobe;
+pub mod unx0864_isaovr;
+pub mod unx0865_rteenc;
+pub mod unx0866_pinmask;
+pub mod unx0867_bindtbl;
+pub mod unx0868_minst;
+pub mod unx0869_loopback;
+pub mod unx0870_extint;
+pub mod unx0796_maintpath;
+pub mod unx0797_sealguard;
+pub mod unx0798_pkghandover;
+pub mod unx0799_b40ktest;
+pub mod unx0800_endgame;
+
+// wb1027 第二批 W8 主代理散单（F0520/F0577~F0580/F0598~F0599）
+pub mod unx0520_ktb26;
+pub mod unx0577_redline;
+pub mod unx0578_pwrhandoff;
+pub mod unx0579_ktb29p1;
+pub mod unx0580_ktb29;
+pub mod unx0598_paramhandoff;
+pub mod unx0599_ktb30p1;
+
+// wbv1027 批 1（UNX-F9498~F9520 · C2-B35/B36）注册
+
+pub mod unx9498_b15recheck;
+pub mod unx9499_b29mutual;
+pub mod unx9500_b35assert;
+pub mod unx9501_coaliproto;
+pub mod unx9502_xmatrix;
+pub mod unx9503_racestat;
+pub mod unx9504_forkstorm;
+
+// wbx1027 chunk8（UNX-F1213~F1239 · Polling/Draining 面）由 WorkBuddy-X1027 注册
+pub mod unx1213_u1213;
+pub mod unx1214_u1214;
+pub mod unx1215_u1215;
+pub mod unx1216_u1216;
+pub mod unx1217_u1217;
+pub mod unx1218_u1218;
+pub mod unx1219_u1219;
+pub mod unx1220_ktestb21;
+pub mod unx1223_draining;
+pub mod unx1224_u1224;
+pub mod unx1225_u1225;
+pub mod unx1226_u1226;
+pub mod unx1227_u1227;
+pub mod unx1228_u1228;
+pub mod unx1229_u1229;
+pub mod unx1230_u1230;
+pub mod unx1231_u1231;
+pub mod unx1232_u1232;
+pub mod unx1233_u1233;
+pub mod unx1234_u1234;
+pub mod unx1235_u1235;
+pub mod unx1236_u1236;
+pub mod unx1237_u1237;
+pub mod unx1238_u1238;
+pub mod unx1239_u1239;
+
+// wbx1027 chunk7（UNX-F1186~F1212 · 亲和面/Polling 面）由 WorkBuddy-X1027 注册
+pub mod unx1186_ipi;
+pub mod unx1187_u1187;
+pub mod unx1188_u1188;
+pub mod unx1189_u1189;
+pub mod unx1190_u1190;
+pub mod unx1191_u1191;
+pub mod unx1192_u1192;
+pub mod unx1193_u1193;
+pub mod unx1194_u1194;
+pub mod unx1195_u1195;
+pub mod unx1196_b20;
+pub mod unx1197_a3;
+pub mod unx1198_u1198;
+pub mod unx1199_u1199;
+pub mod unx1200_ktestb20;
+pub mod unx1203_polling;
+pub mod unx1204_u1204;
+pub mod unx1205_u1205;
+pub mod unx1206_u1206;
+pub mod unx1207_u1207;
+pub mod unx1208_u1208;
+pub mod unx1209_u1209;
+pub mod unx1210_u1210;
+pub mod unx1211_u1211;
+pub mod unx1212_u1212;
+
+// ---- AI-WB1027C4（2026-10-27）：C4-B01~B06 POSIX IPC 族前 6 单（F10401~F10501，0xEE10~0xEE6F 段）----
+pub mod unx10401_pipe2ring;
+pub mod unx10421_pipebuf;
+pub mod unx10441_sigtable;
+pub mod unx10461_sigframe;
+pub mod unx10481_ptmx;
+pub mod unx10501_termios;
+pub mod unx10521_canonline;
+pub mod unx10541_setsid;
+pub mod unx10561_afunix;
+pub mod unx10581_dgram;
+pub mod unx10601_cmsg;
+pub mod unx10621_selfd;
+pub mod unx10641_shmget;
+pub mod unx10661_semget;
+pub mod unx10681_semopen;
+pub mod unx10701_listenbk;
+pub mod unx10721_sunpath;
+
+// wbh1027 批（UNX-F4002~F4213 · VFS 域）注册
+
+pub mod unx4002_vfserrno;
+pub mod unx4003_filetype7;
+pub mod unx4004_permmodel;
+pub mod unx4005_ugidentity;
+pub mod unx4006_tstamp4;
+pub mod unx4007_imetacore;
+pub mod unx4008_superblock;
+pub mod unx4009_inodeobj;
+pub mod unx4010_triobjtable;
+pub mod unx4011_dentryobj;
+pub mod unx4012_fileobj;
+pub mod unx4013_mountobj;
+pub mod unx4014_mntns;
+pub mod unx4016_locktier;
+pub mod unx4017_rcureader;
+pub mod unx4018_memsupply;
+pub mod unx4019_selfcheck;
+pub mod unx4020_b01assert;
+pub mod unx4022_sflagro;
+pub mod unx4023_blksize;
+pub mod unx4024_fstype;
+pub mod unx4025_registerfs;
+pub mod unx4026_unregisterfs;
+pub mod unx4027_sbswitch;
+pub mod unx4028_sbunique;
+pub mod unx4029_sblist;
+pub mod unx4030_sbrootino;
+pub mod unx4031_srootdentry;
+pub mod unx4032_sbstat;
+pub mod unx4033_ramfs;
+pub mod unx4034_fsnamespace;
+pub mod unx4035_orphanrec;
+pub mod unx4036_emergroro;
+pub mod unx4037_fstypelock;
+pub mod unx4038_sberror;
+pub mod unx4039_ktestb02;
+pub mod unx4040_b02assert;
+pub mod unx4042_imodefull;
+pub mod unx4043_iugcheck;
+pub mod unx4044_isize;
+pub mod unx4045_iblocks;
+pub mod unx4046_relatime;
+pub mod unx4047_mtimectime;
+pub mod unx4048_nlink;
+pub mod unx4049_specialino;
+pub mod unx4050_inoopstable;
+pub mod unx4051_getattr;
+pub mod unx4052_setattr;
+pub mod unx4053_inoinit;
+pub mod unx4054_inopool;
+pub mod unx4055_istate;
+pub mod unx4056_dlookup;
+pub mod unx4057_hardlink;
+pub mod unx4058_pagecache;
+pub mod unx4059_ktestb03;
+pub mod unx4060_b03assert;
+pub mod unx4062_iget;
+pub mod unx4063_hashtab;
+pub mod unx4064_icount;
+pub mod unx4065_iput;
+pub mod unx4066_lruevict;
+pub mod unx4067_dirtykeep;
+pub mod unx4068_hitledger;
+pub mod unx4069_negavoid;
+pub mod unx4070_igetrcu;
+pub mod unx4071_zeroleak;
+pub mod unx4072_revalidate;
+pub mod unx4073_orphanclr;
+pub mod unx4074_cachewater;
+pub mod unx4075_inocompare;
+pub mod unx4076_pseudoino;
+pub mod unx4077_cachsnap;
+pub mod unx4078_deadlck;
+pub mod unx4079_ktestb04;
+pub mod unx4080_b04assert;
+pub mod unx4082_dhash;
+pub mod unx4083_dparenttree;
+pub mod unx4084_dcachehash;
+pub mod unx4085_dlookpath;
+pub mod unx4086_dgetdput;
+pub mod unx4087_dbind;
+pub mod unx4088_drename;
+pub mod unx4089_dcacheinv;
+pub mod unx4090_walkdcache;
+pub mod unx4091_dlfsm;
+pub mod unx4092_dstat;
+pub mod unx4093_dprune;
+pub mod unx4094_dmountx;
+pub mod unx4095_shortrecy;
+pub mod unx4096_dcompare;
+pub mod unx4097_drevalidate;
+pub mod unx4098_cachpress;
+pub mod unx4099_ktestb05;
+pub mod unx4100_b05assert;
+pub mod unx4102_negdentry;
+pub mod unx4103_negstorm;
+pub mod unx4104_dlru;
+pub mod unx4105_evictquota;
+pub mod unx4106_dinvalid;
+pub mod unx4107_killtree;
+pub mod unx4108_negmatrix;
+pub mod unx4109_dcachevsfs;
+pub mod unx4110_lruconsist;
+pub mod unx4111_hitratio;
+pub mod unx4112_evictrace;
+pub mod unx4113_ramfsunion;
+pub mod unx4114_dmemacct;
+pub mod unx4115_dcacheheal;
+pub mod unx4116_statalert;
+pub mod unx4117_sbisolate;
+pub mod unx4118_hitwatertab;
+pub mod unx4119_ktestb06;
+pub mod unx4120_b06assert;
+pub mod unx4122_openpath;
+pub mod unx4123_fposlock;
+pub mod unx4124_fmodeops;
+pub mod unx4125_oflagmatrix;
+pub mod unx4126_releaseclose;
+pub mod unx4127_fileref;
+pub mod unx4128_privdata;
+pub mod unx4129_openrename;
+pub mod unx4130_fflags;
+pub mod unx4131_openquota;
+pub mod unx4132_fopsdefault;
+pub mod unx4133_fileleak;
+pub mod unx4134_openrollback;
+pub mod unx4135_dirfdbase;
+pub mod unx4136_fposshare;
+pub mod unx4137_pagechan;
+pub mod unx4138_bigfile;
+pub mod unx4139_ktestb07;
+pub mod unx4140_b07assert;
+pub mod unx4142_fopsfreeze;
+pub mod unx4143_dopsfreeze;
+pub mod unx4144_minimpl;
+pub mod unx4145_unimplmatrix;
+pub mod unx4146_tabvalid;
+pub mod unx4147_tabversion;
+pub mod unx4148_b2b5pact;
+pub mod unx4149_lookupret;
+pub mod unx4150_renametxn;
+pub mod unx4151_setattrpipe;
+pub mod unx4152_e2ereg;
+pub mod unx4153_norecurse;
+pub mod unx4154_tabsmoke;
+pub mod unx4155_errpass;
+pub mod unx4156_adrreg;
+pub mod unx4157_tabdocs;
+pub mod unx4158_smokeb2;
+pub mod unx4159_ktestb08;
+pub mod unx4160_b08assert;
+pub mod unx4162_walkloop;
+pub mod unx4163_walkbase;
+pub mod unx4164_dotself;
+pub mod unx4165_dotdotup;
+pub mod unx4166_slashes;
+pub mod unx4167_trailslash;
+pub mod unx4168_emptypath;
+pub mod unx4169_namemax;
+pub mod unx4170_pathmax;
+pub mod unx4171_errshort;
+pub mod unx4172_lookupflag;
+pub mod unx4173_walkcache2;
+pub mod unx4174_finalcomp;
+pub mod unx4175_depthcap;
+pub mod unx4176_casesens;
+pub mod unx4177_walkperf;
+pub mod unx4178_ltpmap1;
+pub mod unx4179_ktestb09;
+pub mod unx4180_b09assert;
+pub mod unx4182_readlink;
+pub mod unx4183_symlinkcr;
+pub mod unx4184_midfollow;
+pub mod unx4185_lastfollow;
+pub mod unx4186_eloopcap;
+pub mod unx4187_loopdetect;
+pub mod unx4188_atnofollow;
+pub mod unx4189_magiclink;
+pub mod unx4190_magicperm;
+pub mod unx4191_danglinglnk;
+pub mod unx4192_linkmount;
+pub mod unx4193_linkbase;
+pub mod unx4194_linkdepth;
+pub mod unx4195_readlnbuf;
+pub mod unx4196_lnrename;
+pub mod unx4197_ltpmap2;
+pub mod unx4198_linkevent;
+pub mod unx4199_ktestb10;
+pub mod unx4200_b10assert;
+pub mod unx4202_rootclamp;
+pub mod unx4203_chrootfd;
+pub mod unx4204_chdirsem;
+pub mod unx4205_normorder;
+pub mod unx4206_normmount;
+pub mod unx4208_boundmatrix;
+pub mod unx4209_errmatrix;
+pub mod unx4210_walkresume;
+pub mod unx4211_bytevalid;
+pub mod unx4212_relnamespace;
+pub mod unx4213_getcwd;
+pub mod unx56001_envfreeze;
+pub mod unx56002_envhash;
+pub mod unx56003_probegate;
+pub mod unx56004_dualtopo;
+pub mod unx56005_fwanchor;
+pub mod unx56006_powerfreeze;
+pub mod unx56007_proclist;
+pub mod unx56008_fslayout;
+pub mod unx56009_tsccalib;
+pub mod unx56010_winrecord;
+pub mod unx56011_rerunflow;
+pub mod unx56012_updwin;
+pub mod unx56013_rejectaudit;
+pub mod unx56014_perisilence;
+pub mod unx56016_envctl;
+pub mod unx56017_equivbook;
+pub mod unx56018_frozendoc;
+pub mod unx56019_probecheck;
+pub mod unx56020_b01seal;
+pub mod unx56021_sysdelay;
+pub mod unx56022_getpidbench;
+pub mod unx56023_rwbench;
+pub mod unx56024_mmapbench;
+pub mod unx56025_ctxbench;
+pub mod unx56026_migfilter;
+pub mod unx56027_warmwin;
+pub mod unx56028_outlier;
+pub mod unx56029_segstats;
+pub mod unx56030_ntapimap;
+pub mod unx56031_selfisolate;
+pub mod unx56032_irqcomply;
+pub mod unx56033_samplearch;
+pub mod unx56034_dualorch;
+pub mod unx56035_cmpgen;
+pub mod unx56036_verdict;
+pub mod unx56037_failtrace;
+pub mod unx56038_loadfreeze;
+pub mod unx56039_o2prelink;
+pub mod unx56040_b02seal;
+pub mod unx56041_bootfive;
+pub mod unx56042_bootstub;
+pub mod unx56043_kernfirst;
+pub mod unx56044_loginfirst;
+pub mod unx56045_deskfirst;
+pub mod unx56046_clickready;
+pub mod unx56047_sumcheck;
+pub mod unx56068_clockbase;
+pub mod unx56069_procgroup;
+pub mod unx56070_o2memcalib;
+pub mod unx56071_memsnapaudit;
+pub mod unx56072_memnadisc;
+pub mod unx56073_memfailtrace;
+pub mod unx56074_memduo;
+pub mod unx56075_memrowvault;
+pub mod unx56076_hugepage;
+pub mod unx56077_memlowpct;
+pub mod unx56078_memprotocol;
+pub mod unx56079_memdemo;
+pub mod unx56080_b04seal;
+pub mod unx56081_colliface;
+pub mod unx56082_collreg;
+pub mod unx56083_pipesched;
+pub mod unx56084_windowlock;
+pub mod unx56085_o2probeall;
+pub mod unx56086_samplegate;
+pub mod unx56087_distforce;
+pub mod unx56088_conintval;
+pub mod unx56089_envhashcmp;
+pub mod unx56090_collresume;
+pub mod unx56091_pipebeat;
+pub mod unx56092_sumchain;
+pub mod unx56093_duomaster;
+pub mod unx56094_timeslotrule;
+pub mod unx56095_loadsig;
+pub mod unx56096_schemafreeze;
+pub mod unx56097_verdictfreeze;
+pub mod unx56098_faulttree;
+pub mod unx56099_smokee2e;
+pub mod unx56100_b05seal;
+pub mod unx56101_iofivecoll;
+pub mod unx56102_iorand4kr;
+pub mod unx56103_iorand4kw;
+pub mod unx56104_ioseq1mr;
+pub mod unx56105_ioseq1mw;
+pub mod unx56106_iomix7030;
+pub mod unx56107_qdepthctrl;
+pub mod unx56108_diskprime;
+pub mod unx56109_iorowgen;
+pub mod unx56110_ioscriptlib;
+pub mod unx56111_iocleanroom;
+pub mod unx56112_ioduo;
+pub mod unx56113_iooutlier;
+pub mod unx56114_tpcurline;
+pub mod unx56115_ionadisc;
+pub mod unx56116_iofailtrace;
+pub mod unx56117_iovault;
+pub mod unx56118_iodemo;
+pub mod unx56119_ioocalib;
+pub mod unx56120_b06seal;
+pub mod unx56121_fpscoll;
+pub mod unx56122_lowpctfps;
+pub mod unx56123_fpsscenes;
+pub mod unx56124_glitchclass;
+pub mod unx56125_fpsrowgen;
+pub mod unx56135_o2framecalib;
+pub mod unx56136_bottlescan;
+pub mod unx56137_sampleledger;
+pub mod unx56138_dryrun;
+pub mod unx56139_o2reserv;
+pub mod unx56140_b07seal;
+pub mod unx56141_cmpentry;
+pub mod unx56142_appendexec;
+pub mod unx56143_verdictgate;
+pub mod unx56144_aisign;
+pub mod unx56145_envgate;
+pub mod unx56146_nagate;
+pub mod unx56147_fivemetric;
+pub mod unx56148_p95hook;
+pub mod unx56149_auditsnap;
+pub mod unx56150_discipline;
+pub mod unx56151_antidress;
+pub mod unx56152_versioning;
+pub mod unx56153_reconcile;
+pub mod unx56154_replay;
+pub mod unx56155_export;
+pub mod unx56156_f8seal;
+pub mod unx56157_dry15;
+pub mod unx56158_storagelayout;
+pub mod unx56159_healthcheck;
+pub mod unx56160_b08seal;
+pub mod unx56161_syslatagg;
+pub mod unx56162_tailpct;
+pub mod unx56163_latencyhist;
+pub mod unx56164_ctxswitch;
+pub mod unx56165_mmapdual;
+pub mod unx56166_o2calib;
+pub mod unx56167_entryprof;
+pub mod unx56168_schedwait;
+pub mod unx56169_ticketconv;
+pub mod unx56170_deeprowgen;
+pub mod unx56171_replayexec;
+pub mod unx56172_aggsnap;
+pub mod unx56173_nainstance;
+pub mod unx56174_loadscript;
+pub mod unx56175_trendwatch;
+pub mod unx56176_assembler;
+pub mod unx56177_m9health;
+pub mod unx56178_perfself;
+pub mod unx56179_archive;
+pub mod unx56180_b09seal;
+pub mod unx56181_bootlocator;
+pub mod unx56182_bootprof;
+pub mod unx56183_kernprof;
+pub mod unx56184_logondesk;
+pub mod unx56185_readyprof;
+pub mod unx56186_subdomap;
+pub mod unx56187_prolinegen;
+pub mod unx56188_winmap;
+pub mod unx56189_replay;
+pub mod unx56190_attr2fct;
+pub mod unx56191_sampdeep;
+pub mod unx56192_aggshot;
+pub mod unx56193_o2deep;
+pub mod unx56194_ledgerasm;
+pub mod unx56195_nasideep;
+pub mod unx56196_noisedeep;
+pub mod unx56197_vardeep;
+pub mod unx56198_b10body;
+pub mod unx56199_arvidx;
+pub mod unx56200_b10seal;
+pub mod unx56015_timewindow;
+pub mod unx56048_varbook;
+pub mod unx56049_winmap;
+pub mod unx56050_bootcmp;
+pub mod unx56051_coldhot;
+pub mod unx56052_bootorch;
+pub mod unx56053_bootnoise;
+pub mod unx56054_bottleneck;
+pub mod unx56055_bootarch;
+pub mod unx56056_bootload;
+pub mod unx56057_bootzero;
+pub mod unx56058_bootdoc;
+pub mod unx56059_booto2cal;
+pub mod unx56060_b03seal;
+pub mod unx56061_rssprobe;
+pub mod unx56062_mempeak;
+pub mod unx56063_driftdays;
+pub mod unx56064_pgcachehit;
+pub mod unx56065_memscript;
+pub mod unx56066_rsseq;
+pub mod unx56067_memcmp;
+pub mod unx56126_fpscosign;
+pub mod unx56127_fpsisol;
+pub mod unx56128_vrrnote;
+pub mod unx56129_resmatrix;
+pub mod unx56130_fpsoutlier;
+pub mod unx56131_fpsvault;
+pub mod unx56132_fpsnadisc;
+pub mod unx56133_fpsfailtrace;
+pub mod unx56134_fpsduo;
+
+// ===== AI-WBV1027 批次（UNX-F48183~F48382，200 单）=====
+pub mod unx48183_compwind;
+pub mod unx48184_candfb;
+pub mod unx48185_candrect;
+pub mod unx48186_spyrecon;
+pub mod unx48187_focusctx;
+pub mod unx48188_dropkey;
+pub mod unx48189_dbcsconv;
+pub mod unx48190_fwhwstat;
+pub mod unx48191_werrm1;
+pub mod unx48192_wobs4pt;
+pub mod unx48193_wmsgfuzz;
+pub mod unx48194_wperfsamp;
+pub mod unx48195_wvecacc;
+pub mod unx48196_msgpump;
+pub mod unx48197_wregsent;
+pub mod unx48198_b10grep;
+pub mod unx48199_wcosign;
+pub mod unx48200_b10seal;
+pub mod unx48201_tiprot;
+pub mod unx48202_ximconv;
+pub mod unx48203_rootcand;
+pub mod unx48204_gaplist;
+pub mod unx48205_xfocus;
+pub mod unx48206_xtrig;
+pub mod unx48207_xmulticand;
+pub mod unx48208_xerrm1;
+pub mod unx48209_xobs;
+pub mod unx48210_xfuzz;
+pub mod unx48211_xperf;
+pub mod unx48212_xvec;
+pub mod unx48213_xcosign;
+pub mod unx48214_xdropkey;
+pub mod unx48215_xregsent;
+pub mod unx48216_xmulticli;
+pub mod unx48217_b11grep;
+pub mod unx48218_threewin;
+pub mod unx48219_clipdecl;
+pub mod unx48220_b11seal;
+pub mod unx48221_cnstatem;
+pub mod unx48222_shifttemp;
+pub mod unx48223_capsled;
+pub mod unx48224_jitterwin;
+pub mod unx48225_punctpair;
+pub mod unx48226_fwhwtab;
+pub mod unx48227_temppunct;
+pub mod unx48228_swobs;
+pub mod unx48229_swerrm1;
+pub mod unx48230_swfuzz;
+pub mod unx48231_swpersist;
+pub mod unx48232_swvec;
+pub mod unx48233_swcosign;
+pub mod unx48234_pwregsent;
+pub mod unx48235_swconc;
+pub mod unx48236_b12grep;
+pub mod unx48237_winanchor;
+pub mod unx48238_hotremap;
+pub mod unx48239_cnumreg;
+pub mod unx48240_b12seal;
+pub mod unx48241_spframe;
+pub mod unx48242_xiaohe;
+pub mod unx48243_ziranma;
+pub mod unx48244_mssp;
+pub mod unx48245_spline;
+pub mod unx48246_opencc;
+pub mod unx48247_s2tpara;
+pub mod unx48248_phrasetop;
+pub mod unx48249_phrasecol;
+pub mod unx48250_sperrm1;
+pub mod unx48251_spobs;
+pub mod unx48252_spfuzz;
+pub mod unx48253_spvec;
+pub mod unx48254_spregsent;
+pub mod unx48255_spconc;
+pub mod unx48256_b13grep;
+pub mod unx48257_spperf;
+pub mod unx48258_spfuzzy;
+pub mod unx48259_s2tround;
+pub mod unx48260_b13seal;
+pub mod unx48261_fcaddon;
+pub mod unx48262_ffilib;
+pub mod unx48263_engplug;
+pub mod unx48264_fdict;
+pub mod unx48265_fmaptab;
+pub mod unx48266_cfgmig;
+pub mod unx48267_upsla;
+pub mod unx48268_verpin;
+pub mod unx48269_fcerrm1;
+pub mod unx48270_fcobs;
+pub mod unx48271_fcfuzz;
+pub mod unx48272_fcdegrade;
+pub mod unx48273_fdictbad;
+pub mod unx48274_fcregsent;
+pub mod unx48275_fcvec;
+pub mod unx48276_b14grep;
+pub mod unx48277_fcpriv;
+pub mod unx48278_fcisol;
+pub mod unx48279_fcuidecl;
+pub mod unx48280_b14seal;
+pub mod unx48281_latframe;
+pub mod unx48282_p95gate;
+pub mod unx48283_latdiag;
+pub mod unx48284_latexp;
+pub mod unx48285_soak24;
+pub mod unx48286_memdrift;
+pub mod unx48287_mregate;
+pub mod unx48288_mexpagg;
+pub mod unx48289_mexplic;
+pub mod unx48290_merrtab;
+pub mod unx48291_mgrep;
+pub mod unx48292_mdefexit;
+pub mod unx48293_ma11y;
+pub mod unx48294_mperftab;
+pub mod unx48295_earlyrcpt;
+pub mod unx48296_mregsent;
+pub mod unx48297_b15grep;
+pub mod unx48298_spotchk;
+pub mod unx48299_mhandover;
+pub mod unx48300_b15seal;
+pub mod unx48301_cfgtree;
+pub mod unx48302_cfgio;
+pub mod unx48303_profiso;
+pub mod unx48304_cfgbad3;
+pub mod unx48305_cfgaudit;
+pub mod unx48306_cfghot;
+pub mod unx48307_cfgerrm1;
+pub mod unx48308_cfgobs;
+pub mod unx48309_cfgfuzz;
+pub mod unx48310_cfgdflt;
+pub mod unx48311_cfglink;
+pub mod unx48312_cfglock;
+pub mod unx48313_cfgmigs;
+pub mod unx48314_cfgpriv;
+pub mod unx48315_cfgregsent;
+pub mod unx48316_cfgconc;
+pub mod unx48317_cfge3;
+pub mod unx48318_b16grep;
+pub mod unx48319_cfgcase;
+pub mod unx48320_b16seal;
+pub mod unx48321_suggest;
+pub mod unx48322_hotword;
+pub mod unx48323_fedloop;
+pub mod unx48324_miscommit;
+pub mod unx48325_pyfix;
+pub mod unx48326_canddiv;
+pub mod unx48327_smartperf;
+pub mod unx48328_smerrm1;
+pub mod unx48329_smobs;
+pub mod unx48330_smfuzz;
+pub mod unx48331_smpriv;
+pub mod unx48332_smtoggle;
+pub mod unx48333_smregsent;
+pub mod unx48334_smvec;
+pub mod unx48335_smubound;
+pub mod unx48336_smconc;
+pub mod unx48337_smmem;
+pub mod unx48338_b17grep;
+pub mod unx48339_candfold;
+pub mod unx48340_b17seal;
+pub mod unx48341_focusbit;
+pub mod unx48342_kbonly;
+pub mod unx48343_readanch;
+pub mod unx48344_hicontrast;
+pub mod unx48345_stickykey;
+pub mod unx48346_onehand;
+pub mod unx48347_readorder;
+pub mod unx48348_a11yerrm1;
+pub mod unx48349_a11yobs;
+pub mod unx48350_a11yfuzz;
+pub mod unx48351_a11yregsent;
+pub mod unx48352_a11ycosign;
+pub mod unx48353_kbmouse;
+pub mod unx48354_a11yperf;
+pub mod unx48355_a11yvec;
+pub mod unx48356_a11yconc;
+pub mod unx48357_a11ypriv;
+pub mod unx48358_b18grep;
+pub mod unx48359_aidtimeout;
+pub mod unx48360_b18seal;
+pub mod unx48361_expmodel;
+pub mod unx48362_deadsig;
+pub mod unx48363_overlaylife;
+pub mod unx48364_switchmiss;
+pub mod unx48365_storyline;
+pub mod unx48366_frusttop;
+pub mod unx48367_asynclog;
+pub mod unx48368_exppriv;
+pub mod unx48369_experrm1;
+pub mod unx48370_expself;
+pub mod unx48371_expregsent;
+pub mod unx48372_optclear;
+pub mod unx48373_expexport;
+pub mod unx48374_expfuzz;
+pub mod unx48375_expperf;
+pub mod unx48376_expvec;
+pub mod unx48377_j5split;
+pub mod unx48378_b19grep;
+pub mod unx48379_expmerge;
+pub mod unx48380_b19seal;
+pub mod unx48381_m12gate;
+pub mod unx48382_m12errtab;
+pub mod unx9002_rt_sigprocmask;
+pub mod unx9003_kill_tgkill_tkill;
+pub mod unx9004_raise_pidfd_send_signal;
+pub mod unx9005_sigreturn_abi;
+pub mod unx9006_sig_dfl_sig_ign_sig_err;
+pub mod unx9007_s_131_3464;
+pub mod unx9008_rt;
+pub mod unx9009_sigkill_sigstop;
+pub mod unx9010_sigaltstack_sa_onstack;
+pub mod unx9011_sigpending_sigtimedwait_si;
+pub mod unx9012_clone_clone_sighand;
+pub mod unx9013_eintr_sa_restart;
+pub mod unx9014_guardrs_cap_sigprof_sigalr;
+pub mod unx9015_setitimer_getitimer;
+pub mod unx9016_alarm;
+pub mod unx9017_einval_esrch_eperm_ebadf;
+pub mod unx9018_signalfd_ppoll;
+pub mod unx9019_ktest;
+pub mod unx9020_ktest_syscall_b11;
+pub mod unx9021_eintr_sa_restart_f8948;
+pub mod unx9022_restart_syscall;
+pub mod unx9023_pipe_pipe2_pipetable;
+pub mod unx9024_f_setpipe_sz;
+pub mod unx9025_socket_socket_bind_listen;
+pub mod unx9026_socket_connect_accept_send;
+pub mod unx9027_sendmsg_recvmsg_msghdr_abi;
+pub mod unx9028_unix_af_unix;
+pub mod unx9029_sysv_semget_semop;
+pub mod unx9030_sysv_shmget_shmat;
+pub mod unx9031_sysv_msgget_msgsnd;
+pub mod unx9032_posix_mqueue_mq_open_mq_se;
+pub mod unx9033_ipc_ftok;
+pub mod unx9034_ipc_rlimit_msgmnb_semmns;
+pub mod unx9035_ipc_eidrm_ekeyexpired_enos;
+pub mod unx9036_ipc_ipc_64;
+pub mod unx9037_pipeepoll;
+pub mod unx9038_ipc_f8923;
+pub mod unx9039_ipc_ktest;
+pub mod unx9040_ktest_syscall_b12;
+pub mod unx9041_s_30;
+pub mod unx9042_open_close_read_write;
+pub mod unx9043_mmap_munmap_mprotect;
+pub mod unx9044_fork_execve_wait4;
+pub mod unx9045_getpid_setuid;
+pub mod unx9046_clock_gettime_nanosleep_ge;
+pub mod unx9047_dup_fcntl_ioctl;
+pub mod unx9048_getdents64_mkdir_unlink;
+pub mod unx9049_epoll_epoll_create1_ctl_wa;
+pub mod unx9050_eventfd2_timerfd_create_si;
+pub mod unx9051_rt_sigaction_kill_sigprocm;
+pub mod unx9052_ipc_pipe_shmget_msgget;
+pub mod unx9053_sys;
+pub mod unx9054_sys;
+pub mod unx9055_ktest;
+pub mod unx9056_s_30;
+pub mod unx9057_b02b12;
+pub mod unx9058_int_max_null_fd;
+pub mod unx9059_s_30;
+pub mod unx9060_ktest_syscall_b13;
+pub mod unx9061_glibc_syscall;
+pub mod unx9062_glibc_open_read_write_clos;
+pub mod unx9063_glibc_malloc_brk_mmap_b03;
+pub mod unx9064_glibc_fork_exec_wait_b04;
+pub mod unx9065_glibc_b05_getuid_setuid;
+pub mod unx9066_glibc_b06_clock_gettime_gm;
+pub mod unx9067_glibc_errno_libc_errno_err;
+pub mod unx9068_glibc_dup_fcntl_b08;
+pub mod unx9069_glibc_opendir_readdir_getd;
+pub mod unx9070_glibc_epoll_epoll_waitpoll;
+pub mod unx9071_glibc_pthread_clone_futex;
+pub mod unx9072_futex_glibc_pthread;
+pub mod unx9073_glibc_sigaction_raise;
+pub mod unx9074_glibc_dlopen_elf_mmap;
+pub mod unx9075_glibc_nss_getpwuid;
+pub mod unx9076_glibc_printf_stdio_write;
+pub mod unx9077_sys;
+pub mod unx9078_busybox;
+pub mod unx9079_glibc_231_235;
+pub mod unx9080_ktest_syscall_b14;
+pub mod unx9081_ltp;
+pub mod unx9082_ltp_open_read_write_stat;
+pub mod unx9083_ltp_mmap_mprotect;
+pub mod unx9084_ltp_fork_exec_wait;
+pub mod unx9085_ltp_clock_gettime_nanoslee;
+pub mod unx9086_ltp_sigaction_kill;
+pub mod unx9087_ltp_epoll_select_poll;
+pub mod unx9088_ltp_ipc_pipe_msg_shm_sem;
+pub mod unx9089_ltp_sysinfo_uname_getrusag;
+pub mod unx9090_uname;
+pub mod unx9091_getrusage;
+pub mod unx9092_prlimit64_rlimit;
+pub mod unx9093_b01b15_300;
+pub mod unx9094_f8801f9100;
+pub mod unx9095_a1_a4_b1_a2_c2;
+pub mod unx9096_s_05;
+pub mod unx9097_open_risks_handoff;
+pub mod unx9098_p99_windows_15;
+pub mod unx9099_c2;
+pub mod unx9100_ktest_syscall_b15;
+pub mod unx9101_fcntl_f_getfd_f_setfd_f_ge;
+pub mod unx9102_fcntl_f_dupfd_f_dupfd_cloe;
+pub mod unx9103_fcntl_f_getlk_f_setlk_f_se;
+pub mod unx9104_fcntl_f_setfl_o_nonblock_o;
+pub mod unx9105_fcntl_ebadf_einval_eintr_e;
+pub mod unx9106_ioctl;
+pub mod unx9107_ioctl_tcgets_tcsets_tiocgw;
+pub mod unx9108_ioctl_fionbio_fioasync;
+pub mod unx9109_ioctl_enotty;
+pub mod unx9110_fcntl_f_getown_f_setown;
+pub mod unx9111_fcntl_f_setlkw_eintr;
+pub mod unx9112_flock_posix;
+pub mod unx9113_dup3_o_cloexec_dup;
+pub mod unx9114_fcntl_f_getpipe_sz_f_setpi;
+pub mod unx9115_fcntl_f_add_seals_f_get_se;
+pub mod unx9116_ioctl_copy_from_user_copy_;
+pub mod unx9117_fcntl_ioctl_nargs3;
+pub mod unx9118_fcntl_glibc_file;
+pub mod unx9119_fcntl_ioctl_int_0x80;
+pub mod unx9120_ktest_syscall_b16;
+pub mod unx9121_mremap_mremap_maymove_mrem;
+pub mod unx9122_mremap_a4;
+pub mod unx9123_mremap_einval_enomem_eperm;
+pub mod unx9124_madvise;
+pub mod unx9125_madvise_madv_dontneed;
+pub mod unx9126_madvise_madv_willneed;
+pub mod unx9127_madvise_madv_sequential_ra;
+pub mod unx9128_madvise_einval_enomem_eacc;
+pub mod unx9129_msync_ms_sync_ms_async_ms_;
+pub mod unx9130_mlock_munlock_rlimit_memlo;
+pub mod unx9131_mlockall_munlockall;
+pub mod unx9132_mincore;
+pub mod unx9133_mprotect_pf;
+pub mod unx9134_map_noreserve_map_populate;
+pub mod unx9135_oom_enomem;
+pub mod unx9136_addr_length;
+pub mod unx9137_glibc_malloc;
+pub mod unx9138_sys;
+pub mod unx9139_windows_virtualalloc;
+pub mod unx9140_ktest_syscall_b17;
+pub mod unx9141_wait4;
+pub mod unx9142_waitpid_wait3_wnohang_wunt;
+pub mod unx9143_waitid_p_pid_p_pgid_p_all;
+pub mod unx9144_exitstatus;
+pub mod unx9145_wait_echild_eintr_einval;
+pub mod unx9146_setpgid_getpgid;
+pub mod unx9147_setsid;
+pub mod unx9148_getppid_set_tid_address;
+pub mod unx9149_vfork;
+pub mod unx9150_execve_c1;
+pub mod unx9151_execveat_at_empty_path_at_;
+pub mod unx9152_c4;
+pub mod unx9153_init;
+pub mod unx9154_wait_sigchld;
+pub mod unx9155_esrch_eperm;
+pub mod unx9156_sys;
+pub mod unx9157_wait_shell;
+pub mod unx9158_proc;
+pub mod unx9159_windows_waitforsingleobjec;
+pub mod unx9160_ktest_syscall_b18;
+pub mod unx9161_setrlimit_getrlimit_rlimit;
+pub mod unx9162_rlimit_nofile_core_stack;
+pub mod unx9163_rlimit_as_data_rss;
+pub mod unx9164_rlimit_cpu_nproc_sigpendin;
+pub mod unx9165_rlimit_fsize_locks_msgqueu;
+pub mod unx9166_prlimit64_setrlimit_abi;
+pub mod unx9167_einval_eperm_enomem;
+pub mod unx9168_rlim_infinity;
+pub mod unx9169_setpriority_getpriority_ni;
+pub mod unx9170_eacces_eperm;
+pub mod unx9171_sched_yield_a1;
+pub mod unx9172_times_tms_clk_tck;
+pub mod unx9173_getrusage_children_wait;
+pub mod unx9174_a2;
+pub mod unx9175_sys;
+pub mod unx9176_shell_ulimit;
+pub mod unx9177_sys;
+pub mod unx9178_windows;
+pub mod unx9179_getrusage_rusage_self_b15;
+pub mod unx9180_ktest_syscall_b19;
+pub mod unx9181_setuid_setreuid;
+pub mod unx9182_setresuid_setfsuid;
+pub mod unx9183_setgid_setregid_setresgid;
+pub mod unx9184_eperm;
+pub mod unx9185_getgroups_setgroups;
+pub mod unx9186_umask;
+pub mod unx9187_b5;
+pub mod unx9188_nanosleep_timespec;
+pub mod unx9189_nanosleep_eintr_remaining;
+pub mod unx9190_clock_nanosleep_timer_abst;
+pub mod unx9191_a2;
+pub mod unx9192_a2_jitter;
+pub mod unx9193_c1;
+pub mod unx9194_einval_enomem;
+pub mod unx9195_setuid_execve_s;
+pub mod unx9196_sys;
+pub mod unx9197_shell_sleep;
+pub mod unx9198_b5;
+pub mod unx9199_windows;
+pub mod unx9200_ktest_syscall_b20_m;
+pub mod unx9201_e;
+
+// ===== AI-WBV1027 第二批（UNX-F48383~F48582，200 单）=====
+pub mod unx48383_m12dupscan;
+pub mod unx48384_m12latsroll;
+pub mod unx48385_m12defexit;
+pub mod unx48386_m12exlog;
+pub mod unx48387_m12a11y;
+pub mod unx48388_m12cfg;
+pub mod unx48389_m12smroll;
+pub mod unx48390_m12wmreg;
+pub mod unx48391_m12a82audit;
+pub mod unx48392_m12a85match;
+pub mod unx48393_m12eclink;
+pub mod unx48394_m12docaudit;
+pub mod unx48395_m12perfbud;
+pub mod unx48396_m12x5rerun;
+pub mod unx48397_m12concrun;
+pub mod unx48398_m12b20grep;
+pub mod unx48399_m12upgrade;
+pub mod unx48400_m12b20seal;
+pub mod unx48401_fok1k;
+pub mod unx48402_fokinj;
+pub mod unx48403_destroyord;
+pub mod unx48404_desinj;
+pub mod unx48405_rrfive;
+pub mod unx48406_rrcominj;
+pub mod unx48407_lkclose;
+pub mod unx48408_lktamper;
+pub mod unx48409_xfocusmap;
+pub mod unx48410_xghofocus;
+pub mod unx48411_hwndreuse;
+pub mod unx48412_hwndstale;
+pub mod unx48413_e21regsent;
+pub mod unx48414_e21pres;
+pub mod unx48415_e21errm1;
+pub mod unx48416_e21fuzz;
+pub mod unx48417_e21perf;
+pub mod unx48418_e21obs;
+pub mod unx48419_e21grep;
+pub mod unx48420_e21seal;
+pub mod unx48421_pyn64;
+pub mod unx48422_pyninj;
+pub mod unx48423_dagcap;
+pub mod unx48424_dagbomb;
+pub mod unx48425_candpool;
+pub mod unx48426_candstorm;
+pub mod unx48427_phrasecap;
+pub mod unx48428_phraseinj;
+pub mod unx48429_spansafe;
+pub mod unx48430_spaninj;
+pub mod unx48431_utf8edge;
+pub mod unx48432_splitinj;
+pub mod unx48433_e22regsent;
+pub mod unx48434_e22errm1;
+pub mod unx48435_e22perf;
+pub mod unx48436_e22obs;
+pub mod unx48437_e22fuzz;
+pub mod unx48438_e22pres;
+pub mod unx48439_e22grep;
+pub mod unx48440_e22seal;
+pub mod unx48441_diccrc;
+pub mod unx48442_dicforge;
+pub mod unx48443_bigrambad;
+pub mod unx48444_bigraminj;
+pub mod unx48445_uwrecov;
+pub mod unx48446_uwhalf;
+pub mod unx48447_cfgthree;
+pub mod unx48448_cfginj;
+pub mod unx48449_sylbad;
+pub mod unx48450_sylinj;
+pub mod unx48451_fdictrej;
+pub mod unx48452_fstreaminj;
+pub mod unx48453_e23regsent;
+pub mod unx48454_e23ledger;
+pub mod unx48455_e23errm1;
+pub mod unx48456_e23obs;
+pub mod unx48457_e23pres;
+pub mod unx48458_e23perf;
+pub mod unx48459_e23grep;
+pub mod unx48460_e23seal;
+pub mod unx48461_msgorder;
+pub mod unx48462_t0inj;
+pub mod unx48463_reconn;
+pub mod unx48464_recstorm;
+pub mod unx48465_ctxdual;
+pub mod unx48466_commitdup;
+pub mod unx48467_loopzero;
+pub mod unx48468_loopinj;
+pub mod unx48469_vernego;
+pub mod unx48470_streamsplit;
+pub mod unx48471_e24regsent;
+pub mod unx48472_e24errm1;
+pub mod unx48473_e24obs;
+pub mod unx48474_e24pres;
+pub mod unx48475_e24fuzz;
+pub mod unx48476_e24perf;
+pub mod unx48477_e24vec;
+pub mod unx48478_e24p0;
+pub mod unx48479_e24grep;
+pub mod unx48480_e24seal;
+pub mod unx48481_debwin;
+pub mod unx48482_debinj;
+pub mod unx48483_shiftlong;
+pub mod unx48484_shiftmask;
+pub mod unx48485_dblsel;
+pub mod unx48486_selstorm;
+pub mod unx48487_capsjit;
+pub mod unx48488_modorder;
+pub mod unx48489_imshield;
+pub mod unx48490_combcommit;
+pub mod unx48491_e25regsent;
+pub mod unx48492_e25errm1;
+pub mod unx48493_e25obs;
+pub mod unx48494_e25fuzz;
+pub mod unx48495_e25calib;
+pub mod unx48496_e25perf;
+pub mod unx48497_e25vec;
+pub mod unx48498_e25m2sign;
+pub mod unx48499_e25grep;
+pub mod unx48500_e25seal;
+pub mod unx48501_keybudget;
+pub mod unx48502_keystorm;
+pub mod unx48503_candmerge;
+pub mod unx48504_refstorm;
+pub mod unx48505_learnamp;
+pub mod unx48506_learnstorm;
+pub mod unx48507_membound;
+pub mod unx48508_mempress;
+pub mod unx48509_loopstarve;
+pub mod unx48510_busyloop;
+pub mod unx48511_e26regsent;
+pub mod unx48512_e26errm1;
+pub mod unx48513_e26obs;
+pub mod unx48514_e26fuzz;
+pub mod unx48515_e26pres;
+pub mod unx48516_e26vec;
+pub mod unx48517_e26perf;
+pub mod unx48518_e26audit;
+pub mod unx48519_e26grep;
+pub mod unx48520_e26seal;
+pub mod unx48521_devremov;
+pub mod unx48522_devjit;
+pub mod unx48523_addonexit;
+pub mod unx48524_addonrst;
+pub mod unx48525_enginehot;
+pub mod unx48526_reloadfail;
+pub mod unx48527_seatadd;
+pub mod unx48528_seatrm;
+pub mod unx48529_windying;
+pub mod unx48530_windrace;
+pub mod unx48531_e27regsent;
+pub mod unx48532_e27errm1;
+pub mod unx48533_e27obs;
+pub mod unx48534_e27fuzz;
+pub mod unx48535_e27pres;
+pub mod unx48536_e27vec;
+pub mod unx48537_e27usb;
+pub mod unx48538_e27perf;
+pub mod unx48539_e27grep;
+pub mod unx48540_e27seal;
+pub mod unx48541_pwllearn;
+pub mod unx48542_halfrec;
+pub mod unx48543_crashrebuild;
+pub mod unx48544_crashclean;
+pub mod unx48545_snapsame;
+pub mod unx48546_snapgen;
+pub mod unx48547_lkpersist;
+pub mod unx48548_lkhole;
+pub mod unx48549_factoryreset;
+pub mod unx48550_resetguard;
+pub mod unx48551_e28regsent;
+pub mod unx48552_e28errm1;
+pub mod unx48553_e28obs;
+pub mod unx48554_e28fuzz;
+pub mod unx48555_e28pres;
+pub mod unx48556_e28vec;
+pub mod unx48557_e28journal;
+pub mod unx48558_e28machine;
+pub mod unx48559_e28grep;
+pub mod unx48560_e28seal;
+pub mod unx48561_candfreeze;
+pub mod unx48562_candlocate;
+pub mod unx48563_candvis;
+pub mod unx48564_preeditattr;
+pub mod unx48565_themeiso;
+pub mod unx48566_candoccl;
+pub mod unx48567_floatclose;
+pub mod unx48568_focuslost;
+pub mod unx48569_signsratio;
+pub mod unx48570_f4notify;
+pub mod unx48571_i29regsent;
+pub mod unx48572_i29errm1;
+pub mod unx48573_i29obs;
+pub mod unx48574_i29vec;
+pub mod unx48575_i29perf;
+pub mod unx48576_i29fuzz;
+pub mod unx48577_i29pres;
+pub mod unx48578_i29doc;
+pub mod unx48579_i29grep;
+pub mod unx48580_i29seal;
+pub mod unx48581_keyquad;
+pub mod unx48582_lkboundary;
+pub mod unx24001_kmd_pci;
+pub mod unx24002_kmd_pci;
+pub mod unx24003_kmd_pci;
+pub mod unx24004_kmd_pci;
+pub mod unx24005_kmd_pci;
+pub mod unx24006_kmd_pci;
+pub mod unx24007_kmd_pci;
+pub mod unx24008_kmd_pci;
+pub mod unx24009_kmd_pci;
+pub mod unx24010_kmd_pci;
+pub mod unx24011_kmd_pci;
+pub mod unx24012_kmd_pci;
+pub mod unx24013_kmd_pci;
+pub mod unx24014_kmd_pci;
+pub mod unx24015_kmd_pci;
+pub mod unx24016_kmd_pci;
+pub mod unx24017_kmd_pci;
+pub mod unx24018_kmd_pci;
+pub mod unx24019_kmd_pci;
+pub mod unx24020_kmd_pci;
+pub mod unx24021_dev_mmio;
+pub mod unx24022_dev_mmio;
+pub mod unx24023_dev_mmio;
+pub mod unx24024_dev_mmio;
+pub mod unx24025_dev_mmio;
+pub mod unx24026_dev_mmio;
+pub mod unx24027_dev_mmio;
+pub mod unx24028_dev_mmio;
+pub mod unx24029_dev_mmio;
+pub mod unx24030_dev_mmio;
+pub mod unx24031_dev_mmio;
+pub mod unx24032_dev_mmio;
+pub mod unx24033_dev_mmio;
+pub mod unx24034_dev_mmio;
+pub mod unx24035_dev_mmio;
+pub mod unx24036_dev_mmio;
+pub mod unx24037_dev_mmio;
+pub mod unx24038_dev_mmio;
+pub mod unx24039_dev_mmio;
+pub mod unx24040_dev_mmio;
+pub mod unx24041_drv_pmops;
+pub mod unx24042_drv_pmops;
+pub mod unx24043_drv_pmops;
+pub mod unx24044_drv_pmops;
+pub mod unx24045_drv_pmops;
+pub mod unx24046_drv_pmops;
+pub mod unx24047_drv_pmops;
+pub mod unx24048_drv_pmops;
+pub mod unx24049_drv_pmops;
+pub mod unx24050_drv_pmops;
+pub mod unx24051_drv_pmops;
+pub mod unx24052_drv_pmops;
+pub mod unx24053_drv_pmops;
+pub mod unx24054_drv_pmops;
+pub mod unx24055_drv_pmops;
+pub mod unx24056_drv_pmops;
+pub mod unx24057_drv_pmops;
+pub mod unx24058_drv_pmops;
+pub mod unx24059_drv_pmops;
+pub mod unx24060_drv_pmops;
+pub mod unx24061_gem_obj;
+pub mod unx24062_gem_obj;
+pub mod unx24063_gem_obj;
+pub mod unx24064_gem_obj;
+pub mod unx24065_gem_obj;
+pub mod unx24066_gem_obj;
+pub mod unx24067_gem_obj;
+pub mod unx24068_gem_obj;
+pub mod unx24069_gem_obj;
+pub mod unx24070_gem_obj;
+pub mod unx24071_gem_obj;
+pub mod unx24072_gem_obj;
+pub mod unx24073_gem_obj;
+pub mod unx24074_gem_obj;
+pub mod unx24075_gem_obj;
+pub mod unx24076_gem_obj;
+pub mod unx24077_gem_obj;
+pub mod unx24078_gem_obj;
+pub mod unx24079_gem_obj;
+pub mod unx24080_gem_obj;
+pub mod unx24081_vram_buddy;
+pub mod unx24082_vram_buddy;
+pub mod unx24083_vram_buddy;
+pub mod unx24084_vram_buddy;
+pub mod unx24085_vram_buddy;
+pub mod unx24086_vram_buddy;
+pub mod unx24087_vram_buddy;
+pub mod unx24088_vram_buddy;
+pub mod unx24089_vram_buddy;
+pub mod unx24090_vram_buddy;
+pub mod unx24091_vram_buddy;
+pub mod unx24092_vram_buddy;
+pub mod unx24093_vram_buddy;
+pub mod unx24094_vram_buddy;
+pub mod unx24095_vram_buddy;
+pub mod unx24096_vram_buddy;
+pub mod unx24097_vram_buddy;
+pub mod unx24098_vram_buddy;
+pub mod unx24099_vram_buddy;
+pub mod unx24100_vram_buddy;
+pub mod unx24101_gtt_map;
+pub mod unx24102_gtt_map;
+pub mod unx24103_gtt_map;
+pub mod unx24104_gtt_map;
+pub mod unx24105_gtt_map;
+pub mod unx24106_gtt_map;
+pub mod unx24107_gtt_map;
+pub mod unx24108_gtt_map;
+pub mod unx24109_gtt_map;
+pub mod unx24110_gtt_map;
+pub mod unx24111_gtt_map;
+pub mod unx24112_gtt_map;
+pub mod unx24113_gtt_map;
+pub mod unx24114_gtt_map;
+pub mod unx24115_gtt_map;
+pub mod unx24116_gtt_map;
+pub mod unx24117_gtt_map;
+pub mod unx24118_gtt_map;
+pub mod unx24119_gtt_map;
+pub mod unx24120_gtt_map;
+pub mod unx24121_evict_lru;
+pub mod unx24122_evict_lru;
+pub mod unx24123_evict_lru;
+pub mod unx24124_evict_lru;
+pub mod unx24125_evict_lru;
+pub mod unx24126_evict_lru;
+pub mod unx24127_evict_lru;
+pub mod unx24128_evict_lru;
+pub mod unx24129_evict_lru;
+pub mod unx24130_evict_lru;
+pub mod unx24131_evict_lru;
+pub mod unx24132_evict_lru;
+pub mod unx24133_evict_lru;
+pub mod unx24134_evict_lru;
+pub mod unx24135_evict_lru;
+pub mod unx24136_evict_lru;
+pub mod unx24137_evict_lru;
+pub mod unx24138_evict_lru;
+pub mod unx24139_evict_lru;
+pub mod unx24140_evict_lru;
+pub mod unx24141_resv_lock;
+pub mod unx24142_resv_lock;
+pub mod unx24143_resv_lock;
+pub mod unx24144_resv_lock;
+pub mod unx24145_resv_lock;
+pub mod unx24146_resv_lock;
+pub mod unx24147_resv_lock;
+pub mod unx24148_resv_lock;
+pub mod unx24149_resv_lock;
+pub mod unx24150_resv_lock;
+pub mod unx24151_resv_lock;
+pub mod unx24152_resv_lock;
+pub mod unx24153_resv_lock;
+pub mod unx24154_resv_lock;
+pub mod unx24155_resv_lock;
+pub mod unx24156_resv_lock;
+pub mod unx24157_resv_lock;
+pub mod unx24158_resv_lock;
+pub mod unx24159_resv_lock;
+pub mod unx24160_resv_lock;
+pub mod unx24161_msix_irq;
+pub mod unx24162_msix_irq;
+pub mod unx24163_msix_irq;
+pub mod unx24164_msix_irq;
+pub mod unx24165_msix_irq;
+pub mod unx24166_msix_irq;
+pub mod unx24167_msix_irq;
+pub mod unx24168_msix_irq;
+pub mod unx24169_msix_irq;
+pub mod unx24170_msix_irq;
+pub mod unx24171_msix_irq;
+pub mod unx24172_msix_irq;
+pub mod unx24173_msix_irq;
+pub mod unx24174_msix_irq;
+pub mod unx24175_msix_irq;
+pub mod unx24176_msix_irq;
+pub mod unx24177_msix_irq;
+pub mod unx24178_msix_irq;
+pub mod unx24179_msix_irq;
+pub mod unx24180_msix_irq;
+pub mod unx24181_vblank_hpd;
+pub mod unx24182_vblank_hpd;
+pub mod unx24183_vblank_hpd;
+pub mod unx24184_vblank_hpd;
+pub mod unx24185_vblank_hpd;
+pub mod unx24186_vblank_hpd;
+pub mod unx24187_vblank_hpd;
+pub mod unx24188_vblank_hpd;
+pub mod unx24189_vblank_hpd;
+pub mod unx24190_vblank_hpd;
+pub mod unx24191_vblank_hpd;
+pub mod unx24192_vblank_hpd;
+pub mod unx24193_vblank_hpd;
+pub mod unx24194_vblank_hpd;
+pub mod unx24195_vblank_hpd;
+pub mod unx24196_vblank_hpd;
+pub mod unx24197_vblank_hpd;
+pub mod unx24198_vblank_hpd;
+pub mod unx24199_vblank_hpd;
+pub mod unx24200_vblank_hpd;
