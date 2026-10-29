@@ -12910,3 +12910,33 @@ pub mod unx13981_pwrpano;
 pub mod unx13841_pwr_inj_frame;
 pub mod unx14001_conc_inj_pano;
 pub mod unx14021_res_bound_pano;
+// ---- AI-VX3-1030（2026-10-30）：批7 12 单（SEG 0x66200~0x664C0 独占） ----
+
+// ---- AI-VX3-1030（2026-10-30）：批8 12 单（SEG 0x66500~0x667C0 独占） ----
+// ---- AI-VX3-1030（2026-10-30）：批7 12 单（SEG 0x66200~0x664C0 独占） ----
+pub mod unx14041_degrade_total;
+pub mod unx14061_diag_merge;
+pub mod unx14081_ebatch_frame;
+pub mod unx14101_iroadmap;
+pub mod unx14121_d3d1_frame;
+pub mod unx14141_d3d4_frame;
+pub mod unx14161_d3d56_frame;
+pub mod unx14181_iindex;
+pub mod unx14201_d3d1_lsign;
+pub mod unx14221_d3d2_lsign;
+pub mod unx14241_sd_acl;
+pub mod unx14261_tri_lsign;
+
+// ---- AI-VX3-1030（2026-10-30）：批8 12 单（SEG 0x66500~0x667C0 独占） ----
+pub mod unx14281_iselect_agg;
+pub mod unx14301_gregress;
+pub mod unx14321_leak_tottl;
+pub mod unx14341_badmat_all;
+pub mod unx14361_perf_tottl;
+pub mod unx14381_finale;
+pub mod unx14401_wndclass;
+pub mod unx14421_setwinpos;
+pub mod unx14441_msgqueue;
+pub mod unx14461_dispatch;
+pub mod unx14481_sentenv;
+pub mod unx14501_gdihead;

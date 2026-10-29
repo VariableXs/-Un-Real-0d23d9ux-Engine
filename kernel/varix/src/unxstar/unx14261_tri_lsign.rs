@@ -13,7 +13,7 @@
 //! 设计要点：
 //!   - 三命名面闭集：文件型/设备型/网络型；对接矩阵 20 行：承接面/
 //!     映射语义/联签批位三列写死；
-//!   - 面桶守恒：文件型 8 + 设备型 6 + 网络型 6 = 20（双向断言）；
+//!   - 面桶守恒：文件型 8 + 设备型 7 + 网络型 5 = 20（双向断言）；
 //!   - 升级条件断言：D4/D5/D6 三域冻结快照 finalized=40 逐域对表
 //!     必真（任一假快照即拒）；
 //!   - 20/20 分界表：判据 ID 全集 40，B33 安全面持 0..20、B34 三域
@@ -38,8 +38,8 @@ pub const FACE_NET: usize = 2; // 网络型（D5）
 pub const FACE_COUNT: usize = 3;
 pub const FACE_NAMES: [&str; FACE_COUNT] = ["文件型", "设备型", "网络型"];
 
-/// 黄金面桶期望（独立写死判据：8+6+6 = 20）。
-pub const GOLD_FACE_BUCKETS: [u32; FACE_COUNT] = [8, 6, 6];
+/// 黄金面桶期望（独立写死判据：8+7+5 = 20）。
+pub const GOLD_FACE_BUCKETS: [u32; FACE_COUNT] = [8, 7, 5];
 
 // ── 对接矩阵 20 行（承接面/映射语义/联签批位，写死） ─────────────
 pub const MX_ROWS: usize = 20;
@@ -144,7 +144,7 @@ impl TriCode {
             TriCode::BatchPosInvalid => "联签批位越批内闭集：1..=20",
             TriCode::UpgradeConditionFalse => "升级条件断言为假：三域快照漂移",
             TriCode::PartitionOverlap => "分界表重叠：20/20 勾稽失守",
-            TriCode::FaceBucketConservation => "面桶守恒失守：8+6+6≠20",
+            TriCode::FaceBucketConservation => "面桶守恒失守：8+7+5≠20",
             TriCode::IllegalTransition => "联签状态机越边：未联签先封账",
             TriCode::RowUnsealed => "行未封账：红绿齐红线",
             TriCode::NotReproducible => "双跑不一致：复现红线",
@@ -452,7 +452,7 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     let mut v: Vec<(&'static str, bool, String)> = Vec::new();
     let golden = golden_run();
     v.push((
-        "J1-20行全封账+复现+面桶8/6/6",
+        "J1-20行全封账+复现+面桶8/7/5",
         matches!(golden, Ok((20, _, _))),
         format!("{:?}", golden),
     ));
@@ -482,7 +482,7 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     ));
     let buckets = face_bucket_audit();
     v.push((
-        "J1-面桶守恒（8+6+6=20）",
+        "J1-面桶守恒（8+7+5=20）",
         matches!(buckets, Ok(_)),
         format!("{:?}", buckets),
     ));
