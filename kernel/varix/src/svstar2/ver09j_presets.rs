@@ -98,8 +98,8 @@ impl Preset {
     }
 
     /// 预设档案（域值经过合法性检查——构造期保证）。
-    pub fn profile(self) -> super::ver09i_profile::PersonaProfile {
-        use super::ver09i_profile::*;
+    pub fn profile(self) -> crate::svstar2::ver09i_profile::PersonaProfile {
+        use crate::svstar2::ver09i_profile::*;
         let mut p = PersonaProfile::default_profile();
         match self {
             Preset::DeepGlass => {
@@ -133,7 +133,7 @@ impl Preset {
 
 /// 应用事务：预演 → 提交 → 失败回滚（E04 复用）。
 pub struct PresetTx {
-    snapshot: Option<super::ver09i_profile::PersonaProfile>,
+    snapshot: Option<crate::svstar2::ver09i_profile::PersonaProfile>,
     stage: TxStage,
 }
 
@@ -164,17 +164,17 @@ impl PresetTx {
     /// 预演：抓快照 + 预设指纹校验（损坏 → 回默认档案）。
     pub fn preview(
         &mut self,
-        current: &super::ver09i_profile::PersonaProfile,
+        current: &crate::svstar2::ver09i_profile::PersonaProfile,
         want: Preset,
-    ) -> super::ver09i_profile::PersonaProfile {
+    ) -> crate::svstar2::ver09i_profile::PersonaProfile {
         self.snapshot = Some(*current);
         self.stage = TxStage::Prepared;
         // 指纹校验：预设档案消毒后无 Sanitized 码视为完好。
         let mut target = want.profile();
         let codes = target.sanitize();
-        let corrupt = codes.contains(&super::ver09i_profile::PersonaCode::Sanitized);
+        let corrupt = codes.contains(&crate::svstar2::ver09i_profile::PersonaCode::Sanitized);
         if corrupt {
-            target = super::ver09i_profile::PersonaProfile::default_profile();
+            target = crate::svstar2::ver09i_profile::PersonaProfile::default_profile();
         }
         target
     }
@@ -182,8 +182,8 @@ impl PresetTx {
     /// 提交（只有预演过才能提交）。`apply` 下发回调 false 即回滚。
     pub fn commit(
         &mut self,
-        target: &super::ver09i_profile::PersonaProfile,
-        mut apply: impl FnMut(&super::ver09i_profile::PersonaProfile) -> bool,
+        target: &crate::svstar2::ver09i_profile::PersonaProfile,
+        mut apply: impl FnMut(&crate::svstar2::ver09i_profile::PersonaProfile) -> bool,
     ) -> Result<(), PresetCode> {
         if self.stage != TxStage::Prepared {
             return Err(PresetCode::NotPreviewed);
@@ -219,7 +219,7 @@ pub enum Tweak {
 
 /// 把微调压到预设底稿上（微调覆盖纪律）。
 pub fn apply_tweaks(
-    base: &mut super::ver09i_profile::PersonaProfile,
+    base: &mut crate::svstar2::ver09i_profile::PersonaProfile,
     tweaks: &[Tweak],
 ) -> usize {
     let mut n = 0;
@@ -230,7 +230,7 @@ pub fn apply_tweaks(
                 n += 1;
             }
             Tweak::BasePx(px) => {
-                base.domains.font.base_px = px.max(super::ver09g_fonts::MIN_READABLE_PX);
+                base.domains.font.base_px = px.max(crate::svstar2::ver09g_fonts::MIN_READABLE_PX);
                 n += 1;
             }
             Tweak::MotionTier(tier) => {
@@ -250,7 +250,7 @@ pub fn apply_tweaks(
 /// 预设账。
 pub struct PresetBook {
     /// 当前生效档案。
-    pub current: super::ver09i_profile::PersonaProfile,
+    pub current: crate::svstar2::ver09i_profile::PersonaProfile,
     /// 当前预设底（None = 纯微调/默认）。
     pub base: Option<Preset>,
     pub codes: Vec<PresetCode>,
@@ -260,14 +260,14 @@ impl PresetBook {
     /// 默认起步。
     pub fn new() -> Self {
         PresetBook {
-            current: super::ver09i_profile::PersonaProfile::default_profile(),
+            current: crate::svstar2::ver09i_profile::PersonaProfile::default_profile(),
             base: None,
             codes: Vec::new(),
         }
     }
 
     /// 一键应用。
-    pub fn apply(&mut self, want: Preset, mut apply: impl FnMut(&super::ver09i_profile::PersonaProfile) -> bool) -> Result<(), PresetCode> {
+    pub fn apply(&mut self, want: Preset, mut apply: impl FnMut(&crate::svstar2::ver09i_profile::PersonaProfile) -> bool) -> Result<(), PresetCode> {
         let mut tx = PresetTx::new();
         let target = tx.preview(&self.current, want);
         match tx.commit(&target, apply) {
@@ -302,7 +302,7 @@ mod tests {
     fn three_presets_valid() {
         for p in Preset::ALL {
             let prof = p.profile();
-            assert_eq!(prof.version, super::ver09i_profile::PERSONA_VERSION);
+            assert_eq!(prof.version, crate::svstar2::ver09i_profile::PERSONA_VERSION);
             assert!(prof.domains.sound.volume <= 1000);
         }
     }
@@ -313,7 +313,7 @@ mod tests {
         let r = b.apply(Preset::DeepGlass, |_| false);
         assert_eq!(r, Err(PresetCode::ApplyFailed));
         // 回滚：档案不变。
-        assert_eq!(b.current, super::ver09i_profile::PersonaProfile::default_profile());
+        assert_eq!(b.current, crate::svstar2::ver09i_profile::PersonaProfile::default_profile());
     }
 
     #[test]
@@ -329,6 +329,6 @@ mod tests {
     fn floor_enforced_in_tweak() {
         let mut b = PresetBook::new();
         b.tweak(&[Tweak::BasePx(4)]);
-        assert_eq!(b.current.domains.font.base_px, super::ver09g_fonts::MIN_READABLE_PX);
+        assert_eq!(b.current.domains.font.base_px, crate::svstar2::ver09g_fonts::MIN_READABLE_PX);
     }
 }

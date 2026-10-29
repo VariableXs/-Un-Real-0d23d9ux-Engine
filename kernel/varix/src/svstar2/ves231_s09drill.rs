@@ -326,15 +326,15 @@ mod tests {
     fn test_gate_full_cycle() {
         let mut d = Drill::new();
         for s in 0..4 {
-            d.run(s, true).ok();
+let _ =             d.run(s, true);
         }
-        d.run(1, false).ok();
+let _ =         d.run(1, false);
         let mut p = PassPipe::new();
-        p.raise("f", 1).ok();
+let _ =         p.raise("f", 1);
         let mut g = GoGate::new();
         assert_eq!(g.evaluate(&d, &p), S9QCode::GATE_CLOSED);
-        p.consume("f").ok();
-        d.run(1, true).ok();
+let _ =         p.consume("f");
+let _ =         d.run(1, true);
         assert_eq!(g.evaluate(&d, &p), S9QCode::OK);
     }
 

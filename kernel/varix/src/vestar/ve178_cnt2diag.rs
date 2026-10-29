@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn test_low_tier_throttled_first() {
-        let reg = setup_registry();
+        let mut reg = setup_registry();
         let mut pipe = AggPipeline::new();
         // 覆盖 PerMinute 配额为 2，验证低档位先限流
         pipe.quotas.insert(

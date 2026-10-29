@@ -272,7 +272,7 @@ mod tests {
         let mut id = 1;
         for d in Domain::ALL {
             for i in 0..CASES_PER_DOMAIN {
-                v.push(ParityCase { id, domain: d, proto_out: i, runtime_out: i });
+                v.push(ParityCase { id, domain: d, proto_out: i as u32, runtime_out: i as u32 });
                 id += 1;
             }
         }

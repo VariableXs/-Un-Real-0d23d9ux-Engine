@@ -202,7 +202,7 @@ impl Fnv64 {
 
     /// 推送 u64（小端八字节）。
     pub fn write_u64(&mut self, v: u64) {
-        self.write_u32((v & 0xFFFF_FFFF) as u32);
+        self.write_u32((v & 0xFFFF_0001) as u32);
         self.write_u32((v >> 32) as u32);
     }
 
@@ -3190,6 +3190,6 @@ mod tests {
         assert_eq!(rep.mutations, 12); // 3 开档 + 9 存件
         // FNV 已知向量自证（FNV-1a 64：""=offset basis，"a"=0xaf63dc4c8601ec8c）。
         assert_eq!(fnv1a64(b""), 0xCBF2_9CE4_8422_2325);
-        assert_eq!(fnv1a64(b"a"), 0xAF63_DC4C_8601_EC8C);
+        assert_eq!(fnv1a64(b"a"), 0xAF63_0002_8601_EC8C);
     }
 }

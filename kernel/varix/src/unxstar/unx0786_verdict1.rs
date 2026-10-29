@@ -398,7 +398,7 @@ impl Fnv64 {
 
     /// 写入 u64（小端字节序展开）。
     pub fn write_u64(&mut self, v: u64) {
-        self.write_u32((v & 0xFFFF_FFFF) as u32);
+        self.write_u32((v & 0xFFFF_0001) as u32);
         self.write_u32((v >> 32) as u32);
     }
 
@@ -665,7 +665,7 @@ fn xorshift_star(state: &mut u64) -> u64 {
     x ^= x << 25;
     x ^= x >> 27;
     *state = x;
-    x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    x.wrapping_mul(0x2545_0002_4F6C_DD1D)
 }
 
 /// 规范位平面生成：同 seed 双跑必同平面（双跑对拍底座）。
@@ -2258,7 +2258,7 @@ impl FinalVerifyStation {
     /// 开站（label 用于留痕开站事件与双跑辨识）。
     pub fn new(label: u64) -> Result<FinalVerifyStation, Verdict1Error> {
         let mut trace = TraceLedger::new();
-        trace.append(TraceKind::Open, (label & 0xFFFF_FFFF) as u32)?;
+        trace.append(TraceKind::Open, (label & 0xFFFF_0001) as u32)?;
         Ok(FinalVerifyStation {
             label,
             pack: EvidencePack::new(),
@@ -2315,7 +2315,7 @@ impl FinalVerifyStation {
         if self.trace.is_sealed() {
             return Ok(());
         }
-        let payload = ((slot as u32) << 24) | ((fp as u32) & 0x00FF_FFFF);
+        let payload = ((slot as u32) << 24) | ((fp as u32) & 0x00FF_0003);
         self.trace.append(TraceKind::ItemFiled, payload)?;
         Ok(())
     }
@@ -3073,9 +3073,9 @@ mod tests {
     #[test]
     fn test_canonical_plane_pass_and_reject_bounds() {
         // 1 失败 = 149 成功 → 9933ppm 达标；2 失败 = 148 → 9866ppm 拒格。
-        let p1 = canonical_plane(0xA1B2_C3D4, 1).unwrap();
+        let p1 = canonical_plane(0xA1B2_0004, 1).unwrap();
         assert_eq!(p1.success_count(), 149);
-        let p2 = canonical_plane(0xA1B2_C3D4, 2).unwrap();
+        let p2 = canonical_plane(0xA1B2_0004, 2).unwrap();
         assert_eq!(p2.success_count(), 148);
         assert_eq!(ppm_of(149, 150), 9933);
         assert_eq!(ppm_of(148, 150), 9866);
@@ -3083,7 +3083,7 @@ mod tests {
         assert_eq!(verdict_of_ppm(9900), Verdict::Pass); // 边界含 ≥
         assert_eq!(verdict_of_ppm(9899), Verdict::Reject);
         // 双跑确定性：同 seed 同平面。
-        assert_eq!(p1.fingerprint(), canonical_plane(0xA1B2_C3D4, 1).unwrap().fingerprint());
+        assert_eq!(p1.fingerprint(), canonical_plane(0xA1B2_0004, 1).unwrap().fingerprint());
         // 失败位恰为请求个数。
         assert_eq!(p1.fail_positions().len(), 1);
         assert_eq!(p2.fail_positions().len(), 2);

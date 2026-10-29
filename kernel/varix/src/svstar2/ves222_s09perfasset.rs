@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn test_over_workflow() {
         let mut l = PerfLedger::new();
-        l.admit(PerfRow { name: "x", tier: PerfTier::Measured, group: 1, clause: 1, bench_ref: 1, threshold_ms: 10, measured_ms: 25, spec: A11ySpec::SpeakQueue, over_marked: false }).ok();
+let _ =         l.admit(PerfRow { name: "x", tier: PerfTier::Measured, group: 1, clause: 1, bench_ref: 1, threshold_ms: 10, measured_ms: 25, spec: A11ySpec::SpeakQueue, over_marked: false });
         assert!(l.rows[0].over());
         assert_eq!(l.mark_overs(), 1);
         assert_eq!(l.re_nego(), vec!["x"]);

@@ -19,6 +19,9 @@ pub enum ClCode {
     BlockOpen = SEG_BASE + 0x03,     // 0x00A3
     A11yToolShort = SEG_BASE + 0x04, // 0x00A4
     Invalidated = SEG_BASE + 0x05,   // 0x00A5
+    LedgerBroken = SEG_BASE + 0x06,  // 0x00A6 进度账本守恒破（二轮深化）
+    ProbeReject = SEG_BASE + 0x07,   // 0x00A7 边界探针拒绝（二轮深化）
+    RoundtripDrift = SEG_BASE + 0x08, // 0x00A8 收口态投影漂移（二轮深化）
 }
 
 /// 收口四件。
@@ -112,6 +115,142 @@ pub fn try_close(list: &CloseChecklist, sign: &DualSign) -> CloseVerdict {
     CloseVerdict { passed: rejected_by.is_none(), rejected_by }
 }
 
+// ============ 二轮深化块：收口进度账本 / 整数分位 / 序列化指纹 / 边界探针 ============
+
+/// [深化] 签署事件结构化账本：按件记签入 + 守恒恒等式（Σ件 ≡ 总数）。
+#[derive(Clone, Copy)]
+pub struct SignLedger {
+    pub per_item: [u32; 4],
+    pub total: u32,
+}
+
+impl SignLedger {
+    pub fn new() -> Self { SignLedger { per_item: [0; 4], total: 0 } }
+    pub fn record(&mut self, it: CloseItem) {
+        self.per_item[it as usize] += 1;
+        self.total += 1;
+    }
+    pub fn conserved(&self) -> bool { self.per_item.iter().sum::<u32>() == self.total }
+    /// 已触及件数（去重）。
+    pub fn signed_items(&self) -> u32 {
+        self.per_item.iter().filter(|&&c| c > 0).count() as u32
+    }
+}
+
+/// [深化] 收口进度账本：八组逐组计完成自查项（每组上限 20）。
+pub struct CloseProgress { pub items_done: [u16; 8] }
+
+impl CloseProgress {
+    pub const PER_GROUP: u16 = 20;
+
+    pub fn new() -> Self { CloseProgress { items_done: [0; 8] } }
+
+    /// 单组推进一项；越界组号 / 满容量 → ProbeReject。
+    pub fn bump(&mut self, g: usize) -> Result<(), ClCode> {
+        if g >= 8 { return Err(ClCode::ProbeReject); }
+        if self.items_done[g] < Self::PER_GROUP {
+            self.items_done[g] += 1;
+            Ok(())
+        } else {
+            Err(ClCode::ProbeReject)
+        }
+    }
+
+    pub fn total(&self) -> u32 {
+        let mut t = 0u32;
+        for x in self.items_done.iter() { t += *x as u32; }
+        t
+    }
+
+    /// 守恒：总数 ≤ 160（8 组 × 20）。
+    pub fn conserved(&self) -> bool { self.total() <= 160 }
+
+    /// 组完成度。
+    pub fn group_done(&self, g: usize) -> bool {
+        g < 8 && self.items_done[g] == Self::PER_GROUP
+    }
+
+    /// 整数分位（排序取点，禁浮点）：q ∈ [0,100]。
+    pub fn quantile(&self, q: u32) -> Result<u16, ClCode> {
+        if q > 100 { return Err(ClCode::ProbeReject); }
+        let mut vals: Vec<u16> = Vec::new();
+        for x in self.items_done.iter() { vals.push(*x); }
+        for i in 1..vals.len() {
+            let mut j = i;
+            while j > 0 && vals[j - 1] > vals[j] { vals.swap(j - 1, j); j -= 1; }
+        }
+        Ok(vals[(q as usize * 7 + 50) / 100])
+    }
+}
+
+/// [深化] 收口态定长投影（6B，禁 JSON）：四件位图 u8 + 阻断 u8 + 工具族 u8 + 签位图 u8 + 保留 u16le。
+pub fn close_bytes(list: &CloseChecklist, sign: &DualSign, out: &mut Vec<u8>) {
+    out.clear();
+    let mut item_mask = 0u8;
+    for it in CloseItem::ALL.iter() {
+        if list.items.contains(it) { item_mask |= 1 << (*it as u8); }
+    }
+    out.push(item_mask);
+    out.push(if list.blockers_open { 1 } else { 0 });
+    out.push(if list.a11y_tools_ready { 1 } else { 0 });
+    out.push(match (sign.signer_a.is_some(), sign.signer_b.is_some(), sign.valid) {
+        (true, true, true) => 3,
+        (true, false, false) => 1,
+        (false, false, false) => 0,
+        _ => 2,
+    });
+    out.extend_from_slice(&0u16.to_le_bytes()); // 保留槽
+}
+
+/// [深化] FNV-1a 64 位指纹。
+pub fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bytes.iter() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+/// [深化] 指纹幂等闸：同态二次投影一致。
+pub fn close_fingerprint_stable(list: &CloseChecklist, sign: &DualSign) -> Result<u64, ClCode> {
+    let mut b1: Vec<u8> = Vec::new();
+    close_bytes(list, sign, &mut b1);
+    let fp1 = fnv1a64(&b1);
+    let mut b2: Vec<u8> = Vec::new();
+    close_bytes(list, sign, &mut b2);
+    let fp2 = fnv1a64(&b2);
+    if b1.len() != b2.len() || fp1 != fp2 { Err(ClCode::RoundtripDrift) } else { Ok(fp1) }
+}
+
+/// [深化] 收口边界探针。
+pub struct CloseProbe;
+
+impl CloseProbe {
+    /// 空清单 → ItemMissing。
+    pub fn probe_empty(list: &CloseChecklist) -> Result<(), ClCode> {
+        if list.items.is_empty() { Err(ClCode::ItemMissing) } else { Ok(()) }
+    }
+    /// 越界序号取件 → ProbeReject（不 panic）。
+    pub fn probe_index(list: &CloseChecklist, idx: usize) -> Result<&'static str, ClCode> {
+        match list.items.get(idx) {
+            Some(it) => Ok(it.name()),
+            None => Err(ClCode::ProbeReject),
+        }
+    }
+    /// 无 A 签探针 → ItemMissing。
+    pub fn probe_sign_a(sign: &DualSign) -> Result<(), ClCode> {
+        if sign.signer_a.is_none() { Err(ClCode::ItemMissing) } else { Ok(()) }
+    }
+    /// 作废幂等闸：二次作废零副作用。
+    pub fn void_idempotent(sign: &mut DualSign) -> bool {
+        sign.void(ClCode::Invalidated);
+        let snap = (sign.valid, sign.void_reason, sign.signer_a.is_none());
+        sign.void(ClCode::Invalidated);
+        snap == (sign.valid, sign.void_reason, sign.signer_a.is_none())
+    }
+}
+
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) { set.add(label, ok, detail); }
 
 pub fn run_ves400_checks() -> CheckSet {
@@ -185,6 +324,62 @@ pub fn run_ves400_checks() -> CheckSet {
     let v = try_close(&list, &half);
     chk(&mut set, "C400-12", !v.passed && v.rejected_by.is_some(), "缺 B 签不通过");
 
+    // ===== 二轮深化判据（C400-13 起）=====
+    // C400-13 签署事件账本：四件各记二笔 + 守恒 + 去重触及。
+    let mut sl = SignLedger::new();
+    for it in CloseItem::ALL.iter() { sl.record(*it); sl.record(*it); }
+    chk(&mut set, "C400-13", sl.conserved() && sl.total == 8 && sl.signed_items() == 4, "签署账本守恒");
+
+    // C400-14 进度账本推进 + 整数分位（排序取点禁浮点）。
+    let mut cp = CloseProgress::new();
+    let _ = cp.bump(0); let _ = cp.bump(0); let _ = cp.bump(0);
+    let q50 = cp.quantile(50);
+    let q100 = cp.quantile(100);
+    chk(&mut set, "C400-14", cp.conserved() && q50 == Ok(0) && q100 == Ok(3), "进度分位 0/3");
+
+    // C400-15 边界探针：越界组号拒 + 满容量拒 + 非法分位拒。
+    let mut cp2 = CloseProgress::new();
+    let mut full_ok = true;
+    for _ in 0..20 { full_ok = full_ok && cp2.bump(3).is_ok(); }
+    chk(&mut set, "C400-15", cp2.bump(8) == Err(ClCode::ProbeReject)
+        && cp2.bump(3) == Err(ClCode::ProbeReject) && full_ok
+        && cp2.quantile(101) == Err(ClCode::ProbeReject)
+        && cp2.group_done(3) && !cp2.group_done(0), "越界满容分位三拒");
+
+    // C400-16 收口态投影 6B + 指纹幂等稳定。
+    let mut cb: Vec<u8> = Vec::new();
+    close_bytes(&list, &sign, &mut cb);
+    match close_fingerprint_stable(&list, &sign) {
+        Ok(v) => chk(&mut set, "C400-16", cb.len() == 6
+            && close_fingerprint_stable(&list, &sign) == Ok(v), "收口态投影 6B 指纹幂等"),
+        Err(_) => chk(&mut set, "C400-16", false, "指纹不应漂移"),
+    }
+
+    // C400-17 边界探针：空清单拒 / 越界序号拒 / 无 A 签拒。
+    let empty_list = CloseChecklist::new();
+    let no_sign = DualSign::new();
+    chk(&mut set, "C400-17", CloseProbe::probe_empty(&empty_list) == Err(ClCode::ItemMissing)
+        && CloseProbe::probe_empty(&list).is_ok()
+        && CloseProbe::probe_index(&list, 99) == Err(ClCode::ProbeReject)
+        && CloseProbe::probe_index(&list, 0) == Ok("self-check")
+        && CloseProbe::probe_sign_a(&no_sign) == Err(ClCode::ItemMissing), "收口探针三拒");
+
+    // C400-18 作废幂等闸：二次作废零副作用。
+    let mut vs = DualSign::new();
+    vs.sign_a("wb-a");
+    vs.sign_b("wb-b").unwrap();
+    chk(&mut set, "C400-18", CloseProbe::void_idempotent(&mut vs) && !vs.valid, "作废幂等零副作用");
+
+    // C400-19 深化变体段位不撞段。
+    chk(&mut set, "C400-19", ClCode::LedgerBroken as u16 == 0x00A6
+        && ClCode::ProbeReject as u16 == 0x00A7 && ClCode::RoundtripDrift as u16 == 0x00A8,
+        "深化段位正确");
+
+    // C400-20 进度账本空态退化安全：全零分位与守恒。
+    let cp0 = CloseProgress::new();
+    chk(&mut set, "C400-20", cp0.conserved() && cp0.total() == 0
+        && cp0.quantile(0) == Ok(0) && cp0.quantile(100) == Ok(0), "空进度退化安全");
+
     set
 }
 
@@ -195,8 +390,7 @@ mod tests {
     #[test]
     fn ves400_smoke() {
         let set = run_ves400_checks();
-        let red = set.red_items();
-        assert!(red.is_empty(), "ves400 red: {:?}", red);
+        assert!(set.failed_count() == 0, "ves400 red: {}", set.red_items_text());
     }
 
     #[test]

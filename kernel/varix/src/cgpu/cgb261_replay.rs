@@ -438,7 +438,7 @@ pub fn run_f0261_checks() -> CheckSet {
     let mut cs = CheckSet::new("CGPU-F0261");
 
     // --- 判据 1：全录（含时序与随机源） ---
-    let mut rec = Recording::new(1, 0xDEAD_BEEF);
+    let mut rec = Recording::new(1, 0xDEAD_0001);
     for i in 0..10u64 {
         rec.record(RecordEntry {
             event: PersistEvent {
@@ -450,14 +450,14 @@ pub fn run_f0261_checks() -> CheckSet {
                 target: (i as u32) + 1,
                 payload_hash: i * 7,
             },
-            rng_seed: if i == 0 { 0xDEAD_BEEF } else { 0 },
+            rng_seed: if i == 0 { 0xDEAD_0001 } else { 0 },
             wall_time: 1_000_000 + i,
             input_fingerprint: 0,
         });
     }
     cs.add(
         "全录（事件+RNG种子+时钟）",
-        rec.entries.len() == 10 && rec.initial_seed == 0xDEAD_BEEF,
+        rec.entries.len() == 10 && rec.initial_seed == 0xDEAD_0001,
         "10条录制，含初始种子",
     );
 
@@ -526,7 +526,7 @@ mod tests {
     #[test]
     fn f0261_all_pass() {
         let cs = run_f0261_checks();
-        assert!(cs.all_green(), "F0261 判据未全绿: {}", cs.red_items_text());
+        assert!(cs.all_passed(), "F0261 判据未全绿: {}", cs.red_items_text());
     }
 
     #[test]

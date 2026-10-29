@@ -171,10 +171,11 @@ pub fn run_fd_drills(seed: u64, rounds: u32) -> FdDrillSummary {
         sum.allocs += round_allocs;
         sum.closes += round_closes;
         // poll 聚合跨类型：File fd + Socket fd 各一，双就绪 → 都上报
+        // （FD_CAP 哨兵：alloc 失败时越界占位，下方显式拦截并诚实入账）
         let mut t2 = FdTable::new();
-        let f = t2.alloc(FdKind::File);
-        let s = t2.alloc(FdKind::Socket);
-        if let (Some(f), Some(s)) = (f, s) {
+        let f = t2.alloc(FdKind::File).unwrap_or(FD_CAP);
+        let s = t2.alloc(FdKind::Socket).unwrap_or(FD_CAP);
+        if f < FD_CAP && s < FD_CAP {
             let _ = t2.mark_ready(f);
             let _ = t2.mark_ready(s);
             let (r, n) = t2.poll(&[f, s]);

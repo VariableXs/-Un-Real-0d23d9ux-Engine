@@ -2963,7 +2963,7 @@ mod tests {
         assert!(rep.all_matched());
         assert_eq!(acc.ledger().count_kind(EvKind::ReplayOk), 1);
         // 篡改一行指纹 → 重放必检出 E_REPLAY_MISMATCH。
-        acc.regbook.rows[2].msg_fingerprint = 0xDEAD_BEEF;
+        acc.regbook.rows[2].msg_fingerprint = 0xDEAD_0001;
         assert_code(acc.replay().map(|_| ()), E_REPLAY_MISMATCH);
         assert_eq!(acc.ledger().count_kind(EvKind::ReplayMismatch), 1);
         // health 转红（重放不符计数）。

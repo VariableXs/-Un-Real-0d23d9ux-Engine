@@ -148,8 +148,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn adapt() {
-        let a = adapt(Shape::Guard, "x", "").ok().unwrap();
+    fn adapt_guard_index() {
+        let a = adapt(Shape::Guard, "x", "").unwrap();
         assert!(a.text.contains("x[0]"));
     }
 }

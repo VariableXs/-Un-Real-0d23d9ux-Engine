@@ -54,7 +54,7 @@ pub fn dirty_matches_regions(
     for &(l, t, r, b) in regions {
         for y in t..b {
             for x in l..r {
-                if (y * w + x) as usize < expect.len() {
+                if ((y * w + x) as usize) < expect.len() {
                     expect[(y * w + x) as usize] = true;
                 }
             }

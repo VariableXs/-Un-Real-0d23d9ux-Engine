@@ -18,6 +18,9 @@ pub enum RvCode {
     CriticalBack = SEG_BASE + 0x02,  // 0x07C2
     FiveCheckFail = SEG_BASE + 0x03, // 0x07C3
     CoverageShort = SEG_BASE + 0x04, // 0x07C4
+    ProbeReject = SEG_BASE + 0x05,   // 0x07C5 边界探针拒绝（二轮深化）
+    RoundtripDrift = SEG_BASE + 0x06, // 0x07C6 核验态投影漂移（二轮深化）
+    LedgerBroken = SEG_BASE + 0x07,  // 0x07C7 账本守恒破（二轮深化）
 }
 
 /// T04 五段流水线。
@@ -118,6 +121,166 @@ impl VerifyT04T06 {
     pub fn all_ok(&self) -> bool { self.t04_ok() && self.t05_ok() && self.t06_ok() }
 }
 
+// ============ 二轮深化块：分位账本 / 阈值注入回归 / 序列化指纹 / 边界探针 ============
+
+/// [深化] 覆盖度/命中历史账本：双列等长记录 + 整数分位（禁浮点）。
+pub struct BpLedger {
+    pub cover_hist: Vec<u32>,
+    pub hit_hist: Vec<u32>,
+}
+
+impl BpLedger {
+    pub fn new() -> Self { BpLedger { cover_hist: Vec::new(), hit_hist: Vec::new() } }
+
+    pub fn record(&mut self, cover_bp: u32, hit_bp: u32) {
+        self.cover_hist.push(cover_bp);
+        self.hit_hist.push(hit_bp);
+    }
+
+    /// 双列等长守恒。
+    pub fn conserved(&self) -> bool { self.cover_hist.len() == self.hit_hist.len() }
+
+    /// 整数分位（插入排序取点）：q ∈ [0,100]，空列/越参 → ProbeReject。
+    pub fn quantile(vals: &[u32], q: u32) -> Result<u32, RvCode> {
+        if vals.is_empty() || q > 100 { return Err(RvCode::ProbeReject); }
+        let mut v: Vec<u32> = Vec::new();
+        for x in vals.iter() { v.push(*x); }
+        for i in 1..v.len() {
+            let mut j = i;
+            while j > 0 && v[j - 1] > v[j] { v.swap(j - 1, j); j -= 1; }
+        }
+        Ok(v[(q as usize * (v.len() - 1) + 50) / 100])
+    }
+}
+
+/// [深化] 五检通过结构化账本 + 守恒恒等式。
+#[derive(Clone, Copy)]
+pub struct FiveCheckLedger {
+    pub pass: u32,
+    pub fail: u32,
+    pub total_marks: u32,
+}
+
+impl FiveCheckLedger {
+    pub fn new() -> Self { FiveCheckLedger { pass: 0, fail: 0, total_marks: 0 } }
+    pub fn record(&mut self, pass: bool) {
+        self.total_marks += 1;
+        if pass { self.pass += 1; } else { self.fail += 1; }
+    }
+    pub fn conserved(&self) -> bool { self.pass + self.fail == self.total_marks }
+}
+
+/// [深化] 8 行确定性 LCG（无浮点无墙钟）。
+pub struct Lcg { state: u64 }
+
+impl Lcg {
+    pub fn new(seed: u64) -> Self { Lcg { state: seed } }
+    pub fn next(&mut self) -> u64 {
+        self.state = self.state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        self.state
+    }
+    pub fn below(&mut self, n: u32) -> u32 {
+        ((self.next() >> 33) as u32) % if n == 0 { 1 } else { n }
+    }
+}
+
+/// [深化] 阈值注入回归报告：线下必抓 + 线上零误报。
+#[derive(Clone, Copy)]
+pub struct ThresholdReport {
+    pub rounds: u32,
+    pub below_line: u32,
+    pub caught: u32,
+    pub false_alarms: u32,
+}
+
+impl ThresholdReport {
+    pub fn all_caught(&self) -> bool { self.caught == self.below_line && self.false_alarms == 0 }
+}
+
+/// [深化] 注入回归：LCG 生成 N 轮覆盖度/命中对，门槛线（9500bp）复刻裁决必抓。
+pub fn inject_threshold(seed: u64, rounds: u32) -> ThresholdReport {
+    let mut rng = Lcg::new(seed);
+    let mut rep = ThresholdReport { rounds, below_line: 0, caught: 0, false_alarms: 0 };
+    let mut i = 0;
+    while i < rounds {
+        let mut m = VerifyT04T06::new();
+        for c in T06Check::ALL.iter() { m.mark_t06(*c, true); }
+        let cover = 8000 + rng.below(3000);
+        let hit = 9000 + rng.below(1500); // 命中恒过线，单变量隔离
+        m.compliance_cover_bp = cover;
+        m.cache_hit_bp = hit;
+        let ok = m.t06_ok();
+        if cover < 9500 {
+            rep.below_line += 1;
+            if !ok { rep.caught += 1; }
+        } else if !ok {
+            rep.false_alarms += 1;
+        }
+        i += 1;
+    }
+    rep
+}
+
+/// [深化] 核验态定长投影（11B，禁 JSON）：五检位图 u8 + T06 位图 u8 + 原子 u8 + 覆盖 u32le + 命中 u32le。
+pub fn verify_bytes(m: &VerifyT04T06, out: &mut Vec<u8>) {
+    out.clear();
+    let mut m5 = 0u8;
+    for x in m.t05_checks.iter() { if x.1 { m5 |= 1 << (x.0 as u8); } }
+    out.push(m5);
+    let mut m6 = 0u8;
+    for x in m.t06.iter() { if x.1 { m6 |= 1 << (x.0 as u8); } }
+    out.push(m6);
+    out.push(if m.t05_atomic { 1 } else { 0 });
+    out.extend_from_slice(&m.compliance_cover_bp.to_le_bytes());
+    out.extend_from_slice(&m.cache_hit_bp.to_le_bytes());
+}
+
+/// [深化] 投影解码回读（与 verify_bytes 对偶）：定长校验 + 五字段回读。
+pub fn decode_verify(bytes: &[u8]) -> Result<(u8, u8, u8, u32, u32), RvCode> {
+    if bytes.len() != 11 { return Err(RvCode::RoundtripDrift); }
+    Ok((
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        u32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]),
+        u32::from_le_bytes([bytes[7], bytes[8], bytes[9], bytes[10]]),
+    ))
+}
+
+/// [深化] FNV-1a 64 位指纹 + 幂等稳定闸。
+pub fn verify_fingerprint_stable(m: &VerifyT04T06) -> Result<u64, RvCode> {
+    let mut b1: Vec<u8> = Vec::new();
+    verify_bytes(m, &mut b1);
+    let mut h1: u64 = 0xcbf29ce484222325;
+    for b in b1.iter() { h1 ^= *b as u64; h1 = h1.wrapping_mul(0x100000001b3); }
+    let mut b2: Vec<u8> = Vec::new();
+    verify_bytes(m, &mut b2);
+    let mut h2: u64 = 0xcbf29ce484222325;
+    for b in b2.iter() { h2 ^= *b as u64; h2 = h2.wrapping_mul(0x100000001b3); }
+    if b1.len() != b2.len() || h1 != h2 { Err(RvCode::RoundtripDrift) } else { Ok(h1) }
+}
+
+/// [深化] 核验边界探针。
+pub struct VerifyProbe;
+
+impl VerifyProbe {
+    /// 空 T04 签名段探针 → ProbeReject。
+    pub fn probe_sigs_empty(m: &VerifyT04T06) -> Result<(), RvCode> {
+        if m.t04_sigs.is_empty() { Err(RvCode::ProbeReject) } else { Ok(()) }
+    }
+    /// 越界序号取五检行 → ProbeReject（不 panic）。
+    pub fn probe_t05_index(m: &VerifyT04T06, idx: usize) -> Result<&'static str, RvCode> {
+        match m.t05_checks.get(idx) {
+            Some(x) => Ok(x.0.name()),
+            None => Err(RvCode::ProbeReject),
+        }
+    }
+    /// 缺检投影计数（幂等查询）。
+    pub fn missing_projection(m: &VerifyT04T06) -> u32 { m.five_missing().len() as u32 }
+}
+
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) { set.add(label, ok, detail); }
 
 pub fn run_ves403_checks() -> CheckSet {
@@ -181,6 +344,57 @@ pub fn run_ves403_checks() -> CheckSet {
         && FiveCheck::A11yAsset.name() == "a11y-asset"
         && T06Check::ResidencyRoute.name() == "residency-route", "名单名正确");
 
+    // ===== 二轮深化判据（C403-13 起）=====
+    // C403-13 分位账本：三轮 (覆盖,命中) 记录 + 守恒 + 覆盖 p50 = 9600。
+    let mut bl = BpLedger::new();
+    bl.record(9600, 9100);
+    bl.record(9400, 9500);
+    bl.record(9800, 8900);
+    let q50 = BpLedger::quantile(&bl.cover_hist, 50);
+    chk(&mut set, "C403-13", bl.conserved() && q50 == Ok(9600), "覆盖分位 p50=9600");
+
+    // C403-14 分位非法参显性拒：空列 / q>100。
+    chk(&mut set, "C403-14", BpLedger::quantile(&[], 50) == Err(RvCode::ProbeReject)
+        && BpLedger::quantile(&bl.cover_hist, 101) == Err(RvCode::ProbeReject)
+        && BpLedger::quantile(&bl.hit_hist, 100) == Ok(9500), "分位越参拒");
+
+    // C403-15 阈值注入回归：16 轮线下必抓 + 线上零误报。
+    let rep = inject_threshold(0x07C0_5EED, 16);
+    chk(&mut set, "C403-15", rep.rounds == 16 && rep.all_caught() && rep.below_line > 0,
+        "阈值注入 16 轮必抓零误报");
+
+    // C403-16 核验态投影 11B + 解码回读五字段。
+    let mut vb: Vec<u8> = Vec::new();
+    verify_bytes(&m, &mut vb);
+    chk(&mut set, "C403-16", vb.len() == 11
+        && decode_verify(&vb) == Ok((31, 7, 1, 9600, 9100)), "核验投影 11B 回读");
+
+    // C403-17 脏投影拒收：截断流 → RoundtripDrift。
+    chk(&mut set, "C403-17", decode_verify(&vb[..7]) == Err(RvCode::RoundtripDrift)
+        && decode_verify(&[]) == Err(RvCode::RoundtripDrift), "脏投影拒收");
+
+    // C403-18 指纹幂等稳定闸。
+    match verify_fingerprint_stable(&m) {
+        Ok(v) => chk(&mut set, "C403-18", verify_fingerprint_stable(&m) == Ok(v), "指纹幂等一致"),
+        Err(_) => chk(&mut set, "C403-18", false, "指纹不应漂移"),
+    }
+
+    // C403-19 边界探针：空签名段拒 / 越界序号拒 / 界内取行。
+    let fresh = VerifyT04T06::new();
+    chk(&mut set, "C403-19", VerifyProbe::probe_sigs_empty(&fresh) == Err(RvCode::ProbeReject)
+        && VerifyProbe::probe_sigs_empty(&m).is_ok()
+        && VerifyProbe::probe_t05_index(&m, 0) == Ok("manifest")
+        && VerifyProbe::probe_t05_index(&m, 9) == Err(RvCode::ProbeReject)
+        && VerifyProbe::missing_projection(&fresh) == 5, "核验探针三态");
+
+    // C403-20 五检账本守恒 + 深化变体段位不撞段。
+    let mut fl = FiveCheckLedger::new();
+    for c in FiveCheck::ALL.iter() { fl.record(true); }
+    fl.record(false);
+    chk(&mut set, "C403-20", fl.conserved() && fl.pass == 5 && fl.fail == 1
+        && RvCode::ProbeReject as u16 == 0x07C5 && RvCode::RoundtripDrift as u16 == 0x07C6
+        && RvCode::LedgerBroken as u16 == 0x07C7, "五检账本守恒段位正确");
+
     set
 }
 
@@ -191,7 +405,6 @@ mod tests {
     #[test]
     fn ves403_smoke() {
         let set = run_ves403_checks();
-        let red = set.red_items();
-        assert!(red.is_empty(), "ves403 red: {:?}", red);
+        assert!(set.failed_count() == 0, "ves403 red: {}", set.red_items_text());
     }
 }

@@ -546,7 +546,7 @@ pub fn j1_evidence() -> result::Result<(usize, [u64; 4], u64), AsidError> {
     let reuse_checked = rot.audit_no_reuse()?;
     // (b) INVPCID 四型逐型可观测。
     let mut em = InvpcidEmitter::new(true);
-    em.emit(InvpcidType::AddrSingle, 7, 0x0000_DEAD_0000)?;
+    em.emit(InvpcidType::AddrSingle, 7, 0x0000_0001_0000)?;
     em.emit(InvpcidType::PcidSingle, 7, 0)?;
     em.emit(InvpcidType::AllInclGlobal, 0, 0)?;
     em.emit(InvpcidType::AllExclGlobal, 0, 0)?;

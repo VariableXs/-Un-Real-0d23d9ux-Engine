@@ -230,7 +230,7 @@ impl IstStackError {
 /// IST 区基址（布局模型常量）：内核规范形高半区（≥0xFFFF_8000_0000_0000
 /// 为 64 位规范形内核段，SDM Vol.3 §3.3.7.1 规范形地址）。真机落址由
 /// F0818（rsp0/IST 选用决策树）与 TSS 装载面承接，本单只管布局模型。
-pub const IST_REGION_BASE: u64 = 0xFFFF_A000_0010_0000;
+pub const IST_REGION_BASE: u64 = 0xFFFF_0001_0010_0000;
 
 /// 每栈深度：16 KiB（任务书定编「如 16KiB/栈」；对照 Linux IST 栈
 /// ISTKNS 亦为独立小栈惯例，本单取 16KiB 留足 DF 处置余量）。
@@ -478,7 +478,7 @@ impl SentinelBand {
         if idx >= SENTINEL_WORDS {
             return false;
         }
-        self.words[idx] = self.words[idx] ^ 0xDEAD_BEEF_DEAD_BEEF;
+        self.words[idx] = self.words[idx] ^ 0xDEAD_0002_DEAD_BEEF;
         true
     }
 
@@ -1415,7 +1415,7 @@ impl IstDispatcher {
         // 哨兵档：写坏对应主槽/备用槽哨兵带（带内地址命中才写）。
         let mut sentinel_broken = false;
         if class == TouchClass::SentinelBand {
-            let val = 0xBAAD_F00D_BAAD_F00Du64;
+            let val = 0xBAAD_0003_BAAD_F00Du64;
             if slot_idx < 3 {
                 sentinel_broken = self.sentinels[slot_idx].write_if_hit(addr, val);
             } else {

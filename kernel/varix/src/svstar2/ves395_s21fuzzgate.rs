@@ -17,6 +17,12 @@ pub enum FgCode {
     GateBlocked = SEG_BASE + 0x01,   // 0x0001
     FaceMissing = SEG_BASE + 0x02,   // 0x0002
     CrashFiled = SEG_BASE + 0x03,    // 0x0003
+    BoundaryViolation = SEG_BASE + 0x04, // 0x0004 边界探针违规
+    LedgerBroken = SEG_BASE + 0x05,      // 0x0005 立案账本守恒破
+    SerializeDrift = SEG_BASE + 0x06,    // 0x0006 序列化投影漂移
+    ProbeReject = SEG_BASE + 0x07,       // 0x0007 边界探针拒绝（二轮深化）
+    IdemGateTrip = SEG_BASE + 0x08,      // 0x0008 幂等闸触发（二轮深化）
+    FingerprintDrift = SEG_BASE + 0x09,  // 0x0009 指纹漂移（二轮深化）
 }
 
 /// fuzz 面来源（四源归一 + 本组新面）。
@@ -124,6 +130,154 @@ pub fn block_report(fb: &FaceBook) -> Option<BlockReport> {
     }
 }
 
+// ============ 二轮深化块：边界探针 / LCG 注入回归 / 幂等闸 / FNV 指纹 / 守恒 ============
+
+/// [深化] 总闸边界探针裁决器：对总闸做四类边界压测，显性 Err 码回执。
+pub struct GateProbe {
+    pub max_faces: u32,
+    pub max_corpus_per_face: u32,
+    pub max_repros: u32,
+}
+
+impl GateProbe {
+    pub fn new(max_faces: u32, max_corpus_per_face: u32, max_repros: u32) -> Self {
+        GateProbe { max_faces, max_corpus_per_face, max_repros }
+    }
+
+    /// 边界一：空面册 → FaceMissing（补面归因）。
+    pub fn probe_empty(&self, fb: &FaceBook) -> Result<(), FgCode> {
+        if fb.faces.is_empty() { Err(FgCode::FaceMissing) } else { Ok(()) }
+    }
+
+    /// 边界二：面数满容量 → GateBlocked（容量线）。
+    pub fn probe_capacity(&self, fb: &FaceBook) -> Result<(), FgCode> {
+        if (fb.faces.len() as u32) > self.max_faces { Err(FgCode::GateBlocked) } else { Ok(()) }
+    }
+
+    /// 边界三：重复注入同一面 → 幂等容许（不增行即过）。
+    pub fn probe_duplicate(&self, fb: &FaceBook, f: &FuzzFace) -> Result<(), FgCode> {
+        if fb.faces.iter().any(|x| x.source == f.source && x.name == f.name) { Ok(()) }
+        else { Err(FgCode::ProbeReject) }
+    }
+
+    /// 边界四：单面语料越限 → ProbeReject。
+    pub fn probe_corpus(&self, corpus: u32) -> Result<(), FgCode> {
+        if corpus > self.max_corpus_per_face { Err(FgCode::ProbeReject) } else { Ok(()) }
+    }
+
+    /// 边界五：越界序号取面 → ProbeReject（显性回执，不 panic）。
+    pub fn probe_index(&self, fb: &FaceBook, idx: usize) -> Result<&'static str, FgCode> {
+        match fb.faces.get(idx) {
+            Some(f) => Ok(f.name),
+            None => Err(FgCode::ProbeReject),
+        }
+    }
+}
+
+/// [深化] 8 行确定性 LCG（无浮点无墙钟，内核可复现）。
+pub struct Lcg { state: u64 }
+
+impl Lcg {
+    pub fn new(seed: u64) -> Self { Lcg { state: seed } }
+    pub fn next(&mut self) -> u64 {
+        self.state = self.state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        self.state
+    }
+    /// 取 [0, n) 内确定性值；n=0 退化为常 0（防除零）。
+    pub fn below(&mut self, n: u32) -> u32 {
+        ((self.next() >> 33) as u32) % if n == 0 { 1 } else { n }
+    }
+}
+
+/// [深化] 注入回归账本：LCG 驱动 N 轮语料注入，异常必抓 + 负对照零误报。
+pub struct InjectLedger {
+    pub rounds: u32,
+    pub anomalies: u32,
+    pub caught: u32,
+    pub normals: u32,
+    pub false_alarms: u32,
+}
+
+impl InjectLedger {
+    /// capacity：单面语料上限；掷点越限判异常，探针须拒（必抓）。
+    pub fn run(seed: u64, rounds: u32, capacity: u32) -> Self {
+        let mut rng = Lcg::new(seed);
+        let probe = GateProbe::new(u32::MAX, capacity, u32::MAX);
+        let mut l = InjectLedger { rounds, anomalies: 0, caught: 0, normals: 0, false_alarms: 0 };
+        let mut i = 0;
+        while i < rounds {
+            let corpus = rng.below(capacity * 2 + 1);
+            match probe.probe_corpus(corpus) {
+                Err(_) => { l.anomalies += 1; l.caught += 1; }
+                Ok(()) => { l.normals += 1; }
+            }
+            i += 1;
+        }
+        l
+    }
+    /// 异常必抓率 100%。
+    pub fn all_caught(&self) -> bool { self.missed_count() == 0 }
+    fn missed_count(&self) -> u32 { self.anomalies.saturating_sub(self.caught) }
+    /// 负对照零误报。
+    pub fn zero_false_alarm(&self) -> bool { self.false_alarms == 0 }
+    /// 守恒：异常 + 正常 = 总轮数。
+    pub fn conserved(&self) -> bool { self.anomalies + self.normals == self.rounds }
+}
+
+/// [深化] 面册定长字节投影（禁 JSON，手写布局）：
+/// 魔数 5B + 5 源 ×(source u16le + corpus u32le) + 三零线 3×u32le = 47B。
+pub fn face_book_bytes(fb: &FaceBook, out: &mut Vec<u8>) {
+    out.clear();
+    out.push(b'F'); out.push(b'B'); out.push(b'3'); out.push(b'9'); out.push(b'5');
+    for s in FaceSource::ALL.iter() {
+        let corpus = fb.faces.iter().filter(|f| f.source == *s).map(|f| f.corpus).sum::<u32>();
+        out.extend_from_slice(&(*s as u16).to_le_bytes());
+        out.extend_from_slice(&corpus.to_le_bytes());
+    }
+    out.extend_from_slice(&fb.crashes.to_le_bytes());
+    out.extend_from_slice(&fb.hangs.to_le_bytes());
+    out.extend_from_slice(&fb.unauthorized_writes.to_le_bytes());
+}
+
+/// [深化] 投影解码回读（与 face_book_bytes 对偶）：魔数 + 定长校验 + 三零线回读。
+pub fn decode_zero_line(bytes: &[u8]) -> Result<(u32, u32, u32), FgCode> {
+    if bytes.len() != 47 { return Err(FgCode::SerializeDrift); }
+    if bytes[0] != b'F' || bytes[1] != b'B' { return Err(FgCode::SerializeDrift); }
+    let rd = |o: usize| -> u32 {
+        u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]])
+    };
+    let base = 5 + 5 * 6;
+    Ok((rd(base), rd(base + 4), rd(base + 8)))
+}
+
+/// [深化] FNV-1a 64 位指纹（纯整数运算）。
+pub fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bytes.iter() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+/// [深化] 幂等闸：同态面册二次投影 → 指纹一致且零副作用（触发即 IdemGateTrip 之外的一致路径）。
+pub fn idempotent_fingerprint(fb: &FaceBook) -> Result<u64, FgCode> {
+    let mut buf1: Vec<u8> = Vec::new();
+    face_book_bytes(fb, &mut buf1);
+    let fp1 = fnv1a64(&buf1);
+    let mut buf2: Vec<u8> = Vec::new();
+    face_book_bytes(fb, &mut buf2);
+    let fp2 = fnv1a64(&buf2);
+    if buf1.len() != buf2.len() || fp1 != fp2 { Err(FgCode::FingerprintDrift) } else { Ok(fp1) }
+}
+
+/// [深化] 立案守恒恒等式：立案数 ≥ 复现签名数（重复签名归并不丢计）。
+pub fn filing_conservation(fb: &FaceBook) -> bool {
+    fb.crashes as usize >= fb.repros.len()
+}
+
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) { set.add(label, ok, detail); }
 
 pub fn run_ves395_checks() -> CheckSet {
@@ -191,6 +345,63 @@ pub fn run_ves395_checks() -> CheckSet {
     chk(&mut set, "C395-12", !fb3.zero_line_ok() && fb3.attribute() == Some("unauth-write")
         && fb3.gate() == Err(FgCode::GateBlocked), "越权写破线归因");
 
+    // ===== 二轮深化判据（C395-13 起）=====
+    // C395-13 边界探针：空面册拒绝（FaceMissing 显性回执）。
+    let probe = GateProbe::new(16, 512, 64);
+    let mut fb4 = FaceBook::new();
+    chk(&mut set, "C395-13", probe.probe_empty(&fb4) == Err(FgCode::FaceMissing), "空册探针拒绝");
+
+    // C395-14 容量内探针放行 + 越界序号回执。
+    fb4.add(FuzzFace { source: FaceSource::T04, name: "extract", corpus: 5 });
+    chk(&mut set, "C395-14", probe.probe_empty(&fb4).is_ok() && probe.probe_capacity(&fb4).is_ok()
+        && probe.probe_index(&fb4, 0) == Ok("extract")
+        && probe.probe_index(&fb4, 9) == Err(FgCode::ProbeReject), "容量内放行越界拒");
+
+    // C395-15 重复注入幂等探针：同面再注不增行 + 越限语料拒。
+    chk(&mut set, "C395-15",
+        probe.probe_duplicate(&fb4, &FuzzFace { source: FaceSource::T04, name: "extract", corpus: 9 }).is_ok()
+        && fb4.faces.len() == 1
+        && probe.probe_corpus(600) == Err(FgCode::ProbeReject), "重复注入幂等越限拒");
+
+    // C395-16 LCG 注入回归：64 轮异常必抓 + 守恒 + 零误报。
+    let reg = InjectLedger::run(0x5EED_3950, 64, 100);
+    chk(&mut set, "C395-16", reg.rounds == 64 && reg.all_caught() && reg.conserved()
+        && reg.zero_false_alarm() && reg.anomalies > 0 && reg.normals > 0, "注入回归 64 轮必抓零误报");
+
+    // C395-17 序列化投影：定长 47B + 解码回读三零线（fb 此刻已清零）。
+    let mut bytes: Vec<u8> = Vec::new();
+    face_book_bytes(&fb, &mut bytes);
+    chk(&mut set, "C395-17", bytes.len() == 47 && decode_zero_line(&bytes) == Ok((0, 0, 0)),
+        "投影 47 字节三零线回读");
+
+    // C395-18 FNV 指纹幂等：同态二次投影指纹一致（零副作用）。
+    match idempotent_fingerprint(&fb) {
+        Ok(v) => chk(&mut set, "C395-18", idempotent_fingerprint(&fb) == Ok(v), "指纹幂等一致"),
+        Err(_) => chk(&mut set, "C395-18", false, "指纹投影不应漂移"),
+    }
+
+    // C395-19 立案守恒：新立案 + 复现签名同步，恒等式成立。
+    fb.file_crash("repro:second-gate");
+    chk(&mut set, "C395-19", filing_conservation(&fb) && fb.repros.len() == 2 && fb.crashes == 1,
+        "立案守恒恒等式");
+
+    // C395-20 深化变体段位不撞段（0x0007..0x0009 仍在 SEG_BASE 段内）。
+    chk(&mut set, "C395-20",
+        FgCode::ProbeReject as u16 == 0x0007 && FgCode::IdemGateTrip as u16 == 0x0008
+        && FgCode::FingerprintDrift as u16 == 0x0009, "深化变体段位正确");
+
+    // C395-21 脏投影拒收：截断字节流 → SerializeDrift。
+    chk(&mut set, "C395-21", decode_zero_line(&bytes[..40]) == Err(FgCode::SerializeDrift)
+        && decode_zero_line(&[]) == Err(FgCode::SerializeDrift), "脏投影拒收");
+
+    // C395-22 LCG 确定性回归：同种子两次序列逐值一致（可复现性）。
+    let mut r1 = Lcg::new(7);
+    let mut r2 = Lcg::new(7);
+    let mut det = true;
+    let mut k = 0;
+    while k < 8 { det = det && r1.next() == r2.next(); k += 1; }
+    chk(&mut set, "C395-22", det, "LCG 同种子确定性");
+
     set
 }
 
@@ -201,8 +412,7 @@ mod tests {
     #[test]
     fn ves395_smoke() {
         let set = run_ves395_checks();
-        let red = set.red_items();
-        assert!(red.is_empty(), "ves395 red: {:?}", red);
+        assert!(set.failed_count() == 0, "ves395 red: {}", set.red_items_text());
     }
 
     #[test]

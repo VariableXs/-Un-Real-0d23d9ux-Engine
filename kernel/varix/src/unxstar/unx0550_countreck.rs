@@ -16,7 +16,7 @@ pub const XC_RECK_EMPTY: u32 = SEG_BASE + 3; // 零账
 pub const XC_RECK_OOB: u32 = SEG_BASE + 4; // 越界
 
 /// 三路计数账。
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct CountReck {
     /// emit 总数。
     pub emitted: u32,

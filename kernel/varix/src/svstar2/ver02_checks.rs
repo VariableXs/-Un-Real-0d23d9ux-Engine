@@ -731,7 +731,7 @@ mod tests {
                 }
             }
         }
-        assert!(red.is_empty(), "自检不得有红项，实际红项：{:?}", red);
+        assert!(set.failed_count() == 0, "自检不得有红项，实际红项：{}", set.red_items_text());
         // 同时把「自检项数不为零」钉住——全绿但零项同样是失效。
         assert!(total >= 20, "自检项过少（{}），可能漏登判据", total);
     }

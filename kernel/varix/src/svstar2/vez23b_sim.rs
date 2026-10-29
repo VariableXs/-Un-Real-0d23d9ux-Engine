@@ -1154,8 +1154,8 @@ mod tests {
             emitter_slot: 0,
             flags: 0,
         };
-        assert_eq!(life_ratio(&p, 100), 0.0);
-        assert!((life_ratio(&p, 200) - 0.5).abs() < 1e-5);
-        assert_eq!(life_ratio(&p, 999), 1.0);
+        assert_eq!(Simulator::life_ratio(&p, 100), 0.0);
+        assert!((Simulator::life_ratio(&p, 200) - 0.5).abs() < 1e-5);
+        assert_eq!(Simulator::life_ratio(&p, 999), 1.0);
     }
 }

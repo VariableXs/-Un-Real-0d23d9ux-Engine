@@ -20,7 +20,7 @@ pub enum ShapeCode {
 }
 
 /// 阿拉伯连写形态：isolated/final/initial/medial。
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum JoinForm { Isolated = 0, Final = 1, Initial = 2, Medial = 3 }
 
 impl JoinForm {

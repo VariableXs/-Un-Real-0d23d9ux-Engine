@@ -1763,7 +1763,7 @@ mod tests {
         assert!(matches!(bad.restore(), Err(IsrBmpError::SnapshotCorrupt(_))));
         // 坏魔数。
         let mut bad2 = snap;
-        bad2.magic = 0xDEAD_BEEF;
+        bad2.magic = 0xDEAD_0001;
         assert!(matches!(bad2.restore(), Err(IsrBmpError::SnapshotCorrupt(_))));
     }
 
@@ -1788,7 +1788,7 @@ mod tests {
 
     #[test]
     fn t_dual_run_determinism() {
-        let rep = dual_run(2, 0x1234_ABCD).unwrap();
+        let rep = dual_run(2, 0x1234_0002).unwrap();
         assert!(rep.same_seed_equal);
         assert!(rep.diff_seed_diverge, "异种子必须分叉（确定性≠常量性）");
     }

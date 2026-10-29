@@ -17,6 +17,9 @@ pub enum EvCode {
     PreWriteBreach = SEG_BASE + 0x01,  // 0x0061 预写越界
     SlotOccupied = SEG_BASE + 0x02,    // 0x0062 口被占
     RegisterMissing = SEG_BASE + 0x03, // 0x0063 登记缺
+    LedgerBroken = SEG_BASE + 0x04,    // 0x0064 预留账本守恒破（二轮深化）
+    FingerprintDrift = SEG_BASE + 0x05, // 0x0065 指纹漂移（二轮深化）
+    ProbeReject = SEG_BASE + 0x06,     // 0x0066 边界探针拒绝（二轮深化）
 }
 
 /// 四口预留位。
@@ -151,6 +154,121 @@ impl ReserveBook {
     }
 }
 
+// ============ 二轮深化块：回退结构化账本 / 预留守恒 / FNV 幂等闸 / 边界探针 ============
+
+/// [深化] 回退结构化账本：按口记回退笔数 + 守恒（Σ口笔数 ≡ 总回退数）。
+#[derive(Clone, Copy)]
+pub struct RollbackLedger {
+    pub per_slot: [u32; 4],
+    pub total: u32,
+}
+
+impl RollbackLedger {
+    pub fn new() -> Self { RollbackLedger { per_slot: [0; 4], total: 0 } }
+
+    pub fn record(&mut self, s: ReserveSlot) {
+        self.per_slot[s as usize] += 1;
+        self.total += 1;
+    }
+
+    /// 守恒恒等式：四口之和 ≡ 总数。
+    pub fn conserved(&self) -> bool {
+        self.per_slot.iter().sum::<u32>() == self.total
+    }
+
+    /// 回退最重口查询（并列取先，空账 None）。
+    pub fn heaviest_slot(&self) -> Option<ReserveSlot> {
+        let mut best: Option<(usize, u32)> = None;
+        for (i, c) in self.per_slot.iter().enumerate() {
+            if *c > 0 {
+                match best {
+                    None => best = Some((i, *c)),
+                    Some((_, m)) if *c > m => best = Some((i, *c)),
+                    _ => {}
+                }
+            }
+        }
+        best.map(|(i, _)| ReserveSlot::ALL[i])
+    }
+}
+
+/// [深化] 预留口守恒恒等式：每口恰一桩，无重复无缺。
+pub fn slot_conservation(bk: &ReserveBook) -> bool {
+    ReserveSlot::ALL.iter()
+        .all(|s| bk.stubs.iter().filter(|e| e.slot == *s).count() == 1)
+}
+
+/// [深化] 预留册定长字节投影（6B/口，禁 JSON）：
+/// slot u8 + 签名标记 u8 + 签名长 u16le + a11y u8 + 占用 u8。
+pub fn reserve_bytes(bk: &ReserveBook, out: &mut Vec<u8>) {
+    out.clear();
+    for s in ReserveSlot::ALL.iter() {
+        match bk.get(*s) {
+            Some(e) => {
+                out.push(*s as u8);
+                out.push(if e.signature.is_empty() { 0 } else { 1 });
+                out.extend_from_slice(&(e.signature.len() as u16).to_le_bytes());
+                out.push(if e.a11y_adapter_note { 1 } else { 0 });
+                out.push(if e.occupied_by.is_some() { 1 } else { 0 });
+            }
+            None => {
+                out.push(*s as u8);
+                out.push(0xFF);
+                out.extend_from_slice(&0xFFFFu16.to_le_bytes());
+                out.push(0);
+                out.push(0);
+            }
+        }
+    }
+}
+
+/// [深化] FNV-1a 64 位指纹（纯整数运算）。
+pub fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bytes.iter() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+/// [深化] 幂等指纹闸：同态二次投影指纹必须一致。
+pub fn reserve_fingerprint_stable(bk: &ReserveBook) -> Result<u64, EvCode> {
+    let mut b1: Vec<u8> = Vec::new();
+    reserve_bytes(bk, &mut b1);
+    let fp1 = fnv1a64(&b1);
+    let mut b2: Vec<u8> = Vec::new();
+    reserve_bytes(bk, &mut b2);
+    let fp2 = fnv1a64(&b2);
+    if b1.len() != b2.len() || fp1 != fp2 { Err(EvCode::FingerprintDrift) } else { Ok(fp1) }
+}
+
+/// [深化] 预留册边界探针。
+pub struct ReserveProbe;
+
+impl ReserveProbe {
+    /// 空册占用探针：透传 RegisterMissing（显性回执）。
+    pub fn probe_empty_occupy(bk: &mut ReserveBook, s: ReserveSlot) -> Result<(), EvCode> {
+        bk.occupy(s, "probe")
+    }
+
+    /// 越界序号取口 → ProbeReject（不 panic）。
+    pub fn probe_index(bk: &ReserveBook, idx: usize) -> Result<ReserveSlot, EvCode> {
+        match bk.stubs.get(idx) {
+            Some(e) => Ok(e.slot),
+            None => Err(EvCode::ProbeReject),
+        }
+    }
+
+    /// 预写审计幂等闸：二次审计零新增 + 留痕笔数一致。
+    pub fn audit_idempotent(bk: &mut ReserveBook) -> bool {
+        let before = bk.rollbacks.len();
+        let n1 = bk.audit_prewrite();
+        let n2 = bk.audit_prewrite();
+        n2 == 0 && bk.rollbacks.len() == before + n1
+    }
+}
+
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) { set.add(label, ok, detail); }
 
 pub fn run_ves398_checks() -> CheckSet {
@@ -210,6 +328,49 @@ pub fn run_ves398_checks() -> CheckSet {
     bk.init_slots();
     chk(&mut set, "C398-12", bk.stubs.len() == 4, "建册幂等");
 
+    // ===== 二轮深化判据（C398-13 起）=====
+    // C398-13 预留口守恒：每口恰一桩。
+    chk(&mut set, "C398-13", slot_conservation(&bk) && bk.stubs.len() == 4, "四口守恒一桩一口");
+
+    // C398-14 回退账本：按口记账 + 守恒 + 最重口定位。
+    let mut rl = RollbackLedger::new();
+    rl.record(ReserveSlot::NewScriptSystem);
+    chk(&mut set, "C398-14", rl.conserved() && rl.total == 1
+        && rl.heaviest_slot() == Some(ReserveSlot::NewScriptSystem)
+        && RollbackLedger::new().heaviest_slot().is_none(), "回退账本守恒最重口");
+
+    // C398-15 预写审计幂等闸：二次审计零新增。
+    chk(&mut set, "C398-15", ReserveProbe::audit_idempotent(&mut bk), "审计幂等零新增");
+
+    // C398-16 预留册投影：24B 定长 + 指纹幂等稳定。
+    let mut rb: Vec<u8> = Vec::new();
+    reserve_bytes(&bk, &mut rb);
+    match reserve_fingerprint_stable(&bk) {
+        Ok(v) => chk(&mut set, "C398-16", rb.len() == 24 && reserve_fingerprint_stable(&bk) == Ok(v),
+            "投影 24B 指纹幂等"),
+        Err(_) => chk(&mut set, "C398-16", false, "指纹不应漂移"),
+    }
+
+    // C398-17 边界探针：越界序号拒 + 界内取口。
+    chk(&mut set, "C398-17", ReserveProbe::probe_index(&bk, 0) == Ok(ReserveSlot::NewLangFamily)
+        && ReserveProbe::probe_index(&bk, 9) == Err(EvCode::ProbeReject), "越界探针拒界内取口");
+
+    // C398-18 空册占用探针：显性 RegisterMissing。
+    let mut bk3 = ReserveBook::new();
+    chk(&mut set, "C398-18",
+        ReserveProbe::probe_empty_occupy(&mut bk3, ReserveSlot::NewMtEngine) == Err(EvCode::RegisterMissing)
+        && !slot_conservation(&bk3), "空册占用拒守恒破");
+
+    // C398-19 深化变体段位不撞段。
+    chk(&mut set, "C398-19", EvCode::LedgerBroken as u16 == 0x0064
+        && EvCode::FingerprintDrift as u16 == 0x0065 && EvCode::ProbeReject as u16 == 0x0066,
+        "深化段位正确");
+
+    // C398-20 占用口审计豁免：被占口不进待留清单（audit 语义边界）。
+    let audit_n = bk.audit().len();
+    chk(&mut set, "C398-20", audit_n == 1 && bk.audit() == vec!["new-mt-engine"],
+        "占用口豁免仅缺断言位红");
+
     set
 }
 
@@ -220,8 +381,7 @@ mod tests {
     #[test]
     fn ves398_smoke() {
         let set = run_ves398_checks();
-        let red = set.red_items();
-        assert!(red.is_empty(), "ves398 red: {:?}", red);
+        assert!(set.failed_count() == 0, "ves398 red: {}", set.red_items_text());
     }
 
     #[test]

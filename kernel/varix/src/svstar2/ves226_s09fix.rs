@@ -303,10 +303,10 @@ mod tests {
     #[test]
     fn test_p0_hard_gate_cycle() {
         let mut b = FixBook::new();
-        b.raise(FixTicket { gap: "a", level: 0, fixed: false, receipt: None, failed: false }).ok();
+let _ =         b.raise(FixTicket { gap: "a", level: 0, fixed: false, receipt: None, failed: false });
         assert!(b.blocked());
         b.tickets[0].fixed = true;
-        b.ack("a", "r").ok();
+let _ =         b.ack("a", "r");
         assert!(!b.blocked());
         assert!(b.no_receipt().is_empty());
     }
@@ -315,7 +315,7 @@ mod tests {
     fn test_scan_full_six() {
         let mut s = CrossScanner::new();
         for d in 0..6 {
-            s.set(d, 1).ok();
+let _ =             s.set(d, 1);
         }
         assert!(s.gaps().is_empty() && !s.a11y_gap());
     }

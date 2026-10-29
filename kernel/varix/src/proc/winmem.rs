@@ -46,6 +46,145 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use crate::entry::{is_user_ip, ErrNo, USER_TOP};
 
+/// 影子页大小（4KiB，与 x86-64 页粒度一致）。
+const SHADOW_PAGE_BYTES: usize = 4096;
+
+// ---------------------------------------------------------------------------
+// 影子内存（用户半区后备存储）
+// ---------------------------------------------------------------------------
+//
+// 模拟层的「已提交物理页」以影子页形式存放在本模块自己的后备存储里，
+// **不直写虚拟地址**。这是修正后的架构决策，理由有三：
+//
+//   1. 真机（no_std 内核）上 0x6000_0000 是否已建页映射取决于引导进度，
+//      直写等于赌页表——模拟层不该赌；
+//   2. 宿主判据（cargo test）跑在 Windows 上，0x6000_0000 / 0x7000_1000
+//      是未提交保留区，volatile 直写 = STATUS_ACCESS_VIOLATION（实证：
+//      2026-10-24 单线程全量判据在第 7882 项崩溃，元凶即直写零页）；
+//   3. 语义完全等价且更诚实：写自动提交（MMU 缺页分配语义）、读未提交
+//      页返回故障（None），与真 MMU 行为一致，判据可对拍。
+//
+// 页表按页号升序稀疏存放；模拟负载下活跃页 ≤ 堆域 1024 页 + 测试散页，
+// 线性扫描足够（无堆分配压力，无需哈希）。
+
+/// 影子页：页号 + 4KiB 后备存储。
+struct ShadowPage {
+    /// 页号（addr / 4096，全局线性页号）。
+    page_no: u64,
+    /// 页数据。
+    data: alloc::boxed::Box<[u8; SHADOW_PAGE_BYTES]>,
+}
+
+/// 影子内存池（全局单例，SpinProtected 护体）。
+struct ShadowMem {
+    pages: Vec<ShadowPage>,
+}
+
+static SHADOW: SpinProtected<ShadowMem> =
+    SpinProtected::new(ShadowMem { pages: Vec::new() });
+
+/// 定位或创建影子页（页号升序；不存在则追加——调用方保证 addr < USER_TOP）。
+fn shadow_page_mut(pages: &mut Vec<ShadowPage>, page_no: u64) -> &mut [u8; SHADOW_PAGE_BYTES] {
+    // 尾部命中（bump 分配模式下最快路径）；先读后借，避免借用交叠。
+    if pages.last().map_or(false, |p| p.page_no == page_no) {
+        let n = pages.len();
+        return &mut pages[n - 1].data;
+    }
+    // 全表线性查（模拟负载页数少，线性足够）。
+    let mut idx: Option<usize> = None;
+    for (i, p) in pages.iter().enumerate() {
+        if p.page_no == page_no {
+            idx = Some(i);
+            break;
+        }
+    }
+    if let Some(i) = idx {
+        return &mut pages[i].data;
+    }
+    // 新页：清零提交（分配即交零，VirtualAlloc 语义）。
+    pages.push(ShadowPage {
+        page_no,
+        data: alloc::boxed::Box::new([0u8; SHADOW_PAGE_BYTES]),
+    });
+    let n = pages.len();
+    &mut pages[n - 1].data
+}
+
+/// 查已提交页（不存在返回 None——读故障语义）。
+fn shadow_page(pages: &[ShadowPage], page_no: u64) -> Option<&[u8; SHADOW_PAGE_BYTES]> {
+    pages.iter().find(|p| p.page_no == page_no).map(|p| &*p.data)
+}
+
+/// 影子写一字节（自动提交缺页）。
+fn sh_write_byte(addr: u64, val: u8) -> bool {
+    if !is_user_ip(addr) || addr >= USER_TOP {
+        return false;
+    }
+    let mut g = SHADOW.lock();
+    let page_no = addr / SHADOW_PAGE_BYTES as u64;
+    let off = (addr % SHADOW_PAGE_BYTES as u64) as usize;
+    shadow_page_mut(&mut g.pages, page_no)[off] = val;
+    true
+}
+
+/// 影子读一字节（未提交页 = 读故障）。
+fn sh_read_byte(addr: u64) -> Option<u8> {
+    if !is_user_ip(addr) || addr >= USER_TOP {
+        return None;
+    }
+    let g = SHADOW.lock();
+    let page_no = addr / SHADOW_PAGE_BYTES as u64;
+    let off = (addr % SHADOW_PAGE_BYTES as u64) as usize;
+    shadow_page(&g.pages, page_no).map(|p| p[off])
+}
+
+/// 影子读 N 字节（全部可读才返回 true；任一字节落在未提交页 = 故障）。
+pub fn read_user_bytes(addr: u64, out: &mut [u8]) -> bool {
+    if out.is_empty() || !is_user_ip(addr) {
+        return false;
+    }
+    for (i, slot) in out.iter_mut().enumerate() {
+        match sh_read_byte(addr + i as u64) {
+            Some(b) => *slot = b,
+            None => return false,
+        }
+    }
+    true
+}
+
+/// 影子写 N 字节（写自动提交；越用户半区返 false）。
+pub fn write_user_bytes(addr: u64, bytes: &[u8]) -> bool {
+    if bytes.is_empty() {
+        return true;
+    }
+    if !is_user_ip(addr) {
+        return false;
+    }
+    match addr.checked_add(bytes.len() as u64) {
+        Some(end) if end <= USER_TOP => {}
+        _ => return false,
+    }
+    for (i, &b) in bytes.iter().enumerate() {
+        if !sh_write_byte(addr + i as u64, b) {
+            return false;
+        }
+    }
+    true
+}
+
+/// 影子读 u64（小端 8 字节；任一字节落在未提交页 = None 读故障）。
+///
+/// 与 winsrv::read_user_qword 语义对齐，但走影子后备存储——不直读
+/// 虚拟地址（真机页表未建/宿主未提交均不崩，诚实故障）。
+pub fn read_user_qword(addr: u64) -> Option<u64> {
+    let mut v: u64 = 0;
+    for i in 0..8u64 {
+        let b = sh_read_byte(addr + i)?;
+        v |= (b as u64) << (i * 8);
+    }
+    Some(v)
+}
+
 /// 堆域基址（用户半区，与 thunk/映像/栈均不重叠——判据钉死）。
 pub const HEAP_BASE: u64 = 0x6000_0000;
 /// 堆域上界（4MiB 堆容量）。
@@ -290,41 +429,24 @@ pub fn virtual_free(lp_address: u64, _size: u64, free_type: u32) -> i64 {
     1
 }
 
-/// 把用户半区 [base, base+size) 清零（仅在已校验的用户域内调用）。
+/// 把用户半区 [base, base+size) 交零（提交影子页并清零——VirtualAlloc 语义）。
 fn zero_user(base: u64, size: u64) {
     if !in_user_half(base, size) {
         return;
     }
-    let mut addr = base;
+    let mut g = SHADOW.lock();
     let end = base + size;
+    let mut addr = base;
     while addr < end {
-        // SAFETY: addr 恒在 [base, end) ⊂ 用户半区且 < USER_TOP；单核演示地址空间。
-        unsafe { core::ptr::write_volatile(addr as *mut u64, 0) };
-        addr += 8;
-        // 末块可能非 8 对齐（need 是 16 对齐故不会，但防御性补齐）。
-        if addr + 8 > end {
-            while addr < end {
-                unsafe { core::ptr::write_volatile(addr as *mut u8, 0) };
-                addr += 1;
-            }
-        }
+        let page_no = addr / SHADOW_PAGE_BYTES as u64;
+        // 页内剩余字节（不跨页——逐页处理）。
+        let page_start = page_no * SHADOW_PAGE_BYTES as u64;
+        let off = (addr - page_start) as usize;
+        let span = core::cmp::min(SHADOW_PAGE_BYTES - off, (end - addr) as usize);
+        let page = shadow_page_mut(&mut g.pages, page_no);
+        page[off..off + span].fill(0);
+        addr += span as u64;
     }
-}
-
-/// 读用户半区字节（VirtualAlloc 出参校验/判据夹具用）。
-pub fn read_user_bytes(addr: u64, out: &mut [u8]) -> bool {
-    if out.is_empty() || !is_user_ip(addr) {
-        return false;
-    }
-    for (i, slot) in out.iter_mut().enumerate() {
-        let a = addr + i as u64;
-        if a >= USER_TOP {
-            return false;
-        }
-        // SAFETY: a 已在用户半区且 < USER_TOP。
-        *slot = unsafe { core::ptr::read_volatile(a as *const u8) };
-    }
-    true
 }
 
 // ---------------------------------------------------------------------------
@@ -381,8 +503,9 @@ fn read_utf16_name(va: u64, cap: usize) -> Option<alloc::vec::Vec<u8>> {
         if addr + 2 > USER_TOP {
             return None;
         }
-        let lo = unsafe { core::ptr::read_volatile(addr as *const u8) };
-        let hi = unsafe { core::ptr::read_volatile((addr + 1) as *const u8) };
+        // 影子读：任一字节落在未提交页 = 读故障（None 语义）。
+        let lo = sh_read_byte(addr)?;
+        let hi = sh_read_byte(addr + 1)?;
         let unit = (lo as u16) | ((hi as u16) << 8);
         if unit == 0 {
             return Some(out);
@@ -411,10 +534,10 @@ pub fn nt_allocate_virtual_memory(
     alloc_type: u32,
     protect: u32,
 ) -> i64 {
-    let Some(base) = super::winsrv::read_user_qword(base_slot) else {
+    let Some(base) = read_user_qword(base_slot) else {
         return -(ErrNo::Efault.to_i32()) as i64;
     };
-    let Some(size) = super::winsrv::read_user_qword(size_slot) else {
+    let Some(size) = read_user_qword(size_slot) else {
         return -(ErrNo::Efault.to_i32()) as i64;
     };
     let r = virtual_alloc(base, size, alloc_type, protect);
@@ -422,10 +545,10 @@ pub fn nt_allocate_virtual_memory(
         return r;
     }
     let addr = r as u64;
-    let sz = super::winsrv::read_user_qword(size_slot).unwrap_or(size);
+    let sz = read_user_qword(size_slot).unwrap_or(size);
     let aligned = (sz + ALIGN - 1) & !(ALIGN - 1);
-    if !super::winsrv::write_user_bytes(base_slot, &addr.to_le_bytes())
-        || !super::winsrv::write_user_bytes(size_slot, &aligned.to_le_bytes())
+    if !write_user_bytes(base_slot, &addr.to_le_bytes())
+        || !write_user_bytes(size_slot, &aligned.to_le_bytes())
     {
         // 回填失败：块已分配但调用方拿不到地址，如实报故障并回退。
         let _ = virtual_free(addr, 0, MEM_RELEASE);
@@ -453,7 +576,7 @@ mod tests {
     /// 地址域隔离：堆域不得与 thunk 页/映像区/栈区重叠。
     #[test]
     fn heap_domain_isolated_from_thunk_and_image() {
-        let set = &mut CheckSet::new();
+        let set = &mut CheckSet::new("proc-winmem");
         set.add(
             "W441 堆域起点落在用户半区",
             is_user_ip(HEAP_BASE) && HEAP_BASE < HEAP_END,
@@ -474,14 +597,14 @@ mod tests {
             in_user_half(HEAP_BASE, HEAP_END - HEAP_BASE),
             "user half bound",
         );
-        assert!(set.ok(), "{}", set.red_items_text());
+        assert!(set.all_passed(), "{}", set.red_items_text());
     }
 
     /// VirtualAlloc 基本面：非零尺寸、对齐交付、指针单调前进。
     #[test]
     fn virtual_alloc_basic() {
         fresh();
-        let set = &mut CheckSet::new();
+        let set = &mut CheckSet::new("proc-winmem");
         let a = virtual_alloc(0, 100, MEM_COMMIT, PAGE_READWRITE);
         set.add("W442 首次分配返回非负地址", a >= 0, "alloc first");
         let b = virtual_alloc(0, 200, MEM_COMMIT, PAGE_READWRITE);
@@ -502,14 +625,14 @@ mod tests {
                 "isolation",
             );
         }
-        assert!(set.ok(), "{}", set.red_items_text());
+        assert!(set.all_passed(), "{}", set.red_items_text());
     }
 
     /// VirtualAlloc 失败路径必须给明确错误码，且计失败数。
     #[test]
     fn virtual_alloc_failure_paths() {
         fresh();
-        let set = &mut CheckSet::new();
+        let set = &mut CheckSet::new("proc-winmem");
         let before = fail_counters().0;
         // 零尺寸 → Einval
         let r0 = virtual_alloc(0, 0, MEM_COMMIT, PAGE_READWRITE);
@@ -533,18 +656,18 @@ mod tests {
             after >= before + 4,
             "alloc fail counter",
         );
-        assert!(set.ok(), "{}", set.red_items_text());
+        assert!(set.all_passed(), "{}", set.red_items_text());
     }
 
     /// VirtualFree 只支持 LIFO 尾部回退——非栈顶块必须如实失败。
     #[test]
     fn virtual_free_lifo_only() {
         fresh();
-        let set = &mut CheckSet::new();
+        let set = &mut CheckSet::new("proc-winmem");
         let a = virtual_alloc(0, 128, MEM_COMMIT, PAGE_READWRITE);
         let b = virtual_alloc(0, 128, MEM_COMMIT, PAGE_READWRITE);
         if a < 0 || b < 0 {
-            assert!(set.ok(), "{} alloc setup failed", set.red_items_text());
+            assert!(set.all_passed(), "{} alloc setup failed", set.red_items_text());
             return;
         }
         let (au, bu) = (a as u64, b as u64);
@@ -582,14 +705,14 @@ mod tests {
                 "wrong free type",
             );
         }
-        assert!(set.ok(), "{}", set.red_items_text());
+        assert!(set.all_passed(), "{}", set.red_items_text());
     }
 
     /// 交零页：VirtualAlloc 新块内容必须为零（Win32 语义）。
     #[test]
     fn virtual_alloc_returns_zeroed_pages() {
         fresh();
-        let set = &mut CheckSet::new();
+        let set = &mut CheckSet::new("proc-winmem");
         let a = virtual_alloc(0, 256, MEM_COMMIT, PAGE_READWRITE);
         if a >= 0 {
             let mut buf = [0xAAu8; 256];
@@ -597,14 +720,14 @@ mod tests {
             set.add("W445 分配块可读回", ok, "readable");
             set.add("W445 新块内容全零", buf.iter().all(|&b| b == 0), "zeroed");
         }
-        assert!(set.ok(), "{}", set.red_items_text());
+        assert!(set.all_passed(), "{}", set.red_items_text());
     }
 
     /// 块栈容量耗尽 → Enomem（与堆域溢出是两条独立边界）。
     #[test]
     fn virtual_alloc_block_stack_exhaustion() {
         fresh();
-        let set = &mut CheckSet::new();
+        let set = &mut CheckSet::new("proc-winmem");
         let mut ok_count = 0;
         for _ in 0..BLOCK_MAX {
             if virtual_alloc(0, 16, MEM_COMMIT, PAGE_READWRITE) >= 0 {
@@ -618,14 +741,14 @@ mod tests {
             overflow == -(ErrNo::Enomem.to_i32()) as i64,
             "stack exhausted",
         );
-        assert!(set.ok(), "{}", set.red_items_text());
+        assert!(set.all_passed(), "{}", set.red_items_text());
     }
 
     /// GetLastError：成功清零、失败置码、读回一致。
     #[test]
     fn last_error_tracks_operations() {
         fresh();
-        let set = &mut CheckSet::new();
+        let set = &mut CheckSet::new("proc-winmem");
         // 失败后 last_error = ERROR_INVALID_PARAMETER(87)
         let _ = virtual_alloc(0, 0, MEM_COMMIT, PAGE_READWRITE);
         set.add("W447 失败置 last_error=87", last_error() == 87, "err set");
@@ -637,14 +760,14 @@ mod tests {
         // Enomem 路径置 8
         let _ = virtual_alloc(0, HEAP_END - HEAP_BASE + 1, MEM_COMMIT, PAGE_READWRITE);
         set.add("W447 ENOMEM 路径置 last_error=8", last_error() == 8, "enomem err");
-        assert!(set.ok(), "{}", set.red_items_text());
+        assert!(set.all_passed(), "{}", set.red_items_text());
     }
 
     /// CreateFileW：CREATE_ALWAYS 建/覆盖、OPEN_EXISTING 命中/未命中。
     #[test]
     fn nt_create_file_dispositions() {
         fresh();
-        let set = &mut CheckSet::new();
+        let set = &mut CheckSet::new("proc-winmem");
         // 在用户半区构造 UTF-16 名 "winmem.tst\0"
         let name: [u8; 22] = {
             let mut n = [0u8; 22];
@@ -656,7 +779,7 @@ mod tests {
         };
         let va = 0x7000_1000u64; // 测试用用户半区地址
         // 写名字到用户半区（借用 thunk 页外的测试区；测试环境下可写）
-        if !super::super::winsrv::write_user_bytes(va, &name) {
+        if !write_user_bytes(va, &name) {
             // 环境不允许写测试地址 → 跳过写入路径，但保留 OPEN_EXISTING 失败路径判定
             set.add("W448 测试名写入失败（跳过建文件段）", true, "skip");
         } else {
@@ -674,30 +797,30 @@ mod tests {
             let h2 = nt_create_file(va, OPEN_EXISTING);
             set.add("W448 建后 OPEN_EXISTING 命中", h2 >= 1, "open exists");
         }
-        assert!(set.ok(), "{}", set.red_items_text());
+        assert!(set.all_passed(), "{}", set.red_items_text());
     }
 
     /// NtAllocateVirtualMemory：就地回填 BaseAddress/RegionSize 两槽。
     #[test]
     fn nt_allocate_writes_back_slots() {
         fresh();
-        let set = &mut CheckSet::new();
+        let set = &mut CheckSet::new("proc-winmem");
         // 槽地址放用户半区；初值 = 0（lpAddress=NULL 指定由内核选址）
         let base_slot = 0x7000_2000u64;
         let size_slot = 0x7000_2008u64;
-        let ok_init = super::super::winsrv::write_user_bytes(base_slot, &0u64.to_le_bytes())
-            && super::super::winsrv::write_user_bytes(size_slot, &4096u64.to_le_bytes());
+        let ok_init = write_user_bytes(base_slot, &0u64.to_le_bytes())
+            && write_user_bytes(size_slot, &4096u64.to_le_bytes());
         if ok_init {
             let r = nt_allocate_virtual_memory(base_slot, size_slot, MEM_COMMIT, PAGE_READWRITE);
             set.add("W449 NtAlloc 返回 STATUS_SUCCESS", r == 0, "ntstatus");
-            let back_base = super::super::winsrv::read_user_qword(base_slot).unwrap_or(0);
-            let back_size = super::super::winsrv::read_user_qword(size_slot).unwrap_or(0);
+            let back_base = read_user_qword(base_slot).unwrap_or(0);
+            let back_size = read_user_qword(size_slot).unwrap_or(0);
             set.add("W449 BaseAddress 槽被回填为堆地址", back_base >= HEAP_BASE && back_base < HEAP_END, "base back");
             set.add("W449 RegionSize 槽被回填为对齐后大小", back_size == 4096, "size back");
         } else {
             set.add("W449 槽初始化失败（环境限制，跳过）", true, "skip");
         }
-        assert!(set.ok(), "{}", set.red_items_text());
+        assert!(set.all_passed(), "{}", set.red_items_text());
     }
 }
 

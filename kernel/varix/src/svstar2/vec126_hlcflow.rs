@@ -179,8 +179,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn adapt() {
-        let a = adapt(Shape::Loop, "c", "b").ok().unwrap();
+    fn adapt_loop_prefix() {
+        let a = adapt(Shape::Loop, "c", "b").unwrap();
         assert!(a.text.starts_with("[loop]"));
     }
 }

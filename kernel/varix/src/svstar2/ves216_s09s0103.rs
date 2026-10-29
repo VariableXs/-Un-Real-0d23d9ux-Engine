@@ -291,7 +291,7 @@ mod tests {
     fn test_s01_full_cycle() {
         let mut r = S01Retest::new();
         for a in S01_ASSERTS.iter() {
-            r.submit(a, true, Some("证据")).ok();
+let _ =             r.submit(a, true, Some("证据"));
         }
         assert!(r.all_green());
         r.rows[2].pass = false;

@@ -20,7 +20,7 @@ pub enum MtCode {
 }
 
 /// 置信分档。
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Confidence { High = 2, Medium = 1, Low = 0 }
 
 impl Confidence {

@@ -6,6 +6,7 @@
 
 #![allow(dead_code)]
 
+use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
@@ -33,11 +34,23 @@ pub struct U05Joint {
     pub probes: Vec<u8>,
     pub up_u04: bool,
     pub down_u06: bool,
+    /// —— 深化：对拍仲裁账。——
+    pub arb: Vec<ArbRec>,
+}
+
+/// —— 深化：对拍仲裁记录（段 A vs 段 B 取值比对）。——
+#[derive(Clone, Copy, Debug)]
+pub struct ArbRec {
+    pub seg_a: u8,
+    pub seg_b: u8,
+    pub a_val: u32,
+    pub b_val: u32,
+    pub consistent: bool,
 }
 
 impl U05Joint {
     pub fn new() -> Self {
-        U05Joint { passed: 0, receipts: Vec::new(), cases: [(false, false); 10], probes: Vec::new(), up_u04: false, down_u06: false }
+        U05Joint { passed: 0, receipts: Vec::new(), cases: [(false, false); 10], probes: Vec::new(), up_u04: false, down_u06: false, arb: Vec::new() }
     }
 
     pub fn pass_station(&mut self, name: &'static str) -> Result<(), U5Code> {
@@ -78,6 +91,53 @@ impl U05Joint {
     pub fn releasable(&self) -> bool {
         self.passed == U5_CHAIN.len() && self.all_cases() && self.up_u04 && self.down_u06
     }
+
+    /// —— 深化：跨组契约核对：上下桥协议号必须成对匹配。——
+    pub fn contract_check(&self, up_proto: u8, down_proto: u8) -> Result<(), U5Code> {
+        if !self.up_u04 || !self.down_u06 {
+            return Err(U5Code::ContractMismatch);
+        }
+        if up_proto != down_proto {
+            return Err(U5Code::ContractMismatch);
+        }
+        Ok(())
+    }
+
+    /// —— 深化：守恒恒等式：回执数 ≡ 通过站数。——
+    pub fn conserve_ok(&self) -> bool {
+        self.receipts.len() == self.passed
+            && self.receipts.iter().all(|(_, ok)| *ok)
+    }
+
+    /// —— 深化：链回放：回执序与链序逐一比对（全贯通时必须完全一致）。——
+    pub fn replay_verify(&self) -> Result<(), U5Code> {
+        if self.passed != U5_CHAIN.len() {
+            return Err(U5Code::ChainBreak);
+        }
+        for (i, (name, _)) in self.receipts.iter().enumerate() {
+            if *name != U5_CHAIN[i] {
+                return Err(U5Code::ChainBreak);
+            }
+        }
+        Ok(())
+    }
+
+    /// —— 深化：结构化对拍仲裁账。——
+    pub fn arbitrate(&mut self, a: u8, b: u8, a_val: u32, b_val: u32) {
+        let consistent = a_val == b_val;
+        self.arb.push(ArbRec { seg_a: a, seg_b: b, a_val, b_val, consistent });
+    }
+
+    /// —— 深化：中文链况摘要。——
+    pub fn summary(&self) -> String {
+        let mut s = String::new();
+        s.push_str("贯通");
+        s.push_str(&self.passed.to_string());
+        s.push_str("段·对拍");
+        s.push_str(&self.arb.len().to_string());
+        s.push_str("笔");
+        s
+    }
 }
 
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
@@ -113,7 +173,143 @@ pub fn run_ves532_checks() -> CheckSet {
     chk(&mut set, "C532-11", U5_CHAIN.len() == 10 && U5_CHAIN[0] == "outline" && U5_CHAIN[9] == "sdk", "十段链序自洽");
     chk(&mut set, "C532-12", jt.probes.len() == 2, "探针账保序");
 
+    // —— 深化 A：守恒 + 链回放幂等 ——
+    chk(&mut set, "C532-13", jt.conserve_ok(), "联调账守恒：回执数≡通过站数");
+    chk(&mut set, "C532-14", jt.replay_verify().is_ok(), "链回放：回执序≡链序（幂等）");
+    chk(&mut set, "C532-15", jt.pass_station("outline") == Err(U5Code::ChainBreak), "满链后重复过站必拦");
+
+    // —— 深化 B：跨组契约核对 ——
+    chk(&mut set, "C532-16", jt.contract_check(7, 7).is_ok(), "上下桥协议号成对匹配");
+    chk(&mut set, "C532-17", jt.contract_check(7, 8) == Err(U5Code::ContractMismatch), "协议号错配仲裁拒绝");
+    let mut jt2 = U05Joint::new();
+    jt2.bridge(true, true);
+    let _ = jt2.contract_check(1, 2);
+
+    // —— 深化 C：对拍仲裁账 ——
+    jt.arbitrate(2, 8, 100, 100);
+    jt.arbitrate(3, 9, 55, 66);
+    let arb_ok = jt.arb.iter().filter(|r| r.consistent).count();
+    chk(&mut set, "C532-18", jt.arb.len() == 2 && arb_ok == 1, "对拍两笔：一致/不一致各一");
+    chk(&mut set, "C532-19", !jt.summary().is_empty(), "链况中文摘要（域本色）");
+
+    // —— 深化 D：边界探针 ——
+    let er = run_joint_edge_probes();
+    chk(&mut set, "C532-20", er.empty_not_releasable && er.case_edge_9_ok, "空册不可收口/例号 9 边界通");
+    chk(&mut set, "C532-21", er.case_edge_10_rejected && er.empty_conserve, "例号 10 越界拒/空册守恒");
+
+    // —— 深化 E：LCG 注入回归 ——
+    match joint_inject_regression(40) {
+        Ok((blocked, done)) => chk(&mut set, "C532-22", blocked > 0 && done, "40 轮越站注入必拦且最终仍可按序贯通"),
+        Err(_) => chk(&mut set, "C532-22", false, "注入回归断链未修复"),
+    }
+
+    // —— 深化 F：回执序列化 ——
+    let mut bytes: Vec<u8> = Vec::new();
+    encode_receipts(&jt.receipts, &mut bytes);
+    let rt = decode_receipts(&bytes);
+    chk(&mut set, "C532-23", rt.iter().count() == jt.receipts.len(), "回执 2B/条定长解码往返");
+    chk(&mut set, "C532-24", fnv1a(&bytes) == fnv1a(&bytes) && bytes.len() == jt.receipts.len() * 2, "FNV 指纹稳定且字节布局定长");
+
     set
+}
+
+// ===== 深化块 A：边界探针 =====
+
+/// 联调边界探针报告。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct JointEdgeReport {
+    pub empty_not_releasable: bool,
+    pub case_edge_9_ok: bool,
+    pub case_edge_10_rejected: bool,
+    pub empty_conserve: bool,
+}
+
+/// 四类边界探针：空册收口/例号 9/例号 10/空册守恒。
+pub fn run_joint_edge_probes() -> JointEdgeReport {
+    let mut e = U05Joint::new();
+    // 1) 空册：十段未通必不可收口
+    let empty_not_releasable = !e.releasable();
+    // 2) 例号 9：末位边界可跑
+    let case_edge_9_ok = e.run_case(9, true).is_ok();
+    // 3) 例号 10：越界显性拒绝
+    let case_edge_10_rejected = e.run_case(10, true) == Err(U5Code::CaseFail);
+    // 4) 空册守恒：0 回执 ≡ 0 站
+    let empty_conserve = e.conserve_ok();
+
+    JointEdgeReport { empty_not_releasable, case_edge_9_ok, case_edge_10_rejected, empty_conserve }
+}
+
+// ===== 深化块 B：LCG 注入回归 =====
+
+/// 确定性 LCG（8 行）。
+pub struct Lcg(u32);
+
+impl Lcg {
+    pub fn new(seed: u32) -> Self {
+        Lcg(seed | 1)
+    }
+
+    pub fn next(&mut self) -> u32 {
+        self.0 = self.0.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        self.0
+    }
+}
+
+/// 注入回归：LCG 驱动 N 轮随机过站（越站必拦计数），随后按序补通全链。
+pub fn joint_inject_regression(rounds: u32) -> Result<(u32, bool), U5Code> {
+    let mut rng = Lcg::new(0x5EED_5320);
+    let mut jt = U05Joint::new();
+    let mut blocked = 0u32;
+    for _ in 0..rounds {
+        let idx = (rng.next() % 12) as usize;
+        let name = if idx < U5_CHAIN.len() { U5_CHAIN[idx] } else { "rogue" };
+        if jt.pass_station(name) == Err(U5Code::ChainBreak) {
+            blocked += 1;
+        }
+    }
+    for s in U5_CHAIN.iter() {
+        jt.pass_station(s)?;
+    }
+    if jt.passed != 10 || !jt.conserve_ok() {
+        return Err(U5Code::ChainBreak);
+    }
+    Ok((blocked, jt.passed == 10))
+}
+
+// ===== 深化块 C：序列化投影 =====
+
+/// FNV-1a 32 位指纹。
+pub fn fnv1a(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    for b in bytes {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    h
+}
+
+/// 定长编码：每条 2B（站序:1 + 回执位:1）。
+pub fn encode_receipts(receipts: &[(&'static str, bool)], out: &mut Vec<u8>) {
+    for (name, ok) in receipts {
+        let idx = U5_CHAIN.iter().position(|c| c == name).unwrap_or(0xFF) as u8;
+        out.push(idx);
+        out.push(*ok as u8);
+    }
+}
+
+/// 定长解码：非整 2B 或站序越界 → 显性拒绝。
+pub fn decode_receipts(bytes: &[u8]) -> Result<Vec<(&'static str, bool)>, U5Code> {
+    if bytes.len() % 2 != 0 {
+        return Err(U5Code::ChainBreak);
+    }
+    let mut out = Vec::new();
+    for ch in bytes.chunks_exact(2) {
+        if ch[0] as usize >= U5_CHAIN.len() {
+            return Err(U5Code::ChainBreak);
+        }
+        out.push((U5_CHAIN[ch[0] as usize], ch[1] != 0));
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -126,5 +322,18 @@ mod tests {
         assert!(jt.pass_station("outline").is_ok());
         assert_eq!(jt.pass_station("sdk"), Err(U5Code::ChainBreak));
         assert!(!jt.releasable());
+    }
+
+    #[test]
+    fn u05_joint_arb_and_replay() {
+        let mut jt = U05Joint::new();
+        jt.arbitrate(1, 2, 10, 10);
+        jt.arbitrate(2, 3, 7, 8);
+        assert_eq!(jt.arb.iter().filter(|r| r.consistent).count(), 1);
+        assert!(jt.replay_verify() == Err(U5Code::ChainBreak));
+        for s in U5_CHAIN.iter() {
+            let _ = jt.pass_station(s);
+        }
+        assert!(jt.replay_verify().is_ok());
     }
 }

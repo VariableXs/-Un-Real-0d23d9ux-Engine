@@ -24,6 +24,8 @@ pub enum CgCode {
     YieldToRender = SEG_BASE + 0x02,
     /// 任务不可卸载（交互类拒绝下放）。
     NotOffloadable = SEG_BASE + 0x03,
+    /// 重试耗尽（切片升级隔离，不再重派）。
+    RetryExhausted = SEG_BASE + 0x04,
 }
 
 /// 任务类别。
@@ -58,6 +60,12 @@ pub struct CgpuDesk {
     pub yields: u32,
     pub redispatches: u32,
     pub fallbacks: u32,
+    /// 深化：切片重派次数账（id → 次数）。
+    pub retry_counts: Vec<(u32, u32)>,
+    /// 深化：隔离切片（重试耗尽，等归因）。
+    pub quarantined: Vec<u32>,
+    /// 深化：回传切片耗时流（tick 抽象单位）。
+    pub durations: Vec<u32>,
 }
 
 /// 切片校验：FNV 结果指纹自洽（协议三件之二）。
@@ -148,6 +156,70 @@ impl CgpuDesk {
         let fb = self.slices.iter().filter(|s| s.cpu_fallback).count() as u64;
         (fb * 10000 / self.slices.len() as u64) as u32
     }
+
+    // ─── 深化块：重试上限 + 隔离账 ───
+
+    /// 切片重派计数上限：超过即隔离（不再重派——防丢失风暴活循环）。
+    pub const RETRY_CAP: u32 = 3;
+
+    /// 丢失登记带重试上限：同一切片第 RETRY_CAP 次丢失后隔离拒收。
+    pub fn lose_capped(&mut self, id: u32) -> Result<(), CgCode> {
+        let s = self.slices.iter_mut().find(|s| s.id == id).ok_or(CgCode::SliceLost)?;
+        if s.state == 1 {
+            return Ok(()); // 已回的不覆盖
+        }
+        let existed = self.retry_counts.iter().any(|(k, _)| *k == id);
+        if !existed {
+            self.retry_counts.push((id, 0));
+        }
+        let cnt = match self.retry_counts.iter_mut().find(|(k, _)| *k == id) {
+            Some(p) => p.1,
+            None => 0,
+        };
+        if cnt >= Self::RETRY_CAP {
+            if !self.quarantined.contains(&id) {
+                self.quarantined.push(id);
+            }
+            return Err(CgCode::RetryExhausted);
+        }
+        if let Some(p) = self.retry_counts.iter_mut().find(|(k, _)| *k == id) {
+            p.1 += 1;
+        }
+        s.state = 3;
+        self.redispatches += 1;
+        Ok(())
+    }
+
+    // ─── 深化块：切片耗时账 + 整数 P95 ───
+
+    /// 回传计时登记（仅回传时入流）。
+    pub fn record_duration(&mut self, ticks: u32) {
+        self.durations.push(ticks);
+    }
+
+    /// 整数分位：p 从 0..=100，排序后取 ceil(p/100*(n-1)) 位。
+    pub fn percentile(&self, p: u32) -> u32 {
+        if self.durations.is_empty() {
+            return 0;
+        }
+        let mut v = self.durations.clone();
+        v.sort_unstable();
+        let n = v.len();
+        let idx = ((p as u64 * (n as u64 - 1) + 99) / 100) as usize;
+        v[idx.min(n - 1)]
+    }
+
+    // ─── 深化块：吞吐守恒 ───
+
+    /// offloaded 总数 ≡ settled(1) + failed(2) + lost(3) + pending(0)，
+    /// 隔离数另计（不混入切片池状态守恒）。
+    pub fn throughput_conserves(&self) -> bool {
+        let settled = self.slices.iter().filter(|s| s.state == 1).count();
+        let failed = self.slices.iter().filter(|s| s.state == 2).count();
+        let lost = self.slices.iter().filter(|s| s.state == 3).count();
+        let pending = self.slices.iter().filter(|s| s.state == 0).count();
+        settled + failed + lost + pending == self.slices.len()
+    }
 }
 
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
@@ -204,6 +276,44 @@ pub fn run_ves563_checks() -> CheckSet {
     let mut cg3 = CgpuDesk::default();
     chk(&mut set, "C563-12", cg3.offload(TaskKind::BatchScan, 0) == Ok(1) && cg.fallback_ratio_bp() >= 0, "零文件兜底");
 
+    // ── 深化判据：重试上限与隔离 ──
+    let mut cg4 = CgpuDesk::default();
+    let _ = cg4.offload(TaskKind::BatchScan, 512);
+    chk(&mut set, "C563-13", cg4.lose_capped(0).is_ok() && cg4.lose_capped(0).is_ok()
+        && cg4.lose_capped(0).is_ok(), "前 3 次丢失正常重派");
+    chk(&mut set, "C563-14", cg4.lose_capped(0) == Err(CgCode::RetryExhausted)
+        && cg4.quarantined == [0], "第 4 次丢失升级隔离");
+    // 重派回传可解隔离（隔离账移除 + 状态转绿）。
+    chk(&mut set, "C563-15", cg4.redispatch_done(0, slice_fp(512 ^ 0)).is_err(),
+        "隔离态重派回传先拒（须显性解隔离）");
+    cg4.quarantined.retain(|q| *q != 0);
+    chk(&mut set, "C563-16", cg4.redispatch_done(0, slice_fp(512 ^ 0)).is_ok()
+        && cg4.slices[0].state == 1, "显性解隔离后重派转绿");
+
+    // ── 深化判据：耗时账与整数 P95 ──
+    let mut cg5 = CgpuDesk::default();
+    for d in [10u32, 20, 30, 40, 50, 60, 70, 80, 90, 100] {
+        cg5.record_duration(d);
+    }
+    chk(&mut set, "C563-17", cg5.percentile(50) == 50 && cg5.percentile(0) == 10
+        && cg5.percentile(100) == 100, "P0/P50/P100 整数分位");
+    chk(&mut set, "C563-18", cg5.percentile(95) >= 90 && cg5.percentile(95) <= 100, "P95 落尾部区");
+
+    // ── 深化判据：吞吐守恒（全状态矩阵注入）──
+    let mut cg6 = CgpuDesk::default();
+    let _ = cg6.offload(TaskKind::BatchScan, 2048); // 4 切片
+    let _ = cg6.submit(0, slice_fp(2048 ^ 0));       // 0→1
+    let _ = cg6.submit(1, 0xDEAD);                    // 0→2 失败
+    let _ = cg6.lose(2);                              // 0→3 丢失
+    let _ = cg6.lose_capped(3);                       // 0→3 丢失
+    chk(&mut set, "C563-19", cg6.throughput_conserves(), "settled+failed+lost+pending≡offloaded");
+
+    // 篡改检出：手工破一个状态值守恒即破。
+    let mut cg7 = CgpuDesk::default();
+    let _ = cg7.offload(TaskKind::BatchScan, 512);
+    cg7.slices[0].state = 9;
+    chk(&mut set, "C563-20", !cg7.throughput_conserves(), "非法状态值守恒即破");
+
     set
 }
 
@@ -237,5 +347,27 @@ mod tests {
         assert!(cg.redispatch_done(0, 42).is_ok());
         assert_eq!(cg.slices[0].state, 1);
         assert_eq!(cg.slices[0].fp, 42);
+    }
+
+    #[test]
+    fn retry_cap_quarantines() {
+        let mut cg = CgpuDesk::default();
+        let _ = cg.offload(TaskKind::BatchScan, 100);
+        for _ in 0..CgpuDesk::RETRY_CAP {
+            assert!(cg.lose_capped(0).is_ok());
+        }
+        assert_eq!(cg.lose_capped(0), Err(CgCode::RetryExhausted));
+        assert_eq!(cg.quarantined, [0]);
+    }
+
+    #[test]
+    fn percentile_ordering() {
+        let mut cg = CgpuDesk::default();
+        for d in [5u32, 3, 8, 1] {
+            cg.record_duration(d);
+        }
+        assert_eq!(cg.percentile(0), 1);
+        assert_eq!(cg.percentile(50), 3);
+        assert_eq!(cg.percentile(100), 8);
     }
 }

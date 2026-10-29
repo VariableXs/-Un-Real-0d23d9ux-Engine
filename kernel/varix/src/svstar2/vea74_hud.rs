@@ -593,6 +593,6 @@ mod tests {
     #[test]
     fn vea74_all_green() {
         let s = run_vea74_checks();
-        assert!(s.passed(), "{}", s.red_items_text());
+        assert!(s.all_passed(), "{}", s.red_items_text());
     }
 }

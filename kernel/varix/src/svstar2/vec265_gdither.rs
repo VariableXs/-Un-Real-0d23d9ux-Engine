@@ -87,6 +87,7 @@ pub fn gradient_bands(no_dither_steps: usize, with_dither: bool, seed: u64) -> u
 }
 
 pub fn run_vec265_checks() -> crate::checks::CheckSet {
+    let mut s = CheckSet::new("svstar2-vec265");
     // 族一：强度三档
     s.add("dither-三档", [DitherStrength::Off, DitherStrength::Half, DitherStrength::Full].len() == 3, "3 levels");
     s.add("dither-幅度受控", DitherStrength::Full.amp() <= 1.0 / 255.0, "≤1 step");

@@ -160,8 +160,8 @@ impl LapicAccess {
                 a.mmio[0x030 / 4] = 0x0014_0011;
             }
             LapicMode::X2Apic => {
-                a.msr[0x802] = 0x0000_0001; // x2APIC ID 32 位直读，逻辑 ID 同为 1
-                a.msr[0x803] = 0x0000_0000_0014_0011;
+                a.msr[(0x802 - 0x800) as usize] = 0x0000_0001; // x2APIC ID 32 位直读，逻辑 ID 同为 1
+                a.msr[(0x803 - 0x800) as usize] = 0x0000_0000_0014_0011;
             }
         }
         a

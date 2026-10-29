@@ -196,7 +196,7 @@ pub fn exec_graph(g: &FzGraph, seed: u64) -> Result<(Vec<FzEvent>, bool), u16> {
         return Err(SEG_BASE + 1);
     }
     let n = g.len();
-    let mut rng = Xorshift64::new(seed ^ 0xdead_beef);
+    let mut rng = Xorshift64::new(seed ^ 0xdead_0001);
     let mut indeg: Vec<u32> = vec![0; n];
     for outs in &g.edges {
         for &v in outs {
@@ -397,8 +397,8 @@ mod tests {
         // 构造确定性违例：空图在 exec_graph 处被拒（I1/I4 前置失败）。
         let g = FzGraph { nodes: Vec::new(), edges: Vec::new(), budget_us: 1 };
         let first = check_invariants(&g, 77).unwrap_err();
-        // 记为固化案例。
-        let pinned = PinnedCase { seed: 77, kind_tag: 0, inv: Invariant::NoPanic };
+        // 记为固化案例（NoPanic 不变式的 Err 码域记录：0 = 无错误）。
+        let pinned = PinnedCase { seed: 77, kind_tag: 0, code: Invariant::NoPanic as u16 };
         let _ = pinned;
         // 重放必须同错误码（同根因）。
         let replay = check_invariants(&g, 77).unwrap_err();

@@ -85,6 +85,6 @@ pub fn run_vec396_checks() -> crate::checks::CheckSet {
     s.add("4k-反相值", inv.get(0, 0) == [245, 55, 165, 255], "invert");
     s.add("4k-二次反相", invert_fixed(&inv).px == small.px, "involution");
     // 族六：小规模全值定点亮度有界（≤ 3×Q8.8 max）
-    s.add("4k-亮度上界", luma_fixed([255, 255, 255, 255]) <= 3 * 65535, "bound");
+    s.add("4k-亮度上界", luma_fixed([255, 255, 255, 255]) as u32 <= 3 * 65535, "bound");
     s
 }

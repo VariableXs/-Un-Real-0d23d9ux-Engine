@@ -151,7 +151,7 @@ pub fn run_unx0569_checks() -> crate::checks::CheckSet {
     let mut p9 = PrioSched::new(3);
     for band in 0..3usize {
         for k in 0..4u32 {
-            p9.submit(band, (band * 100 + k) as u32).ok();
+            p9.submit(band, band as u32 * 100 + k).ok();
         }
     }
     let mut all = 0;

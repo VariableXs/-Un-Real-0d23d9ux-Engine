@@ -29,6 +29,8 @@ pub enum ClCode {
     ZeroSign = SEG_BASE + 0x05,
     /// 全线可用声明缺项。
     LineMissing = SEG_BASE + 0x06,
+    /// 收口时序违规（声明→签核→回写乱序）。
+    PhaseOrder = SEG_BASE + 0x07,
 }
 
 /// 四条线可用位。
@@ -64,6 +66,12 @@ pub struct U07Close {
     pub declared: bool,
     pub rollback_done: bool,
     seq: u32,
+    /// 深化：签核事件账 (签人, 0=成签 1=拒签)，时间序。
+    pub sign_events: Vec<(u32, u8)>,
+    /// 深化：回滚履历。
+    pub rollbacks: u32,
+    /// 深化：回写完成位。
+    pub written: bool,
 }
 
 impl U07Close {
@@ -136,9 +144,68 @@ impl U07Close {
     pub fn write_ledger(&mut self, ok: bool) -> Result<(), ClCode> {
         if !ok {
             self.rollback_done = true;
+            self.rollbacks += 1;
             self.signs.clear();
             return Err(ClCode::WriteFail);
         }
+        self.written = true;
+        Ok(())
+    }
+
+    // ─── 深化块：签核事件账 ───
+
+    /// 签核入账版：成签/拒签都留事件（拒签记拒绝码序号）。
+    pub fn sign_ledger(&mut self, signer: u32) -> Result<(), ClCode> {
+        let r = self.sign(signer);
+        match r {
+            Ok(()) => {
+                self.sign_events.push((signer, 0));
+                Ok(())
+            }
+            Err(e) => {
+                self.sign_events.push((signer, 1));
+                Err(e)
+            }
+        }
+    }
+
+    /// 事件账守恒：成签事件 ≡ signs 数 + 回滚丢弃数（由 rollbacks 间接对账
+    /// ——回滚清 signs 但不清事件账，成签事件 ≥ signs 长度恒成立）。
+    pub fn events_conserves(&self) -> bool {
+        let ok_n = self.sign_events.iter().filter(|(_, t)| *t == 0).count();
+        ok_n >= self.signs.len()
+    }
+
+    // ─── 深化块：红线账守恒 ───
+
+    /// 红线守恒：登记 ≡ 已销 + 未销。
+    pub fn redline_conserves(&self) -> bool {
+        let total = self.redlines.len() as u32;
+        let cleared = self.redlines.iter().filter(|r| r.1).count() as u32;
+        let open = self.redlines.iter().filter(|r| !r.1).count() as u32;
+        total == cleared + open
+    }
+
+    /// 未销红线清单。
+    pub fn open_redlines(&self) -> Vec<u32> {
+        self.redlines.iter().filter(|r| !r.1).map(|r| r.0).collect()
+    }
+
+    // ─── 深化块：收口时序强制 ───
+
+    /// 收口终验：written 前必 closed，closed 前必 declared。
+    /// 乱序（未声明已回写 / 未双签已回写）显性拒。
+    pub fn finalize(&mut self) -> Result<(), ClCode> {
+        if !self.declared {
+            return Err(ClCode::PhaseOrder);
+        }
+        if !self.closed() {
+            return Err(ClCode::PhaseOrder);
+        }
+        if self.written {
+            return Ok(());
+        }
+        self.written = true;
         Ok(())
     }
 }
@@ -202,6 +269,44 @@ pub fn run_ves574_checks() -> CheckSet {
     let _ = cl.declare(Lines { budget: true, bench: true, gate: true, degrade: true });
     chk(&mut set, "C574-12", cl.declared && cl.lines.map(|l| l.all()) == Some(true), "声明幂等");
 
+    // ── 深化判据：签核事件账（成/拒都留痕）──
+    let mut se = U07Close::new();
+    se.submit(Triple { report: true, words_match: true, ledger: true });
+    let _ = se.declare(Lines { budget: true, bench: true, gate: true, degrade: true });
+    let _ = se.sign_ledger(7);        // 成
+    let _ = se.sign_ledger(7);        // 同人拒
+    let _ = se.sign_ledger(0);        // 零号拒
+    let _ = se.sign_ledger(8);        // 成
+    chk(&mut set, "C574-13", se.sign_events.len() == 4 && se.sign_events.iter()
+        .filter(|(_, t)| *t == 0).count() == 2 && se.events_conserves(),
+        "成 2 拒 2 事件账守恒");
+
+    // ── 深化判据：红线账守恒 + 未销清单 ──
+    let mut rl = U07Close::new();
+    rl.redline(1);
+    rl.redline(2);
+    rl.redline(3);
+    rl.clear_redline(2);
+    chk(&mut set, "C574-14", rl.redline_conserves() && rl.open_redlines() == [1u32, 3u32],
+        "登记3=销1+未销2 清单精确");
+
+    // ── 深化判据：回滚履历 + 事件账存续 ──
+    let _ = rl.sign(5);
+    let _ = rl.sign(6);
+    let _ = rl.write_ledger(false);
+    chk(&mut set, "C574-15", rl.rollbacks == 1 && rl.signs.is_empty()
+        && rl.events_conserves(), "回滚计数+事件存续");
+
+    // ── 深化判据：收口时序强制 ──
+    let mut fo = U07Close::new();
+    chk(&mut set, "C574-16", fo.finalize() == Err(ClCode::PhaseOrder), "未声明终验拒");
+    fo.submit(Triple { report: true, words_match: true, ledger: true });
+    let _ = fo.declare(Lines { budget: true, bench: true, gate: true, degrade: true });
+    chk(&mut set, "C574-17", fo.finalize() == Err(ClCode::PhaseOrder), "未双签终验拒");
+    let _ = fo.sign(3);
+    let _ = fo.sign(4);
+    chk(&mut set, "C574-18", fo.finalize().is_ok() && fo.written, "顺序终验通过");
+
     set
 }
 
@@ -234,5 +339,29 @@ mod tests {
         let _ = cl.sign(2);
         assert_eq!(cl.write_ledger(false), Err(ClCode::WriteFail));
         assert!(cl.signs.is_empty());
+    }
+
+    #[test]
+    fn sign_event_ledger() {
+        let mut cl = U07Close::new();
+        cl.submit(Triple { report: true, words_match: true, ledger: true });
+        let _ = cl.declare(Lines { budget: true, bench: true, gate: true, degrade: true });
+        let _ = cl.sign_ledger(1);
+        let _ = cl.sign_ledger(1); // 拒
+        assert!(cl.events_conserves());
+        assert_eq!(cl.sign_events.len(), 2);
+    }
+
+    #[test]
+    fn finalize_phase_order() {
+        let mut cl = U07Close::new();
+        assert_eq!(cl.finalize(), Err(ClCode::PhaseOrder));
+        cl.submit(Triple { report: true, words_match: true, ledger: true });
+        let _ = cl.declare(Lines { budget: true, bench: true, gate: true, degrade: true });
+        assert_eq!(cl.finalize(), Err(ClCode::PhaseOrder));
+        let _ = cl.sign(1);
+        let _ = cl.sign(2);
+        assert!(cl.finalize().is_ok());
+        assert!(cl.written);
     }
 }

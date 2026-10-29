@@ -125,10 +125,10 @@ mod tests {
     #[test]
     fn test_write_and_detect() {
         let mut s = HaltStampStore::new();
-        s.write(0xF001, 0xDEAD_BEEF, "Dumping", 100).unwrap();
+        s.write(0xF001, 0xDEAD_0001, "Dumping", 100).unwrap();
         let stamp = s.detect_last_panic().unwrap();
         assert_eq!(stamp.p_code, 0xF001);
-        assert_eq!(stamp.fingerprint, 0xDEAD_BEEF);
+        assert_eq!(stamp.fingerprint, 0xDEAD_0001);
         assert!(stamp.consumed);
     }
 
@@ -155,7 +155,7 @@ mod tests {
         let mut s = HaltStampStore::new();
         s.max_entries = 3;
         for i in 0..5 {
-            s.write(0xF001, i, "Phase", i).unwrap();
+            s.write(0xF001, i, "Phase", i as u64).unwrap();
         }
         assert_eq!(s.len(), 3); // 只保留最新 3 条
     }

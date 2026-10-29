@@ -33,7 +33,7 @@ impl RingLog {
     /// 空环（128 槽冻结）。
     pub fn new() -> Self {
         RingLog {
-            slots: Default::default(),
+            slots: [const { None }; RING_CAP],
             head: 0,
             written: 0,
             overwritten: 0,

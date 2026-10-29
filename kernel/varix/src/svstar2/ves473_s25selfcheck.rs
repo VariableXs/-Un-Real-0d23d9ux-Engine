@@ -129,7 +129,6 @@ mod tests {
     #[test]
     fn ves473_smoke() {
         let set = run_ves473_checks();
-        let red = set.red_items();
-        assert!(red.is_empty(), "ves473 red: {:?}", red);
+        assert!(set.failed_count() == 0, "ves473 red: {}", set.red_items_text());
     }
 }

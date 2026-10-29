@@ -376,8 +376,9 @@ mod tests {
     #[test]
     fn missing_base_falls_back() {
         let mut b = RampBook::new();
+        let hit = b.codes().contains(&RampCode::BaseMissing);
         let t = b.derive(None, RampParams::standard());
-        assert!(b.codes().contains(&RampCode::BaseMissing));
+        assert!(hit);
         // 回退母值：L0 就是母色。
         assert_eq!(t.slots[0].color, FALLBACK_BASE);
     }

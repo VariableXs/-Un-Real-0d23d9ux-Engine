@@ -310,7 +310,7 @@ mod tests {
     fn test_admit_matrix() {
         let mut l = AssetLedger::new();
         let ok = AssetRow { name: "a", kind: AssetKind::Simulator, group: 1, clause: 1, assert_ref: 1, scale: 1, sanitized: false, needs_sanitize: false };
-        assert_eq!(l.admit(ok), S9GCode::OK);
+        assert_eq!(l.admit(ok.clone()), S9GCode::OK);
         let mut bad_ptr = ok.clone();
         bad_ptr.clause = 0;
         assert_eq!(l.admit(bad_ptr), S9GCode::LEDGER_GAP);
@@ -324,9 +324,9 @@ mod tests {
         let mut m = OrphanMender::new();
         m.report("语料乙");
         m.report("语料丙");
-        m.mend("语料乙").ok();
+let _ =         m.mend("语料乙");
         assert_eq!(m.orphans, vec!["语料丙"]);
-        m.mend("语料丙").ok();
+let _ =         m.mend("语料丙");
         assert!(m.clean());
     }
 }

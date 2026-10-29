@@ -24,6 +24,8 @@ pub enum PdCode {
     NoBeforeAfter = SEG_BASE + 0x02,
     /// 文档类越界。
     DocRange = SEG_BASE + 0x03,
+    /// 快照指纹不符（历史账对账失败）。
+    SnapFpMismatch = SEG_BASE + 0x04,
 }
 
 /// 四族文档。
@@ -69,11 +71,32 @@ pub struct PerfDocs {
     pub publishing: bool,
     pub resnaps: u32,
     pub archived: u32,
+    /// 深化：快照覆盖历史账 (caliber, fp)。
+    pub attach_history: Vec<(u32, u32)>,
+    /// 深化：发布履历（成功/阻断计数）。
+    pub pub_ok: u32,
+    pub pub_blocked: u32,
 }
 
 impl PerfDocs {
     pub fn new() -> Self {
         PerfDocs { ..Default::default() }
+    }
+
+    // ─── 深化块：快照指纹 ───
+
+    /// 快照 FNV-1a 指纹（四字段逐字节）。
+    pub fn snap_fp(s: &Snapshot) -> u32 {
+        let mut h: u32 = 0x811C9DC5;
+        for v in [s.caliber, s.p95_ms, s.unit_cost, s.bench_mean] {
+            let mut x = v;
+            for _ in 0..4 {
+                h ^= x & 0xFF;
+                h = h.wrapping_mul(0x01000193);
+                x >>= 8;
+            }
+        }
+        h
     }
 
     /// 文档族登记（缺类补齐用；幂等）。
@@ -149,6 +172,57 @@ impl PerfDocs {
     pub fn sr_clean(&self) -> bool {
         self.cases.iter().all(|c| c.sr_ok)
     }
+
+    // ─── 深化块：快照指纹历史账（覆盖不丢账）───
+
+    /// 覆盖式挂载的历史账版：旧快照指纹先入史再覆盖（账不丢）。
+    /// 注：字段 attach_history/pub_ok/pub_blocked 在 struct 定义处。
+
+    /// 挂带历史的 attach：当前快照在册时先记账。
+    pub fn attach_keep(&mut self, s: Snapshot) {
+        if let Some(old) = self.snap {
+            self.attach_history.push((old.caliber, Self::snap_fp(&old)));
+        }
+        self.snap = Some(s);
+    }
+
+    /// 历史账对账：某口径的旧快照指纹可查（覆盖追溯）。
+    pub fn history_has(&self, caliber: u32, fp: u32) -> bool {
+        self.attach_history.iter().any(|(c, f)| *c == caliber && *f == fp)
+    }
+
+    // ─── 深化块：案例收益 top-K 投影 ───
+
+    /// 收益 top-K：按收益 bp 降序取前 K 个案例 id（K=0 空表）。
+    pub fn top_gains(&self, k: usize) -> Vec<u32> {
+        let mut ranked: Vec<(i64, u32)> = self.cases.iter()
+            .map(|c| (((c.before_ms as i64 - c.after_ms as i64) * 10000 / c.before_ms.max(1) as i64), c.id))
+            .collect();
+        ranked.sort_by(|a, b| b.0.cmp(&a.0));
+        ranked.into_iter().take(k).map(|(_, id)| id).collect()
+    }
+
+    // ─── 深化块：发布履历守恒 ───
+
+    /// 发布闸带履历：成功/阻断都计数，守恒可对账。
+    pub fn publish_gated(&mut self, cur_caliber: u32) -> Result<(), PdCode> {
+        match self.publish_gate(cur_caliber) {
+            Ok(()) => {
+                self.pub_ok += 1;
+                self.publishing = true;
+                Ok(())
+            }
+            Err(e) => {
+                self.pub_blocked += 1;
+                Err(e)
+            }
+        }
+    }
+
+    /// 履历守恒：成功+阻断 ≡ 尝试总数（外部传入尝试数）。
+    pub fn pub_conserves(&self, attempts: u32) -> bool {
+        self.pub_ok + self.pub_blocked == attempts
+    }
 }
 
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
@@ -210,6 +284,64 @@ pub fn run_ves568_checks() -> CheckSet {
     let pd2 = PerfDocs::new();
     chk(&mut set, "C568-12", pd2.sr_clean() && pd2.gain_bp(9).is_err(), "无件拒+空册洁");
 
+    // ── 深化判据：快照指纹（确定性 + 差异敏感）──
+    let sa = Snapshot { caliber: 8, p95_ms: 85, unit_cost: 98, bench_mean: 52 };
+    let sb = Snapshot { caliber: 8, p95_ms: 85, unit_cost: 98, bench_mean: 53 };
+    chk(&mut set, "C568-13", PerfDocs::snap_fp(&sa) == PerfDocs::snap_fp(&sa)
+        && PerfDocs::snap_fp(&sa) != PerfDocs::snap_fp(&sb), "指纹确定且差异敏感");
+
+    // ── 深化判据：覆盖历史账（覆盖不丢 + 可追溯）──
+    let mut ph = PerfDocs::new();
+    ph.attach_keep(sa);
+    let fp_a = PerfDocs::snap_fp(&sa);
+    let sc = Snapshot { caliber: 9, p95_ms: 80, unit_cost: 95, bench_mean: 50 };
+    ph.attach_keep(sc);
+    chk(&mut set, "C568-14", ph.attach_history.len() == 1
+        && ph.history_has(8, fp_a), "覆盖旧快照入史可追溯");
+
+    // ── 深化判据：发布履历守恒（3 阻断 + 1 成功）──
+    let mut pg = PerfDocs::new();
+    for k in [DocKind::PerfArch, DocKind::BudgetTable, DocKind::BenchProtocol, DocKind::TuningManual] {
+        pg.register(k);
+    }
+    let _ = pg.publish_gated(8); // 缺快照阻断
+    pg.attach_keep(sa);
+    let _ = pg.publish_gated(8); // 成功
+    let _ = pg.publish_gated(9); // 漂移阻断
+    let _ = pg.publish_gated(9); // 漂移阻断
+    chk(&mut set, "C568-15", pg.pub_ok == 1 && pg.pub_blocked == 3
+        && pg.pub_conserves(4), "发布履历 1 成功 3 阻断守恒");
+    chk(&mut set, "C568-16", !pg.pub_conserves(5), "尝试数不符守恒即破");
+
+    // ── 深化判据：收益 top-K 投影 ──
+    let mut pt = PerfDocs::new();
+    let _ = pt.add_case(1, 8, 100, 90, true);  // 10%
+    let _ = pt.add_case(2, 8, 100, 50, true);  // 50%
+    let _ = pt.add_case(3, 8, 100, 70, true);  // 30%
+    let _ = pt.add_case(4, 8, 100, 80, true);  // 20%
+    chk(&mut set, "C568-17", pt.top_gains(2) == [2u32, 3u32]
+        && pt.top_gains(0).is_empty() && pt.top_gains(10).len() == 4, "收益 top-K 降序");
+
+    // ── 深化判据：LCG 快照注入（指纹无碰撞 256 轮）──
+    let mut rng: u64 = 0x5680_F00D;
+    let mut fps: Vec<u32> = Vec::new();
+    let mut collide = false;
+    for _ in 0..256 {
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let s = Snapshot {
+            caliber: (rng % 64) as u32,
+            p95_ms: 50 + (rng >> 8) as u32 % 200,
+            unit_cost: 80 + (rng >> 16) as u32 % 200,
+            bench_mean: 30 + (rng >> 24) as u32 % 200,
+        };
+        let fp = PerfDocs::snap_fp(&s);
+        if fps.contains(&fp) {
+            collide = true;
+        }
+        fps.push(fp);
+    }
+    chk(&mut set, "C568-18", !collide, "256 轮指纹零碰撞");
+
     set
 }
 
@@ -236,5 +368,30 @@ mod tests {
         assert_eq!(pd.gain_bp(1), Ok(2000));
         assert!(pd.add_case(2, 1, 0, 80, true).is_err());
         assert!(pd.gain_bp(9).is_err());
+    }
+
+    #[test]
+    fn snap_fp_determinism() {
+        let s = Snapshot { caliber: 3, p95_ms: 10, unit_cost: 20, bench_mean: 30 };
+        assert_eq!(PerfDocs::snap_fp(&s), PerfDocs::snap_fp(&s));
+        let s2 = Snapshot { caliber: 4, p95_ms: 10, unit_cost: 20, bench_mean: 30 };
+        assert_ne!(PerfDocs::snap_fp(&s), PerfDocs::snap_fp(&s2));
+    }
+
+    #[test]
+    fn top_gains_order() {
+        let mut pd = PerfDocs::new();
+        let _ = pd.add_case(1, 1, 100, 80, true);
+        let _ = pd.add_case(2, 1, 100, 50, true);
+        assert_eq!(pd.top_gains(1), [2]);
+        assert_eq!(pd.top_gains(5), [2, 1]);
+    }
+
+    #[test]
+    fn publish_ledger_conserves() {
+        let mut pd = PerfDocs::new();
+        let _ = pd.publish_gated(1); // 阻断（无四族）
+        assert_eq!(pd.pub_blocked, 1);
+        assert!(pd.pub_conserves(1));
     }
 }

@@ -281,10 +281,10 @@ mod tests {
             .unwrap();
         sys.trigger(id, vec![], BTreeMap::new()).unwrap();
         // 同点窗口内反复命中被抑制
-        assert_eq!(
+        assert!(matches!(
             sys.trigger(id, vec![], BTreeMap::new()),
             Err(err::E_DEDUP_THROTTLED)
-        );
+        ));
         // 超过窗口后又能触发
         sys.clock += 6;
         assert!(sys.trigger(id, vec![], BTreeMap::new()).is_ok());

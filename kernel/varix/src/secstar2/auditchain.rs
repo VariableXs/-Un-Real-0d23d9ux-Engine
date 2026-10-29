@@ -186,9 +186,10 @@ impl AuditChain {
         // 攻击三：插一条（插入伪造节点并重排序号——链仍须断）。
         let mut i = self.clone_shallow();
         if !i.nodes.is_empty() {
-            if let Ok(forged) = AuditNode::new(0, 999, b"forged") {
+            if let Some(forged) = AuditNode::new(0, 999, b"forged") {
+                let forged_hash = forged.hash_with(&GENESIS);
                 i.nodes.insert(1, forged);
-                i.hashes.insert(1, forged.hash_with(&GENESIS));
+                i.hashes.insert(1, forged_hash);
                 for (k, n) in i.nodes.iter_mut().enumerate() {
                     n.seq = k as u64 + 1;
                 }

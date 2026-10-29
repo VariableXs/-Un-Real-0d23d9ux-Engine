@@ -176,7 +176,7 @@ pub const EVENT_RING_CAP: usize = 256;
 /// 目标编码空哨兵（u16 全 1）。
 pub const TARGET_EMPTY: u16 = 0xFFFF;
 /// 反向索引空哨兵（u32 全 1）。
-pub const REV_NONE: u32 = 0xFFFF_FFFF;
+pub const REV_NONE: u32 = 0xFFFF_0001;
 /// 冻结 FNV-1a basis（FNV 参考实现）。
 pub const FNV_BASIS: u64 = 0xcbf29ce484222325;
 /// 冻结 FNV-1a prime（FNV 参考实现）。
@@ -1944,7 +1944,7 @@ impl GsiMapEngine {
             MadtIoApicStub { id: DUAL_ID, address: DUAL_ADDR as u32, gsi_base: DUAL_BASE, pin_count: MAX_PINS as u32 },
         ];
         let h = self.baseline.freeze(&stubs)?;
-        self.note(EventKind::BaselineFrozen, 0, (h & 0xFFFF_FFFF) as u32);
+        self.note(EventKind::BaselineFrozen, 0, (h & 0xFFFF_0001) as u32);
         Ok(h)
     }
 

@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn chain_requires_builtin_tail() {
         let bad = FontChain::build(vec![FontFace { name: "custom", builtin: false }]);
-        assert_eq!(bad, Err(FontCode::ChainEmpty));
+        assert!(matches!(bad, Err(FontCode::ChainEmpty)));
         let good = FontChain::build(vec![
             FontFace { name: "custom", builtin: false },
             FontFace { name: "dot", builtin: true },

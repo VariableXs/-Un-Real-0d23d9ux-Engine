@@ -343,6 +343,6 @@ mod tests {
         assert_eq!(t.observe(DR_LOAD_LIGHT, &s), Ok((false, 2000)));
         assert_eq!(t.series[0], [1000, 500, 200, 300]);
         // 四资源维常量与 F0418 立方同源（跨模块一致性自证）。
-        assert_eq!(DR_RES_COUNT, crate::cgb418_staucube::RES_COUNT);
+        assert_eq!(DR_RES_COUNT, crate::cgpu::cgb418_staucube::RES_COUNT);
     }
 }

@@ -351,9 +351,9 @@ mod tests {
         p.alt_input_ok = true;
         p.add_hotkey("A", "x", false);
         p.add_hotkey("B", "y", false);
-        p.resolve("A").ok();
+let _ =         p.resolve("A");
         assert_eq!(p.open_conflicts(), vec!["B"]);
-        p.resolve("B").ok();
+let _ =         p.resolve("B");
         assert!(p.full_path());
     }
 }

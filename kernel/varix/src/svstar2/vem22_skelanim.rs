@@ -125,7 +125,8 @@ impl AnimErr {
                 got
             ),
             AnimErr::BindFrozen => "绑定表收口后被改。建议：映射表冻结后只读，\
-                 改映射走重建接口（旧表留痕）",
+                 改映射走重建接口（旧表留痕）"
+                .to_string(),
             AnimErr::PoseRange { bone, got } => alloc::format!(
                 "骨骼 {} 姿态分量 {} 越定点域。建议：Q16.16 域 ±32768，\
                  超域数据先钳制并告警，不写脏值进缓冲",

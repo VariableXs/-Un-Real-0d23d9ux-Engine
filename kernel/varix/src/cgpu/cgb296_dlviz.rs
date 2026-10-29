@@ -365,7 +365,7 @@ mod tests {
     fn ops_phase_ordered() {
         let v = build();
         let cs = v.run_checks();
-        assert!(cs.passed() || cs.green_count() >= 5);
+        assert!(cs.all_passed() || cs.passed_count() >= 5);
     }
 
     #[test]

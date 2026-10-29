@@ -210,7 +210,7 @@ impl FaultIsolator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cgb409_regmatrix::{POINT_D, POINT_E, POINT_K};
+    use crate::cgpu::cgb409_regmatrix::{POINT_D, POINT_E, POINT_K};
 
     fn iso() -> FaultIsolator {
         FaultIsolator::new([200, 200, 150, 150, 150, 150], 7)

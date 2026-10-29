@@ -237,10 +237,12 @@ pub struct MigrationPlan {
     pub header_ok: bool,
 }
 
-impl MigrationPlan {
-    /// 空计划兜底（plan 缺位时的诚实空态，不 panic）。
-    pub const EMPTY: MigrationPlan = MigrationPlan { entries: Vec::new(), header_ok: false };
+/// 空计划兜底（plan 缺位时的诚实空态，不 panic）。
+/// 模块级 static（'static 借用安全；Rust 不允许 impl 内关联 static）。
+pub static MIGRATION_PLAN_EMPTY: MigrationPlan =
+    MigrationPlan { entries: Vec::new(), header_ok: false };
 
+impl MigrationPlan {
     /// ready 方案数（向导汇总行的数字面）。
     pub fn ready_count(&self) -> usize {
         self.entries.iter().filter(|p| p.ready).count()
@@ -313,7 +315,7 @@ impl<'a> MigrationSession<'a> {
             self.stage = MigrationStage::Planned;
         }
         // Planned 态必有计划；缺位（不可达）按空计划兜底而非 panic。
-        self.plan.as_ref().unwrap_or(&MigrationPlan::EMPTY)
+        self.plan.as_ref().unwrap_or(&MIGRATION_PLAN_EMPTY)
     }
 
     /// 提交迁移（Planned → Committed；未出计划直接提交被拒——不盲迁）。

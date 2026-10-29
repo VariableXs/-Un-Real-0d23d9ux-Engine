@@ -1,0 +1,356 @@
+//! UNX-F9067 glibc errno 转换核（__libc_errno 与 -errno 编码）（0x62820 段）
+//!
+//! 锚点：UNX-F9067-J1 错误账（ENCODE/CONV/CLEAR 三式全落账 + 状态链逐笔回读 +
+//! 渲染导出面）；J2 错误语义（ENCODE 加合 / CONV 并合 / CLEAR 直设三式运算 +
+//! 键 1~16 域核 + popcount 守恒）；J3 封账印（GER 指纹 + 封印后
+//! 只读 + 注入核）三判据全绿。
+//! 域：CoRun·UNX-C2-B14。
+//!
+//! 结构：错误账本 + 三式分派核（非法 op 拒 + 键越界拒）+ 状态回读链 +
+//! GER 指纹 + 注入核（非法 op / 键越界 / 印后改账 / 空账封印 / 链断裂
+//! 必抓）。
+//!
+//! 领域注记：本档为 glibc errno 转换核（__libc_errno 与 -errno 编码） 的语义单点：以三式账本承载 ENCODE/CONV/CLEAR
+//! 领域操作序，键值逐笔登记、状态链逐笔回读；指纹与封账印保障账面可审
+//! 计，注入核覆盖五类非法路径。
+
+use crate::alloc::string::{String, ToString};
+use crate::alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
+use crate::checks::CheckSet;
+
+/// 诊断段（0x62820 独占 0x20）。
+pub const SEG_BASE: u32 = 0x62820;
+pub const GER_BAD_OP: u32 = SEG_BASE + 0x01; // 非法 op（非三式之一）
+pub const GER_KEY_OOB: u32 = SEG_BASE + 0x02; // 键越界（0 或 > 16）
+pub const GER_SEALED: u32 = SEG_BASE + 0x03; // 封账印后改账
+pub const GER_EMPTY_SEAL: u32 = SEG_BASE + 0x04; // 空账封印（无操作记录）
+pub const GER_CHAIN: u32 = SEG_BASE + 0x05; // 状态链断裂（回读不守恒）
+
+/// ENCODE 式：加合（new = old.wrapping_add(val)）。
+pub const GER_OP_ENCODE: u32 = 0;
+/// CONV 式：并合（new = old | val）。
+pub const GER_OP_CONV: u32 = 1;
+/// CLEAR 式：直设（new = val）。
+pub const GER_OP_CLEAR: u32 = 2;
+/// 键域上界（1..=16）。
+pub const GER_KEY_MAX: u8 = 16;
+
+/// op 名渲染。
+pub fn ger_op_name(code: u32) -> &'static str {
+    match code {
+        GER_OP_ENCODE => "ENCODE",
+        GER_OP_CONV => "CONV",
+        GER_OP_CLEAR => "CLEAR",
+        _ => "BADOP",
+    }
+}
+
+/// 键域核：键必须落在 1~16。
+pub fn ger_key_ok(key: u8) -> bool {
+    key != 0 && key <= GER_KEY_MAX
+}
+
+/// 领域辅助：键 → 分桶（每 4 键一桶，1..=16 共 4 桶）。
+pub fn ger_bucket(key: u8) -> u32 {
+    ((key as u32 - 1) / 4) + 1
+}
+
+/// 单笔错误账。
+#[derive(Clone)]
+pub struct ErrnoOp {
+    pub code: u32,
+    pub key: u8,
+    pub val: u64,
+    pub old_state: u64,
+    pub new_state: u64,
+}
+
+impl ErrnoOp {
+    /// 本笔跨度（饱和差，审计辅助面）。
+    fn delta(&self) -> u64 {
+        self.new_state.saturating_sub(self.old_state)
+    }
+
+    fn render_line(&self) -> String {
+        format!(
+            "{}|{}|old{}|new{}",
+            ger_op_name(self.code),
+            self.key,
+            self.old_state,
+            self.new_state
+        )
+    }
+}
+
+/// 三式运算核。
+pub fn ger_apply(old: u64, code: u32, val: u64) -> u64 {
+    match code {
+        GER_OP_ENCODE => old.wrapping_add(val),
+        GER_OP_CONV => old | val,
+        GER_OP_CLEAR => val,
+        _ => old,
+    }
+}
+
+/// 错误账本。
+pub struct ErrnoLedger {
+    ops: Vec<ErrnoOp>,
+    state: u64,
+    sealed: bool,
+}
+
+impl ErrnoLedger {
+    pub fn new() -> Self {
+        ErrnoLedger {
+            ops: Vec::new(),
+            state: 0,
+            sealed: false,
+        }
+    }
+
+    /// 应用一笔错误：三式分派 + 越界拒 + 印后拒。
+    /// Ok(old) 即旧态回读。
+    pub fn apply(&mut self, code: u32, key: u8, val: u64) -> Result<u64, u32> {
+        if self.sealed {
+            return Err(GER_SEALED);
+        }
+        if code > GER_OP_CLEAR {
+            return Err(GER_BAD_OP);
+        }
+        if !ger_key_ok(key) {
+            return Err(GER_KEY_OOB);
+        }
+        let old = self.state;
+        let new = ger_apply(old, code, val);
+        self.ops.push(ErrnoOp {
+            code,
+            key,
+            val,
+            old_state: old,
+            new_state: new,
+        });
+        self.state = new;
+        Ok(old)
+    }
+
+    /// 状态链守恒核：首笔 old = 0，逐笔 old = 前笔 new，
+    /// 每笔 new 可由三式核重算复现，末笔 new = 当前状态。
+    pub fn chain_ok(&self) -> bool {
+        let mut expect: u64 = 0;
+        for op in &self.ops {
+            if op.old_state != expect {
+                return false;
+            }
+            if op.new_state != ger_apply(op.old_state, op.code, op.val) {
+                return false;
+            }
+            expect = op.new_state;
+        }
+        self.state == expect
+    }
+
+    /// 键 key 是否已有落账笔。
+    pub fn has_key(&self, key: u8) -> bool {
+        self.ops.iter().any(|op| op.key == key)
+    }
+
+    /// 逐笔旧态回读序列。
+    pub fn states(&self) -> Vec<u64> {
+        self.ops.iter().map(|op| op.old_state).collect()
+    }
+
+    /// 各笔跨度序列（审计面）。
+    pub fn deltas(&self) -> Vec<u64> {
+        self.ops.iter().map(|op| op.delta()).collect()
+    }
+
+    /// GER 指纹：状态 + 各笔操作折叠。
+    pub fn ger_fp(&self) -> u32 {
+        let mut h: u32 = 0x811C_9DC5 ^ 9067u32;
+        h = h.wrapping_mul(0x0100_0193) ^ (self.state as u32);
+        h = h.wrapping_mul(0x0100_0193) ^ ((self.state >> 32) as u32);
+        for op in &self.ops {
+            h = h.wrapping_mul(0x0100_0193) ^ op.code;
+            h = h.wrapping_mul(0x0100_0193) ^ (op.key as u32);
+            h = h.wrapping_mul(0x0100_0193) ^ (op.val as u32);
+            h ^= ((op.val >> 32) as u32) ^ ((op.old_state >> 32) as u32);
+            h = h.wrapping_mul(0x0100_0193) ^ (op.new_state as u32);
+        }
+        h ^= self.sealed as u32;
+        h = h.wrapping_mul(0x0100_0193);
+        h
+    }
+
+    /// 封账印：空账拒 + 重封拒。
+    pub fn seal(&mut self) -> bool {
+        if self.sealed || self.ops.is_empty() {
+            return false;
+        }
+        self.sealed = true;
+        true
+    }
+
+    pub fn sealed(&self) -> bool {
+        self.sealed
+    }
+
+    /// 渲染导出。
+    pub fn render(&self) -> String {
+        let mut out = String::new();
+        for op in &self.ops {
+            out.push_str(&op.render_line());
+            out.push('\n');
+        }
+        out.push_str(&format!("GER-STATE|{}\n", self.state));
+        out.push_str(&format!("GER-POPC|{}\n", self.state.count_ones()));
+        if self.sealed {
+            out.push_str("GER-SEAL\n");
+        }
+        out
+    }
+}
+
+impl Default for ErrnoLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 标准夹具：三式四连操作（ENCODE[1]=13→CONV[4]=1024→ENCODE[8]=3→CLEAR[2]=164）。
+/// 手验：0→13→1037→1040→164。
+fn standard_ger() -> ErrnoLedger {
+    let mut l = ErrnoLedger::new();
+    let _ = l.apply(GER_OP_ENCODE, 1, 13); // old 0   → new 13
+    let _ = l.apply(GER_OP_CONV, 4, 1024); // old 13 → new 1037
+    let _ = l.apply(GER_OP_ENCODE, 8, 3); // old 1037 → new 1040
+    let _ = l.apply(GER_OP_CLEAR, 2, 164); // old 1040 → new 164
+    l
+}
+
+/// 注入核：五类非法操作必抓计数。
+fn injection_core() -> (usize, usize) {
+    let mut caught = 0usize;
+    let total = 5usize;
+    // 注 1：非法 op（7 非三式之一）
+    let mut l = ErrnoLedger::new();
+    if l.apply(7, 1, 1).err() == Some(GER_BAD_OP) {
+        caught += 1;
+    }
+    // 注 2：键越界（0 与 17 双向）
+    let mut l = ErrnoLedger::new();
+    if l.apply(GER_OP_ENCODE, 0, 1).err() == Some(GER_KEY_OOB)
+        && l.apply(GER_OP_ENCODE, 17, 1).err() == Some(GER_KEY_OOB)
+    {
+        caught += 1;
+    }
+    // 注 3：封账印后改账
+    let mut l = standard_ger();
+    let _ = l.seal();
+    if l.apply(GER_OP_ENCODE, 1, 1).err() == Some(GER_SEALED) {
+        caught += 1;
+    }
+    // 注 4：空账封印
+    let mut l = ErrnoLedger::new();
+    if !l.seal() && !l.sealed() {
+        caught += 1;
+    }
+    // 注 5：状态链断裂（篡改中段旧态）
+    let mut l = standard_ger();
+    l.ops[1].old_state += 1;
+    if !l.chain_ok() {
+        caught += 1;
+    }
+    (caught, total)
+}
+
+/// 判据：J1 错误账；J2 错误语义；J3 封账印。
+pub fn run_unx9067_checks() -> CheckSet {
+    let mut s = CheckSet::new("UNX-F9067");
+    let p = standard_ger();
+    // J1-1 三式四连操作全落账
+    let ok = p.ops.len() == 4 && p.chain_ok();
+    s.add("9067-J1-操作全落账", ok, if ok { "" } else { "错误账不全" });
+    // J1-2 状态链逐笔回读
+    let ok = p.states() == vec![0u64, 13, 1037, 1040];
+    s.add("9067-J1-状态回读", ok, if ok { "" } else { "状态链漂移" });
+    // J1-3 渲染导出齐
+    let text = p.render();
+    let ok = text.contains("ENCODE|1|old0|new13")
+        && text.contains("CONV|4|old13|new1037")
+        && text.contains("ENCODE|8|old1037|new1040")
+        && text.contains("CLEAR|2|old1040|new164")
+        && text.contains("GER-STATE|164")
+        && text.contains("GER-POPC|3");
+    s.add("9067-J1-渲染导出齐", ok, if ok { "" } else { "渲染面漂移" });
+    // J2-1 终态 = 164
+    let ok = p.state == 164;
+    s.add("9067-J2-终态", ok, if ok { "" } else { "终态漂移" });
+    // J2-2 ENCODE 加合（0 + 13 = 13）
+    let ok = p.ops[0].code == GER_OP_ENCODE
+        && p.ops[0].old_state == 0
+        && p.ops[0].new_state == 13
+        && p.ops[0].new_state == p.ops[0].old_state.wrapping_add(13);
+    s.add("9067-J2-ENCODE加合", ok, if ok { "" } else { "加合漂移" });
+    // J2-3 CONV 并合（13 | 1024 = 1037）
+    let ok = p.ops[1].code == GER_OP_CONV
+        && p.ops[1].old_state == 13
+        && p.ops[1].new_state == 1037
+        && p.ops[1].new_state == p.ops[1].old_state | 1024;
+    s.add("9067-J2-CONV并合", ok, if ok { "" } else { "并合漂移" });
+    // J2-4 CLEAR 直设（1040 → 164）
+    let ok = p.ops[3].code == GER_OP_CLEAR
+        && p.ops[3].old_state == 1040
+        && p.ops[3].new_state == 164
+        && p.ops[3].new_state == 164;
+    s.add("9067-J2-CLEAR直设", ok, if ok { "" } else { "直设漂移" });
+    // J2-5 键域核（1~16 内收、0 与 17 拒）
+    let ok = ger_key_ok(1) && ger_key_ok(16) && !ger_key_ok(0) && !ger_key_ok(17);
+    s.add("9067-J2-键域核", ok, if ok { "" } else { "键域失效" });
+    // J2-6 分桶辅助（键 → 分桶（每 4 键一桶））
+    let ok = ger_bucket(1) == 1 && ger_bucket(16) == 4;
+    s.add("9067-J2-分桶", ok, if ok { "" } else { "分桶漂移" });
+    // J3-1 指纹确定
+    let ok = standard_ger().ger_fp() == standard_ger().ger_fp();
+    s.add("9067-J3-指纹确定", ok, if ok { "" } else { "指纹漂移" });
+    // J3-2 账变签变
+    let mut p2 = standard_ger();
+    let fp0 = p2.ger_fp();
+    p2.ops[0].new_state += 1;
+    let ok = p2.ger_fp() != fp0;
+    s.add("9067-J3-账变签变", ok, if ok { "" } else { "折叠退化" });
+    // J3-3 封账印（印面入渲染）
+    let mut p3 = standard_ger();
+    let sealed_ok = p3.seal();
+    let ok = sealed_ok && p3.sealed() && p3.render().contains("GER-SEAL");
+    s.add("9067-J3-封账印", ok, if ok { "" } else { "封印失败" });
+    // J3-4 印后拒改
+    let ok = p3.apply(GER_OP_CLEAR, 0, 0).err() == Some(GER_SEALED);
+    s.add("9067-J3-印后拒改", ok, if ok { "" } else { "只读闸失效" });
+    // 注入核 5/5
+    let (c, n) = injection_core();
+    let ok = c == n;
+    let detail = if ok { String::new() } else { format!("注入 {c}/{n}") };
+    s.add_dyn("9067-注入核必抓", ok, &detail);
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unx9067_all_checks_green() {
+        let set = run_unx9067_checks();
+        assert!(set.all_passed(), "UNX-F9067 checks must be green: {}", set.red_items_text());
+    }
+
+    #[test]
+    fn unx9067_state_stable() {
+        let l = standard_ger();
+        assert!(l.chain_ok());
+        assert_eq!(l.state, 164);
+        assert_eq!(l.state.count_ones(), 3);
+    }
+}

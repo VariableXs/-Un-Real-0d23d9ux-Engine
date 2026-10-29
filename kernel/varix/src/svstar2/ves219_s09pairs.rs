@@ -348,7 +348,7 @@ mod tests {
     fn test_matrix_full_cycle() {
         let mut m = PairMatrix::new();
         for p in 0..PAIRS {
-            m.record(PairAudit { pair: p, dims: [true; 5], evidence: Some("x") }).ok();
+let _ =             m.record(PairAudit { pair: p, dims: [true; 5], evidence: Some("x") });
         }
         assert!(m.complete());
         assert!(m.missing_pairs().is_empty());

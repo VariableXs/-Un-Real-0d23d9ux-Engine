@@ -88,7 +88,7 @@ pub struct Crc32;
 impl Crc32 {
     /// 计算 CRC32。
     pub fn compute(data: &[u8]) -> u32 {
-        let mut crc: u32 = 0xFFFF_FFFF;
+        let mut crc: u32 = 0xFFFF_0001;
         for &b in data {
             let idx = ((crc ^ b as u32) & 0xFF) as usize;
             crc = Self::table()[idx] ^ (crc >> 8);
@@ -1062,7 +1062,7 @@ mod tests {
     #[test]
     fn f0258_all_pass() {
         let cs = run_f0258_checks();
-        assert!(cs.all_green(), "F0258 判据未全绿: {}", cs.red_items_text());
+        assert!(cs.all_passed(), "F0258 判据未全绿: {}", cs.red_items_text());
     }
 
     #[test]

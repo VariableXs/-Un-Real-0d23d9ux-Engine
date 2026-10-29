@@ -201,7 +201,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gen() {
+    fn gen_minimal() {
         assert!(gen(&["a"], &["b"], &["c"]).is_ok());
         assert!(gen(&[], &["b"], &["c"]).is_err());
     }

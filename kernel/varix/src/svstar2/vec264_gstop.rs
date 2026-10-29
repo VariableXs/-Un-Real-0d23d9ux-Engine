@@ -10,6 +10,7 @@
 //! - **判据**：双色彩空间对拍。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 /// 渐变 stop
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -117,6 +118,7 @@ pub fn lerp_premul(a: &[f32; 4], b: &[f32; 4], t: f32) -> [f32; 4] {
 }
 
 pub fn run_vec264_checks() -> crate::checks::CheckSet {
+    let mut s = CheckSet::new("svstar2-vec264");
     // 族一：排序规范化
     let messy = alloc::vec![
         GStop { pos: 0.8, color: [0.0, 0.0, 1.0, 1.0] },

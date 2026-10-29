@@ -2317,7 +2317,7 @@ impl AffinityAllocator {
                     self.structural_faults = self.structural_faults.saturating_add(1);
                     self.ledger.record(
                         TaEventKind::SnapshotFail,
-                        (hash_a & 0xFFFF_FFFF) as u32,
+                        (hash_a & 0xFFFF_0001) as u32,
                         X_TA_SNAPSHOT_ROUNDTRIP as u32,
                         X_TA_SNAPSHOT_ROUNDTRIP,
                     );
@@ -2328,7 +2328,7 @@ impl AffinityAllocator {
                 self.structural_faults = self.structural_faults.saturating_add(1);
                 self.ledger.record(
                     TaEventKind::SnapshotFail,
-                    (hash_a & 0xFFFF_FFFF) as u32,
+                    (hash_a & 0xFFFF_0001) as u32,
                     e.code() as u32,
                     e.code(),
                 );
@@ -3120,7 +3120,7 @@ mod tests {
         let a = ok(rehearse_determinism(0x2026_1024));
         let b = ok(rehearse_determinism(0x2026_1024));
         assert_eq!(a, b, "同种子双跑指纹必须一致");
-        let c = ok(rehearse_determinism(0xDEAD_BEEF));
+        let c = ok(rehearse_determinism(0xDEAD_0002));
         assert_ne!(a, c, "异种子指纹应不同（脚本有效性）");
         // 三跑稳定（排除偶合）。
         let d = ok(rehearse_determinism(0x2026_1024));

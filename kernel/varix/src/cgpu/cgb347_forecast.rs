@@ -184,7 +184,7 @@ mod tests {
     fn trend_prediction() {
         let mut f = BudgetForecaster::default();
         for i in 0..10 {
-            f.observe(100 + i * 10, i);
+            f.observe(100 + i * 10, i as u64);
         }
         assert!(f.predict_next() > 100);
     }

@@ -178,14 +178,13 @@ mod tests {
     #[test]
     fn ves388_smoke() {
         let set = run_ves388_checks();
-        let red = set.red_items();
-        assert!(red.is_empty(), "ves388 red: {:?}", red);
+        assert!(set.failed_count() == 0, "ves388 red: {}", set.red_items_text());
     }
 
     #[test]
     fn ves388_empty_report() {
         let d = Dashboard::new(16);
-        let r = StaticReport::from(&d);
+        let r = StaticReport::build(&d);
         assert_eq!(r.len(), 0);
     }
 }

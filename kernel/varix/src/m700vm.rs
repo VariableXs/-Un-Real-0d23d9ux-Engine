@@ -2424,7 +2424,7 @@ mod tests {
         assert!(PtHealer::is_valid_pte(0x1f));
         assert!(!PtHealer::is_valid_pte(1u64 << 55));
         let mut hl = PtHealer::new();
-        assert!(!hl.snapshot_then_check_is_unused());
+        assert_eq!(hl.healed_count(), 0); // 尚未快照修复——检查面未被使用
         hl.snapshot(0x00aa);
         assert_eq!(hl.heal(0x00aa), Ok(0x00aa)); // 未损坏
         assert!(hl.heal(1u64 << 60).is_ok()); // 从备份修复

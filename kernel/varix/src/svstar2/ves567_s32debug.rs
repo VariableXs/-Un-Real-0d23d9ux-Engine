@@ -24,6 +24,8 @@ pub enum DbCode {
     FlowSkip = SEG_BASE + 0x02,
     /// 热点越界。
     HotRange = SEG_BASE + 0x03,
+    /// 回放预算超支（帧耗时超预算标记）。
+    BudgetOver = SEG_BASE + 0x04,
 }
 
 /// 归因流四步。
@@ -183,6 +185,45 @@ impl PerfDbg {
             Ok(())
         }
     }
+
+    // ─── 深化块：预算消耗回放（帧预算 vs 实耗，超支标记）───
+
+    /// 预算回放：对回放带逐帧核验实耗 vs 预算（µs 抽象）。
+    /// 返回 (超支帧序号表, 守恒核验)；缺帧跳过不计超支。
+    pub fn replay_budget(&self, budget_us: u32) -> (Vec<usize>, bool) {
+        let mut overs: Vec<usize> = Vec::new();
+        for (i, f) in self.frames.iter().enumerate() {
+            if let Some(b) = f {
+                if b.total() > budget_us {
+                    overs.push(i);
+                }
+            }
+        }
+        let n_over = overs.len();
+        let n_free = self.frames.iter().filter(|f| f.is_none()).count();
+        (overs, n_over + n_free <= self.frames.len())
+    }
+
+    // ─── 深化块：耗时占比千分比归因 ───
+
+    /// 中值分解的占比归因（bp，整数化，三项合计 ≡ 10000±2 舍入带）。
+    pub fn share_bp(&self) -> Result<(u32, u32, u32), DbCode> {
+        let b = self.decompose_median()?;
+        let t = b.total().max(1) as u64;
+        let a = (b.rule_load as u64 * 10000 / t) as u32;
+        let c = (b.compare as u64 * 10000 / t) as u32;
+        let r = (b.report as u64 * 10000 / t) as u32;
+        Ok((a, c, r))
+    }
+
+    // ─── 深化块：热点直方图守恒 ───
+
+    /// 直方图守恒：hits 合计 ≡ 登记 hits 总入参累计。
+    /// 这里以 total_hits 累计器对账。
+    pub fn hits_conserves(&self, registered_total: u32) -> bool {
+        let sum: u32 = self.hots.iter().map(|h| h.hits).sum();
+        sum == registered_total
+    }
 }
 
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
@@ -251,6 +292,43 @@ pub fn run_ves567_checks() -> CheckSet {
     let dbg4 = PerfDbg::new();
     chk(&mut set, "C567-12", dbg4.hot_top().is_none() && dbg4.samples.is_empty(), "空图不臆测");
 
+    // ── 深化判据：预算回放超支标记（缺帧跳过不计）──
+    let mut db = PerfDbg::new();
+    db.push_frame(Some(TimeBreak { rule_load: 10, compare: 20, report: 5 })); // 35 ≤ 40
+    db.push_frame(Some(TimeBreak { rule_load: 10, compare: 40, report: 5 })); // 55 > 40
+    db.push_frame(None); // 缺帧跳过
+    db.push_frame(Some(TimeBreak { rule_load: 0, compare: 0, report: 0 })); // 0
+    let (overs, sane) = db.replay_budget(40);
+    chk(&mut set, "C567-13", overs == [1usize] && sane, "超支帧 1 号精确标记");
+
+    // 全帧超支与全帧达标两极。
+    let mut db2 = PerfDbg::new();
+    for _ in 0..3 {
+        db2.push_frame(Some(TimeBreak { rule_load: 100, compare: 100, report: 100 }));
+    }
+    chk(&mut set, "C567-14", db2.replay_budget(10).0.len() == 3
+        && db2.replay_budget(300).0.is_empty(), "预算松紧两极");
+
+    // ── 深化判据：占比归因（整数 bp + 合计带）──
+    let mut db3 = PerfDbg::new();
+    db3.collect(TimeBreak { rule_load: 25, compare: 50, report: 25 });
+    let (a, c, r) = db3.share_bp().unwrap_or((0, 0, 0));
+    chk(&mut set, "C567-15", a == 2500 && c == 5000 && r == 2500
+        && a + c + r == 10000, "25/50/25 占比归因");
+    // 全零分解不除零（兜底 t=1）。
+    let mut db4 = PerfDbg::new();
+    db4.collect(TimeBreak { rule_load: 0, compare: 0, report: 0 });
+    chk(&mut set, "C567-16", db4.share_bp().is_ok(), "全零分解不除零");
+
+    // ── 深化判据：热点直方图守恒 ──
+    let mut db5 = PerfDbg::new();
+    let _ = db5.hot(1, 30);
+    let _ = db5.hot(2, 45);
+    let _ = db5.hot(1, 25); // 同桶累加
+    chk(&mut set, "C567-17", db5.hits_conserves(100) && db5.hots[0].hits == 55,
+        "同桶累加 + 合计守恒");
+    chk(&mut set, "C567-18", !db5.hits_conserves(99), "注册总数不符守恒即破");
+
     set
 }
 
@@ -284,5 +362,22 @@ mod tests {
         let (valid, gaps) = d.replay();
         assert_eq!((valid, gaps), (0, 2));
         assert_eq!(d.gap_marks, 2);
+    }
+
+    #[test]
+    fn budget_replay_flags() {
+        let mut d = PerfDbg::new();
+        d.push_frame(Some(TimeBreak { rule_load: 1, compare: 1, report: 1 }));
+        d.push_frame(Some(TimeBreak { rule_load: 50, compare: 50, report: 50 }));
+        let (overs, _) = d.replay_budget(10);
+        assert_eq!(overs, [1]);
+    }
+
+    #[test]
+    fn share_bp_sums() {
+        let mut d = PerfDbg::new();
+        d.collect(TimeBreak { rule_load: 1, compare: 1, report: 2 });
+        let (a, c, r) = d.share_bp().unwrap_or((0, 0, 0));
+        assert_eq!((a, c, r), (2500, 2500, 5000));
     }
 }

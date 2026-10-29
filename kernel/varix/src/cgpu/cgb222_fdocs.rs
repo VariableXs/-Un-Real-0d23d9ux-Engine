@@ -212,6 +212,7 @@ pub fn validate_api(body: &str) -> Result<usize, u16> {
 }
 
 /// 知识库包（判据「入知识库」）。
+#[derive(Clone, Copy, Debug)]
 pub struct KbBundle {
     /// 四类文档的指纹（按 DocKind 序）。
     pub fps: [u64; 4],
@@ -382,9 +383,9 @@ mod tests {
         assert_eq!(r.bundle().unwrap_err(), SEG_BASE + 12);
         for (k, t, b) in [
             (DocKind::Architecture, "架构", arch_body()),
-            (DocKind::Api, "API", "graph_add_node : fn(u32, u32) -> Result<u32, u16>"),
-            (DocKind::DebugGuide, "调试指南", "fuzz 用法"),
-            (DocKind::PerfGuide, "性能指南", "预算调优"),
+            (DocKind::Api, "API", String::from("graph_add_node : fn(u32, u32) -> Result<u32, u16>")),
+            (DocKind::DebugGuide, "调试指南", String::from("fuzz 用法")),
+            (DocKind::PerfGuide, "性能指南", String::from("预算调优")),
         ] {
             r.register(FdDoc::draft(k, t, &b)).unwrap();
         }

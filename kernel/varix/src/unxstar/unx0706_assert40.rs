@@ -946,7 +946,7 @@ impl A40World {
                 fb_model_rgb: true,
                 fb_pitch: 5120,
                 ka_phys: 0x0100_0000,
-                ka_virt: 0xFFFF_FFFF_8000_0000,
+                ka_virt: 0xFFFF_0001_8000_0000,
                 ka_size: 2 * 1024 * 1024,
                 ka_slide_consistent: true,
                 hh_base: 0xFFFF_8880_0000_0000,

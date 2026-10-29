@@ -245,6 +245,10 @@ pub fn run_ves230_checks() -> crate::checks::CheckSet {
 mod tests {
     use super::*;
 
+    fn full_input(score: u32) -> ReportInput {
+        ReportInput { present: [true; 4], gaps_left: 0, pre_score: score, rehearsal_ok: true }
+    }
+
     #[test]
     fn test_s09_goreport_all_green() {
         let s = run_ves230_checks();

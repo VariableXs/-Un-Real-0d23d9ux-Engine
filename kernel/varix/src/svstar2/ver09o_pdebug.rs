@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn zero_session_rejected() {
-        assert_eq!(PersonaDebug::open(0), Err(PdbgCode::BadSession));
+        assert!(matches!(PersonaDebug::open(0), Err(PdbgCode::BadSession)));
     }
 
     #[test]

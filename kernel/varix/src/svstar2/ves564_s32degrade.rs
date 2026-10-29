@@ -22,6 +22,8 @@ pub enum DgCode {
     RedlineWake = SEG_BASE + 0x01,
     /// 降级信号越界。
     SignalRange = SEG_BASE + 0x02,
+    /// 降级振荡（短窗升降超限）。
+    Oscillation = SEG_BASE + 0x03,
 }
 
 /// 四级梯度：0 全量 → 1 增量 → 2 红线 only → 3 冻结扫描。
@@ -48,6 +50,14 @@ pub fn weighted(s: LoadSignal) -> u32 {
     s.cpu as u32 * 3 + s.mem as u32 * 4 + s.battery as u32 * 3
 }
 
+/// 档位迁移记录：from → to + 加权得分。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LevelShift {
+    pub from: u8,
+    pub to: u8,
+    pub score: u32,
+}
+
 /// 降级台。
 #[derive(Default)]
 pub struct DegDesk {
@@ -61,6 +71,8 @@ pub struct DegDesk {
     pub recoveries: u32,
     pub merged_batches: u32,
     last_signal: Option<LoadSignal>,
+    /// 深化：档位迁移履历（时间序，只增不删）。
+    pub shifts: Vec<LevelShift>,
 }
 
 impl DegDesk {
@@ -76,6 +88,7 @@ impl DegDesk {
         }
         let w = weighted(s);
         self.last_signal = Some(s);
+        let prev = self.level;
         self.level = if w >= 300 {
             DegLevel::Frozen
         } else if w >= 200 {
@@ -85,17 +98,22 @@ impl DegDesk {
         } else {
             DegLevel::Full
         };
+        if prev != self.level {
+            self.record_shift(prev, self.level, w);
+        }
         Ok(self.level)
     }
 
     /// 恢复逐级回升（回升一级；资源持续好转逐次调用）。
     pub fn recover_step(&mut self) -> DegLevel {
         if self.level != DegLevel::Full {
+            let prev = self.level;
             self.level = match self.level {
                 DegLevel::Frozen => DegLevel::RedlineOnly,
                 DegLevel::RedlineOnly => DegLevel::Incremental,
                 _ => DegLevel::Full,
             };
+            self.record_shift(prev, self.level, 0);
             self.recoveries += 1;
         }
         self.level
@@ -153,6 +171,54 @@ impl DegDesk {
             DegLevel::Incremental => "增量扫描中",
             DegLevel::RedlineOnly => "仅红线扫描",
             DegLevel::Frozen => "扫描已暂停",
+        }
+    }
+
+    // ─── 深化块：降级履历账本 + 振荡检测 ───
+
+    /// 迁移履历（按时间序追加，只增不删）。
+    /// 注：字段 `shifts` 在 struct 定义处；此处提供登记口。
+    /// 档位迁移登记：apply/recover_step 内部自动调用。
+    fn record_shift(&mut self, from: DegLevel, to: DegLevel, score: u32) {
+        self.shifts.push(LevelShift { from: from as u8, to: to as u8, score });
+    }
+
+    /// 振荡检测：履历尾部 window 条内升降往复次数 ≥ limit 即告警。
+    /// 往复 = 相邻两条迁移方向相反。
+    pub fn oscillating(&self, window: usize, limit: u32) -> bool {
+        if self.shifts.len() < 2 {
+            return false;
+        }
+        let start = self.shifts.len().saturating_sub(window);
+        let seg = &self.shifts[start..];
+        let mut flips = 0u32;
+        for w in seg.windows(2) {
+            let d0 = w[0].to as i32 - w[0].from as i32;
+            let d1 = w[1].to as i32 - w[1].from as i32;
+            if d0 * d1 < 0 {
+                flips += 1;
+            }
+        }
+        flips >= limit
+    }
+
+    /// 迁移单向守恒：每条记录 to != from 且两端档位 ≤ 3。
+    pub fn shifts_sane(&self) -> bool {
+        self.shifts.iter().all(|s| s.from != s.to && s.from <= 3 && s.to <= 3)
+    }
+
+    // ─── 深化块：补扫优先出队（红线项优先）───
+
+    /// 补扫优先出队：红线项先出，非红线项按入队序后出。
+    /// 空队返回 None。
+    pub fn pop_backlog(&mut self) -> Option<u32> {
+        if let Some(pos) = self.backlog.iter().position(|i| self.redlines.contains(i)) {
+            return Some(self.backlog.remove(pos));
+        }
+        if self.backlog.is_empty() {
+            None
+        } else {
+            Some(self.backlog.remove(0))
         }
     }
 }
@@ -230,6 +296,63 @@ pub fn run_ves564_checks() -> CheckSet {
         && weighted(LoadSignal { cpu: 100, mem: 0, battery: 0 }) == 300
         && weighted(LoadSignal { cpu: 0, mem: 0, battery: 100 }) == 300, "权重梯度");
 
+    // ── 深化判据：迁移履历账本 ──
+    // dd2 经历了 4 次 apply（3 次迁移）+ 3 次 recover，履历应 6 条且 sane。
+    chk(&mut set, "C564-13", dd2.shifts.len() == 6 && dd2.shifts_sane(), "履历 6 条全 sane");
+
+    // ── 深化判据：振荡检测（同窗升降往复 ≥2 告警）──
+    let mut ddo = DegDesk::new();
+    let _ = ddo.apply(LoadSignal { cpu: 30, mem: 30, battery: 0 }); // →Redline (升1)
+    let _ = ddo.apply(LoadSignal { cpu: 10, mem: 10, battery: 0 }); // →Full (降)
+    let _ = ddo.apply(LoadSignal { cpu: 30, mem: 30, battery: 0 }); // →Redline (升)
+    let _ = ddo.apply(LoadSignal { cpu: 10, mem: 10, battery: 0 }); // →Full (降)
+    chk(&mut set, "C564-14", ddo.shifts.len() == 4 && ddo.oscillating(4, 3),
+        "3 次往复振荡告警");
+    // 单向迁移不告警。
+    let mut ddo2 = DegDesk::new();
+    let _ = ddo2.apply(LoadSignal { cpu: 20, mem: 20, battery: 0 });
+    let _ = ddo2.apply(LoadSignal { cpu: 30, mem: 30, battery: 0 });
+    let _ = ddo2.apply(LoadSignal { cpu: 40, mem: 45, battery: 5 });
+    chk(&mut set, "C564-15", !ddo2.oscillating(4, 3) && ddo2.shifts_sane(),
+        "单向降级不告警");
+
+    // ── 深化判据：补扫优先出队（红线先出）──
+    let mut ddp = DegDesk::new();
+    ddp.redlines.push(5);
+    ddp.defer(100);
+    ddp.defer(5);
+    ddp.defer(101);
+    chk(&mut set, "C564-16", ddp.pop_backlog() == Some(5) && ddp.pop_backlog() == Some(100)
+        && ddp.pop_backlog() == Some(101) && ddp.pop_backlog().is_none(),
+        "红线优先出队后 FIFO");
+
+    // ── 深化判据：LCG 信号注入回归（映射单调性：得分升档不降）──
+    let mut rng: u64 = 0x5640_DEAD;
+    let mut mono_ok = true;
+    for _ in 0..64 {
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let cpu = (rng % 101) as u8;
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let mem = (rng % 101) as u8;
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let bat = (rng % 101) as u8;
+        let s = LoadSignal { cpu, mem, battery: bat };
+        let w = weighted(s);
+        let expect = if w >= 300 { DegLevel::Frozen }
+            else if w >= 200 { DegLevel::RedlineOnly }
+            else if w >= 100 { DegLevel::Incremental } else { DegLevel::Full };
+        let mut di = DegDesk::new();
+        if di.apply(s) != Ok(expect) {
+            mono_ok = false;
+        }
+    }
+    chk(&mut set, "C564-17", mono_ok, "64 轮随机信号映射全对");
+
+    // ── 深化判据：空履历振荡检测不误报 ──
+    let dde = DegDesk::new();
+    chk(&mut set, "C564-18", !dde.oscillating(4, 1) && dde.shifts.is_empty(),
+        "空履历不误报");
+
     set
 }
 
@@ -266,5 +389,27 @@ mod tests {
         assert!(!dd.admits(2));
         dd.defer(2);
         assert_eq!(dd.backlog, [2]);
+    }
+
+    #[test]
+    fn shift_ledger_and_oscillation() {
+        let mut dd = DegDesk::new();
+        let _ = dd.apply(LoadSignal { cpu: 30, mem: 30, battery: 0 });
+        let _ = dd.apply(LoadSignal { cpu: 10, mem: 10, battery: 0 });
+        assert_eq!(dd.shifts.len(), 2);
+        assert!(dd.shifts_sane());
+        let _ = dd.apply(LoadSignal { cpu: 30, mem: 30, battery: 0 });
+        assert!(dd.oscillating(3, 2));
+    }
+
+    #[test]
+    fn backlog_priority_pop() {
+        let mut dd = DegDesk::new();
+        dd.redlines.push(9);
+        dd.defer(1);
+        dd.defer(9);
+        assert_eq!(dd.pop_backlog(), Some(9));
+        assert_eq!(dd.pop_backlog(), Some(1));
+        assert_eq!(dd.pop_backlog(), None);
     }
 }

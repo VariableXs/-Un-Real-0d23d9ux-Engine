@@ -299,7 +299,7 @@ mod tests {
     fn test_index_consistency() {
         let mut kb = KnowledgeBase::new();
         for i in 0..5 {
-            kb.archive(KbEntry { title: "t", kind: KB_KINDS[i % 4], body: "b", keywords: vec!["共享词"], sanitized: true }).ok();
+let _ =             kb.archive(KbEntry { title: "t", kind: KB_KINDS[i % 4], body: "b", keywords: vec!["共享词"], sanitized: true });
         }
         let ix = KwIndex::build(&kb);
         assert_eq!(ix.count("共享词"), 5);

@@ -251,6 +251,12 @@ pub fn run_ves300_checks() -> CheckSet {
 mod tests {
     use super::*;
 
+    fn build() -> Closeout {
+        let cl = close_labels();
+        let labels: Vec<&str> = cl.iter().map(|s| s.as_str()).collect();
+        Closeout::new(&labels)
+    }
+
     #[test]
     fn dual_sign() {
         let mut c = build();

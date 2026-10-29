@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn prevent() {
-        let p = prevent_init("i32", "n", false).ok().unwrap();
+        let p = prevent_init("i32", "n", false).unwrap();
         assert_eq!(p.text, "var n = 0;");
         assert!(rules_covered());
     }

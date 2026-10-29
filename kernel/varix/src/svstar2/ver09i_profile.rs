@@ -203,8 +203,8 @@ impl PersonaProfile {
             d.sound.volume = 1000;
             out.push(PersonaCode::DomainClamped);
         }
-        if d.font.base_px < super::ver09g_fonts::MIN_READABLE_PX {
-            d.font.base_px = super::ver09g_fonts::MIN_READABLE_PX;
+        if d.font.base_px < crate::svstar2::ver09g_fonts::MIN_READABLE_PX {
+            d.font.base_px = crate::svstar2::ver09g_fonts::MIN_READABLE_PX;
             out.push(PersonaCode::DomainClamped);
         }
         if d.icon.mask > 3 {
@@ -300,7 +300,7 @@ mod tests {
         let codes = p.sanitize();
         assert!(codes.contains(&PersonaCode::Sanitized));
         assert_eq!(p.domains.sound.volume, 1000);
-        assert_eq!(p.domains.font.base_px, super::ver09g_fonts::MIN_READABLE_PX);
+        assert_eq!(p.domains.font.base_px, crate::svstar2::ver09g_fonts::MIN_READABLE_PX);
         assert_eq!(p.domains.icon.mask, 2);
     }
 

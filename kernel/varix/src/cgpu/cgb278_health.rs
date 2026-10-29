@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn f0278_all_pass() {
         let cs = run_f0278_checks();
-        assert!(cs.all_green(), "F0278 判据未全绿: {}", cs.red_items_text());
+        assert!(cs.all_passed(), "F0278 判据未全绿: {}", cs.red_items_text());
     }
 
     #[test]

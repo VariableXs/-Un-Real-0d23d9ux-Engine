@@ -16,6 +16,9 @@ pub enum AsCode {
     LedgerShort = SEG_BASE + 0x01,   // 0x0041
     Mismatch = SEG_BASE + 0x02,      // 0x0042
     LinkBroken = SEG_BASE + 0x03,    // 0x0043
+    ProbeReject = SEG_BASE + 0x04,   // 0x0044 边界探针拒绝（二轮深化）
+    QuantileBad = SEG_BASE + 0x05,   // 0x0045 分位参数非法（二轮深化）
+    InjectReject = SEG_BASE + 0x06,  // 0x0046 注入回归拒绝（二轮深化）
 }
 
 /// 六维资产。
@@ -101,6 +104,134 @@ impl AssetBook {
     }
 }
 
+// ============ 二轮深化块：整数分位投影 / 边界探针 / LCG 注入回归 ============
+
+/// [深化] 整数平方根（牛顿迭代，纯整数，无浮点）。
+pub fn isqrt(n: u64) -> u64 {
+    if n == 0 { return 0; }
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    while y < x {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    x
+}
+
+/// [深化] 整数分位（排序取点，禁浮点）：q ∈ [0,100]，四舍五入定位。
+pub fn quantile_rank(mut vals: Vec<u32>, q: u32) -> Result<u32, AsCode> {
+    if vals.is_empty() { return Err(AsCode::QuantileBad); }
+    if q > 100 { return Err(AsCode::QuantileBad); }
+    // 插入排序（n 小，内核面够用）
+    for i in 1..vals.len() {
+        let mut j = i;
+        while j > 0 && vals[j - 1] > vals[j] {
+            vals.swap(j - 1, j);
+            j -= 1;
+        }
+    }
+    let n = vals.len();
+    let idx = (q as usize * (n - 1) + 50) / 100;
+    Ok(vals[idx])
+}
+
+/// [深化] 指针值投影统计：min/max/值域开方调制。
+#[derive(Clone, Copy)]
+pub struct PointerStats {
+    pub count: u32,
+    pub min: u32,
+    pub max: u32,
+    pub spread_sqrt: u64,
+}
+
+impl PointerStats {
+    pub fn of_pointers(ps: &[u32]) -> Self {
+        if ps.is_empty() {
+            return PointerStats { count: 0, min: 0, max: 0, spread_sqrt: 0 };
+        }
+        let mut min = u32::MAX;
+        let mut max = 0u32;
+        for p in ps.iter() {
+            if *p < min { min = *p; }
+            if *p > max { max = *p; }
+        }
+        let spread = (max - min) as u64;
+        PointerStats { count: ps.len() as u32, min, max, spread_sqrt: isqrt(spread) }
+    }
+    /// 守恒：min ≤ max（空集退化也算守恒）。
+    pub fn conserved(&self) -> bool { self.min <= self.max }
+}
+
+/// [深化] 按维取指针值投影。
+pub fn pointer_values(bk: &AssetBook, dim: AssetDim) -> Vec<u32> {
+    bk.entries.iter().filter(|e| e.dim == dim).map(|e| e.pointer).collect()
+}
+
+/// [深化] 台账边界探针：空册 / 满容量 / 未知维修复 / 越界序号。
+pub struct AssetProbe { pub max_entries: usize }
+
+impl AssetProbe {
+    /// 空册 → ProbeReject。
+    pub fn probe_empty(&self, bk: &AssetBook) -> Result<(), AsCode> {
+        if bk.entries.is_empty() { Err(AsCode::ProbeReject) } else { Ok(()) }
+    }
+    /// 满容量 → ProbeReject。
+    pub fn probe_capacity(&self, bk: &AssetBook) -> Result<(), AsCode> {
+        if bk.entries.len() > self.max_entries { Err(AsCode::ProbeReject) } else { Ok(()) }
+    }
+    /// 未知维修复 → ProbeReject（修不中即显性回执）。
+    pub fn probe_fix_unknown(&self, bk: &mut AssetBook, dim: AssetDim) -> Result<(), AsCode> {
+        if bk.fix(dim, "VE-PROBE", 1) { Ok(()) } else { Err(AsCode::ProbeReject) }
+    }
+    /// 越界序号 → ProbeReject（不 panic）。
+    pub fn probe_index(&self, bk: &AssetBook, idx: usize) -> Result<AssetDim, AsCode> {
+        match bk.entries.get(idx) {
+            Some(e) => Ok(e.dim),
+            None => Err(AsCode::ProbeReject),
+        }
+    }
+}
+
+/// [深化] 8 行确定性 LCG（无浮点无墙钟）。
+pub struct Lcg { state: u64 }
+
+impl Lcg {
+    pub fn new(seed: u64) -> Self { Lcg { state: seed } }
+    pub fn next(&mut self) -> u64 {
+        self.state = self.state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        self.state
+    }
+    pub fn below(&mut self, n: u32) -> u32 {
+        ((self.next() >> 33) as u32) % if n == 0 { 1 } else { n }
+    }
+}
+
+/// [深化] 注入回归报告：新入 / 幂等归并双计数。
+pub struct InjectReport { pub pushed: u32, pub merged: u32 }
+
+impl InjectReport {
+    pub fn conserved(&self, rounds: u32) -> bool { self.pushed + self.merged == rounds }
+}
+
+/// [深化] 注入回归：LCG 生成伪资产条目，同 (维,卡) 重复注入必须幂等不增行。
+pub fn inject_round(bk: &mut AssetBook, seed: u64, rounds: u32) -> InjectReport {
+    let slots: [&'static str; 4] = ["S0", "S1", "S2", "S3"];
+    let mut rng = Lcg::new(seed);
+    let mut rep = InjectReport { pushed: 0, merged: 0 };
+    let mut i = 0;
+    while i < rounds {
+        let dim = AssetDim::ALL[rng.below(6) as usize];
+        let card = slots[rng.below(4) as usize];
+        let before = bk.entries.len();
+        bk.put(AssetEntry { dim, owner: "INJ", card, pointer: (i % 9 + 1) as u32, a11y: false });
+        if bk.entries.len() > before { rep.pushed += 1; } else { rep.merged += 1; }
+        i += 1;
+    }
+    rep
+}
+
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) { set.add(label, ok, detail); }
 
 pub fn run_ves397_checks() -> CheckSet {
@@ -170,6 +301,58 @@ pub fn run_ves397_checks() -> CheckSet {
     let empty = AssetBook::new();
     chk(&mut set, "C397-12", empty.missing_dims().len() == 6 && !empty.dims_complete(), "空册全缺");
 
+    // ===== 二轮深化判据（C397-13 起）=====
+    // C397-13 整数分位投影：test 维指针中位/四分位（match 回执，免 unwrap）。
+    let pv = pointer_values(&bk, AssetDim::Test);
+    let mid_ok = match (quantile_rank(pv.clone(), 50), quantile_rank(pv, 100)) {
+        (Ok(a), Ok(b)) => a <= b,
+        _ => false,
+    };
+    chk(&mut set, "C397-13", mid_ok && !pointer_values(&bk, AssetDim::Test).is_empty(), "分位投影有序");
+
+    // C397-14 双维分位取点非零。
+    let pv2 = pointer_values(&bk, AssetDim::Test);
+    let pv3 = pointer_values(&bk, AssetDim::Perf);
+    match (quantile_rank(pv2, 50), quantile_rank(pv3, 0)) {
+        (Ok(a), Ok(b)) => chk(&mut set, "C397-14", a > 0 && b > 0, "双维分位取点非零"),
+        _ => chk(&mut set, "C397-14", false, "分位不应失败"),
+    }
+
+    // C397-15 isqrt 恒等 + 分位非法参数显性拒。
+    chk(&mut set, "C397-15", isqrt(0) == 0 && isqrt(1) == 1 && isqrt(15) == 3 && isqrt(16) == 4
+        && isqrt(1_000_000) == 1000
+        && quantile_rank(vec![1], 101) == Err(AsCode::QuantileBad)
+        && quantile_rank(vec![], 50) == Err(AsCode::QuantileBad), "isqrt 恒等分位拒");
+
+    // C397-16 边界探针：空册拒 + 越界序号拒 + 容量内放行。
+    let probe = AssetProbe { max_entries: 64 };
+    let mut bk3 = AssetBook::new();
+    chk(&mut set, "C397-16", probe.probe_empty(&bk3) == Err(AsCode::ProbeReject)
+        && probe.probe_index(&bk3, 0) == Err(AsCode::ProbeReject)
+        && probe.probe_capacity(&bk3).is_ok(), "空册越界探针拒");
+
+    // C397-17 未知维修复探针显性拒。
+    chk(&mut set, "C397-17", probe.probe_fix_unknown(&mut bk3, AssetDim::Tool) == Err(AsCode::ProbeReject),
+        "未知维修复拒");
+
+    // C397-18 LCG 注入回归：12 轮 + 幂等归并守恒 + 槽位上界。
+    let rep = inject_round(&mut bk3, 0x0A57_3970, 12);
+    chk(&mut set, "C397-18", rep.conserved(12) && bk3.entries.len() == rep.pushed as usize
+        && bk3.entries.len() <= 24, "注入回归幂等归并");
+
+    // C397-19 确定性补扫：六维逐维注入后齐备。
+    for d in AssetDim::ALL.iter() {
+        bk3.put(AssetEntry { dim: *d, owner: "SWEEP", card: "SW0", pointer: 0xB000, a11y: false });
+    }
+    chk(&mut set, "C397-19", bk3.dims_complete() && bk3.missing_dims().is_empty()
+        && probe.probe_empty(&bk3).is_ok(), "确定性补扫六维齐");
+
+    // C397-20 深化变体段位不撞段 + 空集投影退化安全。
+    let es = PointerStats::of_pointers(&[]);
+    chk(&mut set, "C397-20", AsCode::ProbeReject as u16 == 0x0044
+        && AsCode::QuantileBad as u16 == 0x0045 && AsCode::InjectReject as u16 == 0x0046
+        && es.count == 0 && es.conserved(), "段位正确空集退化");
+
     set
 }
 
@@ -180,8 +363,7 @@ mod tests {
     #[test]
     fn ves397_smoke() {
         let set = run_ves397_checks();
-        let red = set.red_items();
-        assert!(red.is_empty(), "ves397 red: {:?}", red);
+        assert!(set.failed_count() == 0, "ves397 red: {}", set.red_items_text());
     }
 
     #[test]

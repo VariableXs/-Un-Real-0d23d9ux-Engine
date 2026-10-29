@@ -3479,7 +3479,7 @@ mod tests {
 
     #[test]
     fn t_dual_run_determinism() {
-        let rep = dual_run(600, 0x0845_DEAD_BEEF).unwrap();
+        let rep = dual_run(600, 0x0845_0001_BEEF).unwrap();
         assert!(rep.equal);
         assert_eq!(rep.fp_a, rep.fp_b);
         assert_eq!(rep.ledger_a, rep.ledger_b);
@@ -3488,7 +3488,7 @@ mod tests {
         let rep2 = dual_run(600, 0x9999_1111_CAFE).unwrap();
         assert!(rep2.equal);
         // 双跑引擎守恒必平（run_ops 不吞到达错误）。
-        let ops = generate_ops(0x0845_DEAD_BEEF, 600);
+        let ops = generate_ops(0x0845_0001_BEEF, 600);
         let eng = run_ops(&ops).unwrap();
         assert!(eng.conservation().balanced, "{}", eng.render_health());
         // 无钩子语料跑完：零误判零错位零降档（红账干净）。

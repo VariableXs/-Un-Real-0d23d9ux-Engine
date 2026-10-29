@@ -129,6 +129,7 @@ pub fn run_vec262_checks() -> crate::checks::CheckSet {
         ],
         spread: Spread::Pad,
     };
+    let mut s = CheckSet::new("svstar2-vec262");
     // 族一：投影
     s_add(&mut s, "径向-圆心t0", (g.project(50.0, 50.0)).abs() < 1e-6, "center 0");
     s_add(&mut s, "径向-圆边t1", (g.project(100.0, 50.0) - 1.0).abs() < 1e-6, "edge 1");
@@ -168,6 +169,6 @@ pub fn run_vec262_checks() -> crate::checks::CheckSet {
     s
 }
 
-fn s_add(s: &mut CheckSet, label: &str, ok: bool, detail: &str) {
+fn s_add(s: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
     s.add(label, ok, detail);
 }

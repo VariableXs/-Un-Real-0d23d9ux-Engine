@@ -155,7 +155,6 @@ mod tests {
     #[test]
     fn ves404_smoke() {
         let set = run_ves404_checks();
-        let red = set.red_items();
-        assert!(red.is_empty(), "ves404 red: {:?}", red);
+        assert!(set.failed_count() == 0, "ves404 red: {}", set.red_items_text());
     }
 }

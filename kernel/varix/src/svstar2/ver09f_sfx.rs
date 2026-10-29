@@ -292,9 +292,9 @@ mod tests {
 
     #[test]
     fn bad_id_rejected() {
-        assert_eq!(
+        assert!(matches!(
             SfxPack::load("", vec![]),
             Err(SfxCode::BadPackId)
-        );
+        ));
     }
 }

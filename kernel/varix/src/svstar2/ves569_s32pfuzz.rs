@@ -26,6 +26,8 @@ pub enum PfCode {
     QuotaOut = SEG_BASE + 0x03,
     /// 立案钩子缺失。
     HookMissing = SEG_BASE + 0x04,
+    /// 配额账漂移（分类计数与 used 不一致）。
+    LedgerDrift = SEG_BASE + 0x05,
 }
 
 /// fuzz 目标三类。
@@ -67,6 +69,10 @@ pub struct PerfFuzz {
     pub hook: bool,
     pub scheduled: u32,
     seq: u32,
+    /// 深化：配额消耗分类账（静默/立案/拒绝三类计数）。
+    pub used_silent: u32,
+    pub used_case: u32,
+    pub used_reject: u32,
 }
 
 impl PerfFuzz {
@@ -90,10 +96,12 @@ impl PerfFuzz {
     /// 发现处置：配额 → 白名单 → 钩子 → 立案（塌方立项优化排程计数）。
     pub fn discover(&mut self, payload: u32, code: PfCode, collapse_x100: u32) -> Result<Option<u32>, PfCode> {
         if self.used >= self.quota {
+            self.used_reject += 1;
             return Err(PfCode::QuotaOut);
         }
         self.used += 1;
         if self.whitelist.contains(&payload) {
+            self.used_silent += 1;
             return Ok(None);
         }
         if !self.hook {
@@ -105,6 +113,7 @@ impl PerfFuzz {
         if code == PfCode::Collapse {
             self.scheduled += 1; // 立项优化排程
         }
+        self.used_case += 1;
         Ok(Some(self.seq))
     }
 
@@ -138,6 +147,57 @@ impl PerfFuzz {
     /// 拆钩（测试用）。
     pub fn detach_hook(&mut self) {
         self.hook = false;
+    }
+
+    // ─── 深化块：配额分类守恒账 ───
+
+    /// 守恒：used ≡ 静默 + 立案（拒绝另计，不入 used）。
+    /// 篡改任一计数即检出。
+    pub fn quota_conserves(&self) -> bool {
+        self.used == self.used_silent + self.used_case
+            && self.used <= self.quota
+    }
+
+    /// 全分类账守恒（含拒绝）：静默+立案+拒绝 ≡ 总尝试。
+    pub fn classify_conserves(&self, attempts: u32) -> bool {
+        self.used_silent + self.used_case + self.used_reject == attempts
+    }
+
+    // ─── 深化块：塌方分位（整数 P50/P95）───
+
+    /// 塌方案分位：p∈[0,100]，排序取 ceil(p/100*(n-1)) 位。
+    pub fn collapse_percentile(&self, p: u32) -> u32 {
+        let mut v: Vec<u32> = self.cases.iter()
+            .filter(|c| c.code == PfCode::Collapse)
+            .map(|c| c.collapse_x100)
+            .collect();
+        if v.is_empty() {
+            return 0;
+        }
+        v.sort_unstable();
+        let idx = ((p as u64 * (v.len() as u64 - 1) + 99) / 100) as usize;
+        v[idx.min(v.len() - 1)]
+    }
+
+    // ─── 深化块：病态语料命中率 ───
+
+    /// 命中率 bp：病态语料数 / 总语料数（整数 bp；空池恒零）。
+    pub fn patho_hit_bp(&self) -> u32 {
+        if self.corpus.is_empty() {
+            return 0;
+        }
+        let n = self.corpus.iter().filter(|c| c.pathological).count() as u64;
+        (n * 10000 / self.corpus.len() as u64) as u32
+    }
+
+    // ─── 深化块：塌方阈值筛查 ───
+
+    /// 超 X 倍阈值塌方案序号表（立项优先级依据）。
+    pub fn severe_cases(&self, x100_threshold: u32) -> Vec<u32> {
+        self.cases.iter()
+            .filter(|c| c.code == PfCode::Collapse && c.collapse_x100 >= x100_threshold)
+            .map(|c| c.seq)
+            .collect()
     }
 }
 
@@ -214,6 +274,54 @@ pub fn run_ves569_checks() -> CheckSet {
     let mono = fz.cases.windows(2).all(|w| w[0].seq < w[1].seq);
     chk(&mut set, "C569-12", fz3.quota == 1 && mono, "钳制+单调");
 
+    // ── 深化判据：配额分类守恒账 ──
+    // fz 已发生：3 立案 + 1 白名单静默 = used 4。
+    chk(&mut set, "C569-13", fz.used == 4 && fz.used_case == 3
+        && fz.used_silent == 1 && fz.quota_conserves(), "used≡静默+立案守恒");
+    // 拒绝另计：fz2 拒 1 次。
+    chk(&mut set, "C569-14", fz2.used_reject == 1 && fz2.classify_conserves(4),
+        "拒绝另计全分类守恒");
+    // 篡改检出。
+    let mut fzt = PerfFuzz::new(8);
+    let _ = fzt.discover(1, PfCode::Malformed, 0);
+    fzt.used_case = 9;
+    chk(&mut set, "C569-15", !fzt.quota_conserves(), "分类篡改守恒即破");
+
+    // ── 深化判据：塌方分位 ──
+    let mut fzp = PerfFuzz::new(8);
+    let _ = fzp.discover(1, PfCode::Collapse, 100);
+    let _ = fzp.discover(2, PfCode::Collapse, 500);
+    let _ = fzp.discover(3, PfCode::Collapse, 900);
+    let _ = fzp.discover(4, PfCode::Malformed, 0); // 非塌方不入分位
+    chk(&mut set, "C569-16", fzp.collapse_percentile(0) == 100
+        && fzp.collapse_percentile(50) == 500
+        && fzp.collapse_percentile(100) == 900, "P0/P50/P100 三点分位");
+    chk(&mut set, "C569-17", fzp.collapse_percentile(95) >= 500, "P95 落尾区");
+
+    // ── 深化判据：病态命中率 + 重症筛查 ──
+    chk(&mut set, "C569-18", fz.patho_hit_bp() == 6666, "2/3 病态命中 66.66%");
+    chk(&mut set, "C569-19", fzp.severe_cases(500) == [2u32, 3u32]
+        && fzp.severe_cases(1000).is_empty(), "重症筛查阈值线");
+
+    // ── 深化判据：LCG 病态注入（发现必立案 + 白名单零误杀）──
+    let mut rng: u64 = 0x5690_FACE;
+    let mut fzi = PerfFuzz::new(64);
+    let mut found = 0u32;
+    for i in 0..64u64 {
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let payload = (rng % 0xFFFF) as u32;
+        let pathological = i % 8 == 0;
+        fzi.add_corpus(PfTarget::BudgetCalc, payload, pathological);
+        if pathological {
+            found += 1;
+            if fzi.discover(payload, PfCode::Collapse, 100 + (rng % 50) as u32).is_err() {
+                found -= 1; // 发现必立案——失败即计数回退
+            }
+        }
+    }
+    chk(&mut set, "C569-20", found == 8 && fzi.cases.len() == 8
+        && fzi.quota_conserves(), "64 轮注入 8 病态全立案");
+
     set
 }
 
@@ -245,5 +353,28 @@ mod tests {
         let mut fz = PerfFuzz::new(4);
         fz.detach_hook();
         assert_eq!(fz.discover(1, PfCode::Malformed, 0), Err(PfCode::HookMissing));
+    }
+
+    #[test]
+    fn classify_ledger_conserves() {
+        let mut fz = PerfFuzz::new(4);
+        fz.whitelist_add(7);
+        let _ = fz.discover(7, PfCode::Malformed, 0); // 静默
+        let _ = fz.discover(8, PfCode::Collapse, 900); // 立案
+        let _ = fz.discover(9, PfCode::Malformed, 0); // 立案
+        assert!(fz.quota_conserves());
+        assert_eq!(fz.classify_conserves(3), true);
+        let _ = fz.discover(10, PfCode::Malformed, 0); // 立案
+        let _ = fz.discover(11, PfCode::Malformed, 0); // 拒绝（配额尽）
+        assert!(fz.classify_conserves(5));
+    }
+
+    #[test]
+    fn percentile_extremes() {
+        let mut fz = PerfFuzz::new(4);
+        assert_eq!(fz.collapse_percentile(50), 0); // 空案恒零
+        let _ = fz.discover(1, PfCode::Collapse, 1000);
+        assert_eq!(fz.collapse_percentile(0), 1000);
+        assert_eq!(fz.collapse_percentile(100), 1000);
     }
 }

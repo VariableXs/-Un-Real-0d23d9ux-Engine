@@ -23,6 +23,10 @@ pub enum PwCode {
     PolicyClash = SEG_BASE + 0x02,
     /// 电源档越界。
     PowerRange = SEG_BASE + 0x03,
+    /// 能耗预算击穿（消耗超分配）。
+    BudgetBroke = SEG_BASE + 0x04,
+    /// 滞回锁定（档位切换冷却中）。
+    HysteresisLock = SEG_BASE + 0x05,
 }
 
 /// 电源档。
@@ -152,6 +156,106 @@ impl PowerDesk {
     }
 }
 
+// ─── 深化块：能耗预算账本（allocated ≡ spent + remaining 守恒）───
+
+/// 能耗预算账本：每窗分配 mj 预算，消耗留痕，结余可查。
+/// 守恒恒等式 allocated ≡ spent + remaining 是本块核心性质。
+#[derive(Default)]
+pub struct BudgetBook {
+    /// 累计分配（mj）。
+    pub allocated: u64,
+    /// 累计消耗（mj）。
+    pub spent: u64,
+    /// 每窗消耗流（供守恒对账）。
+    pub ledger: Vec<u64>,
+}
+
+impl BudgetBook {
+    pub fn new() -> Self {
+        BudgetBook { allocated: 0, spent: 0, ledger: Vec::new() }
+    }
+
+    /// 分配一窗预算。
+    pub fn alloc(&mut self, mj: u64) {
+        self.allocated += mj;
+    }
+
+    /// 记一笔消耗；超结余即预算击穿（显性码，不静默钳制）。
+    pub fn spend(&mut self, mj: u64) -> Result<(), PwCode> {
+        let remaining = self.allocated - self.spent.min(self.allocated);
+        if mj > remaining {
+            return Err(PwCode::BudgetBroke);
+        }
+        self.spent += mj;
+        self.ledger.push(mj);
+        Ok(())
+    }
+
+    /// 结余。
+    pub fn remaining(&self) -> u64 {
+        self.allocated.saturating_sub(self.spent)
+    }
+
+    /// 守恒对账：账面 spent ≡ 流水合计（篡改即检出）。
+    pub fn conserves(&self) -> bool {
+        let flow: u64 = self.ledger.iter().sum();
+        flow == self.spent && self.spent <= self.allocated
+    }
+}
+
+// ─── 深化块：降档滞回（防档位振荡）───
+
+/// 滞回切换器：升/降档需连续 need tick 同向请求才生效，
+/// 冷却期内拒绝切换（HysteresisLock），防负载抖动导致档位振荡。
+#[derive(Clone, Copy)]
+pub struct Hysteresis {
+    pub need: u8,
+    up_run: u8,
+    down_run: u8,
+    pub cooldown: u8,
+}
+
+impl Hysteresis {
+    pub fn new(need: u8, cooldown: u8) -> Self {
+        Hysteresis { need: need.max(1), up_run: 0, down_run: 0, cooldown }
+    }
+
+    /// 请求升档：连续 need 次即放行并进入冷却。
+    pub fn request_up(&mut self) -> Result<(), PwCode> {
+        if self.cooldown > 0 {
+            return Err(PwCode::HysteresisLock);
+        }
+        self.up_run += 1;
+        self.down_run = 0;
+        if self.up_run >= self.need {
+            self.up_run = 0;
+            self.cooldown = self.cooldown.max(1);
+            return Ok(());
+        }
+        Err(PwCode::HysteresisLock)
+    }
+
+    /// 请求降档：同向计数互斥（升档计数清零）。
+    pub fn request_down(&mut self) -> Result<(), PwCode> {
+        if self.cooldown > 0 {
+            return Err(PwCode::HysteresisLock);
+        }
+        self.down_run += 1;
+        self.up_run = 0;
+        if self.down_run >= self.need {
+            self.down_run = 0;
+            self.cooldown = self.cooldown.max(1);
+            return Ok(());
+        }
+        Err(PwCode::HysteresisLock)
+    }
+
+    /// 每 tick 推进冷却。
+    pub fn tick(&mut self) {
+        self.cooldown = self.cooldown.saturating_sub(1);
+    }
+}
+
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
     set.add(label, ok, detail);
 }
@@ -231,6 +335,62 @@ pub fn run_ves562_checks() -> CheckSet {
     let pd5 = PowerDesk::new(PowerTier::Plugged, 1);
     chk(&mut set, "C562-12", pd5.unit_cost() == 0 && !pd5.noisy(100), "空采样不臆测");
 
+    // ── 深化判据：预算账本 ──
+    let mut bb = BudgetBook::new();
+    bb.alloc(1000);
+    bb.alloc(500);
+    chk(&mut set, "C562-13", bb.spend(600).is_ok() && bb.spend(400).is_ok(),
+        "预算内消耗两笔放行");
+    chk(&mut set, "C562-14", bb.spend(1) == Err(PwCode::BudgetBroke), "结余尽即击穿显性");
+    chk(&mut set, "C562-15", bb.conserves() && bb.allocated == 1500
+        && bb.spent == 1000 && bb.remaining() == 500, "allocated≡spent+remaining 守恒");
+
+    // 篡改检出：流水改一笔即守恒破。
+    let mut bb2 = BudgetBook::new();
+    bb2.alloc(100);
+    let _ = bb2.spend(30);
+    bb2.ledger[0] = 40;
+    chk(&mut set, "C562-16", !bb2.conserves(), "流水篡改守恒即破");
+
+    // ── 深化判据：降档滞回 ──
+    let mut hys = Hysteresis::new(3, 2);
+    chk(&mut set, "C562-17", hys.request_up().is_err() && hys.request_up().is_err()
+        && hys.request_up().is_ok(), "连续 3 tick 升档放行");
+    chk(&mut set, "C562-18", hys.request_down() == Err(PwCode::HysteresisLock),
+        "冷却期内切换锁定");
+    hys.tick();
+    hys.tick();
+    chk(&mut set, "C562-19", hys.request_down().is_err() && hys.request_down().is_ok(),
+        "冷却解除后连续 2 tick 降档放行");
+    // 反向计数互斥：升 2 后降 1 → 升计数清零需重计。
+    let mut hys2 = Hysteresis::new(3, 0);
+    let _ = hys2.request_up();
+    let _ = hys2.request_up();
+    let _ = hys2.request_down();
+    chk(&mut set, "C562-20", hys2.request_up().is_err(), "反向请求打断同向连击");
+
+    // ── 深化判据：野点注入回归（LCG 驱动，必抓 100%）──
+    let mut rng: u64 = 0x5620_4155;
+    let mut caught = 0u32;
+    let mut rounds = 0u32;
+    for _ in 0..64 {
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let mut pdi = PowerDesk::new(PowerTier::Balanced, 100);
+        let spike = 9000 + (rng % 1000) as u32;
+        for v in [100u32, 101, 100, 102] {
+            pdi.feed(v);
+        }
+        pdi.feed(spike);
+        for v in [100u32, 101, 99] {
+            pdi.feed(v);
+        }
+        rounds += 1;
+        if pdi.noisy(1000) {
+            caught += 1;
+        }
+    }
+    chk(&mut set, "C562-21", caught == rounds, "64 轮野点注入必抓率 100%");
+
     set
 }
 
@@ -260,5 +420,26 @@ mod tests {
         }
         assert_eq!(pd.coalesce(), 32);
         assert!(pd.backlog.is_empty());
+    }
+
+    #[test]
+    fn budget_conserves() {
+        let mut bb = BudgetBook::new();
+        bb.alloc(100);
+        assert!(bb.spend(60).is_ok());
+        assert!(bb.spend(60).is_err());
+        assert!(bb.conserves());
+        assert_eq!(bb.remaining(), 40);
+    }
+
+    #[test]
+    fn hysteresis_no_oscillation() {
+        let mut h = Hysteresis::new(2, 1);
+        assert!(h.request_up().is_err());
+        assert!(h.request_up().is_ok());
+        assert!(h.request_up().is_err()); // 冷却
+        h.tick();
+        assert!(h.request_down().is_err());
+        assert!(h.request_down().is_ok());
     }
 }

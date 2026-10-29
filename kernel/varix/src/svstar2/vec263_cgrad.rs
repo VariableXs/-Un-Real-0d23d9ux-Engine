@@ -34,7 +34,7 @@ impl ConicGradient {
         let dx = x - self.center.0;
         let dy = y - self.center.1;
         // atan2 以度计（y 向下坐标系中，顺时针为正角）
-        let ang = norm_deg(dy.atan2(dx).to_deg());
+        let ang = norm_deg(dy.atan2(dx).to_degrees());
         let rel = norm_deg(ang - self.start_deg);
         let sweep = self.sweep_deg.max(1e-6);
         rel / sweep
@@ -132,6 +132,7 @@ pub fn run_vec263_checks() -> crate::checks::CheckSet {
         ],
         spread: Spread::Pad,
     };
+    let mut s = CheckSet::new("svstar2-vec263");
     // 族一：角度投影
     s_add(&mut s, "锥形-0°t0", g.project(100.0, 50.0).abs() < 1e-5, "east=0");
     s_add(&mut s, "锥形-90°t四分之一", (g.project(50.0, 100.0) - 0.25).abs() < 1e-4, "south=¼");
@@ -174,6 +175,6 @@ pub fn run_vec263_checks() -> crate::checks::CheckSet {
     s
 }
 
-fn s_add(s: &mut CheckSet, label: &str, ok: bool, detail: &str) {
+fn s_add(s: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
     s.add(label, ok, detail);
 }

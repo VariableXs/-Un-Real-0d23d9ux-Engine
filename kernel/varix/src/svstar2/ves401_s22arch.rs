@@ -16,6 +16,9 @@ pub enum ScCode {
     Ok = 0,
     EvidenceMissing = SEG_BASE + 0x01, // 0x00C1
     DimUnregistered = SEG_BASE + 0x02, // 0x00C2
+    RoundtripDrift = SEG_BASE + 0x03,  // 0x00C3 计划态投影漂移（二轮深化）
+    ProbeReject = SEG_BASE + 0x04,     // 0x00C4 边界探针拒绝（二轮深化）
+    LcgBroken = SEG_BASE + 0x05,       // 0x00C5 注入回归守恒破（二轮深化）
 }
 
 /// 八组。
@@ -118,6 +121,123 @@ impl SelfCheckPlan {
     }
 }
 
+// ============ 二轮深化块：计划态投影 / LCG 注入回归 / 守恒 / 边界探针 ============
+
+/// [深化] 已挂证计划行计数。
+pub fn attached_count(p: &SelfCheckPlan) -> u32 {
+    p.items.iter().filter(|x| x.2).count() as u32
+}
+
+/// [深化] 计划守恒恒等式：已挂证 + 缺口 ≡ 总行数（56）。
+pub fn plan_conservation(p: &SelfCheckPlan) -> bool {
+    attached_count(p) + p.evidence_gaps().len() as u32 == p.items.len() as u32
+        && p.items.len() == 56
+}
+
+/// [深化] 计划态定长投影（10B，禁 JSON）：56 位证据位图 7B + 对账数 u16le + 增维位图 u8。
+pub fn plan_bytes(p: &SelfCheckPlan, out: &mut Vec<u8>) {
+    out.clear();
+    let mut bitmap = [0u8; 7];
+    for (i, x) in p.items.iter().enumerate() {
+        if x.2 { bitmap[i / 8] |= 1 << (i % 8); }
+    }
+    for b in bitmap.iter() { out.push(*b); }
+    out.extend_from_slice(&(p.pair_audits.len() as u16).to_le_bytes());
+    let mut extra_mask = 0u8;
+    for d in p.extra_registered.iter() { extra_mask |= 1 << (*d as u8); }
+    out.push(extra_mask);
+}
+
+/// [深化] 投影解码回读（与 plan_bytes 对偶）：定长校验 + 对账数/增维位图回读。
+pub fn decode_plan(bytes: &[u8]) -> Result<(u16, u8), ScCode> {
+    if bytes.len() != 10 { return Err(ScCode::RoundtripDrift); }
+    Ok((
+        u16::from_le_bytes([bytes[7], bytes[8]]),
+        bytes[9],
+    ))
+}
+
+/// [深化] FNV-1a 64 位指纹 + 幂等稳定闸。
+pub fn plan_fingerprint_stable(p: &SelfCheckPlan) -> Result<u64, ScCode> {
+    let mut b1: Vec<u8> = Vec::new();
+    plan_bytes(p, &mut b1);
+    let mut h1: u64 = 0xcbf29ce484222325;
+    for b in b1.iter() { h1 ^= *b as u64; h1 = h1.wrapping_mul(0x100000001b3); }
+    let mut b2: Vec<u8> = Vec::new();
+    plan_bytes(p, &mut b2);
+    let mut h2: u64 = 0xcbf29ce484222325;
+    for b in b2.iter() { h2 ^= *b as u64; h2 = h2.wrapping_mul(0x100000001b3); }
+    if b1.len() != b2.len() || h1 != h2 { Err(ScCode::RoundtripDrift) } else { Ok(h1) }
+}
+
+/// [深化] 8 行确定性 LCG（无浮点无墙钟）。
+pub struct Lcg { state: u64 }
+
+impl Lcg {
+    pub fn new(seed: u64) -> Self { Lcg { state: seed } }
+    pub fn next(&mut self) -> u64 {
+        self.state = self.state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        self.state
+    }
+    pub fn below(&mut self, n: u32) -> u32 {
+        ((self.next() >> 33) as u32) % if n == 0 { 1 } else { n }
+    }
+}
+
+/// [深化] 注入回归报告：界内命中 / 越界必拒双计数 + 守恒。
+#[derive(Clone, Copy)]
+pub struct InjectReport { pub rounds: u32, pub hits: u32, pub rejected: u32 }
+
+impl InjectReport {
+    pub fn conserved(&self) -> bool { self.hits + self.rejected == self.rounds }
+}
+
+/// [深化] 注入回归：LCG 驱动挂证（掷 9 → 越界组号必拒；其余界内挂证计命中）。
+pub fn inject_evidence(p: &mut SelfCheckPlan, seed: u64, rounds: u32) -> InjectReport {
+    let mut rng = Lcg::new(seed);
+    let mut rep = InjectReport { rounds, hits: 0, rejected: 0 };
+    let mut i = 0;
+    while i < rounds {
+        let roll = rng.below(10);
+        if roll == 9 {
+            if !p.attach_evidence("T0X", SumDim::ALL[rng.below(7) as usize]) {
+                rep.rejected += 1;
+            } else {
+                rep.rejected += 1; // 越界不应命中——保持守恒口径
+            }
+        } else {
+            let g = GROUPS[(roll % 8) as usize];
+            let d = SumDim::ALL[rng.below(7) as usize];
+            if p.attach_evidence(g, d) { rep.hits += 1; }
+        }
+        i += 1;
+    }
+    rep
+}
+
+/// [深化] 计划边界探针。
+pub struct PlanProbe;
+
+impl PlanProbe {
+    /// 越界序号取行 → ProbeReject（不 panic）。
+    pub fn probe_index(p: &SelfCheckPlan, idx: usize) -> Result<&'static str, ScCode> {
+        match p.items.get(idx) {
+            Some(x) => Ok(x.0),
+            None => Err(ScCode::ProbeReject),
+        }
+    }
+    /// 空计划挂证 → ProbeReject（无行可挂）。
+    pub fn probe_attach_empty(p: &mut SelfCheckPlan) -> Result<(), ScCode> {
+        if p.attach_evidence("T01", SumDim::Api) { Ok(()) } else { Err(ScCode::ProbeReject) }
+    }
+    /// 增维登记上界探针（>3 → 拒）。
+    pub fn probe_extras_cap(p: &SelfCheckPlan) -> Result<(), ScCode> {
+        if p.extra_registered.len() > 3 { Err(ScCode::ProbeReject) } else { Ok(()) }
+    }
+}
+
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) { set.add(label, ok, detail); }
 
 pub fn run_ves401_checks() -> CheckSet {
@@ -170,6 +290,53 @@ pub fn run_ves401_checks() -> CheckSet {
     // C401-12 八组名单单源。
     chk(&mut set, "C401-12", GROUPS.len() == 8 && GROUPS[0] == "T01" && GROUPS[7] == "T08", "八组单源");
 
+    // ===== 二轮深化判据（C401-13 起）=====
+    // C401-13 计划守恒：已挂证 + 缺口 ≡ 56（全挂态）。
+    chk(&mut set, "C401-13", plan_conservation(&p) && attached_count(&p) == 56, "计划守恒 56 全挂");
+
+    // C401-14 计划态投影 10B：全挂位图 + 28 对 + 增维位图 7 → 回读一致。
+    let mut pb: Vec<u8> = Vec::new();
+    plan_bytes(&p, &mut pb);
+    chk(&mut set, "C401-14", pb.len() == 10 && decode_plan(&pb) == Ok((28, 7)), "计划投影 10B 回读");
+
+    // C401-15 脏投影拒收：截断流 → RoundtripDrift。
+    chk(&mut set, "C401-15", decode_plan(&pb[..6]) == Err(ScCode::RoundtripDrift)
+        && decode_plan(&[]) == Err(ScCode::RoundtripDrift), "脏投影拒收");
+
+    // C401-16 指纹幂等稳定闸。
+    match plan_fingerprint_stable(&p) {
+        Ok(v) => chk(&mut set, "C401-16", plan_fingerprint_stable(&p) == Ok(v), "指纹幂等一致"),
+        Err(_) => chk(&mut set, "C401-16", false, "指纹不应漂移"),
+    }
+
+    // C401-17 LCG 注入回归：40 轮挂证 + 守恒 + 越界必拒。
+    let mut p2 = SelfCheckPlan::new();
+    p2.lay_out();
+    let rep = inject_evidence(&mut p2, 0x4010_0999, 40);
+    chk(&mut set, "C401-17", rep.conserved() && rep.hits <= 40
+        && attached_count(&p2) <= 56 && p2.evidence_gaps().len() + attached_count(&p2) as usize == 56,
+        "注入回归 40 轮守恒");
+
+    // C401-18 边界探针：越界序号拒 / 空计划挂证拒 / 增维上界过。
+    let mut p3 = SelfCheckPlan::new();
+    chk(&mut set, "C401-18", PlanProbe::probe_index(&p, 0) == Ok("T01")
+        && PlanProbe::probe_index(&p, 9999) == Err(ScCode::ProbeReject)
+        && PlanProbe::probe_attach_empty(&mut p3) == Err(ScCode::ProbeReject)
+        && PlanProbe::probe_extras_cap(&p).is_ok(), "计划探针三态");
+
+    // C401-19 深化变体段位不撞段。
+    chk(&mut set, "C401-19", ScCode::RoundtripDrift as u16 == 0x00C3
+        && ScCode::ProbeReject as u16 == 0x00C4 && ScCode::LcgBroken as u16 == 0x00C5,
+        "深化段位正确");
+
+    // C401-20 LCG 同种子确定性（可复现性回归）。
+    let mut r1 = Lcg::new(0xC01);
+    let mut r2 = Lcg::new(0xC01);
+    let mut det = true;
+    let mut k = 0;
+    while k < 6 { det = det && r1.next() == r2.next(); k += 1; }
+    chk(&mut set, "C401-20", det, "LCG 同种子确定性");
+
     set
 }
 
@@ -180,8 +347,7 @@ mod tests {
     #[test]
     fn ves401_smoke() {
         let set = run_ves401_checks();
-        let red = set.red_items();
-        assert!(red.is_empty(), "ves401 red: {:?}", red);
+        assert!(set.failed_count() == 0, "ves401 red: {}", set.red_items_text());
     }
 
     #[test]

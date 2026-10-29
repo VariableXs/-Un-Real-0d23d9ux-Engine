@@ -22,6 +22,8 @@ pub enum TgCode {
     RoleConfused = SEG_BASE + 0x01,
     /// 件号越界。
     SlotRange = SEG_BASE + 0x02,
+    /// 角色翻转风暴（短窗切换超限）。
+    RoleFlipStorm = SEG_BASE + 0x03,
 }
 
 /// 十五件清单位（0-14）。
@@ -42,6 +44,12 @@ pub struct TestOutline {
     pub role_dut: bool,
     pub role_box: bool,
     pub blocks: u32,
+    /// 深化：登记事件流 (槽位, 时间步)。
+    pub put_events: Vec<(usize, u32)>,
+    /// 深化：角色切换履历（0=被测 1=工具箱），时间序。
+    pub role_log: Vec<u8>,
+    /// 深化：时间步计数器。
+    pub ticks: u32,
 }
 
 impl TestOutline {

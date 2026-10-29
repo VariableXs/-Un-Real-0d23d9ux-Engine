@@ -288,7 +288,7 @@ mod tests {
     fn test_bench_all_over() {
         let mut r = S07Retest::new();
         for n in BENCH_NAMES.iter() {
-            r.submit(n, u32::MAX / 2).ok();
+let _ =             r.submit(n, u32::MAX / 2);
         }
         assert_eq!(r.overs().len(), 5);
         assert!(r.max_over_ppm() > 0);

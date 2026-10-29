@@ -277,11 +277,11 @@ mod tests {
     #[test]
     fn test_occupy_migrate_cycle() {
         let mut b = ReserveBook::new();
-        b.reserve(ReservePort::NewInputForm).ok();
+let _ =         b.reserve(ReservePort::NewInputForm);
         assert!(b.slots[0].legal_reserve());
-        b.occupy(ReservePort::NewInputForm).ok();
+let _ =         b.occupy(ReservePort::NewInputForm);
         assert!(!b.slots[0].legal_reserve());
-        b.migrate(ReservePort::NewInputForm, ReservePort::NewAidTech).ok();
+let _ =         b.migrate(ReservePort::NewInputForm, ReservePort::NewAidTech);
         assert!(b.slots[0].legal_reserve());
         assert_eq!(b.slots[0].port, ReservePort::NewAidTech);
     }

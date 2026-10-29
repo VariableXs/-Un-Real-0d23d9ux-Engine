@@ -33,6 +33,9 @@ extern crate std;
 // `use alloc::vec;` / `alloc::format!(..)`，不必再逐文件从 `crate::` 反查路径。
 // 这与 `use alloc::…` 的重名合并语义一致（同一 crate 的两种写法视为同一项），
 // 因此历史上批量注入产生的「两套写法并存」不会再触发 E0252。
+// `#[macro_use]`：让 `vec!` / `format!` 等 alloc 宏进入全 crate 的宏前奏。子模块
+// 里 `vec![..]` 原本只靠宿主侧 std 前奏才解析，kbuild（no_std）下会 E0433。
+#[macro_use]
 pub extern crate alloc;
 
 // kernel-image 目标登记全局分配器：mem::heap::VarixAllocator 已实现 GlobalAlloc 契约

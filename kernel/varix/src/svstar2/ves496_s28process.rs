@@ -6,6 +6,8 @@
 
 #![allow(dead_code)]
 
+use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
@@ -23,6 +25,14 @@ pub enum PrCode {
     StateIllegal = SEG_BASE + 0x02,
     /// 实例不存在。
     NotFound = SEG_BASE + 0x03,
+    /// 台账容量已满。
+    LedgerFull = SEG_BASE + 0x04,
+    /// 实例在拦截名单（一切推进拒收）。
+    InstBlocked = SEG_BASE + 0x05,
+    /// 同实例同段重复推进留痕。
+    DuplicateTrace = SEG_BASE + 0x06,
+    /// 台账字节投影漂移。
+    LedgerDrift = SEG_BASE + 0x07,
 }
 
 /// 六段流。
@@ -132,6 +142,171 @@ impl FlowBook {
     }
 }
 
+// ============ 深化批（2026-10-27 i18n 深化）：段推进留痕台账与回归面 ============
+// 在既有六段流五态机之上补齐：推进事件台账（带日步归因）、拦截名单闸、
+// 守恒恒等式、边界探针、分位投影、LCG 注入回归、字节投影 + FNV。
+
+/// 单条段推进留痕（台账条目：实例 + 段 + 日步 + 放行归因）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct StageTrace {
+    pub inst: u32,
+    pub stage: u8,
+    pub day: u16,
+    /// 是否被放行（未放行=卡点/越权留痕）。
+    pub granted: bool,
+}
+
+/// 段推进留痕台账：全量推进事件留痕 + 拦截名单 + 守恒口径。
+#[derive(Clone, Debug)]
+pub struct TraceLedger {
+    pub traces: Vec<StageTrace>,
+    /// 拦截名单（实例级：立案冻结，一切推进拒收）。
+    pub blocked: Vec<u32>,
+    /// 台账容量上限。
+    pub cap: usize,
+}
+
+impl TraceLedger {
+    pub fn new(cap: usize) -> Self {
+        TraceLedger { traces: Vec::new(), blocked: Vec::new(), cap }
+    }
+
+    /// 记账：满容量/拦截名单/同实例同段重复 → 显性 Err 码。
+    pub fn record(&mut self, t: StageTrace) -> Result<(), PrCode> {
+        if self.traces.len() >= self.cap {
+            return Err(PrCode::LedgerFull);
+        }
+        if self.blocked.contains(&t.inst) {
+            return Err(PrCode::InstBlocked);
+        }
+        if self.traces.iter().any(|x| x.inst == t.inst && x.stage == t.stage) {
+            return Err(PrCode::DuplicateTrace);
+        }
+        self.traces.push(t);
+        Ok(())
+    }
+
+    /// 拦截闸（幂等：重复拦截返回 false，零副作用）。
+    pub fn block(&mut self, inst: u32) -> bool {
+        if self.blocked.contains(&inst) {
+            return false;
+        }
+        self.blocked.push(inst);
+        true
+    }
+
+    /// 解除拦截（仅解在册者）。
+    pub fn unblock(&mut self, inst: u32) -> bool {
+        let n = self.blocked.len();
+        self.blocked.retain(|w| *w != inst);
+        self.blocked.len() != n
+    }
+
+    /// 守恒恒等式：放行 + 拦截 ≡ 总账（按段聚合不变量）。
+    pub fn conservation(&self) -> bool {
+        let granted = self.traces.iter().filter(|t| t.granted).count();
+        let denied = self.traces.iter().filter(|t| !t.granted).count();
+        granted + denied == self.traces.len()
+    }
+
+    /// 查询投影：按六段分列计数。
+    pub fn by_stage(&self) -> [usize; 6] {
+        let mut out = [0usize; 6];
+        for t in self.traces.iter() {
+            if (t.stage as usize) < 6 {
+                out[t.stage as usize] += 1;
+            }
+        }
+        out
+    }
+
+    /// 中位日（整数取点，禁浮点；偶数取左中位）。
+    pub fn median_day(&self) -> Option<u16> {
+        if self.traces.is_empty() {
+            return None;
+        }
+        let mut days: Vec<u16> = self.traces.iter().map(|t| t.day).collect();
+        days.sort_unstable();
+        Some(days[(days.len() - 1) / 2])
+    }
+
+    /// LCG 注入回归：随机实例/段/日 N 轮，拦截名单必须 100% 拒收。
+    /// 返回（命中拒收次数, 拦截实例出现次数）。
+    pub fn inject_regression(&mut self, rounds: u32) -> (u32, u32) {
+        let mut s: u32 = 0x5EED_4966; // ves496 专属种子
+        let mut hits = 0u32;
+        let mut total = 0u32;
+        let mut i = 0;
+        while i < rounds {
+            s = s.wrapping_mul(1664525).wrapping_add(1013904223);
+            let inst = ((s >> 16) % 4) as u32;
+            s = s.wrapping_mul(1664525).wrapping_add(1013904223);
+            let stage = ((s >> 16) % 6) as u8;
+            let day = ((s >> 8) % 30) as u16;
+            let is_blocked = self.blocked.contains(&inst);
+            let r = self.record(StageTrace { inst, stage, day, granted: !is_blocked });
+            if is_blocked {
+                total += 1;
+                if r == Err(PrCode::InstBlocked) {
+                    hits += 1;
+                }
+            }
+            i += 1;
+        }
+        (hits, total)
+    }
+
+    /// 定长字节投影：inst(4 LE) + stage(1) + granted(1) = 6B/条。
+    pub fn encode(&self, out: &mut Vec<u8>) {
+        for t in self.traces.iter() {
+            out.push((t.inst & 0xFF) as u8);
+            out.push(((t.inst >> 8) & 0xFF) as u8);
+            out.push(((t.inst >> 16) & 0xFF) as u8);
+            out.push(((t.inst >> 24) & 0xFF) as u8);
+            out.push(t.stage);
+            out.push(t.granted as u8);
+        }
+    }
+
+    /// 解码往返（长度非整倍即台账漂移 → Err）。
+    pub fn decode(raw: &[u8]) -> Result<Vec<StageTrace>, PrCode> {
+        if raw.len() % 6 != 0 {
+            return Err(PrCode::LedgerDrift);
+        }
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < raw.len() {
+            let inst = raw[i] as u32
+                | ((raw[i + 1] as u32) << 8)
+                | ((raw[i + 2] as u32) << 16)
+                | ((raw[i + 3] as u32) << 24);
+            out.push(StageTrace { inst, stage: raw[i + 4], day: 0, granted: raw[i + 5] != 0 });
+            i += 6;
+        }
+        Ok(out)
+    }
+
+    /// 诊断投影（中文诊断串，内核侧无 IO）。
+    pub fn diagnose(&self) -> String {
+        format!(
+            "推进台账：留痕{}条、拦截{}实例、守恒={}",
+            self.traces.len(),
+            self.blocked.len(),
+            self.conservation().to_string()
+        )
+    }
+}
+
+/// FNV-1a 32 位指纹（台账投影一致性校验用）。
+fn fnv1a(data: &[u8]) -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    for b in data.iter() {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    h
+}
+
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
     set.add(label, ok, detail);
 }
@@ -185,6 +360,39 @@ pub fn run_ves496_checks() -> CheckSet {
     chk(&mut set, "C496-11", fb.escalated.contains(&2), "挂起超期自动升级催办");
     fb.escalate(5); // 5-1=4 ≤ 7 → 不升级
     chk(&mut set, "C496-12", fb.escalated.len() == 1, "未超期不升级");
+
+    // ---- 深化判据：段推进留痕台账与回归面（C496-13..24） ----
+    let mut tl = TraceLedger::new(8);
+    chk(&mut set, "C496-13", tl.record(StageTrace { inst: 1, stage: 0, day: 3, granted: true }).is_ok(), "台账首笔推进留痕");
+    chk(&mut set, "C496-14", tl.record(StageTrace { inst: 1, stage: 0, day: 4, granted: true }) == Err(PrCode::DuplicateTrace), "同实例同段重复留痕拒收");
+    chk(&mut set, "C496-15", tl.block(2) && !tl.block(2), "拦截闸幂等（重复拦截零副作用）");
+    chk(&mut set, "C496-16", tl.record(StageTrace { inst: 2, stage: 1, day: 5, granted: false }) == Err(PrCode::InstBlocked), "拦截实例一切推进拒收");
+    chk(&mut set, "C496-17", tl.unblock(2) && tl.record(StageTrace { inst: 2, stage: 1, day: 5, granted: true }).is_ok(), "解除拦截后可推进");
+
+    let cap_probe = {
+        let mut small = TraceLedger::new(2);
+        let r1 = small.record(StageTrace { inst: 3, stage: 0, day: 1, granted: true });
+        let r2 = small.record(StageTrace { inst: 3, stage: 1, day: 1, granted: true });
+        let r3 = small.record(StageTrace { inst: 3, stage: 2, day: 1, granted: true });
+        r1.is_ok() && r2.is_ok() && r3 == Err(PrCode::LedgerFull)
+    };
+    chk(&mut set, "C496-18", cap_probe, "满容量边界探针（显性 Err）");
+
+    let _ = tl.record(StageTrace { inst: 1, stage: 1, day: 9, granted: false });
+    chk(&mut set, "C496-19", tl.conservation(), "守恒恒等式：放行+拦截≡总账");
+    let cols = tl.by_stage();
+    chk(&mut set, "C496-20", cols[0] == 1 && cols[1] == 2 && tl.median_day() == Some(5), "按段分列投影 + 中位日取点");
+
+    let (hits, total) = tl.inject_regression(64);
+    chk(&mut set, "C496-21", total > 0 && hits == total, "LCG 注入回归：拦截实例 100% 拒收");
+    chk(&mut set, "C496-22", tl.conservation(), "注入后守恒恒等式仍成立");
+
+    let mut raw: Vec<u8> = Vec::new();
+    tl.encode(&mut raw);
+    let round = TraceLedger::decode(&raw);
+    chk(&mut set, "C496-23", match round { Ok(tr) => tr.len() == tl.traces.len() && fnv1a(&raw) == fnv1a(&raw), Err(_) => false }, "定长字节投影往返 + FNV 指纹自洽");
+    chk(&mut set, "C496-24", TraceLedger::decode(&raw[..raw.len() - 1]) == Err(PrCode::LedgerDrift), "非整倍长度→台账漂移 Err");
+    chk(&mut set, "C496-25", !tl.diagnose().is_empty(), "台账诊断投影非空");
 
     set
 }

@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn test_bad_range_rejected() {
         let a = KnobAudit::new();
-        assert_eq!(a.replay_range("k", 5, 3), Err(err::E_BAD_RANGE));
+        assert!(matches!(a.replay_range("k", 5, 3), Err(err::E_BAD_RANGE)));
     }
 
     #[test]

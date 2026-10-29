@@ -528,7 +528,7 @@ mod tests {
     #[test]
     fn f0262_all_pass() {
         let cs = run_f0262_checks();
-        assert!(cs.all_green(), "F0262 判据未全绿: {}", cs.red_items_text());
+        assert!(cs.all_passed(), "F0262 判据未全绿: {}", cs.red_items_text());
     }
 
     #[test]

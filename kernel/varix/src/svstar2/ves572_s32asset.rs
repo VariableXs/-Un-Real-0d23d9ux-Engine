@@ -24,6 +24,8 @@ pub enum AsCode {
     HandoverMismatch = SEG_BASE + 0x02,
     /// 资产类越界。
     ClassRange = SEG_BASE + 0x03,
+    /// 资产账漂移（分类/履历计数不一致）。
+    LedgerDrift = SEG_BASE + 0x04,
 }
 
 /// 五类资产。
@@ -58,6 +60,11 @@ pub struct AssetDesk {
     pub handover: Option<(u32, u32)>, // (资产 id, 指纹)
     pub remade: u32,
     pub handed: u32,
+    /// 深化：失效/补制事件账 (id, 事件类型: 0=失效 1=补制)，时间序。
+    pub events: Vec<(u32, u8)>,
+    /// 深化：移交回执对账（成功/失配计数）。
+    pub ack_ok: u32,
+    pub ack_bad: u32,
 }
 
 fn fnv(x: u32) -> u32 {
@@ -149,6 +156,74 @@ impl AssetDesk {
     pub fn a11y_present(&self) -> bool {
         self.items.iter().any(|x| !x.dead && x.a11y_sample)
     }
+
+    // ─── 深化块：分类守恒账 ───
+
+    /// 各类资产计数（含死件，去重按类）。
+    pub fn class_census(&self) -> [u32; CLASSES] {
+        let mut out = [0u32; CLASSES];
+        for x in self.items.iter() {
+            let k = x.kind as usize;
+            if k < CLASSES {
+                out[k] += 1;
+            }
+        }
+        out
+    }
+
+    /// 分类守恒：五类合计 ≡ 资产总数。
+    pub fn census_conserves(&self) -> bool {
+        self.class_census().iter().sum::<u32>() == self.items.len() as u32
+    }
+
+    // ─── 深化块：事件账（失效/补制）───
+
+    /// 验证入账版：失效留事件（verify 之上的包装）。
+    pub fn verify_ledger(&mut self, id: u32, observed_fp: u32) -> Result<(), AsCode> {
+        let r = self.verify(id, observed_fp);
+        if let Err(AsCode::AssetDead) = r {
+            self.events.push((id, 0));
+        }
+        r
+    }
+
+    /// 补制入账版：补制留事件。
+    pub fn remake_ledger(&mut self, id: u32) -> Result<(), AsCode> {
+        let r = self.remake(id);
+        if r.is_ok() {
+            self.events.push((id, 1));
+        }
+        r
+    }
+
+    /// 事件账守恒：失效事件数 ≡ 死件当前数 + 补制数（失效总流恒等）。
+    pub fn events_conserves(&self) -> bool {
+        let dead_n = self.items.iter().filter(|x| x.dead).count() as u32;
+        let made = self.events.iter().filter(|(_, t)| *t == 1).count() as u32;
+        let died = self.events.iter().filter(|(_, t)| *t == 0).count() as u32;
+        died == dead_n + made
+    }
+
+    // ─── 深化块：移交履历对账 ───
+
+    /// 回执入账版：成功/失配都计数。
+    pub fn ack_ledger(&mut self, id: u32, fp: u32) -> Result<(), AsCode> {
+        match self.ack(id, fp) {
+            Ok(()) => {
+                self.ack_ok += 1;
+                Ok(())
+            }
+            Err(e) => {
+                self.ack_bad += 1;
+                Err(e)
+            }
+        }
+    }
+
+    /// 履历守恒：成功+失配 ≡ 回执总数。
+    pub fn ack_conserves(&self, receipts: u32) -> bool {
+        self.ack_ok + self.ack_bad == receipts
+    }
 }
 
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
@@ -213,6 +288,57 @@ pub fn run_ves572_checks() -> CheckSet {
     ad4.register(AssetKind::Debugger, 1, false);
     chk(&mut set, "C572-12", ad4.handover().is_err() && ad4.items.len() == 1, "空台拒+幂等");
 
+    // ── 深化判据：分类守恒账 ──
+    // ad：五类各 1 件。
+    let cen = ad.class_census();
+    chk(&mut set, "C572-13", cen == [1, 1, 1, 1, 1] && ad.census_conserves(),
+        "五类一一件分类守恒");
+    // 同类多件 + 篡改检出。
+    let mut ac = AssetDesk::new();
+    ac.register(AssetKind::Debugger, 1, false);
+    ac.register(AssetKind::Debugger, 2, false);
+    ac.register(AssetKind::BudgetTable, 3, false);
+    chk(&mut set, "C572-14", ac.class_census() == [0, 1, 2, 0, 0]
+        && ac.census_conserves(), "同类多件分类守恒");
+
+    // ── 深化判据：事件账恒等（失效流 ≡ 当前死件 + 补制）──
+    let mut ae = AssetDesk::new();
+    ae.register(AssetKind::Debugger, 1, false);
+    let _ = ae.verify_ledger(1, 0xDEAD); // 失效
+    chk(&mut set, "C572-15", ae.events.len() == 1 && ae.events_conserves(),
+        "失效事件留痕恒等");
+    let _ = ae.remake_ledger(1); // 补制
+    chk(&mut set, "C572-16", ae.events.len() == 2 && ae.events_conserves(),
+        "补制后恒等仍守");
+
+    // ── 深化判据：移交履历对账 ──
+    let mut aa = AssetDesk::new();
+    aa.register(AssetKind::Debugger, 7, false);
+    let _ = aa.verify(7, fnv(7));
+    let _ = aa.handover();
+    let _ = aa.ack_ledger(7, fnv(7));      // 成功
+    let _ = aa.ack_ledger(7, 0xBEEF);      // 失配
+    let _ = aa.ack_ledger(9, fnv(9));      // 无件失配
+    chk(&mut set, "C572-17", aa.ack_ok == 1 && aa.ack_bad == 2
+        && aa.ack_conserves(3), "回执 1 成 2 失配守恒");
+    chk(&mut set, "C572-18", !aa.ack_conserves(4), "回执总数不符守恒即破");
+
+    // ── 深化判据：LCG 指纹漂移注入（必抓率 100%）──
+    let mut rng: u64 = 0x5720_DEAD;
+    let mut ai = AssetDesk::new();
+    let mut caught = 0u32;
+    for i in 0..64u32 {
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ai.register(AssetKind::Debugger, i, false);
+        let drift = rng % 2 == 0;
+        let observed = if drift { rng as u32 } else { fnv(i) };
+        if ai.verify_ledger(i, observed).is_err() {
+            caught += 1;
+        }
+    }
+    chk(&mut set, "C572-19", caught == 32 && ai.events_conserves(),
+        "64 轮漂移注入 32/32 全抓");
+
     set
 }
 
@@ -243,5 +369,23 @@ mod tests {
             let _ = ad.verify(i, fnv(i));
         }
         assert_eq!(ad.handover(), Ok(5));
+    }
+
+    #[test]
+    fn event_ledger_conserves() {
+        let mut ad = AssetDesk::new();
+        ad.register(AssetKind::Debugger, 1, false);
+        let _ = ad.verify_ledger(1, 9);
+        assert!(ad.events_conserves());
+        let _ = ad.remake_ledger(1);
+        assert!(ad.events_conserves());
+    }
+
+    #[test]
+    fn ack_ledger_counts() {
+        let mut ad = AssetDesk::new();
+        let _ = ad.ack_ledger(1, 2); // 无移交失配
+        assert_eq!(ad.ack_bad, 1);
+        assert!(ad.ack_conserves(1));
     }
 }

@@ -9,6 +9,7 @@
 //! - **判据**：回归对照；结果入册。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 use super::vec241_dmodel::Rect;
 use super::vec242_dmerge::{merge_round, DEFAULT_MERGE_CAP};
 use super::vec247_dilate::{dilate_then_merge, waste_rate, DEFAULT_TABLE, MarginSource};

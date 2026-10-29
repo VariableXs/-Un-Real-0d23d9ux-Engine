@@ -324,19 +324,19 @@ mod tests {
     #[test]
     fn test_risk_score_matrix() {
         let mut b = RiskBook::new();
-        b.register(RiskRow { name: "a", dim: 0, prob: 5, impact: 5, mitigation: "m" }).ok();
-        b.register(RiskRow { name: "b", dim: 8, prob: 2, impact: 3, mitigation: "" }).ok();
+let _ =         b.register(RiskRow { name: "a", dim: 0, prob: 5, impact: 5, mitigation: "m" });
+let _ =         b.register(RiskRow { name: "b", dim: 8, prob: 2, impact: 3, mitigation: "" });
         assert_eq!(b.rows[0].score(), 25);
         assert_eq!(b.no_mitigation(), vec!["b"]);
-        b.add_mitigation("b", "m2").ok();
+let _ =         b.add_mitigation("b", "m2");
         assert!(b.no_mitigation().is_empty());
     }
 
     #[test]
     fn test_page_upsert() {
         let mut t = NineTable::new();
-        t.write(2, 1).ok();
-        t.write(2, 2).ok();
+let _ =         t.write(2, 1);
+let _ =         t.write(2, 2);
         assert_eq!(t.pages.len(), 1);
         assert_eq!(t.pages[0].fp, 2);
     }

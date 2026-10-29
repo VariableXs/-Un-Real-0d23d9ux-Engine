@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn test_color_recon_clean() {
         let mut l = DocLedger::new();
-        l.admit(DocRow { name: "甲", kind: DocKind::Doc, group: 1, clause: 1, ver: 1, portraits: vec![0], a11y_handbook: false, synthetic_only: false }).ok();
+let _ =         l.admit(DocRow { name: "甲", kind: DocKind::Doc, group: 1, clause: 1, ver: 1, portraits: vec![0], a11y_handbook: false, synthetic_only: false });
         let marks = vec![ColorPair { name: "甲", marked: true }];
         assert!(color_mismatch(&l, &marks).is_empty());
     }

@@ -123,12 +123,9 @@ impl ArbiterV2 {
             vstart: self.global_vtime,
             vfinish: self.global_vtime,
         });
-        // 刚 push 必中；缺位按零时间账兜底（不 panic）。
-        self.vtimes.last_mut().unwrap_or(&mut VirtualTime {
-            account,
-            vstart: self.global_vtime,
-            vfinish: self.global_vtime,
-        })
+        // 刚 push 必中；按下标取尾元素（借用检查下无临时值兜底路径）。
+        let n = self.vtimes.len();
+        &mut self.vtimes[n - 1]
     }
 
     fn granted_already(&self, account: AccountId) -> BudgetUs {

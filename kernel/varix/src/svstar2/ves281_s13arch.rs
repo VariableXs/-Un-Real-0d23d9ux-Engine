@@ -20,7 +20,7 @@ pub enum ArchCode {
 }
 
 /// 四族。
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Family { Latin = 0, Cjk = 1, Arabic = 2, ThaiIndic = 3 }
 
 impl Family {

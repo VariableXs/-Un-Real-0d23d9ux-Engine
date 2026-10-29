@@ -195,7 +195,7 @@ impl IntTlemetry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cgb409_regmatrix::POINT_D;
+    use crate::cgpu::cgb409_regmatrix::POINT_D;
 
     #[test]
     fn a01_四指标_计数与口径() {

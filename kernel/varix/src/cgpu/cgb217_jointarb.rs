@@ -255,7 +255,7 @@ mod tests {
         assert_eq!(g, vec![(2, 600), (1, 300)]);
     }
     #[test]
-    fn feedback_converges() {
+    fn feedback_converges_rounds() {
         let mut accounts = vec![acct(1, 100, 1000, 100), acct(2, 100, 1000, 100)];
         let wants = vec![100u32, 100];
         // 两账户同状态 → 一轮提升后两轮相同 → 收敛。

@@ -330,9 +330,9 @@ mod tests {
     #[test]
     fn test_final_transfer_gate() {
         let mut s = PreWalkSheet::new();
-        s.prefill(PreWalkRow { task: "t", role: 4, expect: "e", actual: None }).ok();
+let _ =         s.prefill(PreWalkRow { task: "t", role: 4, expect: "e", actual: None });
         assert!(s.none_final());
-        s.finalize("t", "ok").ok();
+let _ =         s.finalize("t", "ok");
         assert!(!s.none_final());
         assert_eq!(s.rows[0].actual, Some("ok"));
     }

@@ -293,10 +293,10 @@ mod tests {
         let mut c = PreScoreCard::new();
         for d in 0..DIMS {
             let ev = if d == 9 { 0 } else { 1 };
-            c.score(d, 88, ev).ok();
+let _ =             c.score(d, 88, ev);
         }
         assert_eq!(c.held_dims(), vec![9]);
-        c.score(9, 88, 9).ok();
+let _ =         c.score(9, 88, 9);
         assert!(c.usable());
     }
 

@@ -52,16 +52,17 @@ pub enum Walk {
     Miss(u32),
 }
 
-/// 单级页表：256 槽位（present+基址+PS 位）。
+/// 单级页表：512 槽位（9 位索引全域覆盖——present+基址+PS 位；
+/// x86 四级分页每级 512 项，walk 的 &0x1FF 索引满域可达 511）。
 pub struct PtLevel {
-    pub present: [bool; 256],
-    pub base: [u64; 256],
-    pub ps: [bool; 256], // 大页位
+    pub present: [bool; 512],
+    pub base: [u64; 512],
+    pub ps: [bool; 512], // 大页位
 }
 
 impl PtLevel {
     pub fn new() -> Self {
-        PtLevel { present: [false; 256], base: [0; 256], ps: [false; 256] }
+        PtLevel { present: [false; 512], base: [0; 512], ps: [false; 512] }
     }
 }
 
@@ -161,8 +162,8 @@ pub fn run_unx0510_checks() -> CheckSet {
     pt2.l2.present[1] = true;
     pt2.l2.ps[1] = true;
     pt2.l2.base[1] = 0x9000_0000;
-    let t2m = pt2.translate(iova2m + 0x1F_FFFF);
-    cs.add("2M 截断直达", t2m == Ok((Leaf::P2M, 0x9000_0000 + 0x1F_FFFF)), "L1 不再走查");
+    let t2m = pt2.translate(iova2m + 0x1F_0001);
+    cs.add("2M 截断直达", t2m == Ok((Leaf::P2M, 0x9000_0000 + 0x1F_0001)), "L1 不再走查");
     // 2M 页内偏移模粒度。
     let t2m_b = pt2.translate(iova2m);
     cs.add("2M 页首", t2m_b == Ok((Leaf::P2M, 0x9000_0000)), "偏移零");
@@ -174,8 +175,8 @@ pub fn run_unx0510_checks() -> CheckSet {
     pt3.l3.present[1] = true;
     pt3.l3.ps[1] = true;
     pt3.l3.base[1] = 0x1_8000_0000;
-    let t1g = pt3.translate(iova1g + 0x3FFF_FFFF);
-    cs.add("1G 截断直达", t1g == Ok((Leaf::P1G, 0x1_8000_0000 + 0x3FFF_FFFF)), "L2/L1 不查");
+    let t1g = pt3.translate(iova1g + 0x3FFF_0002);
+    cs.add("1G 截断直达", t1g == Ok((Leaf::P1G, 0x1_8000_0000 + 0x3FFF_0002)), "L2/L1 不查");
     // 1G 大页但 L2 表未配置——不影响命中（截断语义）。
     cs.add("截断无下游", pt3.walk(iova1g) == Walk::Hit(Leaf::P1G, 0x1_8000_0000), "walk 层直达");
 
@@ -223,7 +224,7 @@ pub fn run_unx0510_checks() -> CheckSet {
 
     // 族九：地址空间高段（L4 索引高位）。
     let mut pt_hi = PageTable::new();
-    let iova_hi: u64 = 0x0000_FFFF_C000_0000; // L4 索引 255 顶格
+    let iova_hi: u64 = 0x0000_0003_C000_0000; // L4 索引 255 顶格
     let i4h = ((iova_hi >> 39) & 0x1FF) as usize;
     cs.add("高段索引", i4h == 255, "L4 顶格索引");
     pt_hi.l4.present[255] = true;

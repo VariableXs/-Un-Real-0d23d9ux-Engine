@@ -197,7 +197,7 @@ mod tests {
         let mut db = Debugger::new(50);
         db.replay.capture(Snapshot { env_fp: 1, rule_id: 1, contract: 1, state: 1 });
         assert!(db.replay.replay(1, 0).is_ok());
-        assert_eq!(db.replay.replay(2, 0), Err(DbgCode::ReplayDrift));
+        assert!(matches!(db.replay.replay(2, 0), Err(DbgCode::ReplayDrift)));
         db.trace.span("a", 60);
         assert!(db.trace.enforce().is_err());
         assert_eq!(db.trace.hottest(), Some("a"));

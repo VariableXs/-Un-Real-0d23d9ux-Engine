@@ -23,6 +23,8 @@ pub enum LgCode {
     LedgerMismatch = SEG_BASE + 0x02,
     /// 步骤越序（五步顺序违规）。
     StepSkip = SEG_BASE + 0x03,
+    /// 重扫风暴（同账连续重扫超限升级）。
+    ResweepStorm = SEG_BASE + 0x04,
 }
 
 /// 清账五步。
@@ -63,6 +65,10 @@ pub struct LedgerDesk {
     pub measured: Vec<u32>,
     pub transfers: u32,
     pub resweeps: u32,
+    /// 深化：重扫事件账 (id, 轮次)，时间序。
+    pub resweep_events: Vec<(u32, u32)>,
+    /// 深化：风暴隔离账（连续重扫 ≥3 的 id）。
+    pub stormed: Vec<u32>,
 }
 
 impl LedgerDesk {
@@ -151,6 +157,84 @@ impl LedgerDesk {
     pub fn lock_audit(&self) -> bool {
         self.items.iter().all(|x| !(x.closed && !x.reviewed))
     }
+
+    // ─── 深化块：分级账统计 ───
+
+    /// 各级计数：(P0, P1, P2, 未定级)。
+    pub fn grade_census(&self) -> (u32, u32, u32, u32) {
+        let mut p0 = 0u32;
+        let mut p1 = 0u32;
+        let mut p2 = 0u32;
+        let mut none = 0u32;
+        for x in self.items.iter() {
+            match x.grade {
+                Some(Grade::P0) => p0 += 1,
+                Some(Grade::P1) => p1 += 1,
+                Some(Grade::P2) => p2 += 1,
+                None => none += 1,
+            }
+        }
+        (p0, p1, p2, none)
+    }
+
+    /// 分级守恒：四级合计 ≡ 账目总数。
+    pub fn census_conserves(&self) -> bool {
+        let (a, b, c, d) = self.grade_census();
+        a + b + c + d == self.items.len() as u32
+    }
+
+    // ─── 深化块：P0 优先出队 ───
+
+    /// 下一待修账：P0 → P1 → P2 → 未定级（同级按登记序），返回 id。
+    /// 全空返回 None。已销账/复核中的跳过（只出 Fix 及之前步的）。
+    pub fn next_to_fix(&self) -> Option<u32> {
+        for g in [Some(Grade::P0), Some(Grade::P1), Some(Grade::P2), None] {
+            for x in self.items.iter() {
+                if x.grade == g && !x.closed && x.step != Step::Review {
+                    return Some(x.id);
+                }
+            }
+        }
+        None
+    }
+
+    // ─── 深化块：重扫风暴升级 ───
+
+    /// 对账带风暴检测：同 id 累计重扫 ≥3 即入风暴隔离账并拒绝对账。
+    pub fn reconcile_capped(&mut self, measured: &[u32]) -> Result<(), LgCode> {
+        let r = self.reconcile(measured);
+        if let Err(LgCode::LedgerMismatch) = r {
+            // 找出触发重扫的 id（closed 且残留的）
+            let trigger: Vec<u32> = self.items.iter()
+                .filter(|x| x.step == Step::Fix && measured.contains(&x.id))
+                .map(|x| x.id)
+                .collect();
+            for id in trigger {
+                let cnt = self.resweep_events.iter()
+                    .filter(|(k, _)| *k == id)
+                    .map(|(_, v)| *v)
+                    .next()
+                    .unwrap_or(0) + 1;
+                // 更新事件账
+                if let Some(p) = self.resweep_events.iter_mut().find(|(k, _)| *k == id) {
+                    p.1 = cnt;
+                } else {
+                    self.resweep_events.push((id, cnt));
+                }
+                if cnt >= 3 && !self.stormed.contains(&id) {
+                    self.stormed.push(id);
+                }
+            }
+            return Err(LgCode::ResweepStorm);
+        }
+        r
+    }
+
+    /// 重扫事件账守恒：总轮次 ≡ resweeps 计数。
+    pub fn resweep_conserves(&self) -> bool {
+        let total: u32 = self.resweep_events.iter().map(|(_, v)| v).sum();
+        total == self.resweeps
+    }
 }
 
 fn chk(set: &mut CheckSet, label: &'static str, ok: bool, detail: &'static str) {
@@ -218,6 +302,52 @@ pub fn run_ves571_checks() -> CheckSet {
     // C571-12 全账锁死审计（closed 蕴含 reviewed）。
     chk(&mut set, "C571-12", ld.lock_audit() && ld2.lock_audit(), "全账审计过");
 
+    // ── 深化判据：分级账统计 + 守恒 ──
+    // ld 当前：1 回修无级？——1 曾定级 P0（grade 保级），2 定级 P1 未修，3 未定级。
+    let (p0, p1, p2, none) = ld.grade_census();
+    chk(&mut set, "C571-13", p0 == 1 && p1 == 1 && p2 == 0 && none == 1
+        && ld.census_conserves(), "分级四桶计数守恒");
+
+    // ── 深化判据：P0 优先出队 ──
+    let mut lq = LedgerDesk::new();
+    lq.register(10, 7);
+    lq.register(11, 7);
+    lq.register(12, 7);
+    let _ = lq.grade(11, Grade::P1);
+    let _ = lq.grade(12, Grade::P0);
+    let _ = lq.grade(10, Grade::P2);
+    chk(&mut set, "C571-14", lq.next_to_fix() == Some(12), "P0 优先出队");
+    // P0 走完五步后 P1 顶上。
+    for s in [Step::Schedule, Step::Fix, Step::Review, Step::Close] {
+        let _ = lq.advance(12, s);
+    }
+    chk(&mut set, "C571-15", lq.next_to_fix() == Some(11), "P0 销后 P1 顶上");
+
+    // ── 深化判据：重扫风暴升级（同 id 3 次重扫入隔离账）──
+    let mut ls2 = LedgerDesk::new();
+    ls2.register(20, 7);
+    let _ = ls2.grade(20, Grade::P0);
+    for s in [Step::Schedule, Step::Fix, Step::Review, Step::Close] {
+        let _ = ls2.advance(20, s);
+    }
+    let _ = ls2.reconcile_capped(&[20]); // 重扫 1
+    // 回修重销再重扫 2、3。
+    for _ in 0..2 {
+        for s in [Step::Review, Step::Close] {
+            let _ = ls2.advance(20, s);
+        }
+        let _ = ls2.reconcile_capped(&[20]);
+    }
+    chk(&mut set, "C571-16", ls2.stormed == [20u32] && ls2.resweep_events.len() == 1,
+        "3 次重扫风暴隔离");
+    chk(&mut set, "C571-17", ls2.resweep_conserves(), "重扫账守恒");
+
+    // ── 深化判据：对账干净路径不触发风暴 ──
+    let mut lc = LedgerDesk::new();
+    lc.register(30, 7);
+    chk(&mut set, "C571-18", lc.reconcile_capped(&[]).is_ok()
+        && lc.stormed.is_empty() && lc.resweep_conserves(), "干净对账无风暴");
+
     set
 }
 
@@ -245,5 +375,15 @@ mod tests {
         assert_eq!(ld.advance(1, Step::Fix), Err(LgCode::StepSkip));
         let _ = ld.grade(1, Grade::P0);
         assert!(ld.advance(1, Step::Fix).is_ok());
+    }
+
+    #[test]
+    fn census_and_priority() {
+        let mut ld = LedgerDesk::new();
+        ld.register(1, 7);
+        ld.register(2, 7);
+        let _ = ld.grade(2, Grade::P0);
+        assert!(ld.census_conserves());
+        assert_eq!(ld.next_to_fix(), Some(2));
     }
 }
