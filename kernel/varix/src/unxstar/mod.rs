@@ -9271,3 +9271,17 @@ pub mod unx1845_migipi;
 pub mod unx1905_dbregs;
 pub mod unx2564_forkclone;
 pub mod unx2585_vmaattr;
+
+// ---- AI-VX2-1030（2026-10-30）：UNX 批3 深化 12 单（纯功能线，判据押后） ----
+pub mod unx1922_pcidflush;
+pub mod unx1943_x2ipi;
+pub mod unx1963_governor;
+pub mod unx1983_consgov;
+pub mod unx2009_dualmode;
+pub mod unx2062_schedstat;
+pub mod unx2083_overload;
+pub mod unx2604_cowwrite;
+pub mod unx2624_pcidbase;
+pub mod unx2644_refcount;
+pub mod unx2664_markdirty;
+pub mod unx2724_anonnoswap;
