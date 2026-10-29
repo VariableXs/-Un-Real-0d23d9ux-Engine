@@ -9257,3 +9257,17 @@ pub mod unx1623_percpu;
 pub mod unx1643_dequeue;
 pub mod unx1825_fpusave;
 pub mod unx2584_vmasplit;
+
+// ---- AI-VX2-1030（2026-10-30）：UNX 批2 深化 12 单（纯功能线，判据押后） ----
+pub mod unx1404_ringover;
+pub mod unx1422_vecquant;
+pub mod unx1606_apstack;
+pub mod unx1624_kstack;
+pub mod unx1644_vruntime;
+pub mod unx1663_schedclass;
+pub mod unx1703_loadtrack;
+pub mod unx1745_idleacct;
+pub mod unx1845_migipi;
+pub mod unx1905_dbregs;
+pub mod unx2564_forkclone;
+pub mod unx2585_vmaattr;
