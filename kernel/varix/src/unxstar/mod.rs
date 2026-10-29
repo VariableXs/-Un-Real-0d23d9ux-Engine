@@ -9244,3 +9244,16 @@ pub mod unx12528_handle27_28;
 pub mod unx12529_handle27_29;
 pub mod unx12530_agg27_30;
 pub mod unx12531_handle27_31;
+
+// ---- AI-VX2-1030（2026-10-30）：UNX 批1 深化 11 单（纯功能线，判据押后；F1421 凭既有 unx1421_latdist 销账） ----
+pub mod unx0187_microro;
+pub mod unx0207_redact;
+pub mod unx0442_rsdpver;
+pub mod unx0464_devident;
+pub mod unx0505_loopback;
+pub mod unx1403_latpoint;
+pub mod unx1605_tramppage;
+pub mod unx1623_percpu;
+pub mod unx1643_dequeue;
+pub mod unx1825_fpusave;
+pub mod unx2584_vmasplit;
