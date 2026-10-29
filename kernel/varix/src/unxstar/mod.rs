@@ -12870,3 +12870,43 @@ pub mod unx13301_res_limit;
 pub mod unx12841_bsskind;
 pub mod unx12861_relocdir;
 pub mod unx12881_iatfwd;
+// ---- AI-VX3-1030（2026-10-30）：批4 12 单（SEG 0x65900~0x65BC0 独占）----
+pub mod unx13321_deplink_codes;
+pub mod unx13341_stack_overflow;
+pub mod unx13361_peb_wpath;
+pub mod unx13381_handle_proto;
+pub mod unx13401_sys_sample;
+pub mod unx13421_app_sample;
+pub mod unx13441_ledger_engine;
+pub mod unx13461_ledger_exec;
+pub mod unx13481_wine_announce;
+pub mod unx13501_type1_anchor;
+pub mod unx13521_regress_all;
+pub mod unx13541_ledger_close;
+// ---- AI-VX3-1030（2026-10-30）：批5 12 单（SEG 0x65C00~0x65EC0 独占）----
+pub mod unx13561_perfledger;
+pub mod unx13581_finalledger;
+pub mod unx13601_hiveparse;
+pub mod unx13621_nkcreate;
+pub mod unx13641_rootmount;
+pub mod unx13661_handlegrow;
+pub mod unx13681_bigdata;
+pub mod unx13701_utf16le;
+pub mod unx13721_refledger;
+pub mod unx13741_groundcheck;
+pub mod unx13761_cowlog;
+pub mod unx13781_regapi;
+// ---- AI-VX3-1030（2026-10-30）：批6 12 单（SEG 0x65F00~0x661C0 独占；自写 9 单+代理 3 单）----
+pub mod unx13801_regnotify;
+pub mod unx13821_symlink;
+pub mod unx13861_hivebench;
+pub mod unx13881_syncobj;
+pub mod unx13901_regfsig;
+pub mod unx13921_binchain;
+pub mod unx13941_lhtable;
+pub mod unx13961_multisz;
+pub mod unx13981_pwrpano;
+// ---- AI-VX3-1030：批6b 代理 3 单 ----
+pub mod unx13841_pwr_inj_frame;
+pub mod unx14001_conc_inj_pano;
+pub mod unx14021_res_bound_pano;
