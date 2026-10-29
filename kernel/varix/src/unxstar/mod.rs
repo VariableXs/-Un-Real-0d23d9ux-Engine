@@ -12825,3 +12825,48 @@ pub mod unx48779_dupgrep39;
 pub mod unx48780_sealc39;
 pub mod unx48781_freezeaudit;
 pub mod unx48782_closefinal;
+// ---- AI-VX3-1030（2026-10-30）：批1 12 单（SEG 0x65000~0x652C0 独占）----
+pub mod unx12601_d1d4edge;
+pub mod unx12621_alertable;
+pub mod unx12641_probeedge;
+pub mod unx12661_hiveprobe;
+pub mod unx12681_b29rerun;
+pub mod unx12701_protoledger;
+pub mod unx12721_maptables;
+pub mod unx12741_sehstress;
+pub mod unx12761_docassets;
+pub mod unx12781_regmatrix;
+pub mod unx12801_peheader;
+pub mod unx12821_sectable;
+// ---- AI-VX3-1030（2026-10-30）：批2 代理 12 单（SEG 0x65300~0x655C0） ----
+pub mod unx12841_bss_section;
+pub mod unx12861_reloc_dir64;
+pub mod unx12881_iat_forward;
+pub mod unx12901_export_dir;
+pub mod unx12921_tls_dir;
+pub mod unx12941_datadir16;
+pub mod unx12961_image_layout;
+pub mod unx12981_delayload;
+pub mod unx13001_proc_chain;
+pub mod unx13021_stack_guard;
+pub mod unx13041_thread_chain;
+pub mod unx13061_tls_slots;
+
+// ---- AI-VX3-1030（2026-10-30）：批3 代理 12 单（SEG 0x65600~0x658C0） ----
+pub mod unx13081_wow64_load;
+pub mod unx13101_fwd_total;
+pub mod unx13121_teb32_tab;
+pub mod unx13141_exc_reg;
+pub mod unx13161_heap_hook;
+pub mod unx13181_dbg_port;
+pub mod unx13201_seg_timer;
+pub mod unx13221_samp_mgr;
+pub mod unx13241_fuzz_core;
+pub mod unx13261_rej_code;
+pub mod unx13281_rej_matrix;
+pub mod unx13301_res_limit;
+
+// ---- AI-VX3-1030：批2 双实现并存（自写深化第二实现）----
+pub mod unx12841_bsskind;
+pub mod unx12861_relocdir;
+pub mod unx12881_iatfwd;
