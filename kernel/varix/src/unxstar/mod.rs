@@ -13109,3 +13109,8 @@ pub mod unx16031_transnosys;
 pub mod unx16032_trierror;
 pub mod unx16033_grepscan;
 pub mod unx16034_audit;
+// ---- AI-VX-1031（2026-10-31）：E1 域批M 4 单（F16035/16036/16037/16038，SEG 0x69000~0x69100 独占）----
+pub mod unx16035_ntdllhook;
+pub mod unx16036_k32eval;
+pub mod unx16037_mmapface;
+pub mod unx16038_sigface;
