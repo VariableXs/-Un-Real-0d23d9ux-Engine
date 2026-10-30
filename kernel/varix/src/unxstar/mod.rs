@@ -13091,3 +13091,6 @@ pub mod unx16015_personaroute;
 pub mod unx16016_smoke;
 pub mod unx16017_lxtakeover;
 pub mod unx16018_int80retire;
+// ---- AI-VX-1031（2026-10-31）：E1 域批I 2 单收官（F16019/16020，SEG 0x68C80~0x68D00 独占）——E1/B01 批 20 条全落 ----
+pub mod unx16019_rebuild;
+pub mod unx16020_ktest;
