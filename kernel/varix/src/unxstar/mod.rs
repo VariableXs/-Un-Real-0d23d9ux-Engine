@@ -13117,3 +13117,8 @@ pub mod unx16038_sigface;
 // ---- AI-VX-1031（2026-10-31）：E1 域批N 2 单收官（F16039/16040，SEG 0x69100~0x69180 独占）——E1/B02 批 20 条全落 ----
 pub mod unx16039_clockface;
 pub mod unx16040_envface;
+// ---- AI-VX-1031（2026-10-31）：E1 域批O 4 单（F16043/16044/16045/16046，SEG 0x69180~0x69280 独占）----
+pub mod unx16043_touchlist;
+pub mod unx16044_nlsbound;
+pub mod unx16045_loaderr;
+pub mod unx16046_memerr;
