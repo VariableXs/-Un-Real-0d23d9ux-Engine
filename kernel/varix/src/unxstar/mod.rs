@@ -13114,3 +13114,6 @@ pub mod unx16035_ntdllhook;
 pub mod unx16036_k32eval;
 pub mod unx16037_mmapface;
 pub mod unx16038_sigface;
+// ---- AI-VX-1031（2026-10-31）：E1 域批N 2 单收官（F16039/16040，SEG 0x69100~0x69180 独占）——E1/B02 批 20 条全落 ----
+pub mod unx16039_clockface;
+pub mod unx16040_envface;
