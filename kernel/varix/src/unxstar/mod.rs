@@ -13086,3 +13086,8 @@ pub mod unx16011_libpanel;
 pub mod unx16012_bottle;
 pub mod unx16013_btfreeze;
 pub mod unx16014_bootfsm;
+// ---- AI-VX-1031（2026-10-31）：E1 域批H 4 单（F16015/16016/16017/16018，SEG 0x68B80~0x68C80 独占）----
+pub mod unx16015_personaroute;
+pub mod unx16016_smoke;
+pub mod unx16017_lxtakeover;
+pub mod unx16018_int80retire;
