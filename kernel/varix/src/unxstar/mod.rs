@@ -13081,3 +13081,8 @@ pub mod unx16004_verpin;
 pub mod unx16006_zeroleak;
 pub mod unx16009_gfxpanel;
 pub mod unx16010_drvpanel;
+// ---- AI-VX-1031（2026-10-31）：E1 域批G 4 单（F16011/16012/16013/16014，SEG 0x68A80~0x68B80 独占）----
+pub mod unx16011_libpanel;
+pub mod unx16012_bottle;
+pub mod unx16013_btfreeze;
+pub mod unx16014_bootfsm;
