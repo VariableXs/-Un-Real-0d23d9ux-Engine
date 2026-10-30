@@ -13174,3 +13174,16 @@ pub mod unx1484_timing_backfill;
 pub mod unx1505_inject_runner;
 pub mod unx1521_ledger_index;
 pub mod unx1543_criteria_freeze;
+// ---- AI-VX3-1030（2026-10-31）：批D 12 单（SEG 0x6CD00~0x6CFC0 独占）----
+pub mod unx1563_shootdown_sign;
+pub mod unx1583_batch_integrity;
+pub mod unx1607_ap_pagetable;
+pub mod unx1625_ist_stacks;
+pub mod unx1645_runqueue_len;
+pub mod unx1664_class_priority;
+pub mod unx1682_slice_table;
+pub mod unx1704_thread_contrib;
+pub mod unx1723_migrate_triple;
+pub mod unx1746_wake_chain;
+pub mod unx1765_switch_wake_rates;
+pub mod unx1785_a2_tick_review;
