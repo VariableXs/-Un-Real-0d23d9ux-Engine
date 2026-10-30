@@ -13099,3 +13099,8 @@ pub mod unx16023_partialnote;
 pub mod unx16024_absenterr;
 pub mod unx16025_capsnap;
 pub mod unx16026_synceval;
+// ---- AI-VX-1031（2026-10-31）：E1 域批K 4 单（F16027/16028/16029/16030，SEG 0x68E00~0x68F00 独占）----
+pub mod unx16027_fdpass;
+pub mod unx16028_stublist;
+pub mod unx16029_reqroute;
+pub mod unx16030_probecache;
