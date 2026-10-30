@@ -274,34 +274,34 @@ pub fn roundtrip(f: &ObjrefFields) -> Result<(), u32> {
 }
 
 // ── 字节漂移注入模型 ─────────────────────────────────────────────
-/// 把某字段写入时偏移错位 ±4 字节（换字段位），解码侧按钉版偏移
-/// 读出必不符（签名/保留域哨兵或字段值不符）。返回检出标志。
+/// 把某字段与相邻字段互换缓冲位（±4 字节错位写），解码侧按钉版
+/// 偏移读出必不符（签名/保留域哨兵或字段值不符）。返回检出标志。
+/// 互换模型对零值字段也现形（邻居字节必然换入本字段位）。
 pub fn drift_inject(f: &ObjrefFields, field_idx: usize) -> Result<bool, u32> {
     if field_idx >= FIELD_COUNT {
         return Err(ObjrefCode::OffsetOutOfRange.val());
     }
     let mut buf: Vec<u8> = Vec::new();
     encode_objref(f, &mut buf)?;
-    // 错位写：把目标字段整体右移 4 字节（与后一字段互换位）。
     let off = PIN_OFFSETS[field_idx];
     let w = PIN_WIDTHS[field_idx];
     if off + w + 4 > OBJREF_TOTAL {
-        // 尾字段改左错位（前移 4）。
+        // 尾字段与左邻 4 字节窗互换（前移错位）。
         let mut j = 0;
         while j < w {
-            let v = buf[off + j];
-            buf[off + j] = 0;
-            if off >= 4 + j {
-                buf[off - 4 + j] = buf[off - 4 + j] ^ v;
-            }
+            let a = buf[off + j];
+            buf[off + j] = buf[off - 4 + j];
+            buf[off - 4 + j] = a;
             j += 1;
         }
     } else {
+        // 与右邻 4 字节窗互换（后移错位；区间重叠时按字节循环换位，
+        // 仍必改变字节序形）。
         let mut j = 0;
         while j < w {
-            let v = buf[off + j];
-            buf[off + j] = 0;
-            buf[off + 4 + j] = buf[off + 4 + j] ^ v;
+            let a = buf[off + j];
+            buf[off + j] = buf[off + 4 + j];
+            buf[off + 4 + j] = a;
             j += 1;
         }
     }
@@ -309,7 +309,16 @@ pub fn drift_inject(f: &ObjrefFields, field_idx: usize) -> Result<bool, u32> {
     let detected = match decode_objref(&buf) {
         Err(_) => true,
         Ok(g) => {
-            g.flags != f.flags
+            let mut iid_diff = false;
+            let mut b = 0;
+            while b < 16 {
+                if g.iid[b] != f.iid[b] {
+                    iid_diff = true;
+                }
+                b += 1;
+            }
+            iid_diff
+                || g.flags != f.flags
                 || g.std_flags != f.std_flags
                 || g.oid != f.oid
                 || g.oxid != f.oxid
@@ -345,16 +354,18 @@ pub fn layout_round(round: usize) -> Result<(u32, u32), u32> {
     let mut i = 0;
     while i < 32 {
         let mut f = ObjrefFields::zeroed();
-        f.flags = (lcg.below(0x1_0000)) as u32;
+        // 注入面口径：互换错位对全零字段不可见，故 flags/std_flags/
+        // oipcs 取非零（漂移可见性钉版）。
+        f.flags = 1 + (lcg.below(0xFFFF)) as u32;
         let mut b = 0;
         while b < 16 {
             f.iid[b] = (lcg.below(256)) as u8;
             b += 1;
         }
-        f.std_flags = (lcg.below(0x100)) as u32;
+        f.std_flags = 1 + (lcg.below(0xFF)) as u32;
         f.oid = lcg.next();
         f.oxid = lcg.next();
-        f.oipcs = (lcg.below(0x1_0000_0000)) as u32;
+        f.oipcs = 1 + (lcg.below(0xFFFF_FFFF - 1)) as u32;
         roundtrip(&f)?;
         trips += 1;
         // 同点注入一次字节漂移（轮转字段）。

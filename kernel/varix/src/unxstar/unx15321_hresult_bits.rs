@@ -43,14 +43,16 @@ pub const CODE_MASK: u32 = 0xFFFF;
 pub const SEV_SUCCESS: u32 = 0;
 pub const SEV_FAILURE: u32 = 1;
 
-/// 黄金 HRESULT 对照表（手写公开值，与被测编码路径完全独立）。
+/// 黄金 HRESULT 对照表（手写公开值，与被测编码路径完全独立；
+/// 本卡位域口径：bit31=severity，bit30..16=facility（15 位），
+/// bit15..0=code——0x8000_4xxx 的 0x4 落在 code 高位，facility=0）。
 pub const GOLDEN_HRESULTS: [(u32, u32, u32, u32); 8] = [
     // (hr, severity, facility, code)
     (0x0000_0000, 0, 0, 0x0000),      // S_OK
     (0x0000_0001, 0, 0, 0x0001),      // S_FALSE
-    (0x8000_4005, 1, 4, 0x2005),      // E_FAIL（FACILITY_ITF=4）
-    (0x8000_4002, 1, 4, 0x0002),      // E_NOINTERFACE
-    (0x8000_FFFF, 1, 31, 0xFFFF),     // E_UNEXPECTED（FACILITY_URT=31）
+    (0x8000_4005, 1, 0, 0x4005),      // E_FAIL
+    (0x8000_4002, 1, 0, 0x4002),      // E_NOINTERFACE
+    (0x8000_FFFF, 1, 0, 0xFFFF),      // E_UNEXPECTED
     (0x8007_0006, 1, 7, 0x0006),      // E_HANDLE（FACILITY_WIN32=7）
     (0x8007_0057, 1, 7, 0x0057),      // E_INVALIDARG
     (0x8007_000E, 1, 7, 0x000E),      // E_OUTOFMEMORY
@@ -382,7 +384,7 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     ));
     // 黄金表逐条点验（判据独立写死）。
     let efail = hr_decode(0x8000_4005);
-    let efail_ok = efail.0 == 1 && efail.1 == 4 && efail.2 == 0x2005;
+    let efail_ok = efail.0 == 1 && efail.1 == 0 && efail.2 == 0x4005;
     v.push((
         "J1-黄金E_FAIL解码点验",
         efail_ok,

@@ -316,7 +316,8 @@ pub fn dispatch_round(round: usize) -> Result<(u32, u32), u32> {
 // ── 黄金正演 ─────────────────────────────────────────────────────
 pub fn golden_run() -> Result<(u32, u32, u32), u32> {
     let ledger = audit_dispatch_ledger()?;
-    if ledger != METHOD_COUNT as u32 {
+    if ledger != MEMBER_NAMES.len() as u32 {
+        // 名字账 5 成员（判据写死：最小面 5）。
         return Err(DispCode::LedgerMismatch.val());
     }
     let mut rounds = 0;
@@ -324,7 +325,8 @@ pub fn golden_run() -> Result<(u32, u32, u32), u32> {
     let mut r = 0;
     while r < SPECTRA_TRIALS {
         let (inv, _) = dispatch_round(r)?;
-        if inv != METHOD_COUNT as u32 {
+        if inv != MEMBER_NAMES.len() as u32 {
+            // 全成员调度（5 名全命中）。
             return Err(DispCode::InvokeUnknownDispid.val());
         }
         invoked_total += inv;

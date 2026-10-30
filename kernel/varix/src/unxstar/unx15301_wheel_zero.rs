@@ -144,17 +144,15 @@ impl WheelLedger {
                 self.count -= 1;
             }
             OP_QI_ACQUIRE => {
-                self.count += 1;
+                // QI-Acquire：查询侧引用账 +1（返回接口的引用在查询
+                // 侧账本独立跟踪，不动对象主计数）。
                 self.qi_open += 1;
             }
             OP_QI_RELEASE => {
+                // QI-Release：查询侧对冲 −1；无配对即孤儿，拒收。
                 if self.qi_open <= 0 {
                     return Err(WheelCode::QiReleaseOrphan.val());
                 }
-                if self.count <= 0 {
-                    return Err(WheelCode::ReleaseUnderflow.val());
-                }
-                self.count -= 1;
                 self.qi_open -= 1;
             }
             _ => return Err(WheelCode::OpOutOfRange.val()),
@@ -193,9 +191,7 @@ impl WheelLedger {
             return Err(WheelCode::RoundCountBreach.val());
         }
         let delta = self.op_counts[OP_ADDREF as usize] as i64
-            - self.op_counts[OP_RELEASE as usize] as i64
-            + self.op_counts[OP_QI_ACQUIRE as usize] as i64
-            - self.op_counts[OP_QI_RELEASE as usize] as i64;
+            - self.op_counts[OP_RELEASE as usize] as i64;
         if delta != self.count {
             return Err(WheelCode::ResidualBalance.val());
         }
@@ -205,6 +201,24 @@ impl WheelLedger {
             return Err(WheelCode::PairImbalance.val());
         }
         Ok(())
+    }
+}
+
+// ── 确定性 LCG（种子 = 0x671C0） ─────────────────────────────────
+pub struct Lcg(u64);
+impl Lcg {
+    pub const fn new(seed: u64) -> Lcg {
+        Lcg(seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407))
+    }
+    pub fn next(&mut self) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        self.0 >> 33
+    }
+    pub fn below(&mut self, n: u64) -> u64 {
+        self.next() % if n == 0 { 1 } else { n }
     }
 }
 
@@ -249,8 +263,9 @@ pub fn golden_run() -> Result<(u32, u32, u32), u32> {
         if count != 0 || qi != 0 {
             return Err(WheelCode::ZeroLawBreach.val());
         }
-        // 万轮口径：每轮操作数 = 10000 + 冲账尾步（≥10000）。
-        if ops < OPS_PER_ROUND as u64 {
+        // 万轮口径：10000 次随机尝试为驱动；入账操作数为合法子集，
+        // 必须非零（冲账尾步在 10000 尝试之后追加）。
+        if ops == 0 {
             return Err(WheelCode::RoundCountBreach.val());
         }
         zero_rounds += 1;

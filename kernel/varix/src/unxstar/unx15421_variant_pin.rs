@@ -11,14 +11,14 @@
 //!       f0 vt u16（VARENUM 类型码）
 //!       f1..f3 wReserved1..3 u16（保留，恒 0）
 //!       f4..f7 载荷四槽（p0 u32 低字 / p1 u32 高字 / p2 u64 扩展 /
-///              p3 u32 引用标记）——合计 8 字段；
+//!              p3 u32 引用标记）——合计 8 字段；
 //!   - VARENUM 30 类闭集对表（0..14 连续 + 16..30 连续，15 跳位），
-///     每类钉载荷宽（0/16/32/64 位）与载荷族；
-///   - 类型漂移注入面：vt 声称的载荷宽 ≠ 实际写入宽 → 检出；
-///     保留域非零 → 检出；vt 越表 → 检出；
-///   - 守恒恒等式：30 类对表逐类有钉版（无缺格）；vt 码无重复；
-///   - LCG 种子写死 = SEG_BASE（0x67340），禁 rand/浮点/IO/墙钟；
-///   - no_std + alloc；零 unwrap/expect/panic，错误一律 Result + 中文诊断。
+//!     每类钉载荷宽（0/16/32/64 位）与载荷族；
+//!   - 类型漂移注入面：vt 声称的载荷宽 ≠ 实际写入宽 → 检出；
+//!     保留域非零 → 检出；vt 越表 → 检出；
+//!   - 守恒恒等式：30 类对表逐类有钉版（无缺格）；vt 码无重复；
+//!   - LCG 种子写死 = SEG_BASE（0x67340），禁 rand/浮点/IO/墙钟；
+//!   - no_std + alloc；零 unwrap/expect/panic，错误一律 Result + 中文诊断。
 //! ═══════════════════════════════════════════════════════════════════════
 
 use alloc::format;
@@ -198,7 +198,7 @@ pub fn pinned_width_closed(vt: u16) -> Result<u8, u32> {
         VT_I1 | VT_UI1 | VT_I2 | VT_UI2 | VT_BOOL => Ok(PW_16),
         VT_I4 | VT_UI4 | VT_R4 | VT_ERROR | VT_INT | VT_UINT | VT_HRESULT => Ok(PW_32),
         VT_R8 | VT_CY | VT_DATE | VT_I8 | VT_UI8 | VT_BSTR | VT_DISPATCH
-        | VT_UNKNOWN | VT_VARIANT | VT_PTR | VT_SAFEARRAY | VT_CARRAY
+        | VT_UNKNOWN | VT_VARIANT | VT_DECIMAL | VT_PTR | VT_SAFEARRAY | VT_CARRAY
         | VT_USERDEFINED | VT_LPSTR => Ok(PW_64),
         _ => Err(VtCode::VtOutOfRange.val()),
     }
@@ -329,7 +329,8 @@ pub fn pin_round(round: usize) -> Result<(u32, u32), u32> {
     let mut i = 0;
     while i < 30 {
         let vt = VT_TABLE[i];
-        let payload = lcg.next();
+        // NONE 宽类（EMPTY/NULL/VOID）载荷恒 0（钉版）。
+        let payload = if pinned_width(vt)? == PW_NONE { 0 } else { lcg.next() };
         let v = make_variant(vt, payload)?;
         verify_variant(&v)?;
         // 往返：构造→核验→重读 vt 宽一致。

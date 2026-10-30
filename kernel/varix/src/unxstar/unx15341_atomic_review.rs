@@ -126,8 +126,11 @@ pub struct AtomicLedger {
     pub initial: i64,
     pub count: i64,
     pub log: Vec<AtomEntry>,
-    /// 已派发旧值集（FetchAdd/FetchSub 返回值，禁重复）。
-    pub old_seen: Vec<i64>,
+    /// 旧值派发直方图（按返回值分桶：add 列 / sub 列）——
+    /// 原子序不变量：边 v→v+1 的净穿越数 add(v)−sub(v) 必等于
+    /// [final > v]（终值过边为 1，否则 0）。
+    pub add_ret: Vec<u32>,
+    pub sub_ret: Vec<u32>,
     /// Σdelta 守恒列。
     pub sum_delta: i64,
     pub min_seen: i64,
@@ -139,7 +142,8 @@ impl AtomicLedger {
             initial,
             count: initial,
             log: Vec::new(),
-            old_seen: Vec::new(),
+            add_ret: Vec::new(),
+            sub_ret: Vec::new(),
             sum_delta: 0,
             min_seen: initial,
         }
@@ -150,7 +154,8 @@ impl AtomicLedger {
         let old = self.count;
         self.count += 1;
         self.sum_delta += 1;
-        self.entry(AOP_FETCH_ADD, old, old, old + 1, i64::MIN, true)
+        self.entry(AOP_FETCH_ADD, old, old, old + 1, i64::MIN, true);
+        Ok(old)
     }
 
     /// FetchSub：count-=1，返回旧值；下溢拒收。
@@ -161,7 +166,10 @@ impl AtomicLedger {
         let old = self.count;
         self.count -= 1;
         self.sum_delta -= 1;
-        self.entry(AOP_FETCH_SUB, old, old, old - 1, i64::MIN, true)
+        // 向下穿越边 (count', count')：直方图桶取新值（old−1）。
+        bump_hist(&mut self.sub_ret, self.count);
+        self.entry(AOP_FETCH_SUB, old, old, old - 1, i64::MIN, true);
+        Ok(old)
     }
 
     /// Load：只读，不入旧值集。
@@ -177,6 +185,22 @@ impl AtomicLedger {
         if ok {
             self.count = new;
             self.sum_delta += new - old;
+            // 命中的 CAS 同样跨越计数边——逐边记入直方图（边穿越
+            // 不变量把 CAS 命中与 RMV 同账核算）。
+            if new > old {
+                let mut v = old;
+                while v < new {
+                    bump_hist(&mut self.add_ret, v);
+                    v += 1;
+                }
+            }
+            if new < old {
+                let mut v = new;
+                while v < old {
+                    bump_hist(&mut self.sub_ret, v);
+                    v += 1;
+                }
+            }
         }
         self.entry(AOP_CAS, old, old, self.count, expected, ok);
         Ok((old, ok))
@@ -199,8 +223,8 @@ impl AtomicLedger {
             cas_expected,
             cas_ok,
         });
-        if (op == AOP_FETCH_ADD || op == AOP_FETCH_SUB) && cas_ok {
-            self.old_seen.push(returned_old);
+        if op == AOP_FETCH_ADD && cas_ok {
+            bump_hist(&mut self.add_ret, returned_old);
         }
         if self.count < self.min_seen {
             self.min_seen = self.count;
@@ -209,11 +233,26 @@ impl AtomicLedger {
 }
 
 // ── RMV 全域复核（判据核心） ─────────────────────────────────────
-/// 逐条核验账目：RMV 三步语义 + 旧值无重 + 区间覆盖 + 守恒。
+/// 旧值直方图加一（按返回值分桶，动态扩容）。
+fn bump_hist(h: &mut Vec<u32>, v: i64) {
+    let idx = v as usize;
+    while h.len() <= idx {
+        h.push(0);
+    }
+    h[idx] += 1;
+}
+
+/// 逐条核验账目：RMV 三步语义 + 边穿越不变量 + 守恒。
+/// 原子序铁律（边穿越式）：边 v→v+1 的净穿越 add(v)−sub(v) 恒等于
+/// [final > v]（初值 0、终值非负的 1D 游走必过此式——重复派发/
+/// 丢更新/越界旧值任一现形都会破此式）。
 pub fn audit_rmv(led: &AtomicLedger) -> Result<(u32, u32), u32> {
     // 1) 逐条 RMV 序列核对。
     let mut i = 0;
     let mut rmv_ops = 0;
+    let mut cas_hits = 0;
+    let mut add_total = 0u32;
+    let mut sub_total = 0u32;
     while i < led.log.len() {
         let e = &led.log[i];
         let is_rmv = e.op == AOP_FETCH_ADD || e.op == AOP_FETCH_SUB;
@@ -231,24 +270,41 @@ pub fn audit_rmv(led: &AtomicLedger) -> Result<(u32, u32), u32> {
             if e.cas_ok != (e.cas_expected == e.ledger_before) {
                 return Err(AtomCode::CasMismatch.val());
             }
+            if e.cas_ok {
+                cas_hits += 1;
+            }
         }
         i += 1;
     }
-    // 2) 旧值无重派发（原子性铁律：两次 RMV 不得同旧值）。
-    let mut a = 0;
-    while a < led.old_seen.len() {
-        let mut b = a + 1;
-        while b < led.old_seen.len() {
-            if led.old_seen[a] == led.old_seen[b] {
-                return Err(AtomCode::DuplicateOld.val());
-            }
-            b += 1;
+    // 2) 边穿越不变量（先核语义形，再核总量）：v ∈ [0, max桶] 逐边核对。
+    let n = if led.add_ret.len() > led.sub_ret.len() {
+        led.add_ret.len()
+    } else {
+        led.sub_ret.len()
+    };
+    let mut v = 0usize;
+    while v < n {
+        let av = if v < led.add_ret.len() { led.add_ret[v] as i64 } else { 0 };
+        let sv = if v < led.sub_ret.len() { led.sub_ret[v] as i64 } else { 0 };
+        let diff = av - sv;
+        let expect = if (led.count as usize) > v { 1 } else { 0 };
+        if diff != expect {
+            return Err(AtomCode::DuplicateOld.val());
         }
+        v += 1;
+    }
+    // 3) 直方图总量守恒：分桶合计 == RMV 次数 + CAS 命中数。
+    let mut a = 0;
+    while a < led.add_ret.len() {
+        add_total += led.add_ret[a];
         a += 1;
     }
-    // 3) 旧值区间覆盖：[max(initial,0), count_at_last_rmv] 内无跳漏——
-    //    以「旧值数 == RMV 次数」+ 无重 + 单调推得覆盖。
-    if led.old_seen.len() as u32 != rmv_ops {
+    let mut s = 0;
+    while s < led.sub_ret.len() {
+        sub_total += led.sub_ret[s];
+        s += 1;
+    }
+    if add_total + sub_total != rmv_ops + cas_hits {
         return Err(AtomCode::OldOutOfRange.val());
     }
     // 4) 守恒：Σdelta == final − initial。
@@ -259,7 +315,7 @@ pub fn audit_rmv(led: &AtomicLedger) -> Result<(u32, u32), u32> {
     if led.min_seen < 0 {
         return Err(AtomCode::NegativeMidway.val());
     }
-    Ok((rmv_ops, led.old_seen.len() as u32))
+    Ok((rmv_ops, rmv_ops))
 }
 
 // ── 非原子注入模型（丢更新双特征） ───────────────────────────────
@@ -353,18 +409,19 @@ pub fn golden_run() -> Result<(u32, u32, u32), u32> {
         r += 1;
     }
     // 黄金手算小序（写死判据，独立于压演）：
-    //   [Add,Add,Sub,Add] → 旧值 0,1,2,2（终 count=2，Σdelta=+2）。
+    //   [Add,Add,Sub,Add] → 旧值 0,1,2,1（终 count=2，Σdelta=+2）。
     let mut g = AtomicLedger::new(0);
     let a0 = g.fetch_add()?;
     let a1 = g.fetch_add()?;
     let s2 = g.fetch_sub()?;
     let a3 = g.fetch_add()?;
-    let seq_ok = a0 == 0 && a1 == 1 && s2 == 2 && a3 == 2 && g.count == 2;
+    let seq_ok = a0 == 0 && a1 == 1 && s2 == 2 && a3 == 1 && g.count == 2;
     if !seq_ok {
         return Err(AtomCode::RmvSequenceBreach.val());
     }
     let g_audit = audit_rmv(&g)?;
-    if g_audit.0 != 3 {
+    if g_audit.0 != 4 {
+        // 4 条 RMV（3 加 1 减）全入账。
         return Err(AtomCode::ConservationBreach.val());
     }
     // 非原子注入双特征必现。
@@ -415,8 +472,8 @@ pub fn run_injections(ledger: &mut InjectLedger) {
     while t < 10 {
         let mut led = AtomicLedger::new(0);
         let _ = led.fetch_add();
-        // 手工伪造重复旧值入账（绕过账本，模拟原子性破）。
-        led.old_seen.push(0);
+        // 手工伪造重复旧值派发（0 号旧值再记一票，绕过账本）。
+        bump_hist(&mut led.add_ret, 0);
         let v = audit_rmv(&led);
         ledger.tries[1] += 1;
         if let Err(e) = v {
@@ -510,8 +567,12 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     ));
     // CAS 语义独立点验：错期望必拒换。
     let mut c = AtomicLedger::new(5);
-    let (_, ok_hit) = c.cas(5, 9);
-    let (_, ok_miss) = c.cas(4, 9);
+    let r1 = c.cas(5, 9);
+    let r2 = c.cas(4, 9);
+    let (ok_hit, ok_miss) = match (r1, r2) {
+        (Ok((_, h)), Ok((_, m))) => (h, m),
+        _ => (false, true),
+    };
     v.push((
         "J1-CAS 命中/拒换语义",
         ok_hit && !ok_miss,

@@ -390,10 +390,10 @@ impl InjectLedger {
 }
 
 pub fn run_injections(ledger: &mut InjectLedger) {
-    // 族 0：伪工厂残形（7 种缺法位图）×10。
+    // 族 0：伪工厂残形（6 种缺法位图，排除 0b111 全谱形）×10。
     let mut t = 0;
     while t < 10 {
-        let shape = (t % 7) as u32 + 1; // 1..7 全为非 0b111
+        let shape = (t % 6) as u32 + 1; // 1..6 全为非 0b111
         let f = ClassFactory::new(1, shape);
         ledger.tries[0] += 1;
         if !f.is_full_spectrum() {

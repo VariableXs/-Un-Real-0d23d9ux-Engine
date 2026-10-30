@@ -12966,3 +12966,16 @@ pub mod unx14921_btnclick;
 pub mod unx14941_keychain;
 pub mod unx14961_paintseq;
 pub mod unx14981_batindex;
+// ---- AI-VX3-1030（2026-10-30）：批11 12 单（SEG 0x66E00~0x670C0 独占）----
+pub mod unx15001_vscroll_six;
+pub mod unx15021_menuloop;
+pub mod unx15041_dlgsetup;
+pub mod unx15061_clipoc;
+pub mod unx15081_setcursor;
+pub mod unx15101_ninefam;
+pub mod unx15121_cmd_enum;
+pub mod unx15141_objledger;
+pub mod unx15161_pump_thru;
+pub mod unx15181_idx40;
+pub mod unx15201_vtab_abi;
+pub mod unx15221_qi_idem;
