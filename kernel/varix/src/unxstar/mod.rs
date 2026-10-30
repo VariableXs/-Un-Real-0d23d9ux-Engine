@@ -13122,3 +13122,8 @@ pub mod unx16043_touchlist;
 pub mod unx16044_nlsbound;
 pub mod unx16045_loaderr;
 pub mod unx16046_memerr;
+// ---- AI-VX-1031（2026-10-31）：E1 域批P 4 单（F16047/16048/16049/16050，SEG 0x69280~0x69380 独占）----
+pub mod unx16047_fileerr;
+pub mod unx16048_netsplit;
+pub mod unx16049_regerr;
+pub mod unx16050_syncerr;
