@@ -12990,3 +12990,7 @@ pub mod unx16101_pathproj;
 pub mod unx16121_regadapt;
 pub mod unx16141_crashdiag;
 pub mod unx16161_drvtree;
+// ---- AI-VX-1031（2026-10-31）：E1 域批C 3 单（F16181/16201/16221，SEG 0x68680~0x68740 独占）----
+pub mod unx16181_bitblt;
+pub mod unx16201_textproj;
+pub mod unx16221_lineseg;
