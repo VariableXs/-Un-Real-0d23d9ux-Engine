@@ -217,12 +217,13 @@ impl HitDesk {
         let ht = match app {
             Some(code) => {
                 if code == HT_TRANSPARENT {
-                    // 穿透：找册中更靠后的包含点窗口。
+                    // 穿透：找册中更靠前（先创建=下层）的包含点窗口。
                     self.transparent_hops += 1;
                     let mut lower = HT_NOWHERE;
                     let mut found = false;
-                    let mut j = k + 1;
-                    while j < self.wins.len() {
+                    let mut j = k;
+                    while j > 0 {
+                        j -= 1;
                         if self.wins[j].contains(x, y) {
                             lower = self.wins[j].geometry_hit(x, y);
                             let rec = HitRec { hwnd: self.wins[j].hwnd, x, y, ht: lower, src: 2 };
@@ -230,14 +231,14 @@ impl HitDesk {
                             found = true;
                             break;
                         }
-                        j += 1;
                     }
                     if !found {
                         // 无下层可穿：本位落 NOWHERE 账（守恒：每探针一条账）。
                         let rec = HitRec { hwnd, x, y, ht: HT_NOWHERE, src: 3 };
                         self.recs.push(rec);
                     }
-                    lower
+                    // 穿透即返回：本位不再补账（每探针恰一条账）。
+                    return Ok(lower);
                 } else {
                     if code_index_of(code) == HT_CODE_COUNT {
                         return Err(HitCode::HtOutOfRange.val());

@@ -562,7 +562,7 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     // 反向判据：无失效直接绘必拒（状态机红线）。
     let no_inv = matches!(
         paint_advance(PaintPhase::Idle, PaintPhase::Painting),
-        Err(PaintCode::EdgeIllegal)
+        Err(e) if e == PaintCode::EdgeIllegal.val()
     );
     v.push((
         "J1-反向判据无失效直接绘拒收",

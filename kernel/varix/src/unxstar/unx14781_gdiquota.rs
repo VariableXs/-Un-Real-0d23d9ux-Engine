@@ -190,11 +190,17 @@ impl QuotaLedger {
             alive: true,
         });
         self.created += 1;
-        // 非法边拒收：若此前已 AtCap 且未销毁腾位，不该走到这里。
-        if self.used() > GDI_QUOTA {
+        let used_now = self.used();
+        // 非法边拒收：占用不得越过配额闭集。
+        if used_now > GDI_QUOTA {
             return Err(QuotaCode::QuotaEdgeIllegal.val());
         }
-        self.phase = QuotaPhase::Open;
+        // 满账回落 AtCap，未满归 Open（腾位复用后守恒一致）。
+        self.phase = if used_now == GDI_QUOTA {
+            QuotaPhase::AtCap
+        } else {
+            QuotaPhase::Open
+        };
         Ok(free)
     }
 

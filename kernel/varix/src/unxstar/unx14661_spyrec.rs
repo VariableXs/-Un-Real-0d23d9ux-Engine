@@ -184,13 +184,13 @@ impl SpyRecorder {
         false
     }
 
-    /// 启动录制：录态重复启动拒收。
+    /// 启动录制：录态重复启动拒收；seq 账全局单调（续录不重号）。
     pub fn start(&mut self) -> Result<(), u32> {
         if self.state == RecState::Recording {
             return Err(SpyCode::DoubleStart.val());
         }
         self.state = RecState::Recording;
-        self.next_seq = 1;
+        self.next_seq = self.recs.len() as u64 + 1;
         Ok(())
     }
 

@@ -521,7 +521,7 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     // 反向判据：Down 直接 Up（跳链）必判 ChainSkipped。
     let skip = matches!(
         key_advance(KeyPhase::Down, KeyPhase::Up),
-        Err(KeyCode::ChainSkipped)
+        Err(e) if e == KeyCode::ChainSkipped.val()
     );
     v.push((
         "J1-反向判据跳链必拒",

@@ -197,9 +197,8 @@ pub fn model_tuple(t: usize) -> Result<(Vec<u32>, u32), u32> {
     }
     let is_down = t == TUP_LDOWN || t == TUP_RDOWN || t == TUP_MDOWN;
     let mut seq: Vec<u32> = Vec::new();
-    // 定位移动。
-    let mut ph = btn_advance(BtnPhase::Idle, BtnPhase::Idle)?;
-    let _ = ph;
+    // 定位移动（自环不落边，Idle 态直接发移动）。
+    let mut ph = BtnPhase::Idle;
     seq.push(WM_MOUSEMOVE);
     if is_down {
         ph = btn_advance(BtnPhase::Idle, BtnPhase::Down)?;
@@ -549,7 +548,7 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     // 反向判据：Idle 直接 Up 必拒（保活状态机红线）。
     let idle_up = matches!(
         btn_advance(BtnPhase::Idle, BtnPhase::Up),
-        Err(ButtonCode::EdgeIllegal)
+        Err(e) if e == ButtonCode::EdgeIllegal.val()
     );
     v.push((
         "J1-反向判据Idle直接Up拒收",

@@ -272,9 +272,12 @@ pub fn residual_detected() -> bool {
         if led.sentinel().is_err() {
             ok = true;
         }
-        // 且峰值账（1）不漂移——漂移判据只在全清后比对。
-        if led.peak_regressed().is_err() {
-            ok = false; // 峰值仍=1，不误报漂移
+        // 触账型峰值=1、未触账型峰值=0（残留场景峰值账语义）。
+        let pk_ok = led.subs[GD_BITMAP].peak == 1
+            && led.subs[GD_PEN].peak == 0
+            && led.subs[GD_REGION].peak == 0;
+        if !pk_ok {
+            ok = false;
         }
     }
     ok

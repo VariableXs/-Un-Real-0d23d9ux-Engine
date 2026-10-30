@@ -220,7 +220,8 @@ pub fn y_up_detected() -> bool {
 
 // ── 原点平移账 + 往返自反 ────────────────────────────────────────
 /// 平移对拍表（写死：域内安全点，平移 +10/+20 不越 16bit 域）。
-pub const SHIFT_TABLE: [(i32, i32); 6] = [(0, 0), (1, 1), (-5, -9), (100, 50), (-200, 320), (7, -9)];
+pub const SHIFT_TABLE: [(i32, i32); 8] =
+    [(0, 0), (1, 1), (-5, -9), (100, 50), (-200, 320), (7, -9), (-100, 200), (5, -3)];
 
 pub fn shift_and_roundtrip() -> Result<(usize, usize), u32> {
     let mut m = Mapping::mm_text_default();
