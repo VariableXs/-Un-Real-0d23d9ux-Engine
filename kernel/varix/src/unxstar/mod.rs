@@ -13076,3 +13076,8 @@ pub mod unx16761_fullledger_verify;
 pub mod unx16781_final_anchor;
 pub mod unx16801_crt_verdict;
 pub mod unx16821_manifest_parser;
+// ---- AI-VX-1031（2026-10-31）：E1 域批F 4 单（F16004/16006/16009/16010，SEG 0x68980~0x68A80 独占）----
+pub mod unx16004_verpin;
+pub mod unx16006_zeroleak;
+pub mod unx16009_gfxpanel;
+pub mod unx16010_drvpanel;
