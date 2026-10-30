@@ -12979,3 +12979,9 @@ pub mod unx15161_pump_thru;
 pub mod unx15181_idx40;
 pub mod unx15201_vtab_abi;
 pub mod unx15221_qi_idem;
+// ---- AI-VX-1031（2026-10-31）：E1 域 5 单（F16001/16021/16041/16061/16081，SEG 0x68400~0x68540 独占）----
+pub mod unx16001_hostcaps;
+pub mod unx16021_wsvhmap;
+pub mod unx16041_errledger;
+pub mod unx16061_peinject;
+pub mod unx16081_syncswitch;
