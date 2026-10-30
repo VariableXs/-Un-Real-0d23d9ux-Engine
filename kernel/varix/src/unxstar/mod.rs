@@ -13094,3 +13094,8 @@ pub mod unx16018_int80retire;
 // ---- AI-VX-1031（2026-10-31）：E1 域批I 2 单收官（F16019/16020，SEG 0x68C80~0x68D00 独占）——E1/B01 批 20 条全落 ----
 pub mod unx16019_rebuild;
 pub mod unx16020_ktest;
+// ---- AI-VX-1031（2026-10-31）：E1 域批J 4 单（F16023/16024/16025/16026，SEG 0x68D00~0x68E00 独占）----
+pub mod unx16023_partialnote;
+pub mod unx16024_absenterr;
+pub mod unx16025_capsnap;
+pub mod unx16026_synceval;
