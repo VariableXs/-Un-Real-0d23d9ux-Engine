@@ -13132,3 +13132,8 @@ pub mod unx16051_probe1;
 pub mod unx16052_regress;
 pub mod unx16053_msgres;
 pub mod unx16054_errinfo;
+// ---- AI-VX-1031（2026-10-31）：E1 域批R 4 单（F16055/16056/16057/16058，SEG 0x69480~0x69580 独占）----
+pub mod unx16055_crossdisc;
+pub mod unx16056_fuzzface;
+pub mod unx16057_judgereg;
+pub mod unx16058_a97link;
