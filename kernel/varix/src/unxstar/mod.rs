@@ -13104,3 +13104,8 @@ pub mod unx16027_fdpass;
 pub mod unx16028_stublist;
 pub mod unx16029_reqroute;
 pub mod unx16030_probecache;
+// ---- AI-VX-1031（2026-10-31）：E1 域批L 4 单（F16031/16032/16033/16034，SEG 0x68F00~0x69000 独占）----
+pub mod unx16031_transnosys;
+pub mod unx16032_trierror;
+pub mod unx16033_grepscan;
+pub mod unx16034_audit;
