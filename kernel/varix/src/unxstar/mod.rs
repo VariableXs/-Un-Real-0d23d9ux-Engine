@@ -12985,3 +12985,8 @@ pub mod unx16021_wsvhmap;
 pub mod unx16041_errledger;
 pub mod unx16061_peinject;
 pub mod unx16081_syncswitch;
+// ---- AI-VX-1031（2026-10-31）：E1 域批B 4 单（F16101/16121/16141/16161，SEG 0x68540~0x68640 独占）----
+pub mod unx16101_pathproj;
+pub mod unx16121_regadapt;
+pub mod unx16141_crashdiag;
+pub mod unx16161_drvtree;
