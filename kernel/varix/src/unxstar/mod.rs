@@ -12999,3 +12999,8 @@ pub mod unx16002_winesrc;
 pub mod unx16022_capjudge;
 pub mod unx16042_errdiff;
 pub mod unx16062_loadbound;
+// ---- AI-VX-1031（2026-10-31）：E1 域批E 4 单（F16003/16005/16007/16008，SEG 0x68880~0x68980 独占）----
+pub mod unx16003_winebuild;
+pub mod unx16005_prefix;
+pub mod unx16007_envinj;
+pub mod unx16008_sysdir;
