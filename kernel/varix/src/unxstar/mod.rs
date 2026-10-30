@@ -12994,3 +12994,8 @@ pub mod unx16161_drvtree;
 pub mod unx16181_bitblt;
 pub mod unx16201_textproj;
 pub mod unx16221_lineseg;
+// ---- AI-VX-1031（2026-10-31）：E1 域批D 4 单（F16002/16022/16042/16062，SEG 0x68780~0x68880 独占）----
+pub mod unx16002_winesrc;
+pub mod unx16022_capjudge;
+pub mod unx16042_errdiff;
+pub mod unx16062_loadbound;
