@@ -13127,3 +13127,8 @@ pub mod unx16047_fileerr;
 pub mod unx16048_netsplit;
 pub mod unx16049_regerr;
 pub mod unx16050_syncerr;
+// ---- AI-VX-1031（2026-10-31）：E1 域批Q 4 单（F16051/16052/16053/16054，SEG 0x69380~0x69480 独占）----
+pub mod unx16051_probe1;
+pub mod unx16052_regress;
+pub mod unx16053_msgres;
+pub mod unx16054_errinfo;
