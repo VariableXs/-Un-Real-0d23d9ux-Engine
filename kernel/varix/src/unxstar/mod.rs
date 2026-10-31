@@ -13213,3 +13213,16 @@ pub mod unx2203_criteria_trifingerprint;
 pub mod unx2225_freeze_rehearsal;
 pub mod unx2243_recon_matrix;
 pub mod unx2263_debt_attribution;
+// ---- AI-VX3-1030（2026-10-31）：批G 12 单（SEG 0x6D600~0x6D8C0 独占）----
+pub mod unx2283_feedback_verify;
+pub mod unx2303_tutorial_walk;
+pub mod unx2323_a4_signctx;
+pub mod unx2343_domain_final_b6;
+pub mod unx2363_wisdom_clauses;
+pub mod unx2383_line_identity;
+pub mod unx2484_hugepage_grade;
+pub mod unx2504_hugepage_asserts;
+pub mod unx2523_sample_ring;
+pub mod unx2543_alloc_err_matrix;
+pub mod unx2565_pagetable_single;
+pub mod unx2586_1g_mapping;
