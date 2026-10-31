@@ -13200,3 +13200,16 @@ pub mod unx1964_freq_req_path;
 pub mod unx1984_gov_input_contract;
 pub mod unx2010_coupled_scenarios;
 pub mod unx2023_idle_selector;
+// ---- AI-VX3-1030（2026-10-31）：批F 12 单（SEG 0x6D300~0x6D5C0 独占）----
+pub mod unx2041_joint_decision;
+pub mod unx2063_stat_linkage;
+pub mod unx2084_stress_matrix21;
+pub mod unx2113_batch_selfcheck;
+pub mod unx2123_stat_matrix23;
+pub mod unx2143_joint_matrix24;
+pub mod unx2163_export_menu;
+pub mod unx2183_sixchain_joint;
+pub mod unx2203_criteria_trifingerprint;
+pub mod unx2225_freeze_rehearsal;
+pub mod unx2243_recon_matrix;
+pub mod unx2263_debt_attribution;
