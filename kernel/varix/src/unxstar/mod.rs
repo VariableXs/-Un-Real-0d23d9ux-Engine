@@ -13226,3 +13226,17 @@ pub mod unx2523_sample_ring;
 pub mod unx2543_alloc_err_matrix;
 pub mod unx2565_pagetable_single;
 pub mod unx2586_1g_mapping;
+
+// ---- AI-VX3-1030（2026-10-31）：批H 12 单（SEG 0x6D900~0x6DBC0 独占）----
+pub mod unx2605_filepage_fault;
+pub mod unx2625_asid_rotation;
+pub mod unx2645_fork_isolation;
+pub mod unx2665_readhit_noblock;
+pub mod unx2684_pagecache_selfcheck;
+pub mod unx2704_active_demote;
+pub mod unx2725_clean_release;
+pub mod unx2743_thread_sleep_wake;
+pub mod unx2764_pageclass_rate;
+pub mod unx2784_hugepage_split;
+pub mod unx2803_release_storm;
+pub mod unx2823_fault_reclaim_war;
