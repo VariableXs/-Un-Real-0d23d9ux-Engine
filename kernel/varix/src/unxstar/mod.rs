@@ -13187,3 +13187,16 @@ pub mod unx1723_migrate_triple;
 pub mod unx1746_wake_chain;
 pub mod unx1765_switch_wake_rates;
 pub mod unx1785_a2_tick_review;
+// ---- AI-VX3-1030（2026-10-31）：批E 12 单（SEG 0x6D000~0x6D2C0 独占）----
+pub mod unx1805_switchout_path;
+pub mod unx1826_simd_switch;
+pub mod unx1846_tlb_shootdown_reg;
+pub mod unx1865_tlb_ack_ledger;
+pub mod unx1882_switch_ipi_race;
+pub mod unx1906_switch_chain_v2;
+pub mod unx1923_lazy_tlb;
+pub mod unx1944_ipi_priority;
+pub mod unx1964_freq_req_path;
+pub mod unx1984_gov_input_contract;
+pub mod unx2010_coupled_scenarios;
+pub mod unx2023_idle_selector;
