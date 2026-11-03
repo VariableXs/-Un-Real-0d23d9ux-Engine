@@ -13268,3 +13268,16 @@ pub mod unx1608_ap7path;
 pub mod unx1626_ctxswcnt;
 pub mod unx1646_loadweight;
 pub mod unx1665_placedtree;
+
+// ── AI-VX3-1103 批3：UNX-F1683/F1705/F1724/F1747/F1786/F1806/F1827/F1847/F1866/F1883/F1907（0x72400..=0x726C0 十一槽独占）──
+pub mod unx1683_quanta;
+pub mod unx1705_loadtrack;
+pub mod unx1724_migrback;
+pub mod unx1747_wakeprim;
+pub mod unx1786_apfirstchk;
+pub mod unx1806_cutin;
+pub mod unx1827_fpenabled;
+pub mod unx1847_ipihier;
+pub mod unx1866_deadlockd;
+pub mod unx1883_tripchain;
+pub mod unx1907_xstinj;
