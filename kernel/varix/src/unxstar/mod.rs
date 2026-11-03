@@ -13295,3 +13295,17 @@ pub mod unx2064_sampbeat;
 pub mod unx2085_stressxp;
 pub mod unx2114_docgraph2;
 pub mod unx2124_reconcile2;
+
+// ── AI-VX3-1103 批5：UNX-F2144/F2164/F2184/F2204/F2226/F2244/F2264/F2284/F2304/F2324/F2344/F2364（0x72A00..=0x72CC0 十二槽独占）──
+pub mod unx2144_jointest;
+pub mod unx2164_stressinj;
+pub mod unx2184_judge3s;
+pub mod unx2204_freezelist;
+pub mod unx2226_rootsync;
+pub mod unx2244_freezefinal;
+pub mod unx2264_debtplan;
+pub mod unx2284_schedpan;
+pub mod unx2304_vocab;
+pub mod unx2324_c1c2;
+pub mod unx2344_grand800;
+pub mod unx2364_uxclose;
