@@ -13240,3 +13240,17 @@ pub mod unx2764_pageclass_rate;
 pub mod unx2784_hugepage_split;
 pub mod unx2803_release_storm;
 pub mod unx2823_fault_reclaim_war;
+
+// ── AI-VX3-1103 批1（补远端基底重提）：UNX-F0524/F0544/F0568/F0587/F0806/F1003/F1043/F1062/F1364/F1384/F1406/F1424（0x71E00..=0x720C0 十二槽独占）──
+pub mod unx0524_suitegroups;
+pub mod unx0544_ringlog;
+pub mod unx0568_rtcwake;
+pub mod unx0587_dupparam;
+pub mod unx0806_ist3stack;
+pub mod unx1003_tsccal;
+pub mod unx1043_tsdeadline;
+pub mod unx1062_tickdual;
+pub mod unx1364_cachefriend;
+pub mod unx1384_takeover3;
+pub mod unx1406_percpu_ledger;
+pub mod unx1424_overrate;
