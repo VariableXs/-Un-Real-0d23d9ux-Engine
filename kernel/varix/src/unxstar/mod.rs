@@ -13281,3 +13281,17 @@ pub mod unx1847_ipihier;
 pub mod unx1866_deadlockd;
 pub mod unx1883_tripchain;
 pub mod unx1907_xstinj;
+
+// ── AI-VX3-1103 批4：UNX-F1766/F1924/F1945/F1965/F1985/F2011/F2024/F2042/F2064/F2085/F2114/F2124（0x72700..=0x729C0 十二槽独占）──
+pub mod unx1766_cpuload;
+pub mod unx1924_pcid;
+pub mod unx1945_initipi;
+pub mod unx1965_trlatency;
+pub mod unx1985_govinj;
+pub mod unx2011_ktestfam;
+pub mod unx2024_menuforecast;
+pub mod unx2042_effcurve;
+pub mod unx2064_sampbeat;
+pub mod unx2085_stressxp;
+pub mod unx2114_docgraph2;
+pub mod unx2124_reconcile2;
