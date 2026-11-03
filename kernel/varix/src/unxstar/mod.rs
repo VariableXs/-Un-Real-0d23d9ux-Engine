@@ -13254,3 +13254,17 @@ pub mod unx1364_cachefriend;
 pub mod unx1384_takeover3;
 pub mod unx1406_percpu_ledger;
 pub mod unx1424_overrate;
+
+// ── AI-VX3-1103 批2：UNX-F1442/F1462/F1485/F1506/F1522/F1544/F1564/F1584/F1608/F1626/F1646/F1665（0x72100..=0x723C0 十二槽独占）──
+pub mod unx1442_jsonexport;
+pub mod unx1462_seqgap;
+pub mod unx1485_gapfill3;
+pub mod unx1506_regrun;
+pub mod unx1522_assetledger;
+pub mod unx1544_ifacereg;
+pub mod unx1564_irqconsume;
+pub mod unx1584_grandfinal;
+pub mod unx1608_ap7path;
+pub mod unx1626_ctxswcnt;
+pub mod unx1646_loadweight;
+pub mod unx1665_placedtree;
