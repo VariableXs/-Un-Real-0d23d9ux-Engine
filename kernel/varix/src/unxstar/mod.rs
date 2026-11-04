@@ -2550,7 +2550,59 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F11097", unx11097_accept_site_ledger::run_unx11097_checks as fn() -> CheckSet),
         ("UNX-F11098", unx11098_seal_rerun_guide::run_unx11098_checks as fn() -> CheckSet),
         ("UNX-F11099", unx11099_normal_protocol::run_unx11099_checks as fn() -> CheckSet),
-("UNX-F24200", unx24200_vblank_hpd::run_unx24200_checks as fn() -> CheckSet),
+        ("UNX-F24200", unx24200_vblank_hpd::run_unx24200_checks as fn() -> CheckSet),
+        ("UNX-F48819", unx48819_input_seal::run_unx48819_checks as fn() -> CheckSet),
+        ("UNX-F48839", unx48839_keymap_seal::run_unx48839_checks as fn() -> CheckSet),
+        ("UNX-F48859", unx48859_mt_seal::run_unx48859_checks as fn() -> CheckSet),
+        ("UNX-F48879", unx48879_latency_seal::run_unx48879_checks as fn() -> CheckSet),
+        ("UNX-F48881", unx48881_ops_core::run_unx48881_checks as fn() -> CheckSet),
+        ("UNX-F48883", unx48883_ops_meta::run_unx48883_checks as fn() -> CheckSet),
+        ("UNX-F48885", unx48885_ops_guard::run_unx48885_checks as fn() -> CheckSet),
+        ("UNX-F48888", unx48888_ops_dispatch::run_unx48888_checks as fn() -> CheckSet),
+        ("UNX-F48891", unx48891_ops_edge::run_unx48891_checks as fn() -> CheckSet),
+        ("UNX-F48893", unx48893_ops_bridge::run_unx48893_checks as fn() -> CheckSet),
+        ("UNX-F48896", unx48896_ops_quality::run_unx48896_checks as fn() -> CheckSet),
+        ("UNX-F48899", unx48899_ops_seal::run_unx48899_checks as fn() -> CheckSet),
+        ("UNX-F48919", unx48919_touchpad_seal::run_unx48919_checks as fn() -> CheckSet),
+        ("UNX-F48939", unx48939_pointer_seal::run_unx48939_checks as fn() -> CheckSet),
+        ("UNX-F48959", unx48959_wheel_seal::run_unx48959_checks as fn() -> CheckSet),
+        ("UNX-F48979", unx48979_seal::run_unx48979_checks as fn() -> CheckSet),
+        ("UNX-F48981", unx48981_gesture_core::run_unx48981_checks as fn() -> CheckSet),
+        ("UNX-F48983", unx48983_meta::run_unx48983_checks as fn() -> CheckSet),
+        ("UNX-F48985", unx48985_guard::run_unx48985_checks as fn() -> CheckSet),
+        ("UNX-F48987", unx48987_dispatch::run_unx48987_checks as fn() -> CheckSet),
+        ("UNX-F48989", unx48989_edge::run_unx48989_checks as fn() -> CheckSet),
+        ("UNX-F48991", unx48991_bridge::run_unx48991_checks as fn() -> CheckSet),
+        ("UNX-F48993", unx48993_quality::run_unx48993_checks as fn() -> CheckSet),
+        ("UNX-F48995", unx48995_stress::run_unx48995_checks as fn() -> CheckSet),
+        ("UNX-F48997", unx48997_adapt::run_unx48997_checks as fn() -> CheckSet),
+        ("UNX-F48999", unx48999_seal::run_unx48999_checks as fn() -> CheckSet),
+        // ── VX6 B11 族（F49001..=F49020）：时间戳抖动 / 降级阶梯 / 面板热插 /
+        //    隔离带 / fuzz ×10^4 / 四点埋点 / 拷贝语义 / 错误码族 / 20 例入库 /
+        //    B11 收官印 ──
+        ("UNX-F49001", unx49001_quirk::run_unx49001_checks as fn() -> CheckSet),
+        ("UNX-F49003", unx49003_degrade::run_unx49003_checks as fn() -> CheckSet),
+        ("UNX-F49005", unx49005_panel::run_unx49005_checks as fn() -> CheckSet),
+        ("UNX-F49007", unx49007_isolation::run_unx49007_checks as fn() -> CheckSet),
+        ("UNX-F49009", unx49009_fuzz::run_unx49009_checks as fn() -> CheckSet),
+        ("UNX-F49011", unx49011_obs::run_unx49011_checks as fn() -> CheckSet),
+        ("UNX-F49013", unx49013_copy::run_unx49013_checks as fn() -> CheckSet),
+        ("UNX-F49015", unx49015_errcodes::run_unx49015_checks as fn() -> CheckSet),
+        ("UNX-F49017", unx49017_cases::run_unx49017_checks as fn() -> CheckSet),
+        ("UNX-F49019", unx49019_seal::run_unx49019_checks as fn() -> CheckSet),
+        // ── VX6 B12 族（F49021..=F49040）：键盘全表逐键 / 死键 / LED 失败 /
+        //    修饰键 / 键图时延 / 用例池 / fuzz 联轧 / 错误码与四点埋点 /
+        //    fuzz 面与 20 例 / 防重 grep 与收官印 ──
+        ("UNX-F49021", unx49021_keys::run_unx49021_checks as fn() -> CheckSet),
+        ("UNX-F49023", unx49023_deadkey::run_unx49023_checks as fn() -> CheckSet),
+        ("UNX-F49025", unx49025_ledfail::run_unx49025_checks as fn() -> CheckSet),
+        ("UNX-F49027", unx49027_modkeys::run_unx49027_checks as fn() -> CheckSet),
+        ("UNX-F49029", unx49029_keymap_latency::run_unx49029_checks as fn() -> CheckSet),
+        ("UNX-F49031", unx49031_casepool::run_unx49031_checks as fn() -> CheckSet),
+        ("UNX-F49033", unx49033_fuzzcross::run_unx49033_checks as fn() -> CheckSet),
+        ("UNX-F49035", unx49035_errcode_probe::run_unx49035_checks as fn() -> CheckSet),
+        ("UNX-F49037", unx49037_fuzzcases::run_unx49037_checks as fn() -> CheckSet),
+        ("UNX-F49039", unx49039_seal::run_unx49039_checks as fn() -> CheckSet),
     ]
 }
 
@@ -13168,6 +13220,12 @@ pub mod unx1363_lock_contention;
 pub mod unx1383_fourstate_final;
 pub mod unx1405_latency_ingest;
 pub mod unx1423_threshold_registry;
+
+// ---- AI-VX3-1103A（2026-11-04）：1103 池首批 4 单（SEG 0x6FA00~0x6FAC0 独占）----
+pub mod unx1364_cfriendly;
+pub mod unx1384_trilogy_audit;
+pub mod unx1406_percpu_merge;
+pub mod unx1424_overrun_rate;
 pub mod unx1441_export_schema;
 pub mod unx1461_zero_loss_eq;
 pub mod unx1484_timing_backfill;
@@ -13226,22 +13284,685 @@ pub mod unx2523_sample_ring;
 pub mod unx2543_alloc_err_matrix;
 pub mod unx2565_pagetable_single;
 pub mod unx2586_1g_mapping;
+pub mod unx11380_ktest_aggregate;
+pub mod unx11500_b15_ktest_assert_agg;
+pub mod unx11500_ktest_agg19;
+pub mod unx11501_basename_strip;
+pub mod unx11502_dirname_prefix;
+pub mod unx11524_cmp_bytes;
+pub mod unx11525_od_dump;
+pub mod unx11526_stat_snapshot;
+pub mod unx11527_readlink_target;
+pub mod unx11528_realpath_normalize;
+pub mod unx11529_nl_number;
+pub mod unx11530_tac_reverse;
+pub mod unx11531_rev_chars;
+pub mod unx11532_expand_tabs;
+pub mod unx11533_fold_wrap;
+pub mod unx11534_fmt_reflow;
+pub mod unx11535_split_slice;
+pub mod unx11536_csplit_context;
+pub mod unx11537_unlink_single;
+pub mod unx11538_hash_family;
+pub mod unx11539_stdin_dash;
+pub mod unx11540_b17_ktest;
+pub mod unx11541_nice;
+pub mod unx11542_nohup;
+pub mod unx11543_timeout;
+pub mod unx11544_du;
+pub mod unx11545_df;
+pub mod unx11546_sync_flush;
+pub mod unx11547_mktemp_create;
+pub mod unx11548_nproc_cpus;
+pub mod unx11549_factor_u64;
+pub mod unx11550_tsort_order;
+pub mod unx11551_who_tty;
+pub mod unx11552_host_identity;
+pub mod unx11553_install_attr;
+pub mod unx11554_users_pinky;
+pub mod unx11555_vdir_dircolors;
+pub mod unx11556_numfmt;
+pub mod unx11557_shuf;
+pub mod unx11558_truncate;
+pub mod unx11559_retro60;
+pub mod unx11560_ktest_agg;
+pub mod unx11561_cbyte_order;
+pub mod unx11562_env_prio;
+pub mod unx11563_setlocale_fb;
+pub mod unx11564_sort_collate;
+pub mod unx11565_grep_cclass;
+pub mod unx11566_cut_bc;
+pub mod unx11567_tr_ctype;
+pub mod unx11568_wc_mchars;
+pub mod unx11569_sed_ycase;
+pub mod unx11570_ls_byteshow;
+pub mod unx11571_cmp_od;
+pub mod unx11572_ujc_order;
+pub mod unx11573_date_fmt;
+pub mod unx11574_printf_s;
+pub mod unx11575_test_expr;
+pub mod unx11576_nl_fold;
+pub mod unx11577_msg_cat;
+pub mod unx11578_numeric;
+pub mod unx11579_lc_snap;
+pub mod unx11580_ktest_agg;
+pub mod unx11581_argv0_dispatch;
+pub mod unx11582_busybox_list;
+pub mod unx11583_applet_form;
+pub mod unx11584_install_applet;
+pub mod unx11585_unknown_applet;
+pub mod unx11586_help_dual;
+pub mod unx11587_busybox_ls;
+pub mod unx11588_busybox_cp;
+pub mod unx11589_busybox_ash;
+pub mod unx11590_busybox_date;
+pub mod unx11591_busybox_sed;
+pub mod unx11592_busybox_grep;
+pub mod unx11593_applet_alias;
+pub mod unx11594_self_exe;
+pub mod unx11595_config_shrink;
+pub mod unx11596_static_busybox;
+pub mod unx11597_env_pass;
+pub mod unx11598_ps_min;
+pub mod unx11599_busybox_samples;
+pub mod unx11600_ktest_b20;
+pub mod unx11601_elf_magic;
+pub mod unx11602_ehdr_trunc;
+pub mod unx11603_elf_tables;
+pub mod unx11604_ptload_bounds;
+pub mod unx11605_etype_gate;
+pub mod unx11606_compat_gate;
+pub mod unx11607_plain_files;
+pub mod unx11608_exec_path;
+pub mod unx11609_interp_missing;
+pub mod unx11610_interp_path;
+pub mod unx11611_ldso_bad_exec;
+pub mod unx11612_memsz_paradox;
+pub mod unx11613_align_page;
+pub mod unx11614_phentsize_paradox;
+pub mod unx11615_load_anchor;
+pub mod unx11616_probe_forge;
+pub mod unx11617_err_family;
+pub mod unx11618_text_pair;
+pub mod unx11619_snapshot_pair;
+pub mod unx11620_ktest_agg;
+pub mod unx11621_dlopen_null;
+pub mod unx11622_so_trunc;
+pub mod unx11623_so_class;
+pub mod unx11624_so_machine;
+pub mod unx11625_so_magic;
+pub mod unx11626_needed_missing;
+pub mod unx11627_needed_cycle;
+pub mod unx11628_verneed_corrupt;
+pub mod unx11629_symhash_corrupt;
+pub mod unx11630_now_undef;
+pub mod unx11631_lazy_trigger;
+pub mod unx11632_textrel_policy;
+pub mod unx11633_dlopen_eacces;
+pub mod unx11634_prot_linkage;
+pub mod unx11635_noload_probe;
+pub mod unx11636_dlclose_refs;
+pub mod unx11637_soname_path;
+pub mod unx11638_dlsym_null;
+pub mod unx11639_probe_gen_snapshot;
+pub mod unx11640_b22_ktest_agg;
+pub mod unx11641_locale_bad;
+pub mod unx11642_lang_absent;
+pub mod unx11643_setlocale_empty;
+pub mod unx11644_lc_numeric;
+pub mod unx11645_setlocale_alias;
+pub mod unx11646_locale_warn;
+pub mod unx11647_musl_locale_fixed;
+pub mod unx11648_verdef_verneed;
+pub mod unx11649_version_missing_text;
+pub mod unx11650_dlvsym_missing;
+pub mod unx11651_verneed_missing;
+pub mod unx11652_version_hash;
+pub mod unx11653_musl_version_silent;
+pub mod unx11654_verneed_oob;
+pub mod unx11655_check_versions_abort;
+pub mod unx11656_weak_nover;
+pub mod unx11657_symver_verdef;
+pub mod unx11658_bad_locale_matrix;
+pub mod unx11659_vermsg_two_machine;
+pub mod unx11660_ktest_b23_agg;
+pub mod unx11661_bb_notfound;
+pub mod unx11662_argv0_unregistered;
+pub mod unx11663_trimmed_applet_text;
+pub mod unx11664_bb_notfound_exit;
+pub mod unx11665_sh_cmd_notfound_text;
+pub mod unx11666_path_notfound;
+pub mod unx11667_bb_help_exit0;
+pub mod unx11668_applet_help_usage;
+pub mod unx11669_unknown_option_applet;
+pub mod unx11670_bad_option_value;
+pub mod unx11671_applet_case_alias;
+pub mod unx11673_applet_table_zero_diff;
+pub mod unx11674_applet_not_found_text;
+pub mod unx11675_notfound_vs_enoent;
+pub mod unx11676_trim_matrix_rebuild;
+pub mod unx11677_help_dual_snapshot;
+pub mod unx11678_stderr_stdout_split;
+pub mod unx11679_unknown_applet_exit_matrix;
+pub mod unx11680_b24_ktest_agg;
+pub mod unx11681_enospc_master;
+pub mod unx11682_cp_enospc_abort;
+pub mod unx11683_dd_enospc_records;
+pub mod unx11684_tee_enospc_halfwrite;
+pub mod unx11685_sort_tmpfile_enospc;
+pub mod unx11686_sed_i_enospc;
+pub mod unx11688_touch_mkdir_enospc;
+pub mod unx11689_df_zero_avail;
+pub mod unx11690_rename_enospc;
+pub mod unx11691_fsync_enospc;
+pub mod unx11692_du_readonly_stat;
+pub mod unx11693_pipe_block_band;
+pub mod unx11694_enospc_text_verbatim;
+pub mod unx11695_enospc_vs_edquot;
+pub mod unx11697_dd_noerror_enospc_tier;
+pub mod unx11698_exit_code_matrix_enospc;
+pub mod unx11699_b25_dual_snapshot;
+pub mod unx11300_ktest_agg_b05;
+pub mod unx11300_ktest_assert_batch;
+pub mod unx11301_pt_tls_segment;
+pub mod unx11302_tls_variant2_layout;
+pub mod unx11303_initial_exec;
+pub mod unx11304_local_dynamic;
+pub mod unx11305_tls_get_addr;
+pub mod unx11306_tls_block_image;
+pub mod unx11307_static_tls_surplus;
+pub mod unx11308_tls_index_fields;
+pub mod unx11309_tls_reloc_consume;
+pub mod unx11310_tcb_layout;
+pub mod unx11311_tls_thread_create;
+pub mod unx11312_tls_thread_exit;
+pub mod unx11313_main_tls_init;
+pub mod unx11314_tls_align_bounds;
+pub mod unx11315_dlopen_tls_gap;
+pub mod unx11316_tls_signal_ctx;
+pub mod unx11317_tls_introspect;
+pub mod unx11318_tls_stress;
+pub mod unx11319_tls_layout_sign;
+pub mod unx11320_ktest_agg;
+pub mod unx11321_atexit_lifo;
+pub mod unx11322_cxa_atexit;
+pub mod unx11323_exit_order;
+pub mod unx11324_fast_exit;
+pub mod unx11325_wait_status;
+pub mod unx11326_stdio_flush;
+pub mod unx11327_mt_exit;
+pub mod unx11328_on_exit;
+pub mod unx11329_fork_atexit;
+pub mod unx11330_exit_mmap;
+pub mod unx11331_abort_exit;
+pub mod unx11332_exit_group;
+pub mod unx11333_atexit_capacity;
+pub mod unx11334_tls_dtor_drain;
+pub mod unx11335_quick_exit_chain;
+pub mod unx11336_exit_code_sat;
+pub mod unx11337_dual_chain_sign;
+pub mod unx11338_exit_syscall_map;
+pub mod unx11339_exit_path_trace;
+pub mod unx11340_b07_assert_agg;
+pub mod unx11341_maps_columns;
+pub mod unx11342_maps_vma_view;
+pub mod unx11343_exe_readlink;
+pub mod unx11344_cmdline_argv;
+pub mod unx11345_environ_split;
+pub mod unx11346_auxv_pairs;
+pub mod unx11347_status_lines;
+pub mod unx11348_glibc_probe;
+pub mod unx11349_procfs_consumer;
+pub mod unx11350_procfs_timepoint;
+pub mod unx11351_maps_phdr_cross;
+pub mod unx11352_procfs_fd_dir;
+pub mod unx11353_procfs_err_paths;
+pub mod unx11354_procfs_dual_sign;
+pub mod unx11355_procfs_perf;
+pub mod unx11356_procfs_visibility;
+pub mod unx11357_procfs_diag_link;
+pub mod unx11358_procfs_gap_cover;
+pub mod unx11359_procfs_judge_dual;
+pub mod unx11360_b08_ktest_agg;
+pub mod unx11361_dlopen_engine;
+pub mod unx11362_dl_bindmode;
+pub mod unx11363_dl_scope;
+pub mod unx11364_dlsym_handle;
+pub mod unx11365_dlsym_special;
+pub mod unx11366_dlerror_tls;
+pub mod unx11367_dlclose_refs;
+pub mod unx11368_dl_search_order;
+pub mod unx11369_dlopen_fail;
+pub mod unx11370_dt_needed;
+pub mod unx11371_init_fini_order;
+pub mod unx11372_dlopen_reentry;
+pub mod unx11373_triple_pipeline;
+pub mod unx11374_criterion_parser;
+pub mod unx11375_sandbox_stage;
+pub mod unx11376_compare_modes;
+pub mod unx11377_snapshot_corpus;
+pub mod unx11378_loader_cosign;
+pub mod unx11379_dual_adapter;
+pub mod unx11381_ls_default_list;
+pub mod unx11382_ls_long_nine_cols;
+pub mod unx11383_ls_hidden_dots;
+pub mod unx11384_ls_recursive_order;
+pub mod unx11385_ls_byte_order;
+pub mod unx11386_ls_exit_stderr;
+pub mod unx11387_cp_file_copy;
+pub mod unx11388_cp_recursive_tree;
+pub mod unx11389_cp_overwrite_family;
+pub mod unx11390_cp_preserve_attr;
+pub mod unx11391_cp_exdev_fallback;
+pub mod unx11392_rm_single_unlink;
+pub mod unx11393_rm_recursive_tree;
+pub mod unx11394_rm_force_silent;
+pub mod unx11395_rm_interactive;
+pub mod unx11396_ls_cp_rm_chain;
+pub mod unx11397_ls_cp_rm_text_truth;
+pub mod unx11398_criteria_registry;
+pub mod unx11399_dual_machine_same_code;
+pub mod unx11400_ktest_batch_aggregate;
+pub mod unx11401_cat_concat_order;
+pub mod unx11402_cat_number_lines;
+pub mod unx11403_cat_visible_flags;
+pub mod unx11404_cat_stdin_mixed;
+pub mod unx11405_cat_error_enoent;
+pub mod unx11406_mv_same_dir_rename;
+pub mod unx11407_mv_cross_dir_move;
+pub mod unx11408_mv_cross_device_fallback;
+pub mod unx11409_mv_overwrite_family;
+pub mod unx11410_mv_mount_boundary;
+pub mod unx11411_chmod_octal_mode;
+pub mod unx11412_chmod_symbolic_mode;
+pub mod unx11413_chmod_recursive_x;
+pub mod unx11414_chmod_umask_boundary;
+pub mod unx11415_cat_mv_chmod_exit_aggregate;
+pub mod unx11416_cat_mv_chmod_text_truth;
+pub mod unx11417_cat_mv_chmod_pipeline_probe;
+pub mod unx11418_three_tool_criteria_register;
+pub mod unx11419_three_tool_dual_machine;
+pub mod unx11420_b11_ktest_assert_aggregate;
+pub mod unx11422_chown_recursive;
+pub mod unx11423_chown_name_order;
+pub mod unx11424_chown_eperm;
+pub mod unx11425_chown_symlink_h;
+pub mod unx11426_ln_hardlink;
+pub mod unx11427_ln_symlink;
+pub mod unx11428_ln_force;
+pub mod unx11429_rename;
+pub mod unx11430_mv_crossdev;
+pub mod unx11431_rm;
+pub mod unx11432_cat;
+pub mod unx11433_wc;
+pub mod unx11434_headtail;
+pub mod unx11435_chmod_bits;
+pub mod unx11436_umask;
+pub mod unx11437_stat_fields;
+pub mod unx11438_truncate;
+pub mod unx11439_mkdirp;
+pub mod unx11440_rmdir;
+pub mod unx11441_cp_modes;
+pub mod unx11442_cpr;
+pub mod unx11443_filetype;
+pub mod unx11444_mount_flags;
+pub mod unx11445_unlink_open;
+pub mod unx11446_access;
+pub mod unx11447_readlink;
+pub mod unx11448_canonical;
+pub mod unx11449_df_du;
+pub mod unx11450_utimens;
+pub mod unx11451_basename;
+pub mod unx11452_grep_tristate;
+pub mod unx11453_stdin_pipe;
+pub mod unx11454_stream_bounds;
+pub mod unx11455_env_anchor;
+pub mod unx11456_err_text;
+pub mod unx11457_pipe_chain;
+pub mod unx11458_corpus_catalog;
+pub mod unx11459_dual_machine;
+pub mod unx11460_ktest_agg_b13;
+pub mod unx11461_mv_rename;
+pub mod unx11462_rm_recursive;
+pub mod unx11463_find_walk;
+pub mod unx11464_du_account;
+pub mod unx11465_df_statfs;
+pub mod unx11466_inode_alloc;
+pub mod unx11467_dirent_layout;
+pub mod unx11468_path_normalize;
+pub mod unx11469_umask_chmod;
+pub mod unx11470_sticky_dir;
+pub mod unx11471_setid_exec;
+pub mod unx11472_truncate;
+pub mod unx11473_sparse_holes;
+pub mod unx11474_fd_table;
+pub mod unx11475_dup_dup2;
+pub mod unx11476_fcntl_locks;
+pub mod unx11477_poll_ready;
+pub mod unx11478_pipe_buffer;
+pub mod unx11479_statfs_clamp;
+pub mod unx11480_cwd_inherit;
+pub mod unx11481_chroot_bound;
+pub mod unx11482_open_flags;
+pub mod unx11483_append_atomic;
+pub mod unx11484_symlink_loop;
+pub mod unx11485_readdir_cookie;
+pub mod unx11486_echo_flags;
+pub mod unx11487_echo_escapes;
+pub mod unx11488_dd_copy;
+pub mod unx11489_dd_conv;
+pub mod unx11490_dd_seek;
+pub mod unx11491_xargs_batch;
+pub mod unx11492_xargs_place;
+pub mod unx11493_xargs_rc;
+pub mod unx11494_five_pipe;
+pub mod unx11495_five_errtext;
+pub mod unx11496_five_catalog;
+pub mod unx11497_five_dual;
+pub mod unx11498_tool_matrix20;
+pub mod unx11499_snapshot_dual;
+pub mod unx11501_basename_path_tail;
+pub mod unx11502_dirname_path_head;
+pub mod unx11503_env_print_opts;
+pub mod unx11504_id_identity;
+pub mod unx11505_whoami_effective;
+pub mod unx11506_uname_flags;
+pub mod unx11507_date_fmt_opt;
+pub mod unx11508_pwd_mode;
+pub mod unx11509_printf_fmt;
+pub mod unx11510_seq_range;
+pub mod unx11511_sleep_duration;
+pub mod unx11512_true_false_yes;
+pub mod unx11513_test_bracket_eval;
+pub mod unx11514_cut_three_axes;
+pub mod unx11515_uniq_adjacent;
+pub mod unx11516_paste_two_modes;
+pub mod unx11517_join_equi;
+pub mod unx11518_comm_three_column;
+pub mod unx11519_tee_three_way;
+pub mod unx11520_b16_ktest_assert;
+pub mod unx11521_md5sum_digest;
+pub mod unx11522_sha2_family;
+pub mod unx11523_cksum_posix;
 
-// ---- AI-VX3-1030（2026-10-31）：批H 12 单（SEG 0x6D900~0x6DBC0 独占）----
-pub mod unx2605_filepage_fault;
-pub mod unx2625_asid_rotation;
-pub mod unx2645_fork_isolation;
-pub mod unx2665_readhit_noblock;
-pub mod unx2684_pagecache_selfcheck;
-pub mod unx2704_active_demote;
-pub mod unx2725_clean_release;
-pub mod unx2743_thread_sleep_wake;
-pub mod unx2764_pageclass_rate;
-pub mod unx2784_hugepage_split;
-pub mod unx2803_release_storm;
-pub mod unx2823_fault_reclaim_war;
+// ---- AI-VX3-1102（2026-11-02）：批H 12 单（SEG 0x6DC00~0x6DEC0 独占）----
+pub mod unx0048_numa_topo2;
+pub mod unx0049_systable_snap;
+pub mod unx0050_uvar_ro_enum;
+pub mod unx0051_sb_mode_probe;
+pub mod unx0052_memdesc_attrs;
+pub mod unx0053_ebs_timing;
+pub mod unx0054_acpi_compat;
+pub mod unx0055_madt_nmi_full;
+pub mod unx0056_pm_caps_ro;
+pub mod unx0057_tpm_evlog_export;
+pub mod unx0058_smbios_ext;
+pub mod unx0059_edid_capture;
 
-// ── AI-VX3-1103 批1（补远端基底重提）：UNX-F0524/F0544/F0568/F0587/F0806/F1003/F1043/F1062/F1364/F1384/F1406/F1424（0x71E00..=0x720C0 十二槽独占）──
+// ---- AI-VX3-1102（2026-11-02）：批I 12 单（SEG 0x6DF00~0x6E1C0 独占）----
+pub mod unx0063_reclaim_nvs;
+pub mod unx0064_low1mb_layout;
+pub mod unx0065_e820_bridge2;
+pub mod unx0066_memmap_snapshot;
+pub mod unx0067_zone_aligner;
+pub mod unx0068_hugepage_avail;
+pub mod unx0069_hotplug_bitmap2;
+pub mod unx0070_memmap_persist;
+pub mod unx0071_early_alloc2;
+pub mod unx0072_page_ledger_audit;
+pub mod unx0073_hole_detector;
+pub mod unx0074_numa_page_bitmap;
+
+// ---- AI-VX3-1102（2026-11-02）：批J 12 单（SEG 0x6E200~0x6E4C0 独占）----
+pub mod unx0075_memcap_policy;
+pub mod unx0076_badpage_zone2;
+pub mod unx0077_mem_heat2;
+pub mod unx0078_cr3_selftest2;
+pub mod unx0079_a4_handoff2;
+pub mod unx0080_b04_ktest;
+pub mod unx0085_bss_zero;
+pub mod unx0086_symtab_panic;
+pub mod unx0087_kaslr_off;
+pub mod unx0088_manifest_replay;
+pub mod unx0089_highhalf_offset;
+pub mod unx0090_phys_base_pick;
+
+// ---- AI-VX3-1102（2026-11-02）：批K 12 单（SEG 0x6E500~0x6E7C0 独占）----
+pub mod unx0091_pagetable_kaslr;
+pub mod unx0092_bl_coop_entropy;
+pub mod unx0093_sidechannel_min;
+pub mod unx0094_reloc_audit;
+pub mod unx0095_boot_fp;
+pub mod unx0096_seg_loader;
+pub mod unx0097_bad_image_reject;
+pub mod unx0098_early_map_consist;
+pub mod unx0099_reloc_timing;
+pub mod unx0100_b05_ktest;
+pub mod unx0104_dual_channel;
+pub mod unx0105_log_levels;
+
+// ---- AI-VX3-1102（2026-11-02）：批L 12 单（SEG 0x6E800~0x6EAC0 独占）----
+pub mod unx0106_log_tsc_ts;
+pub mod unx0107_log_ring;
+pub mod unx0108_panic_log_snap;
+pub mod unx0109_uart_cfg;
+pub mod unx0110_console_attr;
+pub mod unx0111_scroll_history;
+pub mod unx0112_ansi_csi;
+pub mod unx0113_log_sinks;
+pub mod unx0114_diag_ui;
+pub mod unx0115_quiet_boot;
+pub mod unx0116_log_inject_guard;
+pub mod unx0117_serial_mirror;
+
+// ---- AI-VX3-1102（2026-11-02）：批M 12 单（SEG 0x6EB00~0x6EDC0 独占）----
+pub mod unx0118_log_format;
+pub mod unx0119_fail_probes;
+pub mod unx0120_b06_ktest;
+pub mod unx0126_boot_badges;
+pub mod unx0127_budget_alarm;
+pub mod unx0128_nmi_watchdog;
+pub mod unx0129_recovery_menu;
+pub mod unx0130_boot_record;
+pub mod unx0131_boot_counter;
+pub mod unx0132_health_bitmap;
+pub mod unx0133_boot_guard;
+pub mod unx0134_ab_slots;
+
+// ---- AI-VX3-1102（2026-11-02）：批N 12 单（SEG 0x6EE00~0x6F0C0 独占）----
+pub mod unx0135_boot_selector;
+pub mod unx0136_diag_entry;
+pub mod unx0137_param_editor;
+pub mod unx0138_boot_stats;
+pub mod unx0139_wd_a2_handoff;
+pub mod unx0149_sbom2;
+pub mod unx0150_imgsplit2;
+pub mod unx0151_writetool2;
+pub mod unx0152_wverify2;
+pub mod unx0153_multitgt2;
+pub mod unx0154_qsmoke2;
+pub mod unx0155_checksum2;
+
+// ---- AI-VX3-1102（2026-11-02）：批O 12 单（SEG 0x6F100~0x6F3C0 独占）----
+pub mod unx0159_slowmedia2;
+pub mod unx0160_ktb08b;
+pub mod unx0166_watchdog2;
+pub mod unx0167_mixedmode2;
+pub mod unx0168_ebscb2;
+pub mod unx0169_rtsvc2;
+pub mod unx0170_sbchain2;
+pub mod unx0171_tpmreplay2;
+pub mod unx0172_efigpt2;
+pub mod unx0173_bootenum2;
+pub mod unx0174_reentry2;
+pub mod unx0175_efigc2;
+
+// ---- AI-VX3-1102（2026-11-02）：批P 12 单（SEG 0x6F400~0x6F6C0 独占）----
+pub mod unx0060_ktb03b;
+pub mod unx0156_builddiag2;
+pub mod unx0157_imgstats2;
+pub mod unx0158_archnaming2;
+pub mod unx0176_svcdegrade2;
+pub mod unx0177_rtpnx2;
+pub mod unx0178_efifp;
+pub mod unx0179_eficall_fail;
+pub mod unx0180_ktb09b;
+pub mod unx0189_gdt_semantics;
+pub mod unx0190_tss_ist;
+pub mod unx0191_stack_canary;
+
+// ---- AI-VX3-1102（2026-11-02）：批Q 12 单（SEG 0x6F700~0x6F9C0 独占）----
+pub mod unx0192_fsgs_percpu;
+pub mod unx0193_cr_policy;
+pub mod unx0194_mtrr_pat;
+pub mod unx0195_cacheline;
+pub mod unx0196_cli_window;
+pub mod unx0197_init_checklist;
+pub mod unx0198_init_timeline;
+pub mod unx0199_data_zero;
+pub mod unx0200_ktb10b;
+pub mod unx0209_gantt;
+pub mod unx0210_hwfp_chain;
+pub mod unx0211_multiboot_stats;
+
+// ── VX6 B03 族（F48841..=F48860）：扫描码归一 / MT 槽 / 轨迹 / quirk / 观测 ──
+pub mod unx48841_scancode_core;
+pub mod unx48843_mt_meta;
+pub mod unx48845_mt_guard;
+pub mod unx48848_mt_dispatch;
+pub mod unx48851_mt_edge;
+pub mod unx48853_mt_bridge;
+pub mod unx48856_mt_quality;
+pub mod unx48859_mt_seal;
+
+// ── VX6 B04 族（F48861..=F48880）：四段延迟账 / TSC 源 / 分派环 / 边界 / 跨模块 / 质量 ──
+pub mod unx48861_latency_core;
+pub mod unx48863_latency_meta;
+pub mod unx48865_latency_guard;
+pub mod unx48868_latency_dispatch;
+pub mod unx48871_latency_edge;
+pub mod unx48873_latency_bridge;
+pub mod unx48876_latency_quality;
+pub mod unx48879_latency_seal;
+
+// ── VX6 B05 族（F48881..=F48900）：三操作 SOP / 合并焦点 / 背压庇护 / 十设备对账 / 边界阶梯 / 五源普查 / 分位配额 / 收官 ──
+pub mod unx48881_ops_core;
+pub mod unx48883_ops_meta;
+pub mod unx48885_ops_guard;
+pub mod unx48888_ops_dispatch;
+pub mod unx48891_ops_edge;
+pub mod unx48893_ops_bridge;
+pub mod unx48896_ops_quality;
+pub mod unx48899_ops_seal;
+
+// ── VX6 B06 族（F48901..=F48920）：触控板能力 / 拒掌 / 灵敏度 / quirk / 质量 ──
+pub mod unx48901_touchpad_core;
+pub mod unx48903_touchpad_meta;
+pub mod unx48905_touchpad_guard;
+pub mod unx48908_touchpad_dispatch;
+pub mod unx48911_touchpad_edge;
+pub mod unx48913_touchpad_bridge;
+pub mod unx48916_touchpad_quality;
+pub mod unx48919_touchpad_seal;
+
+// ── VX6 B07 族（F48921..=F48940）：指针位移合成 / 加速曲线 / 五键 / 子像素 /
+//    边界静默 / 段内联轧 / 质量账 ──
+pub mod unx48921_pointer_core;
+pub mod unx48923_pointer_meta;
+pub mod unx48925_pointer_guard;
+pub mod unx48928_pointer_dispatch;
+pub mod unx48931_pointer_edge;
+pub mod unx48933_pointer_bridge;
+pub mod unx48936_pointer_quality;
+pub mod unx48939_pointer_seal;
+
+// ── VX6 B08 族（F48941..=F48960）：滚轮全语义 / WHEEL_DELTA / 水平 / HI_RES /
+//    降采样 / 路由反转 / 切轴锁定 / 平滑分账 / 质量账 ──
+pub mod unx48941_wheel_core;
+pub mod unx48943_wheel_meta;
+pub mod unx48945_wheel_guard;
+pub mod unx48948_wheel_dispatch;
+pub mod unx48951_wheel_edge;
+pub mod unx48953_wheel_bridge;
+pub mod unx48956_wheel_quality;
+pub mod unx48959_wheel_seal;
+
+// ── VX6 B09 族（F48961..=F48980）：1,000Hz 报点 / 风暴限流 / 旋钮加固 /
+//    背压水位 / 热拔零残留 / fuzz ×10^4 / 四点埋点 / 批次封存 ──
+pub mod unx48961_rate_core;
+pub mod unx48963_sched;
+pub mod unx48965_storm;
+pub mod unx48967_tuning;
+pub mod unx48969_backpressure;
+pub mod unx48971_hotremove;
+pub mod unx48973_fuzzface;
+pub mod unx48976_quality;
+pub mod unx48979_seal;
+
+// ── VX6 B01 族（F48801..=F48820）：统一输入事件层 / 帧原子 / 溢出账 / 分派环 ──
+pub mod unx48801_input_core;
+pub mod unx48803_input_meta;
+pub mod unx48805_input_guard;
+pub mod unx48808_input_dispatch;
+pub mod unx48811_input_edge;
+pub mod unx48813_input_bridge;
+pub mod unx48816_input_quality;
+pub mod unx48819_input_seal;
+
+// ── VX6 B02 族（F48821..=F48840）：keymap 三层解析 / 修饰锁存 / LED 双同步 ──
+pub mod unx48821_keymap_core;
+pub mod unx48823_keymap_meta;
+pub mod unx48825_keymap_guard;
+pub mod unx48828_keymap_dispatch;
+pub mod unx48831_keymap_edge;
+pub mod unx48833_keymap_bridge;
+pub mod unx48836_keymap_quality;
+pub mod unx48839_keymap_seal;
+
+// ── VX6 B10 族（F48981..=F49000）：手势字汇 / 手势元数据 / 触点上限与槽位 /
+//    手势→动作分派 / 四边滑入与保留区 / 原始触点桥接与热插拔 / 识别质量回归 /
+//    洪水压测与长跑 / 自适应阈值与快照回滚 / 段位聚合与账本封印 ──
+pub mod unx48981_gesture_core;
+pub mod unx48983_meta;
+pub mod unx48985_guard;
+pub mod unx48987_dispatch;
+pub mod unx48989_edge;
+pub mod unx48991_bridge;
+pub mod unx48993_quality;
+pub mod unx48995_stress;
+pub mod unx48997_adapt;
+pub mod unx48999_seal;
+
+// ── VX6 B11 族（F49001..=F49020）：时间戳抖动 / 降级阶梯 / 面板热插 /
+//    隔离带 / fuzz ×10^4 / 四点埋点 / 拷贝语义 / 错误码族 / 20 例入库 /
+//    B11 收官印（0x71900..=0x719C0 四槽） ──
+pub mod unx49001_quirk;
+pub mod unx49003_degrade;
+pub mod unx49005_panel;
+pub mod unx49007_isolation;
+pub mod unx49009_fuzz;
+pub mod unx49011_obs;
+pub mod unx49013_copy;
+pub mod unx49015_errcodes;
+pub mod unx49017_cases;
+pub mod unx49019_seal;
+
+// ── VX6 B12 族（F49021..=F49040）：键盘全表逐键 / 死键 / LED 失败 /
+//    修饰键 / 键图时延 / 用例池 / fuzz 联轧 / 错误码与四点埋点 /
+//    fuzz 面与 20 例 / 防重 grep 与收官印（0x71B40..=0x71D80 十槽） ──
+pub mod unx49021_keys;
+pub mod unx49023_deadkey;
+pub mod unx49025_ledfail;
+pub mod unx49027_modkeys;
+pub mod unx49029_keymap_latency;
+pub mod unx49031_casepool;
+pub mod unx49033_fuzzcross;
+pub mod unx49035_errcode_probe;
+pub mod unx49037_fuzzcases;
+pub mod unx49039_seal;
+
+// ── AI-VX3-1103 批1：UNX-F0524/F0544/F0568/F0587/F0806/F1003/F1043/F1062/
+//    F1364/F1384/F1406/F1424（0x71E00..=0x720C0 十二槽独占）──
 pub mod unx0524_suitegroups;
 pub mod unx0544_ringlog;
 pub mod unx0568_rtcwake;
@@ -13255,29 +13976,82 @@ pub mod unx1384_takeover3;
 pub mod unx1406_percpu_ledger;
 pub mod unx1424_overrate;
 
-// ── AI-VX3-1103 批2：UNX-F1442/F1462/F1485/F1506/F1522/F1544/F1564/F1584/F1608/F1626/F1646/F1665（0x72100..=0x723C0 十二槽独占）──
-pub mod unx1442_jsonexport;
-pub mod unx1462_seqgap;
-pub mod unx1485_gapfill3;
-pub mod unx1506_regrun;
-pub mod unx1522_assetledger;
-pub mod unx1544_ifacereg;
-pub mod unx1564_irqconsume;
-pub mod unx1584_grandfinal;
-pub mod unx1608_ap7path;
-pub mod unx1626_ctxswcnt;
-pub mod unx1646_loadweight;
-pub mod unx1665_placedtree;
+// ---- WBV1104 批1-3 注册（AI-VX7-1104）----
+pub mod unx0441_rsdp_search;
+pub mod unx0442_rsdp_verify;
+pub mod unx0443_rsdt_walk;
+pub mod unx0444_tblhdr_checksum;
+pub mod unx0445_madt_parse;
+pub mod unx0446_hpet_parse;
+pub mod unx0447_fadt_parse;
+pub mod unx0448_mcfg_parse;
+pub mod unx0449_dsdt_ptr;
+pub mod unx0450_srat_slit;
+pub mod unx0451_tbl_snapshot;
+pub mod unx0452_tbl_missing_degrade;
+pub mod unx0453_alltbl_seal;
+pub mod unx0454_badtbl_drill;
+pub mod unx0455_tblmap_reg;
+pub mod unx0456_handoff_fields;
+pub mod unx0457_acpi_summary;
+pub mod unx0458_recon_total;
+pub mod unx0459_ktest_acpi;
+pub mod unx0463_bridgewalk;
+pub mod unx0464_devid;
+pub mod unx0465_hdrtype;
+pub mod unx0466_bar_ro;
+pub mod unx0467_classcode;
+pub mod unx0468_caplist;
+pub mod unx0469_linkcap;
+pub mod unx0470_zerowrite_seal;
+pub mod unx0471_ecam_cf8_cross;
+pub mod unx0472_enum_wd;
+pub mod unx0473_rescan_diff;
+pub mod unx0474_pci_summary;
+pub mod unx0475_scanload_drill;
+pub mod unx0476_pci_handoff;
+pub mod unx1475_zeroloss_doc;
+pub mod unx1476_zeroloss_query;
+pub mod unx1477_zeroloss_reg;
 
-// ── AI-VX3-1103 批3：UNX-F1683/F1705/F1724/F1747/F1786/F1806/F1827/F1847/F1866/F1883/F1907（0x72400..=0x726C0 十一槽独占）──
-pub mod unx1683_quanta;
-pub mod unx1705_loadtrack;
-pub mod unx1724_migrback;
-pub mod unx1747_wakeprim;
-pub mod unx1786_apfirstchk;
-pub mod unx1806_cutin;
-pub mod unx1827_fpenabled;
-pub mod unx1847_ipihier;
-pub mod unx1866_deadlockd;
-pub mod unx1883_tripchain;
-pub mod unx1907_xstinj;
+// ---- WBV1104 批4 注册（AI-VX7-1104）----
+pub mod unx0477_recon_pci;
+pub mod unx0478_badcfg_drill;
+pub mod unx1478_zeroloss_budget;
+pub mod unx0479_ktest_pci;
+pub mod unx1479_zeroloss_recon;
+pub mod unx1483_gapfill1;
+pub mod unx1484_gapfill2;
+pub mod unx1485_gapfill3_deep;
+pub mod unx0486_textout;
+pub mod unx1486_density;
+pub mod unx1487_dedupe;
+pub mod unx0487_cleartext;
+
+// ---- WBV1104 批5 注册（AI-VX7-1104）----
+pub mod unx0488_renderbound;
+pub mod unx1488_asrtorder;
+pub mod unx1489_asrtfail;
+pub mod unx0489_renderperf;
+pub mod unx0490_renderpat;
+pub mod unx1490_asrtindex;
+pub mod unx0491_fbsentinel;
+pub mod unx1491_gate400;
+pub mod unx1492_gate500;
+pub mod unx0492_renderops;
+pub mod unx0493_multiout;
+pub mod unx1493_ktestlink;
+
+// ---- WBV1104 批6 注册（AI-VX7-1104）----
+pub mod unx0494_disp5num;
+pub mod unx1494_injrecon;
+pub mod unx0495_badparam_drill;
+pub mod unx1495_asrtbudget;
+pub mod unx1496_asrtcaliber;
+pub mod unx0496_stormdrill;
+pub mod unx1497_asrtregmat;
+pub mod unx0497_disp_handoff;
+pub mod unx0498_recon_disp;
+pub mod unx1498_asrthealth;
+pub mod unx1499_b35recon;
+pub mod unx0499_ktest_disp;

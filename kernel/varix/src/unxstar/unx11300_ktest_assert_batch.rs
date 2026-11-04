@@ -14,6 +14,7 @@
 
 use crate::checks::CheckSet;
 use crate::alloc::format;
+use crate::alloc::string::String;
 use alloc::vec::Vec;
 
 /// 段基址。
@@ -118,7 +119,7 @@ impl KtCase {
     }
 
     /// 已解决（计入通过分子）。
-    pub const fn is_resolved(&self) -> bool {
+    pub fn is_resolved(&self) -> bool {
         let v = verdict_of(self);
         v == V_PASS || v == V_RETRY
     }
