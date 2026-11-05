@@ -1554,6 +1554,35 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F9202", unx9202_badfd_rw::run_unx9202_checks as fn() -> CheckSet),
         ("UNX-F9203", unx9203_efault_ptr::run_unx9203_checks as fn() -> CheckSet),
         ("UNX-F9204", unx9204_close_badfd_matrix_race::run_unx9204_checks as fn() -> CheckSet),
+        ("UNX-F9205", unx9205_lseek_badfd_matrix_whence::run_unx9205_checks as fn() -> CheckSet),
+        ("UNX-F9206", unx9206_open_badptr_matrix_efault::run_unx9206_checks as fn() -> CheckSet),
+        ("UNX-F9207", unx9207_open_badflags_matrix_einval::run_unx9207_checks as fn() -> CheckSet),
+        ("UNX-F9208", unx9208_stat_badptr_matrix_fd::run_unx9208_checks as fn() -> CheckSet),
+        ("UNX-F9209", unx9209_negoff_overflow_matrix_boundary::run_unx9209_checks as fn() -> CheckSet),
+        ("UNX-F9210", unx9210_zerolen_matrix_boundary::run_unx9210_checks as fn() -> CheckSet),
+        ("UNX-F9211", unx9211_badfd_sweep_global_fd::run_unx9211_checks as fn() -> CheckSet),
+        ("UNX-F9212", unx9212_efault_halfcopy_copy_to_user::run_unx9212_checks as fn() -> CheckSet),
+        ("UNX-F9213", unx9213_errno_encoder_matrix_errno::run_unx9213_checks as fn() -> CheckSet),
+        ("UNX-F9214", unx9214_eprobe_suite_file::run_unx9214_checks as fn() -> CheckSet),
+        ("UNX-F9215", unx9215_etype_vs_reconcile_file::run_unx9215_checks as fn() -> CheckSet),
+        ("UNX-F9216", unx9216_etype_vs_compare_file::run_unx9216_checks as fn() -> CheckSet),
+        ("UNX-F9217", unx9217_etype_recheck_declare::run_unx9217_checks as fn() -> CheckSet),
+        ("UNX-F9218", unx9218_etype_takeover_note_file::run_unx9218_checks as fn() -> CheckSet),
+        ("UNX-F9219", unx9219_etype_vs_consumer_file::run_unx9219_checks as fn() -> CheckSet),
+        ("UNX-F9220", unx9220_ktest_syscall_b21::run_unx9220_checks as fn() -> CheckSet),
+        ("UNX-F9221", unx9221_charter_domain_fd::run_unx9221_checks as fn() -> CheckSet),
+        ("UNX-F9222", unx9222_matrix_dup_dup2::run_unx9222_checks as fn() -> CheckSet),
+        ("UNX-F9223", unx9223_matrix_syscall_err_pipe::run_unx9223_checks as fn() -> CheckSet),
+        ("UNX-F9224", unx9224_matrix_fd_emfile::run_unx9224_checks as fn() -> CheckSet),
+        ("UNX-F9225", unx9225_matrix_enfile::run_unx9225_checks as fn() -> CheckSet),
+        ("UNX-F9226", unx9226_charter_domain_enoent::run_unx9226_checks as fn() -> CheckSet),
+        ("UNX-F9227", unx9227_matrix_open_stat::run_unx9227_checks as fn() -> CheckSet),
+        ("UNX-F9228", unx9228_matrix_enoent_enotdir::run_unx9228_checks as fn() -> CheckSet),
+        ("UNX-F9229", unx9229_matrix_boundary_at_fdcwd::run_unx9229_checks as fn() -> CheckSet),
+        ("UNX-F9230", unx9230_matrix_dirfd_at_empty_path::run_unx9230_checks as fn() -> CheckSet),
+        ("UNX-F9231", unx9231_order_ebadf_enoent::run_unx9231_checks as fn() -> CheckSet),
+        ("UNX-F9232", unx9232_race_fd_close::run_unx9232_checks as fn() -> CheckSet),
+        ("UNX-F9233", unx9233_err::run_unx9233_checks as fn() -> CheckSet),
         ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
         ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
         ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
@@ -2672,6 +2701,19 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F12621", unx12621_apc_alertwait::run_unx12621_checks as fn() -> CheckSet),
         ("UNX-F12622", unx12622_user_apc::run_unx12622_checks as fn() -> CheckSet),
         ("UNX-F12623", unx12623_queue_apc::run_unx12623_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B02（AI-VX9-1105，12 单，SEG 0x80600~0x808C0 独占窗口）──
+        ("UNX-F12624", unx12624_kapc_guard::run_unx12624_checks as fn() -> CheckSet),
+        ("UNX-F12625", unx12625_alert_delay::run_unx12625_checks as fn() -> CheckSet),
+        ("UNX-F12626", unx12626_event_pair::run_unx12626_checks as fn() -> CheckSet),
+        ("UNX-F12627", unx12627_wait_single::run_unx12627_checks as fn() -> CheckSet),
+        ("UNX-F12628", unx12628_io_port::run_unx12628_checks as fn() -> CheckSet),
+        ("UNX-F12629", unx12629_io_complete::run_unx12629_checks as fn() -> CheckSet),
+        ("UNX-F12630", unx12630_pkt_fields::run_unx12630_checks as fn() -> CheckSet),
+        ("UNX-F12631", unx12631_async_inject::run_unx12631_checks as fn() -> CheckSet),
+        ("UNX-F12632", unx12632_dualhost_table::run_unx12632_checks as fn() -> CheckSet),
+        ("UNX-F12633", unx12633_msgface_ledger::run_unx12633_checks as fn() -> CheckSet),
+        ("UNX-F12634", unx12634_d4_cosign_receipt::run_unx12634_checks as fn() -> CheckSet),
+        ("UNX-F12635", unx12635_pump_longrun::run_unx12635_checks as fn() -> CheckSet),
     ]
 }
 
@@ -3399,6 +3441,35 @@ pub fn unxstar_secondary_blocks() -> &'static [(&'static str, fn() -> CheckSet)]
         ("UNX-F9202", unx9202_badfd_rw::run_unx9202_checks as fn() -> CheckSet),
         ("UNX-F9203", unx9203_efault_ptr::run_unx9203_checks as fn() -> CheckSet),
         ("UNX-F9204", unx9204_close_badfd_matrix_race::run_unx9204_checks as fn() -> CheckSet),
+        ("UNX-F9205", unx9205_lseek_badfd_matrix_whence::run_unx9205_checks as fn() -> CheckSet),
+        ("UNX-F9206", unx9206_open_badptr_matrix_efault::run_unx9206_checks as fn() -> CheckSet),
+        ("UNX-F9207", unx9207_open_badflags_matrix_einval::run_unx9207_checks as fn() -> CheckSet),
+        ("UNX-F9208", unx9208_stat_badptr_matrix_fd::run_unx9208_checks as fn() -> CheckSet),
+        ("UNX-F9209", unx9209_negoff_overflow_matrix_boundary::run_unx9209_checks as fn() -> CheckSet),
+        ("UNX-F9210", unx9210_zerolen_matrix_boundary::run_unx9210_checks as fn() -> CheckSet),
+        ("UNX-F9211", unx9211_badfd_sweep_global_fd::run_unx9211_checks as fn() -> CheckSet),
+        ("UNX-F9212", unx9212_efault_halfcopy_copy_to_user::run_unx9212_checks as fn() -> CheckSet),
+        ("UNX-F9213", unx9213_errno_encoder_matrix_errno::run_unx9213_checks as fn() -> CheckSet),
+        ("UNX-F9214", unx9214_eprobe_suite_file::run_unx9214_checks as fn() -> CheckSet),
+        ("UNX-F9215", unx9215_etype_vs_reconcile_file::run_unx9215_checks as fn() -> CheckSet),
+        ("UNX-F9216", unx9216_etype_vs_compare_file::run_unx9216_checks as fn() -> CheckSet),
+        ("UNX-F9217", unx9217_etype_recheck_declare::run_unx9217_checks as fn() -> CheckSet),
+        ("UNX-F9218", unx9218_etype_takeover_note_file::run_unx9218_checks as fn() -> CheckSet),
+        ("UNX-F9219", unx9219_etype_vs_consumer_file::run_unx9219_checks as fn() -> CheckSet),
+        ("UNX-F9220", unx9220_ktest_syscall_b21::run_unx9220_checks as fn() -> CheckSet),
+        ("UNX-F9221", unx9221_charter_domain_fd::run_unx9221_checks as fn() -> CheckSet),
+        ("UNX-F9222", unx9222_matrix_dup_dup2::run_unx9222_checks as fn() -> CheckSet),
+        ("UNX-F9223", unx9223_matrix_syscall_err_pipe::run_unx9223_checks as fn() -> CheckSet),
+        ("UNX-F9224", unx9224_matrix_fd_emfile::run_unx9224_checks as fn() -> CheckSet),
+        ("UNX-F9225", unx9225_matrix_enfile::run_unx9225_checks as fn() -> CheckSet),
+        ("UNX-F9226", unx9226_charter_domain_enoent::run_unx9226_checks as fn() -> CheckSet),
+        ("UNX-F9227", unx9227_matrix_open_stat::run_unx9227_checks as fn() -> CheckSet),
+        ("UNX-F9228", unx9228_matrix_enoent_enotdir::run_unx9228_checks as fn() -> CheckSet),
+        ("UNX-F9229", unx9229_matrix_boundary_at_fdcwd::run_unx9229_checks as fn() -> CheckSet),
+        ("UNX-F9230", unx9230_matrix_dirfd_at_empty_path::run_unx9230_checks as fn() -> CheckSet),
+        ("UNX-F9231", unx9231_order_ebadf_enoent::run_unx9231_checks as fn() -> CheckSet),
+        ("UNX-F9232", unx9232_race_fd_close::run_unx9232_checks as fn() -> CheckSet),
+        ("UNX-F9233", unx9233_err::run_unx9233_checks as fn() -> CheckSet),
         ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
         ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
         ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
@@ -11105,6 +11176,35 @@ pub mod unx9201_e;
 pub mod unx9202_badfd_rw;
 pub mod unx9203_efault_ptr;
 pub mod unx9204_close_badfd_matrix_race;
+pub mod unx9205_lseek_badfd_matrix_whence;
+pub mod unx9206_open_badptr_matrix_efault;
+pub mod unx9207_open_badflags_matrix_einval;
+pub mod unx9208_stat_badptr_matrix_fd;
+pub mod unx9209_negoff_overflow_matrix_boundary;
+pub mod unx9210_zerolen_matrix_boundary;
+pub mod unx9211_badfd_sweep_global_fd;
+pub mod unx9212_efault_halfcopy_copy_to_user;
+pub mod unx9213_errno_encoder_matrix_errno;
+pub mod unx9214_eprobe_suite_file;
+pub mod unx9215_etype_vs_reconcile_file;
+pub mod unx9216_etype_vs_compare_file;
+pub mod unx9217_etype_recheck_declare;
+pub mod unx9218_etype_takeover_note_file;
+pub mod unx9219_etype_vs_consumer_file;
+pub mod unx9220_ktest_syscall_b21;
+pub mod unx9221_charter_domain_fd;
+pub mod unx9222_matrix_dup_dup2;
+pub mod unx9223_matrix_syscall_err_pipe;
+pub mod unx9224_matrix_fd_emfile;
+pub mod unx9225_matrix_enfile;
+pub mod unx9226_charter_domain_enoent;
+pub mod unx9227_matrix_open_stat;
+pub mod unx9228_matrix_enoent_enotdir;
+pub mod unx9229_matrix_boundary_at_fdcwd;
+pub mod unx9230_matrix_dirfd_at_empty_path;
+pub mod unx9231_order_ebadf_enoent;
+pub mod unx9232_race_fd_close;
+pub mod unx9233_err;
 
 // ===== AI-WBV1027 第二批（UNX-F48383~F48582，200 单）=====
 pub mod unx48383_m12dupscan;
@@ -14438,3 +14538,19 @@ pub mod unx12620_b32_gate;
 pub mod unx12621_apc_alertwait;
 pub mod unx12622_user_apc;
 pub mod unx12623_queue_apc;
+
+// ── AI-VX9-1105 批 B02：UNX-F12624~F12635（KAPC 守卫/警报延迟/事件对/单对象
+//    等待三因/IoCompletion 三档/完成包出入队/包字段三件/异步注入 30 例/双机
+//    对照表/消息面账本/D4 联签回执/消息泵长稳，0x80600..=0x808C0 十二槽独占）──
+pub mod unx12624_kapc_guard;
+pub mod unx12625_alert_delay;
+pub mod unx12626_event_pair;
+pub mod unx12627_wait_single;
+pub mod unx12628_io_port;
+pub mod unx12629_io_complete;
+pub mod unx12630_pkt_fields;
+pub mod unx12631_async_inject;
+pub mod unx12632_dualhost_table;
+pub mod unx12633_msgface_ledger;
+pub mod unx12634_d4_cosign_receipt;
+pub mod unx12635_pump_longrun;
