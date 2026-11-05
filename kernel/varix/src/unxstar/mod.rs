@@ -2788,6 +2788,19 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F12657", unx12657_antihallu::run_unx12657_checks as fn() -> CheckSet),
         ("UNX-F12658", unx12658_ktest_agg::run_unx12658_checks as fn() -> CheckSet),
         ("UNX-F12659", unx12659_b34_theme::run_unx12659_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B05（AI-VX9-1105，12 单，SEG 0x80F00~0x811C0 独占窗口）──
+        ("UNX-F12660", unx12660_b34_regdoor::run_unx12660_checks as fn() -> CheckSet),
+        ("UNX-F12661", unx12661_hiveread_edge::run_unx12661_checks as fn() -> CheckSet),
+        ("UNX-F12662", unx12662_currentver_probe::run_unx12662_checks as fn() -> CheckSet),
+        ("UNX-F12663", unx12663_handle_table::run_unx12663_checks as fn() -> CheckSet),
+        ("UNX-F12664", unx12664_qobj_consume::run_unx12664_checks as fn() -> CheckSet),
+        ("UNX-F12665", unx12665_fileobj_dosdev::run_unx12665_checks as fn() -> CheckSet),
+        ("UNX-F12666", unx12666_pipe_mailslot::run_unx12666_checks as fn() -> CheckSet),
+        ("UNX-F12667", unx12667_section_probe::run_unx12667_checks as fn() -> CheckSet),
+        ("UNX-F12668", unx12668_token_probe::run_unx12668_checks as fn() -> CheckSet),
+        ("UNX-F12669", unx12669_sync_probe::run_unx12669_checks as fn() -> CheckSet),
+        ("UNX-F12670", unx12670_proc_enum::run_unx12670_checks as fn() -> CheckSet),
+        ("UNX-F12671", unx12671_snap_protocol::run_unx12671_checks as fn() -> CheckSet),
     ]
 }
 
@@ -14756,3 +14769,19 @@ pub mod unx12656_probe_edge;
 pub mod unx12657_antihallu;
 pub mod unx12658_ktest_agg;
 pub mod unx12659_b34_theme;
+
+// ── AI-VX9-1105 批 B05：UNX-F12660~F12671（B34 开门件/注册表消费边/分支档/
+//    句柄表/NtQueryObject 消费/DOS 设备路径/MBI 区档/Token 九档/同步计数/
+//    进程线程枚举/快照口径/一致性协议，0x80F00..=0x811C0 十二槽独占）──
+pub mod unx12660_b34_regdoor;
+pub mod unx12661_hiveread_edge;
+pub mod unx12662_currentver_probe;
+pub mod unx12663_handle_table;
+pub mod unx12664_qobj_consume;
+pub mod unx12665_fileobj_dosdev;
+pub mod unx12666_pipe_mailslot;
+pub mod unx12667_section_probe;
+pub mod unx12668_token_probe;
+pub mod unx12669_sync_probe;
+pub mod unx12670_proc_enum;
+pub mod unx12671_snap_protocol;
