@@ -1551,6 +1551,8 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F9199", unx9199_windows::run_unx9199_checks as fn() -> CheckSet),
         ("UNX-F9200", unx9200_ktest_syscall_b20_m::run_unx9200_checks as fn() -> CheckSet),
         ("UNX-F9201", unx9201_e::run_unx9201_checks as fn() -> CheckSet),
+        ("UNX-F9202", unx9202_badfd_rw::run_unx9202_checks as fn() -> CheckSet),
+        ("UNX-F9203", unx9203_efault_ptr::run_unx9203_checks as fn() -> CheckSet),
         ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
         ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
         ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
@@ -2603,6 +2605,59 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F49035", unx49035_errcode_probe::run_unx49035_checks as fn() -> CheckSet),
         ("UNX-F49037", unx49037_fuzzcases::run_unx49037_checks as fn() -> CheckSet),
         ("UNX-F49039", unx49039_seal::run_unx49039_checks as fn() -> CheckSet),
+        // ── VX6 B13 族（F49041..=F49060）：焦点递送总成 / 焦点账本 / 销毁清零 /
+        //    手势 F5 语义 / 消费 D4 分摊 / 心跳观测 / 错误码 15 条 / 错误族对照 /
+        //    fuzz 面 / 防重与收官印 ──
+        ("UNX-F49041", unx49041_focus_deliver::run_unx49041_checks as fn() -> CheckSet),
+        ("UNX-F49043", unx49043_focus_ledger::run_unx49043_checks as fn() -> CheckSet),
+        ("UNX-F49045", unx49045_destroy_clear::run_unx49045_checks as fn() -> CheckSet),
+        ("UNX-F49047", unx49047_gesture_f5::run_unx49047_checks as fn() -> CheckSet),
+        ("UNX-F49049", unx49049_consume_d4::run_unx49049_checks as fn() -> CheckSet),
+        ("UNX-F49051", unx49051_heartbeat::run_unx49051_checks as fn() -> CheckSet),
+        ("UNX-F49053", unx49053_errcodes15::run_unx49053_checks as fn() -> CheckSet),
+        ("UNX-F49055", unx49055_errfamily::run_unx49055_checks as fn() -> CheckSet),
+        ("UNX-F49057", unx49057_fuzz_surface::run_unx49057_checks as fn() -> CheckSet),
+        ("UNX-F49059", unx49059_seal::run_unx49059_checks as fn() -> CheckSet),
+        // ── VX6 B14 族（F49061..=F49080）：延迟账本核心 / O1 对照列 / 中断风暴归因 /
+        //    导出面收口与自检运营 / 告警面与合流 / 对照实验记录 / 用例集与段内联轧 /
+        //    错误码族与四点埋点 / fuzz 面与 20 例 / 防重与收官印 ──
+        ("UNX-F49061", unx49061_latency_core::run_unx49061_checks as fn() -> CheckSet),
+        ("UNX-F49063", unx49063_o1_compare::run_unx49063_checks as fn() -> CheckSet),
+        ("UNX-F49065", unx49065_storm_forensics::run_unx49065_checks as fn() -> CheckSet),
+        ("UNX-F49067", unx49067_export_selfcheck::run_unx49067_checks as fn() -> CheckSet),
+        ("UNX-F49069", unx49069_latency_alarm::run_unx49069_checks as fn() -> CheckSet),
+        ("UNX-F49071", unx49071_latency_experiment::run_unx49071_checks as fn() -> CheckSet),
+        ("UNX-F49073", unx49073_latency_cases::run_unx49073_checks as fn() -> CheckSet),
+        ("UNX-F49075", unx49075_latency_errcodes::run_unx49075_checks as fn() -> CheckSet),
+        ("UNX-F49077", unx49077_latency_fuzz::run_unx49077_checks as fn() -> CheckSet),
+        ("UNX-F49079", unx49079_seal::run_unx49079_checks as fn() -> CheckSet),
+        // ── VX6 B15 族（F49081..=F49100）：恶意设备防御与热移除 / 乱序与 4096 溢出 /
+        //    keymap 回退与坏设备 fuzz / 漂移前哨与错误码合并表 / 防重终检与判据回归 /
+        //    补测登记与 20 维框架 / 移交宣告与段印 / 15 码族与四点埋点 /
+        //    fuzz 面与 20 例 / 批防重与批印（0x73500..=0x73740 十槽） ──
+        ("UNX-F49081", unx49081_defense::run_unx49081_checks as fn() -> CheckSet),
+        ("UNX-F49083", unx49083_reorder::run_unx49083_checks as fn() -> CheckSet),
+        ("UNX-F49085", unx49085_keymap_fallback::run_unx49085_checks as fn() -> CheckSet),
+        ("UNX-F49087", unx49087_drift_guard::run_unx49087_checks as fn() -> CheckSet),
+        ("UNX-F49089", unx49089_finalgrep::run_unx49089_checks as fn() -> CheckSet),
+        ("UNX-F49091", unx49091_register::run_unx49091_checks as fn() -> CheckSet),
+        ("UNX-F49093", unx49093_handover::run_unx49093_checks as fn() -> CheckSet),
+        ("UNX-F49095", unx49095_observe::run_unx49095_checks as fn() -> CheckSet),
+        ("UNX-F49097", unx49097_fuzz::run_unx49097_checks as fn() -> CheckSet),
+        ("UNX-F49099", unx49099_seal::run_unx49099_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B00（AI-VX9-1105，12 单，SEG 0x80000~0x802C0 独占窗口）──
+        ("UNX-F12600", unx12600_milestone600::run_unx12600_checks as fn() -> CheckSet),
+        ("UNX-F12601", unx12601_d1d4_tricol::run_unx12601_checks as fn() -> CheckSet),
+        ("UNX-F12602", unx12602_alpc_connect::run_unx12602_checks as fn() -> CheckSet),
+        ("UNX-F12603", unx12603_msg_boundary::run_unx12603_checks as fn() -> CheckSet),
+        ("UNX-F12604", unx12604_sqos_tier::run_unx12604_checks as fn() -> CheckSet),
+        ("UNX-F12605", unx12605_sid_guard::run_unx12605_checks as fn() -> CheckSet),
+        ("UNX-F12606", unx12606_listen_accept::run_unx12606_checks as fn() -> CheckSet),
+        ("UNX-F12607", unx12607_section_view::run_unx12607_checks as fn() -> CheckSet),
+        ("UNX-F12608", unx12608_readwrite::run_unx12608_checks as fn() -> CheckSet),
+        ("UNX-F12609", unx12609_reply_pair::run_unx12609_checks as fn() -> CheckSet),
+        ("UNX-F12610", unx12610_msg_type::run_unx12610_checks as fn() -> CheckSet),
+        ("UNX-F12611", unx12611_msg_attr::run_unx12611_checks as fn() -> CheckSet),
     ]
 }
 
@@ -3327,6 +3382,8 @@ pub fn unxstar_secondary_blocks() -> &'static [(&'static str, fn() -> CheckSet)]
         ("UNX-F9199", unx9199_windows::run_unx9199_checks as fn() -> CheckSet),
         ("UNX-F9200", unx9200_ktest_syscall_b20_m::run_unx9200_checks as fn() -> CheckSet),
         ("UNX-F9201", unx9201_e::run_unx9201_checks as fn() -> CheckSet),
+        ("UNX-F9202", unx9202_badfd_rw::run_unx9202_checks as fn() -> CheckSet),
+        ("UNX-F9203", unx9203_efault_ptr::run_unx9203_checks as fn() -> CheckSet),
         ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
         ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
         ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
@@ -4428,6 +4485,122 @@ pub fn unxstar_secondary_blocks() -> &'static [(&'static str, fn() -> CheckSet)]
         ("UNX-F11098", unx11098_seal_rerun_guide::run_unx11098_checks as fn() -> CheckSet),
         ("UNX-F11099", unx11099_normal_protocol::run_unx11099_checks as fn() -> CheckSet),
 ("UNX-F1359", unx1359_stresshealth::run_unx1359_checks as fn() -> CheckSet),
+        // ---- VX8-1104 批1（AI-VX8-1104，B00–B04，40 单，SEG 0x78000~0x789C0）----
+        ("UNX-F1500", unx1500_ktest_b35_40::run_unx1500_checks as fn() -> CheckSet),
+        ("UNX-F1507", unx1507_feat::run_unx1507_checks as fn() -> CheckSet),
+        ("UNX-F1508", unx1508_feat::run_unx1508_checks as fn() -> CheckSet),
+        ("UNX-F1509", unx1509_feat::run_unx1509_checks as fn() -> CheckSet),
+        ("UNX-F1510", unx1510_v1::run_unx1510_checks as fn() -> CheckSet),
+        ("UNX-F1511", unx1511_feat::run_unx1511_checks as fn() -> CheckSet),
+        ("UNX-F1512", unx1512_feat::run_unx1512_checks as fn() -> CheckSet),
+        ("UNX-F1513", unx1513_ci::run_unx1513_checks as fn() -> CheckSet),
+        ("UNX-F1514", unx1514_qemu::run_unx1514_checks as fn() -> CheckSet),
+        ("UNX-F1515", unx1515_feat::run_unx1515_checks as fn() -> CheckSet),
+        ("UNX-F1516", unx1516_feat::run_unx1516_checks as fn() -> CheckSet),
+        ("UNX-F1517", unx1517_feat::run_unx1517_checks as fn() -> CheckSet),
+        ("UNX-F1518", unx1518_feat::run_unx1518_checks as fn() -> CheckSet),
+        ("UNX-F1519", unx1519_b36::run_unx1519_checks as fn() -> CheckSet),
+        ("UNX-F1520", unx1520_ktest_b36_40::run_unx1520_checks as fn() -> CheckSet),
+        ("UNX-F1523", unx1523_b31_b32::run_unx1523_checks as fn() -> CheckSet),
+        ("UNX-F1524", unx1524_feat::run_unx1524_checks as fn() -> CheckSet),
+        ("UNX-F1525", unx1525_feat::run_unx1525_checks as fn() -> CheckSet),
+        ("UNX-F1526", unx1526_b31_b40::run_unx1526_checks as fn() -> CheckSet),
+        ("UNX-F1527", unx1527_schema_schema::run_unx1527_checks as fn() -> CheckSet),
+        ("UNX-F1528", unx1528_feat::run_unx1528_checks as fn() -> CheckSet),
+        ("UNX-F1529", unx1529_f0997::run_unx1529_checks as fn() -> CheckSet),
+        ("UNX-F1530", unx1530_feat::run_unx1530_checks as fn() -> CheckSet),
+        ("UNX-F1531", unx1531_feat::run_unx1531_checks as fn() -> CheckSet),
+        ("UNX-F1532", unx1532_schema::run_unx1532_checks as fn() -> CheckSet),
+        ("UNX-F1533", unx1533_feat::run_unx1533_checks as fn() -> CheckSet),
+        ("UNX-F1534", unx1534_feat::run_unx1534_checks as fn() -> CheckSet),
+        ("UNX-F1535", unx1535_feat::run_unx1535_checks as fn() -> CheckSet),
+        ("UNX-F1536", unx1536_feat::run_unx1536_checks as fn() -> CheckSet),
+        ("UNX-F1537", unx1537_f0899::run_unx1537_checks as fn() -> CheckSet),
+        ("UNX-F1538", unx1538_explain::run_unx1538_checks as fn() -> CheckSet),
+        ("UNX-F1539", unx1539_b37::run_unx1539_checks as fn() -> CheckSet),
+        ("UNX-F1540", unx1540_ktest_b37_40::run_unx1540_checks as fn() -> CheckSet),
+        ("UNX-F1545", unx1545_feat::run_unx1545_checks as fn() -> CheckSet),
+        ("UNX-F1546", unx1546_feat::run_unx1546_checks as fn() -> CheckSet),
+        ("UNX-F1547", unx1547_feat::run_unx1547_checks as fn() -> CheckSet),
+        ("UNX-F1548", unx1548_feat::run_unx1548_checks as fn() -> CheckSet),
+        ("UNX-F1549", unx1549_40::run_unx1549_checks as fn() -> CheckSet),
+        ("UNX-F1550", unx1550_feat::run_unx1550_checks as fn() -> CheckSet),
+        ("UNX-F1551", unx1551_feat::run_unx1551_checks as fn() -> CheckSet),
+        // ---- VX8-1104 批2（AI-VX8-1104，B05–B09，40 单，SEG 0x78A00~0x793C0）----
+        ("UNX-F1552", unx1552_faq::run_unx1552_checks as fn() -> CheckSet),
+        ("UNX-F1553", unx1553_v1::run_unx1553_checks as fn() -> CheckSet),
+        ("UNX-F1554", unx1554_feat::run_unx1554_checks as fn() -> CheckSet),
+        ("UNX-F1555", unx1555_feat::run_unx1555_checks as fn() -> CheckSet),
+        ("UNX-F1556", unx1556_explain::run_unx1556_checks as fn() -> CheckSet),
+        ("UNX-F1557", unx1557_feat::run_unx1557_checks as fn() -> CheckSet),
+        ("UNX-F1558", unx1558_feat::run_unx1558_checks as fn() -> CheckSet),
+        ("UNX-F1559", unx1559_feat::run_unx1559_checks as fn() -> CheckSet),
+        ("UNX-F1560", unx1560_ktest_b38_40::run_unx1560_checks as fn() -> CheckSet),
+        ("UNX-F1565", unx1565_ktime::run_unx1565_checks as fn() -> CheckSet),
+        ("UNX-F1566", unx1566_feat::run_unx1566_checks as fn() -> CheckSet),
+        ("UNX-F1567", unx1567_feat::run_unx1567_checks as fn() -> CheckSet),
+        ("UNX-F1568", unx1568_feat::run_unx1568_checks as fn() -> CheckSet),
+        ("UNX-F1569", unx1569_feat::run_unx1569_checks as fn() -> CheckSet),
+        ("UNX-F1570", unx1570_feat::run_unx1570_checks as fn() -> CheckSet),
+        ("UNX-F1571", unx1571_feat::run_unx1571_checks as fn() -> CheckSet),
+        ("UNX-F1572", unx1572_feat::run_unx1572_checks as fn() -> CheckSet),
+        ("UNX-F1573", unx1573_feat::run_unx1573_checks as fn() -> CheckSet),
+        ("UNX-F1574", unx1574_feat::run_unx1574_checks as fn() -> CheckSet),
+        ("UNX-F1575", unx1575_feat::run_unx1575_checks as fn() -> CheckSet),
+        ("UNX-F1576", unx1576_feat::run_unx1576_checks as fn() -> CheckSet),
+        ("UNX-F1577", unx1577_f0899::run_unx1577_checks as fn() -> CheckSet),
+        ("UNX-F1578", unx1578_explain::run_unx1578_checks as fn() -> CheckSet),
+        ("UNX-F1579", unx1579_b39::run_unx1579_checks as fn() -> CheckSet),
+        ("UNX-F1580", unx1580_ktest_b39_40::run_unx1580_checks as fn() -> CheckSet),
+        ("UNX-F1585", unx1585_feat::run_unx1585_checks as fn() -> CheckSet),
+        ("UNX-F1586", unx1586_feat::run_unx1586_checks as fn() -> CheckSet),
+        ("UNX-F1587", unx1587_schema::run_unx1587_checks as fn() -> CheckSet),
+        ("UNX-F1588", unx1588_feat::run_unx1588_checks as fn() -> CheckSet),
+        ("UNX-F1589", unx1589_feat::run_unx1589_checks as fn() -> CheckSet),
+        ("UNX-F1590", unx1590_feat::run_unx1590_checks as fn() -> CheckSet),
+        ("UNX-F1591", unx1591_100::run_unx1591_checks as fn() -> CheckSet),
+        ("UNX-F1592", unx1592_feat::run_unx1592_checks as fn() -> CheckSet),
+        ("UNX-F1593", unx1593_open_risks::run_unx1593_checks as fn() -> CheckSet),
+        ("UNX-F1594", unx1594_feat::run_unx1594_checks as fn() -> CheckSet),
+        ("UNX-F1595", unx1595_feat::run_unx1595_checks as fn() -> CheckSet),
+        ("UNX-F1596", unx1596_feat::run_unx1596_checks as fn() -> CheckSet),
+        ("UNX-F1597", unx1597_feat::run_unx1597_checks as fn() -> CheckSet),
+        ("UNX-F1598", unx1598_240_000::run_unx1598_checks as fn() -> CheckSet),
+        ("UNX-F1599", unx1599_800_40_20_240::run_unx1599_checks as fn() -> CheckSet),
+        // ---- VX8-1104 批3（AI-VX8-1104，B10–B11，16 单，SEG 0x79400~0x797C0）----
+        ("UNX-F3400", unx3400_feat::run_unx3400_checks as fn() -> CheckSet),
+        ("UNX-F3404", unx3404_kexpect_mem_eq::run_unx3404_checks as fn() -> CheckSet),
+        ("UNX-F3405", unx3405_feat::run_unx3405_checks as fn() -> CheckSet),
+        ("UNX-F3406", unx3406_kcase::run_unx3406_checks as fn() -> CheckSet),
+        ("UNX-F3407", unx3407_id::run_unx3407_checks as fn() -> CheckSet),
+        ("UNX-F3408", unx3408_1::run_unx3408_checks as fn() -> CheckSet),
+        ("UNX-F3409", unx3409_continue::run_unx3409_checks as fn() -> CheckSet),
+        ("UNX-F3410", unx3410_setup_teardown::run_unx3410_checks as fn() -> CheckSet),
+        ("UNX-F3411", unx3411_feat::run_unx3411_checks as fn() -> CheckSet),
+        ("UNX-F3412", unx3412_feat::run_unx3412_checks as fn() -> CheckSet),
+        ("UNX-F3413", unx3413_kskip::run_unx3413_checks as fn() -> CheckSet),
+        ("UNX-F3416", unx3416_testing::run_unx3416_checks as fn() -> CheckSet),
+        ("UNX-F3417", unx3417_feat::run_unx3417_checks as fn() -> CheckSet),
+        ("UNX-F3418", unx3418_feat::run_unx3418_checks as fn() -> CheckSet),
+        ("UNX-F3419", unx3419_15::run_unx3419_checks as fn() -> CheckSet),
+        ("UNX-F3420", unx3420_feat::run_unx3420_checks as fn() -> CheckSet),
+        // ---- VX8-1104 批4（AI-VX8-1104，B12–B13，16 单，SEG 0x79800~0x79BC0）----
+        ("UNX-F3424", unx3424_kv::run_unx3424_checks as fn() -> CheckSet),
+        ("UNX-F3425", unx3425_json_schema_suite_case::run_unx3425_checks as fn() -> CheckSet),
+        ("UNX-F3426", unx3426_json::run_unx3426_checks as fn() -> CheckSet),
+        ("UNX-F3427", unx3427_feat::run_unx3427_checks as fn() -> CheckSet),
+        ("UNX-F3428", unx3428_schema::run_unx3428_checks as fn() -> CheckSet),
+        ("UNX-F3429", unx3429_feat::run_unx3429_checks as fn() -> CheckSet),
+        ("UNX-F3430", unx3430_feat::run_unx3430_checks as fn() -> CheckSet),
+        ("UNX-F3431", unx3431_feature::run_unx3431_checks as fn() -> CheckSet),
+        ("UNX-F3432", unx3432_feat::run_unx3432_checks as fn() -> CheckSet),
+        ("UNX-F3433", unx3433_feat::run_unx3433_checks as fn() -> CheckSet),
+        ("UNX-F3434", unx3434_id::run_unx3434_checks as fn() -> CheckSet),
+        ("UNX-F3435", unx3435_a1_ktest_a1::run_unx3435_checks as fn() -> CheckSet),
+        ("UNX-F3436", unx3436_api::run_unx3436_checks as fn() -> CheckSet),
+        ("UNX-F3437", unx3437_b12_ktest_json::run_unx3437_checks as fn() -> CheckSet),
+        ("UNX-F3438", unx3438_logger_panicseq::run_unx3438_checks as fn() -> CheckSet),
+        ("UNX-F3439", unx3439_feat::run_unx3439_checks as fn() -> CheckSet),
     ]
 }
 
@@ -10914,6 +11087,8 @@ pub mod unx9198_b5;
 pub mod unx9199_windows;
 pub mod unx9200_ktest_syscall_b20_m;
 pub mod unx9201_e;
+pub mod unx9202_badfd_rw;
+pub mod unx9203_efault_ptr;
 
 // ===== AI-WBV1027 第二批（UNX-F48383~F48582，200 单）=====
 pub mod unx48383_m12dupscan;
@@ -13961,6 +14136,49 @@ pub mod unx49035_errcode_probe;
 pub mod unx49037_fuzzcases;
 pub mod unx49039_seal;
 
+// ── VX6 B13 族（F49041..=F49060）：焦点递送总成 / 焦点账本 / 销毁清零 /
+//    手势 F5 语义 / 消费 D4 分摊 / 心跳观测 / 错误码 15 条 / 错误族对照 /
+//    fuzz 面 / 防重与收官印（0x73000..=0x73240 十槽） ──
+pub mod unx49041_focus_deliver;
+pub mod unx49043_focus_ledger;
+pub mod unx49045_destroy_clear;
+pub mod unx49047_gesture_f5;
+pub mod unx49049_consume_d4;
+pub mod unx49051_heartbeat;
+pub mod unx49053_errcodes15;
+pub mod unx49055_errfamily;
+pub mod unx49057_fuzz_surface;
+pub mod unx49059_seal;
+
+// ── VX6 B14 族（F49061..=F49080）：延迟账本核心 / O1 对照列 / 中断风暴归因 /
+//    导出面收口与自检运营 / 告警面与合流 / 对照实验记录 / 用例集与段内联轧 /
+//    错误码族与四点埋点 / fuzz 面与 20 例 / 防重与收官印（0x73280..=0x734C0） ──
+pub mod unx49061_latency_core;
+pub mod unx49063_o1_compare;
+pub mod unx49065_storm_forensics;
+pub mod unx49067_export_selfcheck;
+pub mod unx49069_latency_alarm;
+pub mod unx49071_latency_experiment;
+pub mod unx49073_latency_cases;
+pub mod unx49075_latency_errcodes;
+pub mod unx49077_latency_fuzz;
+pub mod unx49079_seal;
+
+// ── VX6 B15 族（F49081..=F49100）：恶意设备防御与热移除 / 乱序与 4096 溢出 /
+//    keymap 回退与坏设备 fuzz / 漂移前哨与错误码合并表 / 防重终检与判据回归 /
+//    补测登记与 20 维框架 / 移交宣告与段印 / 15 码族与四点埋点 /
+//    fuzz 面与 20 例 / 批防重与批印（0x73500..=0x73740 十槽） ──
+pub mod unx49081_defense;
+pub mod unx49083_reorder;
+pub mod unx49085_keymap_fallback;
+pub mod unx49087_drift_guard;
+pub mod unx49089_finalgrep;
+pub mod unx49091_register;
+pub mod unx49093_handover;
+pub mod unx49095_observe;
+pub mod unx49097_fuzz;
+pub mod unx49099_seal;
+
 // ── AI-VX3-1103 批1：UNX-F0524/F0544/F0568/F0587/F0806/F1003/F1043/F1062/
 //    F1364/F1384/F1406/F1424（0x71E00..=0x720C0 十二槽独占）──
 pub mod unx0524_suitegroups;
@@ -13968,9 +14186,7 @@ pub mod unx0544_ringlog;
 pub mod unx0568_rtcwake;
 pub mod unx0587_dupparam;
 pub mod unx0806_ist3stack;
-pub mod unx1003_tsccal;
 pub mod unx1043_tsdeadline;
-pub mod unx1062_tickdual;
 pub mod unx1364_cachefriend;
 pub mod unx1384_takeover3;
 pub mod unx1406_percpu_ledger;
@@ -14055,3 +14271,138 @@ pub mod unx0498_recon_disp;
 pub mod unx1498_asrthealth;
 pub mod unx1499_b35recon;
 pub mod unx0499_ktest_disp;
+
+// ---- VX8-1104 批1 注册（AI-VX8-1104，B00–B04，40 单）----
+pub mod unx1500_ktest_b35_40;
+pub mod unx1507_feat;
+pub mod unx1508_feat;
+pub mod unx1509_feat;
+pub mod unx1510_v1;
+pub mod unx1511_feat;
+pub mod unx1512_feat;
+pub mod unx1513_ci;
+pub mod unx1514_qemu;
+pub mod unx1515_feat;
+pub mod unx1516_feat;
+pub mod unx1517_feat;
+pub mod unx1518_feat;
+pub mod unx1519_b36;
+pub mod unx1520_ktest_b36_40;
+pub mod unx1523_b31_b32;
+pub mod unx1524_feat;
+pub mod unx1525_feat;
+pub mod unx1526_b31_b40;
+pub mod unx1527_schema_schema;
+pub mod unx1528_feat;
+pub mod unx1529_f0997;
+pub mod unx1530_feat;
+pub mod unx1531_feat;
+pub mod unx1532_schema;
+pub mod unx1533_feat;
+pub mod unx1534_feat;
+pub mod unx1535_feat;
+pub mod unx1536_feat;
+pub mod unx1537_f0899;
+pub mod unx1538_explain;
+pub mod unx1539_b37;
+pub mod unx1540_ktest_b37_40;
+pub mod unx1545_feat;
+pub mod unx1546_feat;
+pub mod unx1547_feat;
+pub mod unx1548_feat;
+pub mod unx1549_40;
+pub mod unx1550_feat;
+pub mod unx1551_feat;
+
+// ---- VX8-1104 批2 注册（AI-VX8-1104，B05–B09，40 单）----
+pub mod unx1552_faq;
+pub mod unx1553_v1;
+pub mod unx1554_feat;
+pub mod unx1555_feat;
+pub mod unx1556_explain;
+pub mod unx1557_feat;
+pub mod unx1558_feat;
+pub mod unx1559_feat;
+pub mod unx1560_ktest_b38_40;
+pub mod unx1565_ktime;
+pub mod unx1566_feat;
+pub mod unx1567_feat;
+pub mod unx1568_feat;
+pub mod unx1569_feat;
+pub mod unx1570_feat;
+pub mod unx1571_feat;
+pub mod unx1572_feat;
+pub mod unx1573_feat;
+pub mod unx1574_feat;
+pub mod unx1575_feat;
+pub mod unx1576_feat;
+pub mod unx1577_f0899;
+pub mod unx1578_explain;
+pub mod unx1579_b39;
+pub mod unx1580_ktest_b39_40;
+pub mod unx1585_feat;
+pub mod unx1586_feat;
+pub mod unx1587_schema;
+pub mod unx1588_feat;
+pub mod unx1589_feat;
+pub mod unx1590_feat;
+pub mod unx1591_100;
+pub mod unx1592_feat;
+pub mod unx1593_open_risks;
+pub mod unx1594_feat;
+pub mod unx1595_feat;
+pub mod unx1596_feat;
+pub mod unx1597_feat;
+pub mod unx1598_240_000;
+pub mod unx1599_800_40_20_240;
+
+// ---- VX8-1104 批3 注册（AI-VX8-1104，B10–B11，16 单）----
+pub mod unx3400_feat;
+pub mod unx3404_kexpect_mem_eq;
+pub mod unx3405_feat;
+pub mod unx3406_kcase;
+pub mod unx3407_id;
+pub mod unx3408_1;
+pub mod unx3409_continue;
+pub mod unx3410_setup_teardown;
+pub mod unx3411_feat;
+pub mod unx3412_feat;
+pub mod unx3413_kskip;
+pub mod unx3416_testing;
+pub mod unx3417_feat;
+pub mod unx3418_feat;
+pub mod unx3419_15;
+pub mod unx3420_feat;
+
+// ---- VX8-1104 批4 注册（AI-VX8-1104，B12–B13，16 单）----
+pub mod unx3424_kv;
+pub mod unx3425_json_schema_suite_case;
+pub mod unx3426_json;
+pub mod unx3427_feat;
+pub mod unx3428_schema;
+pub mod unx3429_feat;
+pub mod unx3430_feat;
+pub mod unx3431_feature;
+pub mod unx3432_feat;
+pub mod unx3433_feat;
+pub mod unx3434_id;
+pub mod unx3435_a1_ktest_a1;
+pub mod unx3436_api;
+pub mod unx3437_b12_ktest_json;
+pub mod unx3438_logger_panicseq;
+pub mod unx3439_feat;
+
+// ── AI-VX9-1105 批 B00：UNX-F12600~F12611（ALPC 端口语义族，
+//    0x80000..=0x802C0 十二槽独占）──
+pub mod unx12600_milestone600;
+pub mod unx12601_d1d4_tricol;
+pub mod unx12602_alpc_connect;
+pub mod unx12603_msg_boundary;
+pub mod unx12604_sqos_tier;
+pub mod unx12605_sid_guard;
+pub mod unx12606_listen_accept;
+pub mod unx12607_section_view;
+pub mod unx12608_readwrite;
+pub mod unx12609_reply_pair;
+pub mod unx12610_msg_type;
+pub mod unx12611_msg_attr;
