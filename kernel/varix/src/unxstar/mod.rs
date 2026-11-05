@@ -2801,6 +2801,19 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F12669", unx12669_sync_probe::run_unx12669_checks as fn() -> CheckSet),
         ("UNX-F12670", unx12670_proc_enum::run_unx12670_checks as fn() -> CheckSet),
         ("UNX-F12671", unx12671_snap_protocol::run_unx12671_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B06（AI-VX9-1105，12 单，SEG 0x81200~0x814C0 独占窗口）──
+        ("UNX-F12672", unx12672_probeinj2::run_unx12672_checks as fn() -> CheckSet),
+        ("UNX-F12673", unx12673_dualcmp20::run_unx12673_checks as fn() -> CheckSet),
+        ("UNX-F12674", unx12674_cmptab2::run_unx12674_checks as fn() -> CheckSet),
+        ("UNX-F12675", unx12675_p95budget2::run_unx12675_checks as fn() -> CheckSet),
+        ("UNX-F12676", unx12676_edgesamp2::run_unx12676_checks as fn() -> CheckSet),
+        ("UNX-F12677", unx12677_e1receipt::run_unx12677_checks as fn() -> CheckSet),
+        ("UNX-F12678", unx12678_docalign2::run_unx12678_checks as fn() -> CheckSet),
+        ("UNX-F12679", unx12679_ktestagg2::run_unx12679_checks as fn() -> CheckSet),
+        ("UNX-F12680", unx12680_b35gate::run_unx12680_checks as fn() -> CheckSet),
+        ("UNX-F12681", unx12681_d2retest::run_unx12681_checks as fn() -> CheckSet),
+        ("UNX-F12682", unx12682_d3retest::run_unx12682_checks as fn() -> CheckSet),
+        ("UNX-F12683", unx12683_loadcode::run_unx12683_checks as fn() -> CheckSet),
     ]
 }
 
@@ -14785,3 +14798,20 @@ pub mod unx12668_token_probe;
 pub mod unx12669_sync_probe;
 pub mod unx12670_proc_enum;
 pub mod unx12671_snap_protocol;
+
+// ── AI-VX9-1105 批 B06：UNX-F12672~F12683（探测面注入联测二/双机对照 20/
+//    对照表二批/枚举类 P95 账/边界样本二/E1 会签回执/文档对齐二/ktest 聚合二/
+//    B35 开门件/D2 装载联签回归/D3 句柄表回归/装载错误码回归，
+//    0x81200..=0x814C0 十二槽独占）──
+pub mod unx12672_probeinj2;
+pub mod unx12673_dualcmp20;
+pub mod unx12674_cmptab2;
+pub mod unx12675_p95budget2;
+pub mod unx12676_edgesamp2;
+pub mod unx12677_e1receipt;
+pub mod unx12678_docalign2;
+pub mod unx12679_ktestagg2;
+pub mod unx12680_b35gate;
+pub mod unx12681_d2retest;
+pub mod unx12682_d3retest;
+pub mod unx12683_loadcode;
