@@ -1583,6 +1583,54 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F9231", unx9231_order_ebadf_enoent::run_unx9231_checks as fn() -> CheckSet),
         ("UNX-F9232", unx9232_race_fd_close::run_unx9232_checks as fn() -> CheckSet),
         ("UNX-F9233", unx9233_err::run_unx9233_checks as fn() -> CheckSet),
+        ("UNX-F9234", unx9234_eprobe_suite_fd::run_unx9234_checks as fn() -> CheckSet),
+        ("UNX-F9235", unx9235_etype_vs_reconcile_fd::run_unx9235_checks as fn() -> CheckSet),
+        ("UNX-F9236", unx9236_etype_vs_compare_fd::run_unx9236_checks as fn() -> CheckSet),
+        ("UNX-F9237", unx9237_etype_recheck_declare::run_unx9237_checks as fn() -> CheckSet),
+        ("UNX-F9238", unx9238_etype_takeover_note_fd::run_unx9238_checks as fn() -> CheckSet),
+        ("UNX-F9239", unx9239_etype_vs_consumer_fd::run_unx9239_checks as fn() -> CheckSet),
+        ("UNX-F9240", unx9240_ktest_syscall_b22::run_unx9240_checks as fn() -> CheckSet),
+        ("UNX-F9241", unx9241_charter_mem::run_unx9241_checks as fn() -> CheckSet),
+        ("UNX-F9242", unx9242_matrix_mmap_hint_addr::run_unx9242_checks as fn() -> CheckSet),
+        ("UNX-F9243", unx9243_matrix_align_einval::run_unx9243_checks as fn() -> CheckSet),
+        ("UNX-F9244", unx9244_matrix_mmap_enomem::run_unx9244_checks as fn() -> CheckSet),
+        ("UNX-F9245", unx9245_matrix_munmap_mprotect::run_unx9245_checks as fn() -> CheckSet),
+        ("UNX-F9246", unx9246_matrix_brk_einval::run_unx9246_checks as fn() -> CheckSet),
+        ("UNX-F9247", unx9247_matrix_mremap_einval::run_unx9247_checks as fn() -> CheckSet),
+        ("UNX-F9248", unx9248_matrix_madvise_einval::run_unx9248_checks as fn() -> CheckSet),
+        ("UNX-F9249", unx9249_matrix_boundary_declare::run_unx9249_checks as fn() -> CheckSet),
+        ("UNX-F9250", unx9250_matrix_sigsegv::run_unx9250_checks as fn() -> CheckSet),
+        ("UNX-F9251", unx9251_matrix_boundary::run_unx9251_checks as fn() -> CheckSet),
+        ("UNX-F9252", unx9252_matrix_boundary::run_unx9252_checks as fn() -> CheckSet),
+        ("UNX-F9253", unx9253_matrix_map_fixed_enoent::run_unx9253_checks as fn() -> CheckSet),
+        ("UNX-F9254", unx9254_eprobe_suite_mem::run_unx9254_checks as fn() -> CheckSet),
+        ("UNX-F9255", unx9255_etype_vs_reconcile_mem::run_unx9255_checks as fn() -> CheckSet),
+        ("UNX-F9256", unx9256_etype_vs_compare_mem::run_unx9256_checks as fn() -> CheckSet),
+        ("UNX-F9257", unx9257_etype_recheck_declare::run_unx9257_checks as fn() -> CheckSet),
+        ("UNX-F9258", unx9258_etype_takeover_note_mem::run_unx9258_checks as fn() -> CheckSet),
+        ("UNX-F9259", unx9259_etype_vs_consumer_mem::run_unx9259_checks as fn() -> CheckSet),
+        ("UNX-F9260", unx9260_ktest_syscall_b23::run_unx9260_checks as fn() -> CheckSet),
+        ("UNX-F9261", unx9261_charter_domain_perm::run_unx9261_checks as fn() -> CheckSet),
+        ("UNX-F9262", unx9262_matrix_open_eacces::run_unx9262_checks as fn() -> CheckSet),
+        ("UNX-F9263", unx9263_matrix_chmod_chown::run_unx9263_checks as fn() -> CheckSet),
+        ("UNX-F9264", unx9264_matrix_perm_st_mode::run_unx9264_checks as fn() -> CheckSet),
+        ("UNX-F9265", unx9265_matrix_setuid_setgid::run_unx9265_checks as fn() -> CheckSet),
+        ("UNX-F9266", unx9266_matrix_perm_eacces::run_unx9266_checks as fn() -> CheckSet),
+        ("UNX-F9267", unx9267_matrix_eperm_root::run_unx9267_checks as fn() -> CheckSet),
+        ("UNX-F9268", unx9268_matrix_cap_eperm::run_unx9268_checks as fn() -> CheckSet),
+        ("UNX-F9269", unx9269_matrix_erofs::run_unx9269_checks as fn() -> CheckSet),
+        ("UNX-F9270", unx9270_matrix_ebusy_eexist::run_unx9270_checks as fn() -> CheckSet),
+        ("UNX-F9271", unx9271_matrix_eperm_b20::run_unx9271_checks as fn() -> CheckSet),
+        ("UNX-F9272", unx9272_matrix_ioctl_ioperm::run_unx9272_checks as fn() -> CheckSet),
+        ("UNX-F9273", unx9273_matrix_rlimit_eperm::run_unx9273_checks as fn() -> CheckSet),
+        ("UNX-F9274", unx9274_eprobe_suite_perm::run_unx9274_checks as fn() -> CheckSet),
+        ("UNX-F9275", unx9275_etype_vs_reconcile_perm::run_unx9275_checks as fn() -> CheckSet),
+        ("UNX-F9276", unx9276_etype_vs_compare_perm::run_unx9276_checks as fn() -> CheckSet),
+        ("UNX-F9277", unx9277_etype_recheck_declare::run_unx9277_checks as fn() -> CheckSet),
+        ("UNX-F9278", unx9278_etype_takeover_note_perm::run_unx9278_checks as fn() -> CheckSet),
+        ("UNX-F9279", unx9279_etype_vs_consumer_perm::run_unx9279_checks as fn() -> CheckSet),
+        ("UNX-F9280", unx9280_ktest_syscall_b24::run_unx9280_checks as fn() -> CheckSet),
+        ("UNX-F9281", unx9281_charter_proc::run_unx9281_checks as fn() -> CheckSet),
         ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
         ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
         ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
@@ -2714,6 +2762,19 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F12633", unx12633_msgface_ledger::run_unx12633_checks as fn() -> CheckSet),
         ("UNX-F12634", unx12634_d4_cosign_receipt::run_unx12634_checks as fn() -> CheckSet),
         ("UNX-F12635", unx12635_pump_longrun::run_unx12635_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B03（AI-VX9-1105，12 单，SEG 0x80900~0x80BC0 独占窗口）──
+        ("UNX-F12636", unx12636_msgface_samples::run_unx12636_checks as fn() -> CheckSet),
+        ("UNX-F12637", unx12637_two_state_ledger::run_unx12637_checks as fn() -> CheckSet),
+        ("UNX-F12638", unx12638_doc_align_msd::run_unx12638_checks as fn() -> CheckSet),
+        ("UNX-F12639", unx12639_ktest_agg::run_unx12639_checks as fn() -> CheckSet),
+        ("UNX-F12640", unx12640_b33_gate::run_unx12640_checks as fn() -> CheckSet),
+        ("UNX-F12641", unx12641_consumedge::run_unx12641_checks as fn() -> CheckSet),
+        ("UNX-F12642", unx12642_tricol_charter::run_unx12642_checks as fn() -> CheckSet),
+        ("UNX-F12643", unx12643_peb_probe::run_unx12643_checks as fn() -> CheckSet),
+        ("UNX-F12644", unx12644_teb_probe::run_unx12644_checks as fn() -> CheckSet),
+        ("UNX-F12645", unx12645_ntstatus_probe::run_unx12645_checks as fn() -> CheckSet),
+        ("UNX-F12646", unx12646_qproc_probe::run_unx12646_checks as fn() -> CheckSet),
+        ("UNX-F12647", unx12647_qthread_probe::run_unx12647_checks as fn() -> CheckSet),
     ]
 }
 
@@ -3470,6 +3531,54 @@ pub fn unxstar_secondary_blocks() -> &'static [(&'static str, fn() -> CheckSet)]
         ("UNX-F9231", unx9231_order_ebadf_enoent::run_unx9231_checks as fn() -> CheckSet),
         ("UNX-F9232", unx9232_race_fd_close::run_unx9232_checks as fn() -> CheckSet),
         ("UNX-F9233", unx9233_err::run_unx9233_checks as fn() -> CheckSet),
+        ("UNX-F9234", unx9234_eprobe_suite_fd::run_unx9234_checks as fn() -> CheckSet),
+        ("UNX-F9235", unx9235_etype_vs_reconcile_fd::run_unx9235_checks as fn() -> CheckSet),
+        ("UNX-F9236", unx9236_etype_vs_compare_fd::run_unx9236_checks as fn() -> CheckSet),
+        ("UNX-F9237", unx9237_etype_recheck_declare::run_unx9237_checks as fn() -> CheckSet),
+        ("UNX-F9238", unx9238_etype_takeover_note_fd::run_unx9238_checks as fn() -> CheckSet),
+        ("UNX-F9239", unx9239_etype_vs_consumer_fd::run_unx9239_checks as fn() -> CheckSet),
+        ("UNX-F9240", unx9240_ktest_syscall_b22::run_unx9240_checks as fn() -> CheckSet),
+        ("UNX-F9241", unx9241_charter_mem::run_unx9241_checks as fn() -> CheckSet),
+        ("UNX-F9242", unx9242_matrix_mmap_hint_addr::run_unx9242_checks as fn() -> CheckSet),
+        ("UNX-F9243", unx9243_matrix_align_einval::run_unx9243_checks as fn() -> CheckSet),
+        ("UNX-F9244", unx9244_matrix_mmap_enomem::run_unx9244_checks as fn() -> CheckSet),
+        ("UNX-F9245", unx9245_matrix_munmap_mprotect::run_unx9245_checks as fn() -> CheckSet),
+        ("UNX-F9246", unx9246_matrix_brk_einval::run_unx9246_checks as fn() -> CheckSet),
+        ("UNX-F9247", unx9247_matrix_mremap_einval::run_unx9247_checks as fn() -> CheckSet),
+        ("UNX-F9248", unx9248_matrix_madvise_einval::run_unx9248_checks as fn() -> CheckSet),
+        ("UNX-F9249", unx9249_matrix_boundary_declare::run_unx9249_checks as fn() -> CheckSet),
+        ("UNX-F9250", unx9250_matrix_sigsegv::run_unx9250_checks as fn() -> CheckSet),
+        ("UNX-F9251", unx9251_matrix_boundary::run_unx9251_checks as fn() -> CheckSet),
+        ("UNX-F9252", unx9252_matrix_boundary::run_unx9252_checks as fn() -> CheckSet),
+        ("UNX-F9253", unx9253_matrix_map_fixed_enoent::run_unx9253_checks as fn() -> CheckSet),
+        ("UNX-F9254", unx9254_eprobe_suite_mem::run_unx9254_checks as fn() -> CheckSet),
+        ("UNX-F9255", unx9255_etype_vs_reconcile_mem::run_unx9255_checks as fn() -> CheckSet),
+        ("UNX-F9256", unx9256_etype_vs_compare_mem::run_unx9256_checks as fn() -> CheckSet),
+        ("UNX-F9257", unx9257_etype_recheck_declare::run_unx9257_checks as fn() -> CheckSet),
+        ("UNX-F9258", unx9258_etype_takeover_note_mem::run_unx9258_checks as fn() -> CheckSet),
+        ("UNX-F9259", unx9259_etype_vs_consumer_mem::run_unx9259_checks as fn() -> CheckSet),
+        ("UNX-F9260", unx9260_ktest_syscall_b23::run_unx9260_checks as fn() -> CheckSet),
+        ("UNX-F9261", unx9261_charter_domain_perm::run_unx9261_checks as fn() -> CheckSet),
+        ("UNX-F9262", unx9262_matrix_open_eacces::run_unx9262_checks as fn() -> CheckSet),
+        ("UNX-F9263", unx9263_matrix_chmod_chown::run_unx9263_checks as fn() -> CheckSet),
+        ("UNX-F9264", unx9264_matrix_perm_st_mode::run_unx9264_checks as fn() -> CheckSet),
+        ("UNX-F9265", unx9265_matrix_setuid_setgid::run_unx9265_checks as fn() -> CheckSet),
+        ("UNX-F9266", unx9266_matrix_perm_eacces::run_unx9266_checks as fn() -> CheckSet),
+        ("UNX-F9267", unx9267_matrix_eperm_root::run_unx9267_checks as fn() -> CheckSet),
+        ("UNX-F9268", unx9268_matrix_cap_eperm::run_unx9268_checks as fn() -> CheckSet),
+        ("UNX-F9269", unx9269_matrix_erofs::run_unx9269_checks as fn() -> CheckSet),
+        ("UNX-F9270", unx9270_matrix_ebusy_eexist::run_unx9270_checks as fn() -> CheckSet),
+        ("UNX-F9271", unx9271_matrix_eperm_b20::run_unx9271_checks as fn() -> CheckSet),
+        ("UNX-F9272", unx9272_matrix_ioctl_ioperm::run_unx9272_checks as fn() -> CheckSet),
+        ("UNX-F9273", unx9273_matrix_rlimit_eperm::run_unx9273_checks as fn() -> CheckSet),
+        ("UNX-F9274", unx9274_eprobe_suite_perm::run_unx9274_checks as fn() -> CheckSet),
+        ("UNX-F9275", unx9275_etype_vs_reconcile_perm::run_unx9275_checks as fn() -> CheckSet),
+        ("UNX-F9276", unx9276_etype_vs_compare_perm::run_unx9276_checks as fn() -> CheckSet),
+        ("UNX-F9277", unx9277_etype_recheck_declare::run_unx9277_checks as fn() -> CheckSet),
+        ("UNX-F9278", unx9278_etype_takeover_note_perm::run_unx9278_checks as fn() -> CheckSet),
+        ("UNX-F9279", unx9279_etype_vs_consumer_perm::run_unx9279_checks as fn() -> CheckSet),
+        ("UNX-F9280", unx9280_ktest_syscall_b24::run_unx9280_checks as fn() -> CheckSet),
+        ("UNX-F9281", unx9281_charter_proc::run_unx9281_checks as fn() -> CheckSet),
         ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
         ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
         ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
@@ -11205,6 +11314,54 @@ pub mod unx9230_matrix_dirfd_at_empty_path;
 pub mod unx9231_order_ebadf_enoent;
 pub mod unx9232_race_fd_close;
 pub mod unx9233_err;
+pub mod unx9234_eprobe_suite_fd;
+pub mod unx9235_etype_vs_reconcile_fd;
+pub mod unx9236_etype_vs_compare_fd;
+pub mod unx9237_etype_recheck_declare;
+pub mod unx9238_etype_takeover_note_fd;
+pub mod unx9239_etype_vs_consumer_fd;
+pub mod unx9240_ktest_syscall_b22;
+pub mod unx9241_charter_mem;
+pub mod unx9242_matrix_mmap_hint_addr;
+pub mod unx9243_matrix_align_einval;
+pub mod unx9244_matrix_mmap_enomem;
+pub mod unx9245_matrix_munmap_mprotect;
+pub mod unx9246_matrix_brk_einval;
+pub mod unx9247_matrix_mremap_einval;
+pub mod unx9248_matrix_madvise_einval;
+pub mod unx9249_matrix_boundary_declare;
+pub mod unx9250_matrix_sigsegv;
+pub mod unx9251_matrix_boundary;
+pub mod unx9252_matrix_boundary;
+pub mod unx9253_matrix_map_fixed_enoent;
+pub mod unx9254_eprobe_suite_mem;
+pub mod unx9255_etype_vs_reconcile_mem;
+pub mod unx9256_etype_vs_compare_mem;
+pub mod unx9257_etype_recheck_declare;
+pub mod unx9258_etype_takeover_note_mem;
+pub mod unx9259_etype_vs_consumer_mem;
+pub mod unx9260_ktest_syscall_b23;
+pub mod unx9261_charter_domain_perm;
+pub mod unx9262_matrix_open_eacces;
+pub mod unx9263_matrix_chmod_chown;
+pub mod unx9264_matrix_perm_st_mode;
+pub mod unx9265_matrix_setuid_setgid;
+pub mod unx9266_matrix_perm_eacces;
+pub mod unx9267_matrix_eperm_root;
+pub mod unx9268_matrix_cap_eperm;
+pub mod unx9269_matrix_erofs;
+pub mod unx9270_matrix_ebusy_eexist;
+pub mod unx9271_matrix_eperm_b20;
+pub mod unx9272_matrix_ioctl_ioperm;
+pub mod unx9273_matrix_rlimit_eperm;
+pub mod unx9274_eprobe_suite_perm;
+pub mod unx9275_etype_vs_reconcile_perm;
+pub mod unx9276_etype_vs_compare_perm;
+pub mod unx9277_etype_recheck_declare;
+pub mod unx9278_etype_takeover_note_perm;
+pub mod unx9279_etype_vs_consumer_perm;
+pub mod unx9280_ktest_syscall_b24;
+pub mod unx9281_charter_proc;
 
 // ===== AI-WBV1027 第二批（UNX-F48383~F48582，200 单）=====
 pub mod unx48383_m12dupscan;
@@ -14554,3 +14711,19 @@ pub mod unx12632_dualhost_table;
 pub mod unx12633_msgface_ledger;
 pub mod unx12634_d4_cosign_receipt;
 pub mod unx12635_pump_longrun;
+
+// ── AI-VX9-1105 批 B03：UNX-F12636~F12647（消息面边界样本集/两态记账/文档对齐
+//    MSD/ktest 聚合/B33 开门件/D1→E1 消费边/三列制度档/PEB 探测/TEB 探测/
+//    NTSTATUS 探测/进程查询档/线程查询档，0x80900..=0x80BC0 十二槽独占）──
+pub mod unx12636_msgface_samples;
+pub mod unx12637_two_state_ledger;
+pub mod unx12638_doc_align_msd;
+pub mod unx12639_ktest_agg;
+pub mod unx12640_b33_gate;
+pub mod unx12641_consumedge;
+pub mod unx12642_tricol_charter;
+pub mod unx12643_peb_probe;
+pub mod unx12644_teb_probe;
+pub mod unx12645_ntstatus_probe;
+pub mod unx12646_qproc_probe;
+pub mod unx12647_qthread_probe;
