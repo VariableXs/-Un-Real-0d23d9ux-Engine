@@ -2775,6 +2775,19 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F12645", unx12645_ntstatus_probe::run_unx12645_checks as fn() -> CheckSet),
         ("UNX-F12646", unx12646_qproc_probe::run_unx12646_checks as fn() -> CheckSet),
         ("UNX-F12647", unx12647_qthread_probe::run_unx12647_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B04（AI-VX9-1105，12 单，SEG 0x80C00~0x80EC0 独占窗口）──
+        ("UNX-F12648", unx12648_osver_tier::run_unx12648_checks as fn() -> CheckSet),
+        ("UNX-F12649", unx12649_sysinfo_probe::run_unx12649_checks as fn() -> CheckSet),
+        ("UNX-F12650", unx12650_objtype_enum::run_unx12650_checks as fn() -> CheckSet),
+        ("UNX-F12651", unx12651_cosign_slot::run_unx12651_checks as fn() -> CheckSet),
+        ("UNX-F12652", unx12652_wine_ref::run_unx12652_checks as fn() -> CheckSet),
+        ("UNX-F12653", unx12653_probe_mut20::run_unx12653_checks as fn() -> CheckSet),
+        ("UNX-F12654", unx12654_probe_cmptable::run_unx12654_checks as fn() -> CheckSet),
+        ("UNX-F12655", unx12655_probe_p95::run_unx12655_checks as fn() -> CheckSet),
+        ("UNX-F12656", unx12656_probe_edge::run_unx12656_checks as fn() -> CheckSet),
+        ("UNX-F12657", unx12657_antihallu::run_unx12657_checks as fn() -> CheckSet),
+        ("UNX-F12658", unx12658_ktest_agg::run_unx12658_checks as fn() -> CheckSet),
+        ("UNX-F12659", unx12659_b34_theme::run_unx12659_checks as fn() -> CheckSet),
     ]
 }
 
@@ -14727,3 +14740,19 @@ pub mod unx12644_teb_probe;
 pub mod unx12645_ntstatus_probe;
 pub mod unx12646_qproc_probe;
 pub mod unx12647_qthread_probe;
+
+// ── AI-VX9-1105 批 B04：UNX-F12648~F12659（OS 版本分档/系统信息探测/对象类型
+//    枚举/联签槽位/样本引用协议/突变联测 20/对照表 30 行/P95 预算/边界样本/
+//    防幻觉注记/ktest 聚合/B34 主题框架，0x80C00..=0x80EC0 十二槽独占）──
+pub mod unx12648_osver_tier;
+pub mod unx12649_sysinfo_probe;
+pub mod unx12650_objtype_enum;
+pub mod unx12651_cosign_slot;
+pub mod unx12652_wine_ref;
+pub mod unx12653_probe_mut20;
+pub mod unx12654_probe_cmptable;
+pub mod unx12655_probe_p95;
+pub mod unx12656_probe_edge;
+pub mod unx12657_antihallu;
+pub mod unx12658_ktest_agg;
+pub mod unx12659_b34_theme;
