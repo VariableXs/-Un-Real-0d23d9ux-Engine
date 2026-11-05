@@ -2814,6 +2814,19 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F12681", unx12681_d2retest::run_unx12681_checks as fn() -> CheckSet),
         ("UNX-F12682", unx12682_d3retest::run_unx12682_checks as fn() -> CheckSet),
         ("UNX-F12683", unx12683_loadcode::run_unx12683_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B07（AI-VX9-1105，12 单，SEG 0x81500~0x817C0 独占窗口）──
+        ("UNX-F12684", unx12684_oa_consumer_reg::run_unx12684_checks as fn() -> CheckSet),
+        ("UNX-F12685", unx12685_loaderlock_cosign::run_unx12685_checks as fn() -> CheckSet),
+        ("UNX-F12686", unx12686_tls_callback_order::run_unx12686_checks as fn() -> CheckSet),
+        ("UNX-F12687", unx12687_handle_reuse_reg::run_unx12687_checks as fn() -> CheckSet),
+        ("UNX-F12688", unx12688_rootpath_protocol::run_unx12688_checks as fn() -> CheckSet),
+        ("UNX-F12689", unx12689_deletepending_reg::run_unx12689_checks as fn() -> CheckSet),
+        ("UNX-F12690", unx12690_fourway_recon::run_unx12690_checks as fn() -> CheckSet),
+        ("UNX-F12691", unx12691_edge_registry::run_unx12691_checks as fn() -> CheckSet),
+        ("UNX-F12692", unx12692_twostate_ledger::run_unx12692_checks as fn() -> CheckSet),
+        ("UNX-F12693", unx12693_dualhost_summary::run_unx12693_checks as fn() -> CheckSet),
+        ("UNX-F12694", unx12694_p95_budget_reg::run_unx12694_checks as fn() -> CheckSet),
+        ("UNX-F12695", unx12695_risk_ledger::run_unx12695_checks as fn() -> CheckSet),
     ]
 }
 
@@ -14815,3 +14828,20 @@ pub mod unx12680_b35gate;
 pub mod unx12681_d2retest;
 pub mod unx12682_d3retest;
 pub mod unx12683_loadcode;
+
+// ── AI-VX9-1105 批 B07：UNX-F12684~F12695（LoaderLock 消费登记/TLS 回调序/
+//    句柄复用登记/根路径协议/DeletePending 登记/四方对账/消费边登记总表/
+//    两态账汇总/双机账汇总/P95 预算合账/风险台账/出处抽检，
+//    0x81500..=0x817C0 十二槽独占）──
+pub mod unx12684_oa_consumer_reg;
+pub mod unx12685_loaderlock_cosign;
+pub mod unx12686_tls_callback_order;
+pub mod unx12687_handle_reuse_reg;
+pub mod unx12688_rootpath_protocol;
+pub mod unx12689_deletepending_reg;
+pub mod unx12690_fourway_recon;
+pub mod unx12691_edge_registry;
+pub mod unx12692_twostate_ledger;
+pub mod unx12693_dualhost_summary;
+pub mod unx12694_p95_budget_reg;
+pub mod unx12695_risk_ledger;
