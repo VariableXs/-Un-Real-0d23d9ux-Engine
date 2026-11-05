@@ -1553,6 +1553,7 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F9201", unx9201_e::run_unx9201_checks as fn() -> CheckSet),
         ("UNX-F9202", unx9202_badfd_rw::run_unx9202_checks as fn() -> CheckSet),
         ("UNX-F9203", unx9203_efault_ptr::run_unx9203_checks as fn() -> CheckSet),
+        ("UNX-F9204", unx9204_close_badfd_matrix_race::run_unx9204_checks as fn() -> CheckSet),
         ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
         ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
         ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
@@ -2658,6 +2659,19 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F12609", unx12609_reply_pair::run_unx12609_checks as fn() -> CheckSet),
         ("UNX-F12610", unx12610_msg_type::run_unx12610_checks as fn() -> CheckSet),
         ("UNX-F12611", unx12611_msg_attr::run_unx12611_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B01（AI-VX9-1105，12 单，SEG 0x80300~0x805C0 独占窗口）──
+        ("UNX-F12612", unx12612_alpc_ctxport::run_unx12612_checks as fn() -> CheckSet),
+        ("UNX-F12613", unx12613_handle_pass::run_unx12613_checks as fn() -> CheckSet),
+        ("UNX-F12614", unx12614_port_close::run_unx12614_checks as fn() -> CheckSet),
+        ("UNX-F12615", unx12615_cosign_preform::run_unx12615_checks as fn() -> CheckSet),
+        ("UNX-F12616", unx12616_msg_inject30::run_unx12616_checks as fn() -> CheckSet),
+        ("UNX-F12617", unx12617_msg_ledger::run_unx12617_checks as fn() -> CheckSet),
+        ("UNX-F12618", unx12618_p95_budget::run_unx12618_checks as fn() -> CheckSet),
+        ("UNX-F12619", unx12619_ktest_agg::run_unx12619_checks as fn() -> CheckSet),
+        ("UNX-F12620", unx12620_b32_gate::run_unx12620_checks as fn() -> CheckSet),
+        ("UNX-F12621", unx12621_apc_alertwait::run_unx12621_checks as fn() -> CheckSet),
+        ("UNX-F12622", unx12622_user_apc::run_unx12622_checks as fn() -> CheckSet),
+        ("UNX-F12623", unx12623_queue_apc::run_unx12623_checks as fn() -> CheckSet),
     ]
 }
 
@@ -3384,6 +3398,7 @@ pub fn unxstar_secondary_blocks() -> &'static [(&'static str, fn() -> CheckSet)]
         ("UNX-F9201", unx9201_e::run_unx9201_checks as fn() -> CheckSet),
         ("UNX-F9202", unx9202_badfd_rw::run_unx9202_checks as fn() -> CheckSet),
         ("UNX-F9203", unx9203_efault_ptr::run_unx9203_checks as fn() -> CheckSet),
+        ("UNX-F9204", unx9204_close_badfd_matrix_race::run_unx9204_checks as fn() -> CheckSet),
         ("UNX-F24001", unx24001_kmd_pci::run_unx24001_checks as fn() -> CheckSet),
         ("UNX-F24002", unx24002_kmd_pci::run_unx24002_checks as fn() -> CheckSet),
         ("UNX-F24003", unx24003_kmd_pci::run_unx24003_checks as fn() -> CheckSet),
@@ -11089,6 +11104,7 @@ pub mod unx9200_ktest_syscall_b20_m;
 pub mod unx9201_e;
 pub mod unx9202_badfd_rw;
 pub mod unx9203_efault_ptr;
+pub mod unx9204_close_badfd_matrix_race;
 
 // ===== AI-WBV1027 第二批（UNX-F48383~F48582，200 单）=====
 pub mod unx48383_m12dupscan;
@@ -14406,3 +14422,19 @@ pub mod unx12608_readwrite;
 pub mod unx12609_reply_pair;
 pub mod unx12610_msg_type;
 pub mod unx12611_msg_attr;
+
+// ── AI-VX9-1105 批 B01：UNX-F12612~F12623（ALPC 上下文/句柄传递/端口关闭/
+//    联签/注入30/消息账/P95 预算/ktest 聚合/B32 闸/APC 告警等待/用户 APC/
+//    队列 APC，0x80300..=0x805C0 十二槽独占）──
+pub mod unx12612_alpc_ctxport;
+pub mod unx12613_handle_pass;
+pub mod unx12614_port_close;
+pub mod unx12615_cosign_preform;
+pub mod unx12616_msg_inject30;
+pub mod unx12617_msg_ledger;
+pub mod unx12618_p95_budget;
+pub mod unx12619_ktest_agg;
+pub mod unx12620_b32_gate;
+pub mod unx12621_apc_alertwait;
+pub mod unx12622_user_apc;
+pub mod unx12623_queue_apc;
