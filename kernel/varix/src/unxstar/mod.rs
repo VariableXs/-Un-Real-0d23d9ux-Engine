@@ -2827,6 +2827,19 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F12693", unx12693_dualhost_summary::run_unx12693_checks as fn() -> CheckSet),
         ("UNX-F12694", unx12694_p95_budget_reg::run_unx12694_checks as fn() -> CheckSet),
         ("UNX-F12695", unx12695_risk_ledger::run_unx12695_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B08（AI-VX9-1105，12 单，SEG 0x81800~0x81AC0 独占窗口）──
+        ("UNX-F12696", unx12696_antihallu::run_unx12696_checks as fn() -> CheckSet),
+        ("UNX-F12697", unx12697_docalign_master::run_unx12697_checks as fn() -> CheckSet),
+        ("UNX-F12698", unx12698_ktest_agg_b35::run_unx12698_checks as fn() -> CheckSet),
+        ("UNX-F12699", unx12699_b36_gateway::run_unx12699_checks as fn() -> CheckSet),
+        ("UNX-F12700", unx12700_midrecon_anchor::run_unx12700_checks as fn() -> CheckSet),
+        ("UNX-F12701", unx12701_cosign_protocol::run_unx12701_checks as fn() -> CheckSet),
+        ("UNX-F12702", unx12702_fourdomain_matrix::run_unx12702_checks as fn() -> CheckSet),
+        ("UNX-F12703", unx12703_frozen_cover::run_unx12703_checks as fn() -> CheckSet),
+        ("UNX-F12704", unx12704_judge_unique160::run_unx12704_checks as fn() -> CheckSet),
+        ("UNX-F12705", unx12705_inject_ledger::run_unx12705_checks as fn() -> CheckSet),
+        ("UNX-F12706", unx12706_dualhost_rate::run_unx12706_checks as fn() -> CheckSet),
+        ("UNX-F12707", unx12707_perf_budget_o1::run_unx12707_checks as fn() -> CheckSet),
     ]
 }
 
@@ -14845,3 +14858,20 @@ pub mod unx12692_twostate_ledger;
 pub mod unx12693_dualhost_summary;
 pub mod unx12694_p95_budget_reg;
 pub mod unx12695_risk_ledger;
+
+// ── AI-VX9-1105 批 B08：UNX-F12696~F12707（防幻觉确认单/文档对齐总表/ktest
+//    聚合 B35/B36 网关/中期对账锚/联签协议/四域矩阵/冻结覆盖面/判据唯一性
+//    160 终验/注入样本总账 150/双机终账一致率/预算终表八批/可重演协议，
+//    0x81800..=0x81AC0 十二槽独占）──
+pub mod unx12696_antihallu;
+pub mod unx12697_docalign_master;
+pub mod unx12698_ktest_agg_b35;
+pub mod unx12699_b36_gateway;
+pub mod unx12700_midrecon_anchor;
+pub mod unx12701_cosign_protocol;
+pub mod unx12702_fourdomain_matrix;
+pub mod unx12703_frozen_cover;
+pub mod unx12704_judge_unique160;
+pub mod unx12705_inject_ledger;
+pub mod unx12706_dualhost_rate;
+pub mod unx12707_perf_budget_o1;
