@@ -2840,6 +2840,19 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
         ("UNX-F12705", unx12705_inject_ledger::run_unx12705_checks as fn() -> CheckSet),
         ("UNX-F12706", unx12706_dualhost_rate::run_unx12706_checks as fn() -> CheckSet),
         ("UNX-F12707", unx12707_perf_budget_o1::run_unx12707_checks as fn() -> CheckSet),
+        // ── VX9-1105 批 B09（AI-VX9-1105，12 单，SEG 0x81B00~0x81DC0 独占窗口）──
+        ("UNX-F12708", unx12708_cosign_replay_proto::run_unx12708_checks as fn() -> CheckSet),
+        ("UNX-F12709", unx12709_slot_sla_reg::run_unx12709_checks as fn() -> CheckSet),
+        ("UNX-F12710", unx12710_frozen_iface_reg::run_unx12710_checks as fn() -> CheckSet),
+        ("UNX-F12711", unx12711_xref_zero_dangle::run_unx12711_checks as fn() -> CheckSet),
+        ("UNX-F12712", unx12712_asset_sha_version::run_unx12712_checks as fn() -> CheckSet),
+        ("UNX-F12713", unx12713_twostate_final_ledger::run_unx12713_checks as fn() -> CheckSet),
+        ("UNX-F12714", unx12714_risk_ledger_final::run_unx12714_checks as fn() -> CheckSet),
+        ("UNX-F12715", unx12715_docalign_final::run_unx12715_checks as fn() -> CheckSet),
+        ("UNX-F12716", unx12716_ktest_agg_six::run_unx12716_checks as fn() -> CheckSet),
+        ("UNX-F12717", unx12717_type1_final_ledger::run_unx12717_checks as fn() -> CheckSet),
+        ("UNX-F12718", unx12718_ctype_reg_framework::run_unx12718_checks as fn() -> CheckSet),
+        ("UNX-F12719", unx12719_b37_b40_preview::run_unx12719_checks as fn() -> CheckSet),
     ]
 }
 
@@ -14875,3 +14888,20 @@ pub mod unx12704_judge_unique160;
 pub mod unx12705_inject_ledger;
 pub mod unx12706_dualhost_rate;
 pub mod unx12707_perf_budget_o1;
+
+// ── AI-VX9-1105 批 B09：UNX-F12708~F12719（联签回归重演协议/会签槽位 SLA/
+//    跨域冻结接口终表/互引零悬空终验/资产 SHA-256 版本化/两态记账终账/
+//    风险账终表/文档对齐终验/ktest 六批聚合/I 型收官账/C 型开门件/
+//    B37-B40 预告，0x81B00..=0x81DC0 十二槽独占）──
+pub mod unx12708_cosign_replay_proto;
+pub mod unx12709_slot_sla_reg;
+pub mod unx12710_frozen_iface_reg;
+pub mod unx12711_xref_zero_dangle;
+pub mod unx12712_asset_sha_version;
+pub mod unx12713_twostate_final_ledger;
+pub mod unx12714_risk_ledger_final;
+pub mod unx12715_docalign_final;
+pub mod unx12716_ktest_agg_six;
+pub mod unx12717_type1_final_ledger;
+pub mod unx12718_ctype_reg_framework;
+pub mod unx12719_b37_b40_preview;
