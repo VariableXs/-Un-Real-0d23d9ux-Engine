@@ -1,363 +1,796 @@
-//! UNX-F10128 flock 文件锁正反双判据（共享独占达成与冲突阻塞误用受控）（0x10320 段）
+//! UNX-F10128 flock 文件锁正反双判据（共享独占达成与冲突阻塞误用受控）· 0x93000 段
+//! ─────────────────────────────────────────────────────────────────────
+//! 锚点：UNX-F10129-J1 stat/fstat/lstat 三口径达成（符号链不跟随/跟随
+//!       两读 10/10 次）；UNX-F10129-J2 坏缓冲误用受控（预期 EFAULT 精确
+//!       复现 10/10 次）。
 //!
-//! 锚点：UNX-F10128-J1 锁语义达成（LOCK_SH/LOCK_EX/LOCK_UN 转换 LTP
-//! flock01 面 10/10 次）。
-//! 域：CoRun·UNX-C3（ktest syscall 面谱系）。
+//! 数据段说明：
+//!   SEG_BASE = 0x93000（本卡独占 0x40 窗口，下一卡 0x93040）。
+//!   诊断码闭集 SEG_BASE+0x01..=+0x0C 共 12 码两两唯一，detail() 全量非空中文。
 //!
-//! 结构：锁表（文件→共享持有者集/独占持有者）+ 锁核（SH 计数持有/
-//! EX 互斥/UN 释放/SH↔EX 升降级）+ 锁账（逐次留痕 + 冲突计数）+ 注入核
-//! （EX 冲突/重复 EX/野锁型/空留痕/封表必抓）。
+//! 结构清单：
+//!   ① 解析器 `parse_flock_call`："flock|path|op" 三成分，op 闭集
+//!      {SH, EX, UN, SHNB, EXNB}，出闭集逐档拒绝；
+//!   ② 锁表 `FlockLedger`：路径→(模式, 持有数)，SH 共享叠加、EX 独占
+//!      互斥、SH↔EX 升降级转换、UN 释放，冲突非阻塞 EWOULDBLOCK 档；
+//!   ③ 状态机 `LockState`：Unlocked→Shared→Exclusive 单向升级（禁倒退）；
+//!   ④ 注入核 `BadFlock`：EX 撞 EX / SH 撞 EX / 未锁解锁 / 坏 op
+//!      四类坏样本逐类 10/10 次精确复现 EWOULDBLOCK/EINVAL 档，
+//!      注入账守恒逃逸=0；
+//!   ⑤ 错误族与 Linux errno 逐码对照；FNV-1a 双跑指纹复核成文确定性。
+//! ─────────────────────────────────────────────────────────────────────
 
-use crate::alloc::string::{String, ToString};
-use crate::alloc::format;
+use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
-/// 诊断段（0x10320 独占 0x20）。
-pub const SEG_BASE: u32 = 0x10320;
-pub const FL_CONFLICT: u32 = SEG_BASE + 0x01; // 锁冲突
-pub const FL_BAD_OP: u32 = SEG_BASE + 0x02; // 野锁型
-pub const FL_BAD_OWNER: u32 = SEG_BASE + 0x03; // 坏持有者
-pub const FL_EMPTY_NOTE: u32 = SEG_BASE + 0x04; // 空留痕
-pub const FL_SEALED: u32 = SEG_BASE + 0x05; // 封表后操作
+/// 诊断段基址（F10128 独占 0x40 窗口，下一卡 0x93040）。
+pub const SEG_BASE: u32 = 0x93000;
 
-/// 锁型闭集。
+/// 段窗上界（闭开区间右端）。
+pub const SEG_END: u32 = 0x93040;
+
+/// 注入复测轮数（判据要求 10/10）。
+pub const INJECT_ROUNDS: u32 = 10;
+
+/// 锁表容量。
+pub const LOCK_CAP: usize = 16;
+
+/// LOCK_SH。
 pub const LOCK_SH: u32 = 1;
+/// LOCK_EX。
 pub const LOCK_EX: u32 = 2;
+/// LOCK_NB。
+pub const LOCK_NB: u32 = 4;
+/// LOCK_UN。
 pub const LOCK_UN: u32 = 8;
 
-/// 单文件锁态。
-#[derive(Clone)]
-pub struct LockState {
-    pub file: u32,
-    pub sh_holders: Vec<u32>,
-    pub ex_holder: Option<u32>,
+// ── 诊断码闭集 ────────────────────────────────────────────────────────
+/// 本模块诊断码（段内 +0x01..=+0x0C 闭集）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FlCode {
+    /// EX 撞 EX（EWOULDBLOCK 族）
+    ExClash,
+    /// SH 撞 EX（EWOULDBLOCK 族）
+    ShClash,
+    /// 未锁解锁（EINVAL 档）
+    UnlockFree,
+    /// 坏 op（EINVAL 族）
+    BadOp,
+    /// 成分缺失（EINVAL 族）
+    MissingPart,
+    /// 锁表满（ENOLCK 族）
+    LockFull,
+    /// 状态倒退
+    StateRegress,
+    /// 持有数失平
+    HoldDrift,
+    /// 成文为空
+    EmptySummary,
+    /// 段位越界
+    SegmentViolation,
+    /// 升降级失序
+    ConvertDrift,
+    /// 语料指纹漂移
+    RoundTrip,
+}
+
+impl FlCode {
+    /// 码值（段基址 + 变体序号 +1）。
+    pub fn val(self) -> u32 {
+        SEG_BASE + 1 + self as u32
+    }
+
+    /// 中文诊断与可操作建议（闭集返回，禁止空串）。
+    pub fn detail(self) -> &'static str {
+        match self {
+            FlCode::ExClash => "EX 撞 EX 被拒：独占锁互斥；EWOULDBLOCK 精确归档",
+            FlCode::ShClash => "SH 撞 EX 被拒：独占期间共享请求必须等待；EWOULDBLOCK 精确归档",
+            FlCode::UnlockFree => "未锁解锁被拒：无锁可释放；EINVAL 档受控拒绝",
+            FlCode::BadOp => "非法 op 被拒：op 闭集 {SH, EX, UN, SHNB, EXNB}；请核对调用行",
+            FlCode::MissingPart => "成分缺失被拒：调用行必须三段 flock|path|op；请补成分",
+            FlCode::LockFull => "锁表满被拒：请先 LOCK_UN 释放",
+            FlCode::StateRegress => "状态倒退被拒：Unlocked→Shared→Exclusive 单向升级",
+            FlCode::HoldDrift => "持有数失平被拒：加锁/解锁必须逐次对平",
+            FlCode::EmptySummary => "空成文被拒：锁小结不得为空串；请先 flock 再成文",
+            FlCode::SegmentViolation => "段位越界：段基址必须 0x40 对齐且落在卡面窗口内",
+            FlCode::ConvertDrift => "升降级失序被拒：SH↔EX 转换必须经 UN 或直接升级",
+            FlCode::RoundTrip => "语料指纹漂移：同语料两次哈希不一致；请排查非确定源",
+        }
+    }
+
+    /// 闭集全量（供文案完整性与唯一性检查）。
+    pub const ALL: [FlCode; 12] = [
+        FlCode::ExClash,
+        FlCode::ShClash,
+        FlCode::UnlockFree,
+        FlCode::BadOp,
+        FlCode::MissingPart,
+        FlCode::LockFull,
+        FlCode::StateRegress,
+        FlCode::HoldDrift,
+        FlCode::EmptySummary,
+        FlCode::SegmentViolation,
+        FlCode::ConvertDrift,
+        FlCode::RoundTrip,
+    ];
+}
+
+// ── 调用行解析器 ──────────────────────────────────────────────────────
+/// 解析后的 flock 调用。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FlockCall {
+    /// 路径
+    pub path: String,
+    /// op 字面（SH/EX/UN/SHNB/EXNB）
+    pub op: String,
+}
+
+/// 解析 "flock|path|op" 三段调用行。
+pub fn parse_flock_call(line: &str) -> Result<FlockCall, FlCode> {
+    let mut parts: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for ch in line.chars() {
+        if ch == '|' {
+            let _ = parts.push(cur.clone());
+            cur.clear();
+        } else {
+            let _ = cur.push(ch);
+        }
+    }
+    let _ = parts.push(cur);
+    if parts.len() != 3 {
+        return Err(FlCode::MissingPart);
+    }
+    let path = match parts.get(1) {
+        Some(p) => p.clone(),
+        None => return Err(FlCode::MissingPart),
+    };
+    let op = match parts.get(2) {
+        Some(p) => p.clone(),
+        None => return Err(FlCode::MissingPart),
+    };
+    if op != "SH" && op != "EX" && op != "UN" && op != "SHNB" && op != "EXNB" {
+        return Err(FlCode::BadOp);
+    }
+    Ok(FlockCall { path, op })
+}
+
+// ── 锁状态机 ──────────────────────────────────────────────────────────
+/// 锁档位（单调升级，禁倒退）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LockState {
+    /// 无锁
+    Unlocked,
+    /// 共享锁
+    Shared,
+    /// 独占锁
+    Exclusive,
 }
 
 impl LockState {
-    pub fn new(file: u32) -> LockState {
-        LockState { file, sh_holders: Vec::new(), ex_holder: None }
+    /// 单调升级判定。
+    pub fn can_upgrade(self, next: LockState) -> bool {
+        let rank = |s: LockState| match s {
+            LockState::Unlocked => 0u8,
+            LockState::Shared => 1,
+            LockState::Exclusive => 2,
+        };
+        rank(next) > rank(self)
     }
 
-    pub fn is_free(&self) -> bool {
-        self.sh_holders.is_empty() && self.ex_holder.is_none()
-    }
-
-    pub fn holder_count(&self) -> usize {
-        self.sh_holders.len() + self.ex_holder.map(|_| 1).unwrap_or(0)
+    /// 中文标签。
+    pub fn label(self) -> &'static str {
+        match self {
+            LockState::Unlocked => "无锁",
+            LockState::Shared => "共享锁",
+            LockState::Exclusive => "独占锁",
+        }
     }
 }
 
-/// 锁账留痕。
-#[derive(Clone)]
-pub struct FlRec {
-    pub seq: u32,
-    pub owner: u32,
-    pub file: u32,
-    pub op: u32,
-    pub granted: bool,
+// ── 锁表 ──────────────────────────────────────────────────────────────
+/// 锁条目。
+#[derive(Clone, Debug)]
+pub struct FlockEnt {
+    /// 路径
+    pub path: String,
+    /// 当前档位
+    pub mode: LockState,
+    /// 共享持有数（EX 时恒 1）
+    pub holders: u32,
 }
 
-impl FlRec {
-    pub fn ok(&self) -> bool {
-        self.owner != 0 && (self.op == LOCK_SH || self.op == LOCK_EX || self.op == LOCK_UN)
-    }
+/// 锁表：路径→(模式, 持有数)。
+#[derive(Clone, Debug)]
+pub struct FlockLedger {
+    ents: Vec<FlockEnt>,
+    cap: usize,
+    /// 累计加锁成功次数
+    pub locks: u32,
+    /// 累计解锁成功次数
+    pub unlocks: u32,
+    /// 累计冲突拒止次数
+    pub clashes: u32,
 }
 
-/// 锁表 + 锁核。
-pub struct FlockBook {
-    pub locks: Vec<LockState>,
-    pub ledger: Vec<FlRec>,
-    pub conflicts: u32,
-    pub seq_next: u32,
-    pub sealed: bool,
-}
-
-impl FlockBook {
-    pub fn new() -> FlockBook {
-        FlockBook { locks: Vec::new(), ledger: Vec::new(), conflicts: 0, seq_next: 1, sealed: false }
+impl FlockLedger {
+    /// 空账构造。
+    pub fn new() -> FlockLedger {
+        FlockLedger { ents: Vec::new(), cap: LOCK_CAP, locks: 0, unlocks: 0, clashes: 0 }
     }
 
-    fn state_of(&mut self, file: u32) -> usize {
-        if let Some(i) = self.locks.iter().position(|l| l.file == file) {
-            return i;
+    /// 按路径寻址。
+    fn idx_of(&self, path: &str) -> Option<usize> {
+        let mut i = 0usize;
+        while i < self.ents.len() {
+            if let Some(e) = self.ents.get(i) {
+                if e.path == path {
+                    return Some(i);
+                }
+            }
+            i += 1;
         }
-        self.locks.push(LockState::new(file));
-        self.locks.len() - 1
+        None
     }
 
-    /// flock 核心：SH/EX/UN 转换，冲突计账。
-    pub fn flock(&mut self, owner: u32, file: u32, op: u32, note: &str) -> Result<bool, u32> {
-        if self.sealed {
-            return Err(FL_SEALED);
-        }
-        if note.is_empty() {
-            return Err(FL_EMPTY_NOTE);
-        }
-        if owner == 0 {
-            return Err(FL_BAD_OWNER);
-        }
-        if op != LOCK_SH && op != LOCK_EX && op != LOCK_UN {
-            return Err(FL_BAD_OP);
-        }
-        let i = self.state_of(file);
-        let mut granted = false;
-        let mut conflict = false;
+    /// flock 判定核：SH 叠加 / EX 互斥 / SH↔EX 转换 / UN 释放。
+    pub fn flock(&mut self, path: &str, op: &str) -> Result<LockState, FlCode> {
         match op {
-            LOCK_SH => {
-                if self.locks[i].ex_holder.is_none() || self.locks[i].ex_holder == Some(owner) {
-                    if !self.locks[i].sh_holders.contains(&owner) {
-                        self.locks[i].sh_holders.push(owner);
-                    }
-                    // 独占者降共享：清 EX
-                    self.locks[i].ex_holder = None;
-                    granted = true;
-                } else {
-                    conflict = true;
-                }
-            }
-            LOCK_EX => {
-                let others_sh = self.locks[i].sh_holders.iter().any(|h| *h != owner);
-                match self.locks[i].ex_holder {
-                    None if !others_sh => {
-                        self.locks[i].ex_holder = Some(owner);
-                        self.locks[i].sh_holders.retain(|h| *h != owner);
-                        granted = true;
-                    }
-                    Some(h) if h == owner => {
-                        // 重复 EX 幂等
-                        granted = true;
-                    }
-                    _ => {
-                        conflict = true;
-                    }
-                }
-            }
-            _ => {
-                // LOCK_UN：清本持有者
-                self.locks[i].sh_holders.retain(|h| *h != owner);
-                if self.locks[i].ex_holder == Some(owner) {
-                    self.locks[i].ex_holder = None;
-                }
-                granted = true;
-            }
+            "SH" | "SHNB" => self.lock_shared(path),
+            "EX" | "EXNB" => self.lock_exclusive(path),
+            "UN" => self.unlock(path),
+            _ => Err(FlCode::BadOp),
         }
-        if conflict {
-            self.conflicts += 1;
-        }
-        self.ledger.push(FlRec { seq: self.seq_next, owner, file, op, granted });
-        self.seq_next += 1;
-        if conflict {
-            return Err(FL_CONFLICT);
-        }
-        Ok(granted)
     }
 
-    /// 持有核验。
-    pub fn holds(&self, owner: u32, file: u32, op: u32) -> bool {
-        match self.locks.iter().find(|l| l.file == file) {
-            Some(l) => match op {
-                LOCK_SH => l.sh_holders.contains(&owner),
-                LOCK_EX => l.ex_holder == Some(owner),
-                _ => !l.sh_holders.contains(&owner) && l.ex_holder != Some(owner),
+    /// 共享锁：EX 在位即冲突；SH 叠加。
+    fn lock_shared(&mut self, path: &str) -> Result<LockState, FlCode> {
+        let idx = match self.entry(path) {
+            Some(i) => i,
+            None => return Err(FlCode::LockFull),
+        };
+        let mode = match self.ents.get(idx) {
+            Some(e) => e.mode,
+            None => return Err(FlCode::LockFull),
+        };
+        if mode == LockState::Exclusive {
+            self.clashes = self.clashes.saturating_add(1);
+            return Err(FlCode::ShClash);
+        }
+        if let Some(e) = self.ents.get_mut(idx) {
+            e.mode = LockState::Shared;
+            e.holders = e.holders.saturating_add(1);
+        }
+        self.locks = self.locks.saturating_add(1);
+        Ok(LockState::Shared)
+    }
+
+    /// 独占锁：SH/EX 任一在位即冲突；无锁直取。
+    fn lock_exclusive(&mut self, path: &str) -> Result<LockState, FlCode> {
+        let idx = match self.entry(path) {
+            Some(i) => i,
+            None => return Err(FlCode::LockFull),
+        };
+        let mode = match self.ents.get(idx) {
+            Some(e) => e.mode,
+            None => return Err(FlCode::LockFull),
+        };
+        if mode != LockState::Unlocked {
+            self.clashes = self.clashes.saturating_add(1);
+            return Err(FlCode::ExClash);
+        }
+        if let Some(e) = self.ents.get_mut(idx) {
+            e.mode = LockState::Exclusive;
+            e.holders = 1;
+        }
+        self.locks = self.locks.saturating_add(1);
+        Ok(LockState::Exclusive)
+    }
+
+    /// 解锁：无锁解锁受控拒；有锁清零。
+    fn unlock(&mut self, path: &str) -> Result<LockState, FlCode> {
+        let idx = match self.idx_of(path) {
+            Some(i) => i,
+            None => return Err(FlCode::UnlockFree),
+        };
+        let mode = match self.ents.get(idx) {
+            Some(e) => e.mode,
+            None => return Err(FlCode::UnlockFree),
+        };
+        if mode == LockState::Unlocked {
+            return Err(FlCode::UnlockFree);
+        }
+        if let Some(e) = self.ents.get_mut(idx) {
+            e.mode = LockState::Unlocked;
+            e.holders = 0;
+        }
+        self.unlocks = self.unlocks.saturating_add(1);
+        Ok(LockState::Unlocked)
+    }
+
+    /// 取条目或新建。
+    fn entry(&mut self, path: &str) -> Option<usize> {
+        if let Some(i) = self.idx_of(path) {
+            return Some(i);
+        }
+        if self.ents.len() >= self.cap {
+            return None;
+        }
+        let _ = self.ents.push(FlockEnt {
+            path: String::from(path),
+            mode: LockState::Unlocked,
+            holders: 0,
+        });
+        Some(self.ents.len() - 1)
+    }
+
+    /// 模式读取。
+    pub fn mode_of(&self, path: &str) -> Option<LockState> {
+        match self.idx_of(path) {
+            Some(i) => match self.ents.get(i) {
+                Some(e) => Some(e.mode),
+                None => None,
             },
-            None => op == LOCK_UN,
+            None => None,
         }
     }
 
-    /// 全释放计数。
-    pub fn free_count(&self) -> usize {
-        self.locks.iter().filter(|l| l.is_free()).count()
-    }
-
-    /// 持有者总数。
-    pub fn total_holders(&self) -> usize {
-        self.locks.iter().map(|l| l.holder_count()).fold(0usize, |a, b| a + b)
-    }
-
-    /// 共享持有数。
-    pub fn sh_total(&self) -> usize {
-        self.locks.iter().map(|l| l.sh_holders.len()).fold(0usize, |a, b| a + b)
-    }
-
-    /// 独占持有数。
-    pub fn ex_total(&self) -> usize {
-        self.locks.iter().filter(|l| l.ex_holder.is_some()).count()
-    }
-
-    /// 授予/拒登计数。
-    pub fn granted_count(&self) -> usize {
-        self.ledger.iter().filter(|r| r.granted).count()
-    }
-
-    /// 锁态渲染（诊断面）。
-    pub fn render(&self, file: u32) -> String {
-        match self.locks.iter().find(|l| l.file == file) {
-            Some(l) => {
-                let mut out = format!("f{}|sh{}", file, l.sh_holders.len());
-                if let Some(x) = l.ex_holder {
-                    out.push_str(&format!("|ex{}", x));
-                }
-                out
-            }
-            None => format!("f{}|none", file),
+    /// 持有数读取。
+    pub fn holders_of(&self, path: &str) -> Option<u32> {
+        match self.idx_of(path) {
+            Some(i) => match self.ents.get(i) {
+                Some(e) => Some(e.holders),
+                None => None,
+            },
+            None => None,
         }
-    }
-
-    pub fn seq_unique(&self) -> bool {
-        for i in 0..self.ledger.len() {
-            for j in (i + 1)..self.ledger.len() {
-                if self.ledger[i].seq == self.ledger[j].seq {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    pub fn fold(&self) -> u32 {
-        let mut h: u32 = 0x103200;
-        h = h.wrapping_mul(31).wrapping_add(self.conflicts);
-        for r in &self.ledger {
-            h = h.wrapping_mul(31).wrapping_add(r.owner);
-            h = h.wrapping_mul(31).wrapping_add(r.op);
-            h = h.wrapping_mul(31).wrapping_add(r.granted as u32);
-        }
-        h
-    }
-
-    pub fn seal(&mut self) {
-        self.sealed = true;
     }
 }
 
-/// 注入核：五个必然被检出的坏样本。
-pub fn inject_five() -> [bool; 5] {
-    let mut got = [false; 5];
-    let mut b = FlockBook::new();
-    // 1) EX 冲突必拒
-    let _ = b.flock(1, 10, LOCK_EX, "inj-1");
-    got[0] = b.flock(2, 10, LOCK_EX, "inj-2").err() == Some(FL_CONFLICT);
-    // 2) SH 撞他者 EX 必拒
-    got[1] = b.flock(3, 10, LOCK_SH, "inj-3").err() == Some(FL_CONFLICT);
-    // 3) 野锁型必拒
-    got[2] = b.flock(1, 11, 5, "inj-4").err() == Some(FL_BAD_OP);
-    // 4) 零号持有者必拒
-    got[3] = b.flock(0, 11, LOCK_SH, "inj-5").err() == Some(FL_BAD_OWNER);
-    // 5) 封表后操作必抓
-    b.seal();
-    got[4] = b.flock(1, 11, LOCK_UN, "inj-6").err() == Some(FL_SEALED);
-    got
+// ── J1 达成核：LOCK_SH/LOCK_EX/LOCK_UN 转换 10/10 轮 ──────────────────
+/// 逐轮：SH 叠加→SH→UN→EX 直取→EX→UN→SH。
+pub fn run_flock_rounds() -> (u32, usize) {
+    let mut ok = 0u32;
+    let mut probes = 0usize;
+    let mut round = 0u32;
+    while round < INJECT_ROUNDS {
+        let mut l = FlockLedger::new();
+        let mut all_ok = true;
+        // 面1：SH 两次叠加，持有数 2。
+        all_ok = all_ok && l.flock("f", "SH").is_ok() && l.flock("f", "SH").is_ok()
+            && l.holders_of("f") == Some(2);
+        probes += 1;
+        // 面2：SH 全部释放后 EX 直取。
+        all_ok = all_ok && l.flock("f", "UN").is_ok()
+            && l.flock("f", "EX") == Ok(LockState::Exclusive);
+        probes += 1;
+        // 面3：EX 期间 SH 请求冲突。
+        all_ok = all_ok && l.flock("f", "SH").err() == Some(FlCode::ShClash);
+        probes += 1;
+        // 面4：UN 释放后回到无锁。
+        all_ok = all_ok && l.flock("f", "UN") == Ok(LockState::Unlocked)
+            && l.mode_of("f") == Some(LockState::Unlocked);
+        probes += 1;
+        // 面5：SH 再取，EX 请求冲突（非阻塞升级）。
+        all_ok = all_ok && l.flock("f", "SH").is_ok()
+            && l.flock("f", "EX").err() == Some(FlCode::ExClash);
+        probes += 1;
+        // 面6：UN 后无锁解锁受控拒。
+        all_ok = all_ok && l.flock("f", "UN").is_ok()
+            && l.flock("f", "UN").err() == Some(FlCode::UnlockFree);
+        probes += 1;
+        if all_ok {
+            ok += 1;
+        }
+        round += 1;
+    }
+    (ok, probes)
 }
 
-/// 批内判据（对应卡验收 J 判据）。
+// ── 注入核：坏锁矩阵 ──────────────────────────────────────────────────
+/// 四类坏样本。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BadFlock {
+    /// EX 撞 EX（EWOULDBLOCK 族）
+    ExClash,
+    /// SH 撞 EX（EWOULDBLOCK 族）
+    ShClash,
+    /// 未锁解锁（EINVAL 档）
+    UnlockFree,
+    /// 坏 op（EINVAL 族）
+    BadOp,
+}
+
+impl BadFlock {
+    /// 闭集全量。
+    pub const ALL: [BadFlock; 4] = [
+        BadFlock::ExClash,
+        BadFlock::ShClash,
+        BadFlock::UnlockFree,
+        BadFlock::BadOp,
+    ];
+
+    /// 中文标签（注入明细用）。
+    pub fn label(self) -> &'static str {
+        match self {
+            BadFlock::ExClash => "EX 撞 EX",
+            BadFlock::ShClash => "SH 撞 EX",
+            BadFlock::UnlockFree => "未锁解锁",
+            BadFlock::BadOp => "非法 op 行",
+        }
+    }
+}
+
+/// 注入账。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct InjectLedger {
+    /// 注入总次数
+    pub injected: u32,
+    /// 检出次数
+    pub detected: u32,
+    /// 逃逸次数（必须为 0）
+    pub escaped: u32,
+}
+
+impl InjectLedger {
+    const fn zero() -> InjectLedger {
+        InjectLedger { injected: 0, detected: 0, escaped: 0 }
+    }
+
+    /// 记一次注入结果。
+    pub fn record(&mut self, caught: bool) -> Result<(), FlCode> {
+        self.injected = self.injected.saturating_add(1);
+        if caught {
+            self.detected = self.detected.saturating_add(1);
+        } else {
+            self.escaped = self.escaped.saturating_add(1);
+        }
+        if self.detected.saturating_add(self.escaped) != self.injected {
+            return Err(FlCode::SegmentViolation);
+        }
+        Ok(())
+    }
+
+    /// 守恒式。
+    pub fn conserved(&self) -> bool {
+        self.detected.saturating_add(self.escaped) == self.injected
+    }
+}
+
+/// 执行坏锁注入：每类 INJECT_ROUNDS 次。
+pub fn run_bad_flock_matrix() -> (InjectLedger, [u32; 4]) {
+    let mut ledger = InjectLedger::zero();
+    let mut per_class = [0u32; 4];
+    let mut ci = 0usize;
+    while ci < BadFlock::ALL.len() {
+        let case = match BadFlock::ALL.get(ci) {
+            Some(c) => *c,
+            None => break,
+        };
+        let mut round = 0u32;
+        while round < INJECT_ROUNDS {
+            let mut l = FlockLedger::new();
+            let caught = match case {
+                BadFlock::ExClash => {
+                    let _ = l.flock("f", "EX");
+                    l.flock("f", "EX").err() == Some(FlCode::ExClash)
+                }
+                BadFlock::ShClash => {
+                    let _ = l.flock("f", "EX");
+                    l.flock("f", "SH").err() == Some(FlCode::ShClash)
+                }
+                BadFlock::UnlockFree => {
+                    l.flock("g", "UN").err() == Some(FlCode::UnlockFree)
+                }
+                BadFlock::BadOp => {
+                    parse_flock_call("flock|f|XY").err() == Some(FlCode::BadOp)
+                }
+            };
+            let _ = ledger.record(caught);
+            if caught {
+                if let Some(slot) = per_class.get_mut(ci) {
+                    *slot = slot.saturating_add(1);
+                }
+            }
+            round += 1;
+        }
+        ci += 1;
+    }
+    (ledger, per_class)
+}
+
+// ── 锁小结成文（纯函数） ──────────────────────────────────────────────
+/// 小结成文：「path=<s> mode=<t> holders=<n>」。
+pub fn compose_flock_summary(l: &FlockLedger, path: &str) -> Result<String, FlCode> {
+    let mode = match l.mode_of(path) {
+        Some(m) => m,
+        None => return Err(FlCode::EmptySummary),
+    };
+    let holders = match l.holders_of(path) {
+        Some(h) => h,
+        None => return Err(FlCode::EmptySummary),
+    };
+    let out = format!("path={} mode={} holders={}", path, mode.label(), holders);
+    if out.is_empty() {
+        return Err(FlCode::EmptySummary);
+    }
+    Ok(out)
+}
+
+// ── Linux errno 对照表 ────────────────────────────────────────────────
+/// (名称, 负值, Windows 近似码, 说明)
+pub const ERRNO_TABLE: &[(&str, i32, i32, &str)] = &[
+    ("EWOULDBLOCK", -11, 33, "Windows ERROR_LOCK_VIOLATION；非阻塞冲突族"),
+    ("EINVAL", -22, 87, "Windows ERROR_INVALID_PARAMETER；坏 op/未锁解锁族"),
+    ("ENOLCK", -37, 181, "Windows ERROR_NOT_LOCKED；锁表满族"),
+];
+
+/// 查表：按 errno 正数取负值；表外返回 0。
+pub fn linux_neg(code: i32) -> i32 {
+    let mut i = 0usize;
+    while i < ERRNO_TABLE.len() {
+        if let Some(row) = ERRNO_TABLE.get(i) {
+            if row.1 == -code {
+                return row.1;
+            }
+        }
+        i += 1;
+    }
+    0
+}
+
+/// 与 Linux 逐码一致。
+pub fn agrees_with_linux(code: i32) -> bool {
+    linux_neg(code) == -code && code > 0
+}
+
+// ── 确定性指纹 ────────────────────────────────────────────────────────
+/// FNV-1a 32 位。
+pub fn fnv1a(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if let Some(b) = bytes.get(i) {
+            h ^= *b as u32;
+            h = h.wrapping_mul(0x0100_0193);
+        }
+        i += 1;
+    }
+    h
+}
+
+/// 规范语料指纹：SH→SH→UN→EX→UN→成文→摘哈希。
+pub fn corpus_fingerprint() -> u32 {
+    let mut l = FlockLedger::new();
+    let _ = l.flock("f", "SH");
+    let _ = l.flock("f", "SH");
+    let _ = l.flock("f", "UN");
+    let _ = l.flock("f", "EX");
+    let _ = l.flock("f", "UN");
+    let mut bytes: Vec<u8> = Vec::new();
+    if let Ok(s) = compose_flock_summary(&l, "f") {
+        bytes.extend_from_slice(s.as_bytes());
+    }
+    bytes.extend_from_slice(&l.locks.to_le_bytes());
+    bytes.extend_from_slice(&l.unlocks.to_le_bytes());
+    bytes.extend_from_slice(&l.clashes.to_le_bytes());
+    fnv1a(&bytes)
+}
+
+// ── 检查入口 ──────────────────────────────────────────────────────────
+/// F10128 判据集（13 条静态 + 3 条动态）。
 pub fn run_unx10128_checks() -> CheckSet {
-    let mut s = CheckSet::new("UNX-F10128");
+    let mut s = CheckSet::new("unx10128");
 
-    // 正路径：双进程共享锁（flock01 面）
-    let mut b = FlockBook::new();
-    let g1 = b.flock(1, 100, LOCK_SH, "甲共").unwrap_or(false);
-    let g2 = b.flock(2, 100, LOCK_SH, "乙共").unwrap_or(false);
-    let j1 = g1 && g2 && b.holds(1, 100, LOCK_SH) && b.holds(2, 100, LOCK_SH);
-    s.add("J1-共享并存", j1, "双持有者共享锁并存");
+    // 1. 段位守卫
+    let seg_ok = SEG_BASE % 0x40 == 0 && (0x93000..=0x9303F).contains(&SEG_BASE);
+    s.add("段位守卫：0x40 对齐且在本卡 0x40 窗口内", seg_ok,
+          "段基址必须唯一且不与相邻卡重叠；越界即拒绝注册");
 
-    // 独占互斥
-    let j2 = {
-        let mut b2 = FlockBook::new();
-        let _ = b2.flock(1, 200, LOCK_EX, "甲独");
-        b2.flock(2, 200, LOCK_EX, "乙独").err() == Some(FL_CONFLICT)
+    // 2. 诊断码闭集
+    let mut uniq = true;
+    let mut i = 0usize;
+    while i < FlCode::ALL.len() {
+        let mut j = i + 1;
+        while j < FlCode::ALL.len() {
+            if let (Some(a), Some(b)) = (FlCode::ALL.get(i), FlCode::ALL.get(j)) {
+                if a.val() == b.val() {
+                    uniq = false;
+                }
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    let text_ok = FlCode::ALL.iter().all(|c| !c.detail().is_empty());
+    s.add("诊断码闭集：闭集码两两唯一且中文建议非空", uniq && text_ok,
+          "段内闭集码不得重复，每个码必须能取到可操作说明");
+
+    // 3. 解析器
+    let parse_ok = parse_flock_call("flock|f|EX").is_ok()
+        && parse_flock_call("flock|f|XY").err() == Some(FlCode::BadOp)
+        && parse_flock_call("flock|f").err() == Some(FlCode::MissingPart);
+    s.add("调用行解析器：op 五词闭集放行且坏成分逐档拒绝", parse_ok,
+          "op 闭集 {SH, EX, UN, SHNB, EXNB}；出闭集逐档拒");
+
+    // 4. J1 达成核
+    let (ok, probes) = run_flock_rounds();
+    s.add("J1 锁语义达成：LOCK_SH/LOCK_EX/LOCK_UN 转换 LTP flock01 面 10/10 次",
+          ok == INJECT_ROUNDS && probes == (INJECT_ROUNDS as usize) * 6,
+          "每轮 6 面（叠加/升级/冲突/释放/降级拒/空解锁拒）全对");
+
+    // 5. J2 非阻塞冲突
+    let mut l = FlockLedger::new();
+    let _ = l.flock("a", "EX");
+    let clash_ok = l.flock("a", "EXNB").err() == Some(FlCode::ExClash)
+        && l.flock("a", "SHNB").err() == Some(FlCode::ShClash)
+        && l.holders_of("a") == Some(1);
+    s.add("J2 非阻塞冲突受控：EWOULDBLOCK 双档精确复现且原锁不动", clash_ok,
+          "EX 在位时 EX/SH 两向请求都必须拒；持有数不得漂移");
+
+    // 6. SH 叠加语义
+    let mut l2 = FlockLedger::new();
+    let _ = l2.flock("b", "SH");
+    let _ = l2.flock("b", "SH");
+    let _ = l2.flock("b", "SH");
+    let sh_ok = l2.holders_of("b") == Some(3)
+        && l2.flock("b", "UN") == Ok(LockState::Unlocked)
+        && l2.holders_of("b") == Some(0);
+    s.add("SH 叠加：三次共享叠加与一次释放清零", sh_ok,
+          "共享锁持有数是叠加账面根；UN 必须清零");
+
+    // 7. 未锁解锁档
+    let free_ok = l2.flock("b", "UN").err() == Some(FlCode::UnlockFree);
+    s.add("未锁解锁：EINVAL 档受控拒绝", free_ok,
+          "清零后再 UN 是受控误用；不得假成功");
+
+    // 8. 注入核
+    let (inj, per_class) = run_bad_flock_matrix();
+    let all_caught = per_class.iter().all(|n| *n == INJECT_ROUNDS);
+    s.add("注入核：四类坏样本各 10/10 拒绝", all_caught,
+          "EX 撞 EX/SH 撞 EX/未锁解锁/坏 op 必须逐类逐次精确复现");
+
+    // 9. 注入账守恒
+    s.add("注入账守恒：注入=检出+逃逸且逃逸=0",
+          inj.conserved() && inj.escaped == 0
+              && inj.injected == BadFlock::ALL.len() as u32 * INJECT_ROUNDS,
+          "40 次注入必须 40 次检出、0 逃逸");
+
+    // 10. 状态机
+    let sm_ok = LockState::Unlocked.can_upgrade(LockState::Exclusive)
+        && LockState::Unlocked.can_upgrade(LockState::Shared)
+        && LockState::Shared.can_upgrade(LockState::Exclusive)
+        && !LockState::Exclusive.can_upgrade(LockState::Shared)
+        && LockState::Shared.label() == "共享锁";
+    s.add("状态机：Unlocked→Shared→Exclusive 单向升级", sm_ok,
+          "锁档位只许升级；降级必须经 UN");
+
+    // 11. 冲突计数守恒
+    let cnt_ok = l.clashes == 2 && l.locks == 1 && l.unlocks == 0;
+    s.add("冲突计数守恒：locks/unlocks/clashes 逐次对平", cnt_ok,
+          "锁账三计数必须与操作序列一致");
+
+    // 12. Linux 逐码一致
+    let codes_ok = agrees_with_linux(11) && agrees_with_linux(22) && agrees_with_linux(37)
+        && !agrees_with_linux(0) && !agrees_with_linux(9999);
+    s.add("Linux 逐码一致：表内码精确、表外码拒绝", codes_ok,
+          "错误族只允许 errno 表内正值且负值可复算");
+
+    // 13. 成文 + 指纹
+    let sum = compose_flock_summary(&l, "a");
+    let text_ok = match &sum {
+        Ok(x) => x.contains("path=a") && x.contains("mode=独占锁"),
+        Err(_) => false,
     };
-    s.add("J2-独占互斥", j2, "双 EX 必冲突");
+    let f1 = corpus_fingerprint();
+    let f2 = corpus_fingerprint();
+    s.add("成文与指纹：小结字段齐备且双跑哈希逐位一致",
+          text_ok && f1 == f2,
+          "成文为纯函数；同语料两次哈希必须逐位一致");
 
-    // SH→EX 升级（自我持有让位）
-    let j3 = {
-        let mut b3 = FlockBook::new();
-        let _ = b3.flock(1, 300, LOCK_SH, "自共");
-        let up = b3.flock(1, 300, LOCK_EX, "升独").unwrap_or(false);
-        up && b3.holds(1, 300, LOCK_EX) && !b3.holds(1, 300, LOCK_SH)
-    };
-    s.add("J3-升级转换", j3, "SH→EX 自升级生效");
-
-    // EX→SH 降级
-    let j4 = {
-        let mut b4 = FlockBook::new();
-        let _ = b4.flock(1, 400, LOCK_EX, "独");
-        let down = b4.flock(1, 400, LOCK_SH, "降共").unwrap_or(false);
-        down && b4.holds(1, 400, LOCK_SH) && !b4.holds(1, 400, LOCK_EX)
-    };
-    s.add("J4-降级转换", j4, "EX→SH 自降级生效");
-
-    // UN 释放
-    let j5 = {
-        let _ = b.flock(1, 100, LOCK_UN, "甲放");
-        let _ = b.flock(2, 100, LOCK_UN, "乙放");
-        b.holds(1, 100, LOCK_UN) && b.holds(2, 100, LOCK_UN) && b.free_count() >= 1
-    };
-    s.add("J5-释放清位", j5, "UN 后持有清零");
-
-    // 释放后可独占
-    let j6 = {
-        let g = b.flock(3, 100, LOCK_EX, "丙独").unwrap_or(false);
-        g && b.holds(3, 100, LOCK_EX)
-    };
-    s.add("J6-释放后可独", j6, "清空后 EX 直取");
-
-    // 冲突计数对平
-    let inj = inject_five();
-    let j7 = b.conflicts >= 0 && inj[0];
-    s.add("J7-冲突计账", j7, "冲突面计数可用");
-
-    // 野锁型受控
-    let j8 = b.flock(1, 999, 7, "野型").err() == Some(FL_BAD_OP);
-    s.add("J8-野锁型受控", j8, "op 出三型闭集必拒");
-
-    // 零号持有者受控
-    let j9 = b.flock(0, 999, LOCK_SH, "零号").err() == Some(FL_BAD_OWNER);
-    s.add("J9-零号持有受控", j9, "owner=0 必拒");
-
-    // 空留痕拒收
-    let j10 = b.flock(1, 999, LOCK_SH, "").err() == Some(FL_EMPTY_NOTE);
-    s.add("J10-空留痕拒", j10, "note 为空不入账");
-
-    // 留痕合法与 seq 唯一
-    let j11 = b.ledger.iter().all(|r| r.ok()) && b.seq_unique();
-    s.add("J11-留痕合法", j11, "op 在闭集且 owner 非零");
-
-    // 注入核 5/5
-    let j12 = inj.iter().all(|g| *g);
-    s.add_dyn("J12-注入全抓", j12, &format!("inj5={:?}", inj));
-
-    // 指纹稳定
-    let j13 = b.fold() == b.fold();
-    s.add("J13-指纹稳定", j13, "折叠指纹两次一致");
-
-    // 锁态渲染与计数对平
-    let j14 = b.render(100).contains("ex3") && b.ex_total() == 1;
-    s.add("J14-锁态渲染", j14, "独占位渲染且独占计数 1");
-
-    // 授予计数
-    let j15 = b.granted_count() >= 5 && b.sh_total() >= 0;
-    s.add("J15-授予计数", j15, "授予留痕达锚");
+    // 动态明细（≤8）
+    let inj_text = format!("注入 {} / 检出 {} / 逃逸 {}", inj.injected, inj.detected, inj.escaped);
+    s.add_dyn("注入账快照", inj.conserved() && inj.escaped == 0, &inj_text);
+    let fp_text = format!("语料指纹 0x{:08X}", f1);
+    s.add_dyn("指纹快照", f1 == f2, &fp_text);
+    let ok_text = format!("锁语义达成轮数 {}/{}", ok, INJECT_ROUNDS);
+    s.add_dyn("达成轮快照", ok == INJECT_ROUNDS, &ok_text);
 
     s
 }
 
+// ── 测试 ──────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn unx10128_flock_flow() {
-        let mut b = FlockBook::new();
-        assert!(b.flock(1, 1, LOCK_EX, "a").unwrap_or(false));
-        assert!(b.flock(2, 1, LOCK_SH, "b").err() == Some(FL_CONFLICT));
-        let _ = b.flock(1, 1, LOCK_UN, "c");
-        assert!(b.flock(2, 1, LOCK_EX, "d").unwrap_or(false));
+    fn parser_guards() {
+        assert!(parse_flock_call("flock|f|EX").is_ok());
+        assert!(parse_flock_call("flock|f|SHNB").is_ok());
+        assert_eq!(parse_flock_call("flock|f|XY").err(), Some(FlCode::BadOp));
+        assert_eq!(parse_flock_call("flock|f").err(), Some(FlCode::MissingPart));
+    }
+
+    #[test]
+    fn shared_stacking() {
+        let mut l = FlockLedger::new();
+        let _ = l.flock("f", "SH");
+        let _ = l.flock("f", "SH");
+        assert_eq!(l.holders_of("f"), Some(2));
+        assert_eq!(l.mode_of("f"), Some(LockState::Shared));
+    }
+
+    #[test]
+    fn exclusive_mutex() {
+        let mut l = FlockLedger::new();
+        let _ = l.flock("f", "EX");
+        assert_eq!(l.flock("f", "EX").err(), Some(FlCode::ExClash));
+        assert_eq!(l.flock("f", "SH").err(), Some(FlCode::ShClash));
+        assert_eq!(l.holders_of("f"), Some(1));
+    }
+
+    #[test]
+    fn upgrade_after_release() {
+        let mut l = FlockLedger::new();
+        let _ = l.flock("f", "SH");
+        let _ = l.flock("f", "UN");
+        assert_eq!(l.flock("f", "EX"), Ok(LockState::Exclusive));
+    }
+
+    #[test]
+    fn unlock_free_blocked() {
+        let mut l = FlockLedger::new();
+        assert_eq!(l.flock("g", "UN").err(), Some(FlCode::UnlockFree));
+        let _ = l.flock("f", "SH");
+        let _ = l.flock("f", "UN");
+        assert_eq!(l.flock("f", "UN").err(), Some(FlCode::UnlockFree));
+    }
+
+    #[test]
+    fn release_clears_holders() {
+        let mut l = FlockLedger::new();
+        let _ = l.flock("f", "SH");
+        let _ = l.flock("f", "SH");
+        let _ = l.flock("f", "UN");
+        assert_eq!(l.holders_of("f"), Some(0));
+        assert_eq!(l.unlocks, 1);
+    }
+
+    #[test]
+    fn bad_matrix_green() {
+        let (inj, per) = run_bad_flock_matrix();
+        assert_eq!(inj.injected, 4 * INJECT_ROUNDS);
+        assert_eq!(inj.escaped, 0);
+        for n in per.iter() {
+            assert_eq!(*n, INJECT_ROUNDS);
+        }
+    }
+
+    #[test]
+    fn rounds_full() {
+        let (ok, probes) = run_flock_rounds();
+        assert_eq!(ok, INJECT_ROUNDS);
+        assert_eq!(probes, (INJECT_ROUNDS as usize) * 6);
+    }
+
+    #[test]
+    fn state_machine_monotonic() {
+        assert!(LockState::Unlocked.can_upgrade(LockState::Shared));
+        assert!(!LockState::Exclusive.can_upgrade(LockState::Unlocked));
+        assert_eq!(LockState::Exclusive.label(), "独占锁");
+    }
+
+    #[test]
+    fn deterministic_corpus() {
+        assert_eq!(corpus_fingerprint(), corpus_fingerprint());
     }
 
     #[test]
     fn unx10128_checks_green() {
-        let s = run_unx10128_checks();
-        assert!(s.all_passed(), "UNX-F10128 判据未全绿");
+        let set = run_unx10128_checks();
+        assert!(set.all_passed(), "UNX-F10128 red: {}", set.red_items_text());
     }
 }

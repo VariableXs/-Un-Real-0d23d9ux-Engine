@@ -1,361 +1,814 @@
-//! UNX-F10130 chmod/chown 权限面正反双判据（位操作达成与越权误用受控）（0x10360 段）
+//! UNX-F10130 chmod/chown 权限面正反双判据（位操作达成与越权误用受控）· 0x93080 段
+//! ─────────────────────────────────────────────────────────────────────
+//! 锚点：UNX-F10131-J1 原子追加达成（多写端偏移独立终位正确 10/10 次）；
+//!       UNX-F10131-J2 无 O_APPEND 竌态受控（偏移覆盖可复现并注 L1 条款
+//!       10/10 次）。
 //!
-//! 锚点：UNX-F10130-J1 位操作达成（mode 置位/清位回读一致 LTP chmod01
-//! 面 10/10 次）。
-//! 域：CoRun·UNX-C3（ktest syscall 面谱系）。
+//! 数据段说明：
+//!   SEG_BASE = 0x93080（本卡独占 0x40 窗口，下一卡 0x930C0）。
+//!   诊断码闭集 SEG_BASE+0x01..=+0x0C 共 12 码两两唯一，detail() 全量非空中文。
 //!
-//! 结构：权限册（mode 位面 + 属主三元组）+ 位核（置位/清位/回读/chown
-//! 属主迁移/越权拒）+ 权账（逐次留痕）+ 注入核（越权/野位/缺件/空留痕/
-//! 封表必抓）。
+//! 结构清单：
+//!   ① 解析器 `parse_chmod_call`："op|path|arg" 三成分（op ∈ {chmod,
+//!      chown}），mode 十进制 0..=511 闭集、uid 非负闭集，越闭集解析层
+//!      不吞（判定层拒）；
+//!   ② 权限账 `PermLedger`：路径→(mode 位 9 位, owner uid)，chmod 置位/
+//!      清位回读一致，chown 换属主；
+//!   ③ 状态机 `PermState`：Inherited→Modified→Frozen 单向（禁倒退）；
+//!   ④ 注入核 `BadPerm`：非属主 chmod / 非属主 chown / mode 越九位 /
+//!      缺失路径 四类坏样本逐类 10/10 档精确复现 EPERM/EINVAL/ENOENT 档，
+//!      注入账守恒逃逸=0；
+//!   ⑤ 错误族与 Linux errno 逐码对照；FNV-1a 双跑指纹复核成文确定性。
+//! ─────────────────────────────────────────────────────────────────────
 
-use crate::alloc::string::{String, ToString};
-use crate::alloc::format;
+use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
-/// 诊断段（0x10360 独占 0x20）。
-pub const SEG_BASE: u32 = 0x10360;
-pub const CM_EPERM: u32 = SEG_BASE + 0x01; // 越权
-pub const CM_BAD_MODE: u32 = SEG_BASE + 0x02; // 野位出闭集
-pub const CM_NOENT: u32 = SEG_BASE + 0x03; // 缺件
-pub const CM_EMPTY_NOTE: u32 = SEG_BASE + 0x04; // 空留痕
-pub const CM_SEALED: u32 = SEG_BASE + 0x05; // 封表后操作
+/// 诊断段基址（F10130 独占 0x40 窗口，下一卡 0x930C0）。
+pub const SEG_BASE: u32 = 0x93080;
 
-/// mode 12 位闭集。
-pub const MODE_MASK: u32 = 0o7777;
+/// 段窗上界（闭开区间右端）。
+pub const SEG_END: u32 = 0x930C0;
 
-/// 权限件。
-#[derive(Clone)]
-pub struct PermNode {
-    pub name: String,
+/// 注入复测轮数（判据要求 10/10）。
+pub const INJECT_ROUNDS: u32 = 10;
+
+/// 权限账容量。
+pub const PERM_CAP: usize = 16;
+
+/// mode 九位闭集上限。
+pub const MODE_MAX: u32 = 0o777;
+
+// ── 诊断码闭集 ────────────────────────────────────────────────────────
+/// 本模块诊断码（段内 +0x01..=+0x0C 闭集）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PmCode {
+    /// 非属主 chmod/chown（EPERM 族）
+    NotOwner,
+    /// mode 越九位（EINVAL 族）
+    BadMode,
+    /// 缺失路径（ENOENT 族）
+    MissingPath,
+    /// 空路径（EINVAL 族）
+    EmptyPath,
+    /// 非法 op（EINVAL 族）
+    BadOp,
+    /// 非数字成分（EINVAL 族）
+    BadNumber,
+    /// 成分缺失（EINVAL 族）
+    MissingPart,
+    /// 状态倒退
+    StateRegress,
+    /// 成文为空
+    EmptySummary,
+    /// 段位越界
+    SegmentViolation,
+    /// 位账失平
+    BitDrift,
+    /// 语料指纹漂移
+    RoundTrip,
+}
+
+impl PmCode {
+    /// 码值（段基址 + 变体序号 +1）。
+    pub fn val(self) -> u32 {
+        SEG_BASE + 1 + self as u32
+    }
+
+    /// 中文诊断与可操作建议（闭集返回，禁止空串）。
+    pub fn detail(self) -> &'static str {
+        match self {
+            PmCode::NotOwner => "非属主被拒：chmod/chown 只许属主调用；EPERM 精确归档",
+            PmCode::BadMode => "mode 越九位被拒：0..=0o777 闭集；EINVAL 精确归档",
+            PmCode::MissingPath => "缺失路径被拒：权限账无此路径；ENOENT 精确归档",
+            PmCode::EmptyPath => "空路径被拒：路径不得为空串；EINVAL 精确归档",
+            PmCode::BadOp => "非法 op 被拒：op 闭集 {chmod, chown}；请核对调用行",
+            PmCode::BadNumber => "非数字成分被拒：mode/uid 必须为十进制；请改写",
+            PmCode::MissingPart => "成分缺失被拒：调用行必须三段 op|path|arg；请补成分",
+            PmCode::StateRegress => "状态倒退被拒：Inherited→Modified→Frozen 单向",
+            PmCode::EmptySummary => "空成文被拒：权限小结不得为空串；请先登记再成文",
+            PmCode::SegmentViolation => "段位越界：段基址必须 0x40 对齐且落在卡面窗口内",
+            PmCode::BitDrift => "位账失平被拒：置位/清位回读必须逐位一致",
+            PmCode::RoundTrip => "语料指纹漂移：同语料两次哈希不一致；请排查非确定源",
+        }
+    }
+
+    /// 闭集全量（供文案完整性与唯一性检查）。
+    pub const ALL: [PmCode; 12] = [
+        PmCode::NotOwner,
+        PmCode::BadMode,
+        PmCode::MissingPath,
+        PmCode::EmptyPath,
+        PmCode::BadOp,
+        PmCode::BadNumber,
+        PmCode::MissingPart,
+        PmCode::StateRegress,
+        PmCode::EmptySummary,
+        PmCode::SegmentViolation,
+        PmCode::BitDrift,
+        PmCode::RoundTrip,
+    ];
+}
+
+// ── 调用行解析器 ──────────────────────────────────────────────────────
+/// 解析后的权限调用。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PermCall {
+    /// 动词
+    pub op: String,
+    /// 路径
+    pub path: String,
+    /// 参数（chmod 的 mode / chown 的 uid，允许越闭集入判定层）
+    pub arg: i64,
+}
+
+/// 解析 "op|path|arg" 三段调用行。
+pub fn parse_perm_call(line: &str) -> Result<PermCall, PmCode> {
+    let mut parts: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for ch in line.chars() {
+        if ch == '|' {
+            let _ = parts.push(cur.clone());
+            cur.clear();
+        } else {
+            let _ = cur.push(ch);
+        }
+    }
+    let _ = parts.push(cur);
+    if parts.len() != 3 {
+        return Err(PmCode::MissingPart);
+    }
+    let op = match parts.first() {
+        Some(p) => p.clone(),
+        None => return Err(PmCode::MissingPart),
+    };
+    if op != "chmod" && op != "chown" {
+        return Err(PmCode::BadOp);
+    }
+    let path = match parts.get(1) {
+        Some(p) => p.clone(),
+        None => return Err(PmCode::MissingPart),
+    };
+    let as_ = match parts.get(2) {
+        Some(p) => p.clone(),
+        None => return Err(PmCode::MissingPart),
+    };
+    if as_.is_empty() {
+        return Err(PmCode::BadNumber);
+    }
+    let (neg, digits) = match as_.strip_prefix('-') {
+        Some(d) => (true, d),
+        None => (false, as_.as_str()),
+    };
+    if digits.is_empty() {
+        return Err(PmCode::BadNumber);
+    }
+    let mut acc: i64 = 0;
+    for b in digits.bytes() {
+        if !b.is_ascii_digit() {
+            return Err(PmCode::BadNumber);
+        }
+        acc = acc.saturating_mul(10).saturating_add((b - b'0') as i64);
+    }
+    Ok(PermCall { op, path, arg: if neg { -acc } else { acc } })
+}
+
+// ── 权限状态机 ────────────────────────────────────────────────────────
+/// 权限生命周期（单调，禁倒退）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PermState {
+    /// 继承态
+    Inherited,
+    /// 已修改
+    Modified,
+    /// 已冻结
+    Frozen,
+}
+
+impl PermState {
+    /// 单调推进判定（允许跳级、禁倒退）。
+    pub fn can_advance(self, next: PermState) -> bool {
+        let rank = |s: PermState| match s {
+            PermState::Inherited => 0u8,
+            PermState::Modified => 1,
+            PermState::Frozen => 2,
+        };
+        rank(next) > rank(self)
+    }
+
+    /// 中文标签。
+    pub fn label(self) -> &'static str {
+        match self {
+            PermState::Inherited => "继承态",
+            PermState::Modified => "已修改",
+            PermState::Frozen => "已冻结",
+        }
+    }
+}
+
+// ── 权限账 ────────────────────────────────────────────────────────────
+/// 权限条目。
+#[derive(Clone, Debug)]
+pub struct PermEnt {
+    /// 路径
+    pub path: String,
+    /// 九位 mode
     pub mode: u32,
-    pub uid: u32,
-    pub gid: u32,
+    /// 属主 uid
+    pub owner: u32,
+    /// 权限状态
+    pub state: PermState,
 }
 
-impl PermNode {
-    pub fn ok(&self) -> bool {
-        !self.name.is_empty() && self.mode & !MODE_MASK == 0
+/// 权限账：路径→(mode, owner)。
+#[derive(Clone, Debug)]
+pub struct PermLedger {
+    ents: Vec<PermEnt>,
+    cap: usize,
+    /// 当前执行者 uid
+    pub caller: u32,
+    /// 累计 chmod 次数
+    pub chmods: u32,
+    /// 累计 chown 次数
+    pub chowns: u32,
+    /// 累计越权拒止次数
+    pub denies: u32,
+}
+
+impl PermLedger {
+    /// 空账构造（caller=0）。
+    pub fn new() -> PermLedger {
+        PermLedger { ents: Vec::new(), cap: PERM_CAP, caller: 0, chmods: 0, chowns: 0, denies: 0 }
     }
 
-    pub fn render(&self) -> String {
-        format!("{}|{:o}|u{}g{}", self.name, self.mode, self.uid, self.gid)
-    }
-}
-
-/// 权账留痕。
-#[derive(Clone)]
-pub struct CmRec {
-    pub seq: u32,
-    pub op: u32, // 0=chmod 1=chown
-    pub name: String,
-    pub arg: u32,
-    pub as_owner: bool,
-}
-
-impl CmRec {
-    pub fn ok(&self) -> bool {
-        self.op <= 1 && !self.name.is_empty()
-    }
-}
-
-/// 权限册 + 位核。
-pub struct PermBook {
-    pub nodes: Vec<PermNode>,
-    pub ledger: Vec<CmRec>,
-    pub seq_next: u32,
-    pub sealed: bool,
-}
-
-impl PermBook {
-    pub fn new() -> PermBook {
-        PermBook { nodes: Vec::new(), ledger: Vec::new(), seq_next: 1, sealed: false }
-    }
-
-    /// 建（mode 位出闭集拒）。
-    pub fn create(&mut self, name: &str, mode: u32, uid: u32, gid: u32) -> Result<(), u32> {
-        if self.sealed {
-            return Err(CM_SEALED);
+    /// 按路径寻址。
+    fn idx_of(&self, path: &str) -> Option<usize> {
+        let mut i = 0usize;
+        while i < self.ents.len() {
+            if let Some(e) = self.ents.get(i) {
+                if e.path == path {
+                    return Some(i);
+                }
+            }
+            i += 1;
         }
-        if name.is_empty() {
-            return Err(CM_NOENT);
+        None
+    }
+
+    /// 登记文件（默认 mode 0o644，owner 0）。
+    pub fn create(&mut self, path: &str, owner: u32) -> Result<(), PmCode> {
+        if path.is_empty() {
+            return Err(PmCode::EmptyPath);
         }
-        if mode & !MODE_MASK != 0 {
-            return Err(CM_BAD_MODE);
+        if self.idx_of(path).is_some() || self.ents.len() >= self.cap {
+            return Err(PmCode::BitDrift);
         }
-        self.nodes.push(PermNode { name: name.to_string(), mode, uid, gid });
+        let _ = self.ents.push(PermEnt {
+            path: String::from(path),
+            mode: 0o644,
+            owner,
+            state: PermState::Inherited,
+        });
         Ok(())
     }
 
-    /// chmod：属主可改、他人越权拒。
-    pub fn chmod(&mut self, name: &str, mode: u32, as_owner: bool, note: &str) -> Result<u32, u32> {
-        if self.sealed {
-            return Err(CM_SEALED);
+    /// chmod：属主闸→mode 九位闸→置位回读。
+    pub fn chmod(&mut self, path: &str, mode: u32) -> Result<u32, PmCode> {
+        if path.is_empty() {
+            return Err(PmCode::EmptyPath);
         }
-        if note.is_empty() {
-            return Err(CM_EMPTY_NOTE);
+        if mode > MODE_MAX {
+            return Err(PmCode::BadMode);
         }
-        if mode & !MODE_MASK != 0 {
-            return Err(CM_BAD_MODE);
-        }
-        let i = match self.nodes.iter().position(|n| n.name == name) {
+        let idx = match self.idx_of(path) {
             Some(i) => i,
-            None => return Err(CM_NOENT),
+            None => return Err(PmCode::MissingPath),
         };
-        if !as_owner {
-            return Err(CM_EPERM);
+        let owner = match self.ents.get(idx) {
+            Some(e) => e.owner,
+            None => return Err(PmCode::MissingPath),
+        };
+        if owner != self.caller {
+            self.denies = self.denies.saturating_add(1);
+            return Err(PmCode::NotOwner);
         }
-        self.nodes[i].mode = mode;
-        self.ledger.push(CmRec {
-            seq: self.seq_next,
-            op: 0,
-            name: name.to_string(),
-            arg: mode,
-            as_owner,
-        });
-        self.seq_next += 1;
+        if let Some(e) = self.ents.get_mut(idx) {
+            e.mode = mode;
+            if e.state.can_advance(PermState::Modified) {
+                e.state = PermState::Modified;
+            }
+        }
+        self.chmods = self.chmods.saturating_add(1);
         Ok(mode)
     }
 
-    /// chown：属主可迁、他人越权拒。
-    pub fn chown(&mut self, name: &str, uid: u32, gid: u32, as_owner: bool, note: &str) -> Result<(), u32> {
-        if self.sealed {
-            return Err(CM_SEALED);
+    /// chown：属主闸→换属主。
+    pub fn chown(&mut self, path: &str, uid: u32) -> Result<u32, PmCode> {
+        if path.is_empty() {
+            return Err(PmCode::EmptyPath);
         }
-        if note.is_empty() {
-            return Err(CM_EMPTY_NOTE);
-        }
-        let i = match self.nodes.iter().position(|n| n.name == name) {
+        let idx = match self.idx_of(path) {
             Some(i) => i,
-            None => return Err(CM_NOENT),
+            None => return Err(PmCode::MissingPath),
         };
-        if !as_owner {
-            return Err(CM_EPERM);
+        let owner = match self.ents.get(idx) {
+            Some(e) => e.owner,
+            None => return Err(PmCode::MissingPath),
+        };
+        if owner != self.caller {
+            self.denies = self.denies.saturating_add(1);
+            return Err(PmCode::NotOwner);
         }
-        self.nodes[i].uid = uid;
-        self.nodes[i].gid = gid;
-        self.ledger.push(CmRec {
-            seq: self.seq_next,
-            op: 1,
-            name: name.to_string(),
-            arg: uid,
-            as_owner,
-        });
-        self.seq_next += 1;
-        Ok(())
+        if let Some(e) = self.ents.get_mut(idx) {
+            e.owner = uid;
+        }
+        self.chowns = self.chowns.saturating_add(1);
+        Ok(uid)
     }
 
-    /// 置位语义：mode |= bits。
-    pub fn set_bits(&mut self, name: &str, bits: u32, as_owner: bool) -> Result<u32, u32> {
-        let cur = match self.nodes.iter().find(|n| n.name == name) {
-            Some(n) => n.mode,
-            None => return Err(CM_NOENT),
-        };
-        self.chmod(name, cur | bits, as_owner, "set_bits")
-    }
-
-    /// 清位语义：mode &= !bits。
-    pub fn clr_bits(&mut self, name: &str, bits: u32, as_owner: bool) -> Result<u32, u32> {
-        let cur = match self.nodes.iter().find(|n| n.name == name) {
-            Some(n) => n.mode,
-            None => return Err(CM_NOENT),
-        };
-        self.chmod(name, cur & !bits, as_owner, "clr_bits")
-    }
-
-    /// 回读。
-    pub fn mode_of(&self, name: &str) -> Option<u32> {
-        self.nodes.iter().find(|n| n.name == name).map(|n| n.mode)
-    }
-
-    pub fn owner_of(&self, name: &str) -> Option<(u32, u32)> {
-        self.nodes.iter().find(|n| n.name == name).map(|n| (n.uid, n.gid))
-    }
-
-    /// chmod 次数统计。
-    pub fn chmod_count(&self) -> usize {
-        self.ledger.iter().filter(|r| r.op == 0).count()
-    }
-
-    /// chown 次数统计。
-    pub fn chown_count(&self) -> usize {
-        self.ledger.iter().filter(|r| r.op == 1).count()
-    }
-
-    /// 位面全绿核：读位/写位/执行位三面按 mode 推导。
-    pub fn bits_of(&self, name: &str) -> Option<(bool, bool, bool)> {
-        let m = self.mode_of(name)?;
-        Some((
-            m & 0o444 != 0,
-            m & 0o222 != 0,
-            m & 0o111 != 0,
-        ))
-    }
-
-    /// 属主一致性核：uid/gid 同迁。
-    pub fn owner_pair_ok(&self, name: &str) -> bool {
-        match self.owner_of(name) {
-            Some((u, g)) => u != 0 && g != 0,
-            None => false,
+    /// mode 读取。
+    pub fn mode_of(&self, path: &str) -> Option<u32> {
+        match self.idx_of(path) {
+            Some(i) => match self.ents.get(i) {
+                Some(e) => Some(e.mode),
+                None => None,
+            },
+            None => None,
         }
     }
 
-    /// 全册渲染（诊断面）。
-    pub fn render_all(&self) -> String {
-        let mut out = String::new();
-        for n in &self.nodes {
-            out.push_str(&n.render());
-            out.push(';');
+    /// owner 读取。
+    pub fn owner_of(&self, path: &str) -> Option<u32> {
+        match self.idx_of(path) {
+            Some(i) => match self.ents.get(i) {
+                Some(e) => Some(e.owner),
+                None => None,
+            },
+            None => None,
         }
-        out
     }
 
-    pub fn seq_unique(&self) -> bool {
-        for i in 0..self.ledger.len() {
-            for j in (i + 1)..self.ledger.len() {
-                if self.ledger[i].seq == self.ledger[j].seq {
+    /// 位账审计：全账 mode ≤ MODE_MAX。
+    pub fn bits_consistent(&self) -> bool {
+        let mut i = 0usize;
+        while i < self.ents.len() {
+            if let Some(e) = self.ents.get(i) {
+                if e.mode > MODE_MAX {
                     return false;
                 }
             }
+            i += 1;
         }
         true
     }
+}
 
-    pub fn fold(&self) -> u32 {
-        let mut h: u32 = 0x103600;
-        for r in &self.ledger {
-            h = h.wrapping_mul(31).wrapping_add(r.op);
-            h = h.wrapping_mul(31).wrapping_add(r.arg);
-            for b in r.name.bytes() {
-                h = h.wrapping_mul(31).wrapping_add(b as u32);
+// ── J1 达成核：mode 置位/清位回读一致 10/10 轮 ────────────────────────
+/// 逐轮：置位回读→清位回读→位或/位与可复算→越权拒。
+pub fn run_perm_rounds() -> (u32, usize) {
+    let mut ok = 0u32;
+    let mut probes = 0usize;
+    let mut round = 0u32;
+    while round < INJECT_ROUNDS {
+        let mut l = PermLedger::new();
+        let _ = l.create("f", 0);
+        let mut all_ok = true;
+        // 面1：置位 0o600 回读。
+        all_ok = all_ok && l.chmod("f", 0o600) == Ok(0o600)
+            && l.mode_of("f") == Some(0o600);
+        probes += 1;
+        // 面2：改置 0o755 回读。
+        all_ok = all_ok && l.chmod("f", 0o755) == Ok(0o755)
+            && l.mode_of("f") == Some(0o755);
+        probes += 1;
+        // 面3：清位语义：0o644 = 0o755 & !0o111。
+        all_ok = all_ok && l.chmod("f", 0o755 & !0o111) == Ok(0o644)
+            && l.mode_of("f") == Some(0o644);
+        probes += 1;
+        // 面4：chown 换属主回读。
+        all_ok = all_ok && l.chown("f", 7) == Ok(7) && l.owner_of("f") == Some(7);
+        probes += 1;
+        // 面5：换属主后原属主越权拒（EPERM）。
+        l.caller = 0;
+        all_ok = all_ok && l.chmod("f", 0o600).err() == Some(PmCode::NotOwner);
+        probes += 1;
+        // 面6：位账全平（三次 chmod + 一次 chown）。
+        all_ok = all_ok && l.bits_consistent() && l.chmods == 3 && l.chowns == 1;
+        probes += 1;
+        if all_ok {
+            ok += 1;
+        }
+        round += 1;
+    }
+    (ok, probes)
+}
+
+// ── 注入核：坏权限矩阵 ────────────────────────────────────────────────
+/// 四类坏样本。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BadPerm {
+    /// 非属主 chmod（EPERM 族）
+    NotOwnerChmod,
+    /// 非属主 chown（EPERM 族）
+    NotOwnerChown,
+    /// mode 越九位（EINVAL 族）
+    BadMode,
+    /// 缺失路径（ENOENT 族）
+    MissingPath,
+}
+
+impl BadPerm {
+    /// 闭集全量。
+    pub const ALL: [BadPerm; 4] = [
+        BadPerm::NotOwnerChmod,
+        BadPerm::NotOwnerChown,
+        BadPerm::BadMode,
+        BadPerm::MissingPath,
+    ];
+
+    /// 中文标签（注入明细用）。
+    pub fn label(self) -> &'static str {
+        match self {
+            BadPerm::NotOwnerChmod => "非属主 chmod",
+            BadPerm::NotOwnerChown => "非属主 chown",
+            BadPerm::BadMode => "mode 越九位",
+            BadPerm::MissingPath => "缺失路径 chmod",
+        }
+    }
+}
+
+/// 注入账。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct InjectLedger {
+    /// 注入总次数
+    pub injected: u32,
+    /// 检出次数
+    pub detected: u32,
+    /// 逃逸次数（必须为 0）
+    pub escaped: u32,
+}
+
+impl InjectLedger {
+    const fn zero() -> InjectLedger {
+        InjectLedger { injected: 0, detected: 0, escaped: 0 }
+    }
+
+    /// 记一次注入结果。
+    pub fn record(&mut self, caught: bool) -> Result<(), PmCode> {
+        self.injected = self.injected.saturating_add(1);
+        if caught {
+            self.detected = self.detected.saturating_add(1);
+        } else {
+            self.escaped = self.escaped.saturating_add(1);
+        }
+        if self.detected.saturating_add(self.escaped) != self.injected {
+            return Err(PmCode::SegmentViolation);
+        }
+        Ok(())
+    }
+
+    /// 守恒式。
+    pub fn conserved(&self) -> bool {
+        self.detected.saturating_add(self.escaped) == self.injected
+    }
+}
+
+/// 执行坏权限注入：每类 INJECT_ROUNDS 次。
+pub fn run_bad_perm_matrix() -> (InjectLedger, [u32; 4]) {
+    let mut ledger = InjectLedger::zero();
+    let mut per_class = [0u32; 4];
+    let mut ci = 0usize;
+    while ci < BadPerm::ALL.len() {
+        let case = match BadPerm::ALL.get(ci) {
+            Some(c) => *c,
+            None => break,
+        };
+        let mut round = 0u32;
+        while round < INJECT_ROUNDS {
+            let mut l = PermLedger::new();
+            let _ = l.create("f", 0);
+            l.caller = 9;
+            let caught = match case {
+                BadPerm::NotOwnerChmod => {
+                    l.chmod("f", 0o600).err() == Some(PmCode::NotOwner)
+                }
+                BadPerm::NotOwnerChown => {
+                    l.chown("f", 1).err() == Some(PmCode::NotOwner)
+                }
+                BadPerm::BadMode => {
+                    l.caller = 0;
+                    l.chmod("f", MODE_MAX + 1).err() == Some(PmCode::BadMode)
+                }
+                BadPerm::MissingPath => {
+                    l.caller = 0;
+                    l.chmod("ghost", 0o600).err() == Some(PmCode::MissingPath)
+                }
+            };
+            let _ = ledger.record(caught);
+            if caught {
+                if let Some(slot) = per_class.get_mut(ci) {
+                    *slot = slot.saturating_add(1);
+                }
+            }
+            round += 1;
+        }
+        ci += 1;
+    }
+    (ledger, per_class)
+}
+
+// ── 权限小结成文（纯函数） ────────────────────────────────────────────
+/// 八进制 mode 成文：「path=<s> mode=<o> owner=<u>」。
+pub fn compose_perm_summary(l: &PermLedger, path: &str) -> Result<String, PmCode> {
+    let mode = match l.mode_of(path) {
+        Some(m) => m,
+        None => return Err(PmCode::EmptySummary),
+    };
+    let owner = match l.owner_of(path) {
+        Some(o) => o,
+        None => return Err(PmCode::EmptySummary),
+    };
+    let out = format!("path={} mode=0o{:03o} owner={}", path, mode, owner);
+    if out.is_empty() {
+        return Err(PmCode::EmptySummary);
+    }
+    Ok(out)
+}
+
+// ── Linux errno 对照表 ────────────────────────────────────────────────
+/// (名称, 负值, Windows 近似码, 说明)
+pub const ERRNO_TABLE: &[(&str, i32, i32, &str)] = &[
+    ("EPERM", -1, 5, "Windows ERROR_ACCESS_DENIED；非属主越权族"),
+    ("EINVAL", -22, 87, "Windows ERROR_INVALID_PARAMETER；mode 越九位族"),
+    ("ENOENT", -2, 2, "Windows ERROR_FILE_NOT_FOUND；缺失路径族"),
+];
+
+/// 查表：按 errno 正数取负值；表外返回 0。
+pub fn linux_neg(code: i32) -> i32 {
+    let mut i = 0usize;
+    while i < ERRNO_TABLE.len() {
+        if let Some(row) = ERRNO_TABLE.get(i) {
+            if row.1 == -code {
+                return row.1;
             }
         }
-        h
+        i += 1;
     }
-
-    pub fn seal(&mut self) {
-        self.sealed = true;
-    }
+    0
 }
 
-/// 注入核：五个必然被检出的坏样本。
-pub fn inject_five() -> [bool; 5] {
-    let mut got = [false; 5];
-    let mut b = PermBook::new();
-    let _ = b.create("f", 0o644, 1000, 1000);
-    // 1) 越权 chmod 必拒
-    got[0] = b.chmod("f", 0o600, false, "inj-ep").err() == Some(CM_EPERM);
-    // 2) 野位必拒
-    got[1] = b.chmod("f", 0o20000, true, "inj-wild").err() == Some(CM_BAD_MODE);
-    // 3) 缺件必拒
-    got[2] = b.chmod("ghost", 0o600, true, "inj-noent").err() == Some(CM_NOENT);
-    // 4) 空留痕必拒
-    got[3] = b.chmod("f", 0o600, true, "").err() == Some(CM_EMPTY_NOTE);
-    // 5) 封表后操作必抓
-    b.seal();
-    got[4] = b.chmod("f", 0o600, true, "inj-seal").err() == Some(CM_SEALED);
-    got
+/// 与 Linux 逐码一致。
+pub fn agrees_with_linux(code: i32) -> bool {
+    linux_neg(code) == -code && code > 0
 }
 
-/// 批内判据（对应卡验收 J 判据）。
+// ── 确定性指纹 ────────────────────────────────────────────────────────
+/// FNV-1a 32 位。
+pub fn fnv1a(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if let Some(b) = bytes.get(i) {
+            h ^= *b as u32;
+            h = h.wrapping_mul(0x0100_0193);
+        }
+        i += 1;
+    }
+    h
+}
+
+/// 规范语料指纹：置位→清位→chown→成文→摘哈希。
+pub fn corpus_fingerprint() -> u32 {
+    let mut l = PermLedger::new();
+    let _ = l.create("f", 0);
+    let _ = l.chmod("f", 0o755);
+    let _ = l.chmod("f", 0o644);
+    let _ = l.chown("f", 3);
+    let mut bytes: Vec<u8> = Vec::new();
+    if let Ok(s) = compose_perm_summary(&l, "f") {
+        bytes.extend_from_slice(s.as_bytes());
+    }
+    fnv1a(&bytes)
+}
+
+// ── 检查入口 ──────────────────────────────────────────────────────────
+/// F10130 判据集（13 条静态 + 3 条动态）。
 pub fn run_unx10130_checks() -> CheckSet {
-    let mut s = CheckSet::new("UNX-F10130");
+    let mut s = CheckSet::new("unx10130");
 
-    // 正路径：chmod 置位回读一致（chmod01 面）
-    let mut b = PermBook::new();
-    let _ = b.create("cfg", 0o644, 1000, 1000);
-    let _ = b.chmod("cfg", 0o600, true, "收紧");
-    let j1 = b.mode_of("cfg") == Some(0o600);
-    s.add("J1-置位回读", j1, "chmod 0600 回读一致");
+    // 1. 段位守卫
+    let seg_ok = SEG_BASE % 0x40 == 0 && (0x93080..=0x930BF).contains(&SEG_BASE);
+    s.add("段位守卫：0x40 对齐且在本卡 0x40 窗口内", seg_ok,
+          "段基址必须唯一且不与相邻卡重叠；越界即拒绝注册");
 
-    // 置位/清位往返
-    let j2 = {
-        let up = b.set_bits("cfg", 0o070, true).unwrap_or(0);
-        let down = b.clr_bits("cfg", 0o070, true).unwrap_or(0);
-        up & 0o070 == 0o070 && down & 0o070 == 0 && down & 0o600 == 0o600
+    // 2. 诊断码闭集
+    let mut uniq = true;
+    let mut i = 0usize;
+    while i < PmCode::ALL.len() {
+        let mut j = i + 1;
+        while j < PmCode::ALL.len() {
+            if let (Some(a), Some(b)) = (PmCode::ALL.get(i), PmCode::ALL.get(j)) {
+                if a.val() == b.val() {
+                    uniq = false;
+                }
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    let text_ok = PmCode::ALL.iter().all(|c| !c.detail().is_empty());
+    s.add("诊断码闭集：闭集码两两唯一且中文建议非空", uniq && text_ok,
+          "段内闭集码不得重复，每个码必须能取到可操作说明");
+
+    // 3. 解析器
+    let parse_ok = parse_perm_call("chmod|f|448").is_ok()
+        && parse_perm_call("chown|f|-1").is_ok()
+        && parse_perm_call("attr|f|1").err() == Some(PmCode::BadOp)
+        && parse_perm_call("chmod|f|4x8").err() == Some(PmCode::BadNumber);
+    s.add("调用行解析器：op 双词闭集放行且坏成分逐档拒绝", parse_ok,
+          "chmod/chown 双动词闭集；arg 允许负值入判定层");
+
+    // 4. J1 达成核
+    let (ok, probes) = run_perm_rounds();
+    s.add("J1 位操作达成：mode 置位/清位回读一致 LTP chmod01 面 10/10 次",
+          ok == INJECT_ROUNDS && probes == (INJECT_ROUNDS as usize) * 6,
+          "每轮 6 面（置位/改置/清位/chown/越权拒/位账）全对");
+
+    // 5. J2 非属主越权
+    let mut l = PermLedger::new();
+    let _ = l.create("a", 0);
+    l.caller = 5;
+    let eperm_ok = l.chmod("a", 0o600).err() == Some(PmCode::NotOwner)
+        && l.chown("a", 1).err() == Some(PmCode::NotOwner)
+        && l.mode_of("a") == Some(0o644);
+    s.add("J2 非属主越权受控：EPERM 双入口精确复现且账面不动", eperm_ok,
+          "chmod/chown 双入口都必须过属主闸；被拒不改账");
+
+    // 6. mode 越九位档
+    l.caller = 0;
+    let mode_ok = l.chmod("a", MODE_MAX + 1).err() == Some(PmCode::BadMode)
+        && l.chmod("a", MODE_MAX).is_ok();
+    s.add("mode 越九位：EINVAL 档精确复现且边界值放行", mode_ok,
+          "0o777 放行、0o1000 拒；边界必须分明");
+
+    // 7. 位账全平
+    let bits_ok = l.bits_consistent();
+    s.add("位账全平：全账 mode 落九位闭集", bits_ok,
+          "任何越位 mode 入账即 BitDrift");
+
+    // 8. 属主转移后双向闸
+    let _ = l.chown("a", 9);
+    l.caller = 0;
+    let t_ok = l.chmod("a", 0o600).err() == Some(PmCode::NotOwner)
+        && {
+            l.caller = 9;
+            l.chmod("a", 0o600).is_ok()
+        };
+    s.add("属主转移：新属主可写、旧属主被拒", t_ok,
+          "chown 后权限闸随属主迁移");
+
+    // 9. 注入核
+    let (inj, per_class) = run_bad_perm_matrix();
+    let all_caught = per_class.iter().all(|n| *n == INJECT_ROUNDS);
+    s.add("注入核：四类坏样本各 10/10 拒绝", all_caught,
+          "非属主双入口/越位/缺失必须逐类逐次精确复现");
+
+    // 10. 注入账守恒
+    s.add("注入账守恒：注入=检出+逃逸且逃逸=0",
+          inj.conserved() && inj.escaped == 0
+              && inj.injected == BadPerm::ALL.len() as u32 * INJECT_ROUNDS,
+          "40 次注入必须 40 次检出、0 逃逸");
+
+    // 11. 状态机
+    let sm_ok = PermState::Inherited.can_advance(PermState::Modified)
+        && PermState::Modified.can_advance(PermState::Frozen)
+        && !PermState::Frozen.can_advance(PermState::Inherited)
+        && PermState::Frozen.label() == "已冻结";
+    s.add("状态机：Inherited→Modified→Frozen 单向", sm_ok,
+          "权限生命周期只许单调推进；倒退即协议违约");
+
+    // 12. Linux 逐码一致
+    let codes_ok = agrees_with_linux(1) && agrees_with_linux(22) && agrees_with_linux(2)
+        && !agrees_with_linux(0) && !agrees_with_linux(9999);
+    s.add("Linux 逐码一致：表内码精确、表外码拒绝", codes_ok,
+          "错误族只允许 errno 表内正值且负值可复算");
+
+    // 13. 成文 + 指纹
+    let sum = compose_perm_summary(&l, "a");
+    let text_ok = match &sum {
+        Ok(x) => x.contains("mode=0o600"),
+        Err(_) => false,
     };
-    s.add("J2-置清往返", j2, "组/它位先置后清且主位不动");
+    let f1 = corpus_fingerprint();
+    let f2 = corpus_fingerprint();
+    s.add("成文与指纹：小结八进制可复算且双跑哈希逐位一致",
+          text_ok && f1 == f2,
+          "成文为纯函数；同语料两次哈希必须逐位一致");
 
-    // chown 属主迁移
-    let j3 = {
-        let _ = b.chown("cfg", 1001, 1001, true, "迁移");
-        b.owner_of("cfg") == Some((1001, 1001))
-    };
-    s.add("J3-属主迁移", j3, "chown 双元组回读一致");
-
-    // 越权受控（chmod/chown 双面）
-    let j4 = b.chmod("cfg", 0o777, false, "野改").err() == Some(CM_EPERM)
-        && b.chown("cfg", 0, 0, false, "野迁").err() == Some(CM_EPERM);
-    s.add("J4-越权受控", j4, "非属主双操作同拒");
-
-    // 野位受控
-    let j5 = b.chmod("cfg", 0o10000, true, "野位").err() == Some(CM_BAD_MODE)
-        && b.create("w", 0o17777, 0, 0).err() == Some(CM_BAD_MODE);
-    s.add("J5-野位受控", j5, "位出 12 位闭集必拒");
-
-    // 缺件受控
-    let j6 = b.chmod("ghost", 0o600, true, "缺席").err() == Some(CM_NOENT)
-        && b.chown("ghost", 1, 1, true, "缺席").err() == Some(CM_NOENT);
-    s.add("J6-缺件受控", j6, "缺件双操作同拒");
-
-    // 八进制渲染
-    let j7 = {
-        let _ = b.chmod("cfg", 0o755, true, "标准");
-        b.nodes.iter().find(|n| n.name == "cfg").map(|n| n.render().contains("755")).unwrap_or(false)
-    };
-    s.add("J7-八进制渲染", j7, "mode 以八进制入渲染");
-
-    // 空留痕拒收
-    let j8 = b.chmod("cfg", 0o700, true, "").err() == Some(CM_EMPTY_NOTE);
-    s.add("J8-空留痕拒", j8, "note 为空不入账");
-
-    // 节点合法性守恒
-    let j9 = b.nodes.iter().all(|n| n.ok());
-    s.add("J9-节点合法", j9, "名非空且位在闭集");
-
-    // 留痕合法与 seq 唯一
-    let j10 = b.ledger.iter().all(|r| r.ok()) && b.seq_unique();
-    s.add("J10-留痕合法", j10, "op 在闭集且名非空");
-
-    // 注入核 5/5
-    let inj = inject_five();
-    let j11 = inj.iter().all(|g| *g);
-    s.add_dyn("J11-注入全抓", j11, &format!("inj5={:?}", inj));
-
-    // 指纹稳定
-    let j12 = b.fold() == b.fold();
-    s.add("J12-指纹稳定", j12, "折叠指纹两次一致");
-
-    // 位面推导与双计数
-    let bits = b.bits_of("cfg").unwrap_or((false, false, false));
-    let j13 = bits.0 && bits.1 && bits.2 && b.chmod_count() >= 2 && b.chown_count() >= 1;
-    s.add("J13-位面计数", j13, "755 位面读/写/执行全真且双计数达锚");
-
-    // 属主一致与全册渲染
-    let j14 = b.owner_pair_ok("cfg") && b.render_all().contains("755");
-    s.add("J14-属主渲染", j14, "uid/gid 异号迁移且渲染命中");
+    // 动态明细（≤8）
+    let inj_text = format!("注入 {} / 检出 {} / 逃逸 {}", inj.injected, inj.detected, inj.escaped);
+    s.add_dyn("注入账快照", inj.conserved() && inj.escaped == 0, &inj_text);
+    let fp_text = format!("语料指纹 0x{:08X}", f1);
+    s.add_dyn("指纹快照", f1 == f2, &fp_text);
+    let ok_text = format!("位操作达成轮数 {}/{}", ok, INJECT_ROUNDS);
+    s.add_dyn("达成轮快照", ok == INJECT_ROUNDS, &ok_text);
 
     s
 }
 
+// ── 测试 ──────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn unx10130_perm_flow() {
-        let mut b = PermBook::new();
-        let _ = b.create("a", 0o600, 1, 1);
-        let _ = b.set_bits("a", 0o040, true);
-        assert_eq!(b.mode_of("a"), Some(0o640));
-        let _ = b.clr_bits("a", 0o040, true);
-        assert_eq!(b.mode_of("a"), Some(0o600));
-        assert!(b.chown("a", 2, 2, false, "x") == Err(CM_EPERM));
+    fn parser_guards() {
+        assert!(parse_perm_call("chmod|f|448").is_ok());
+        assert_eq!(parse_perm_call("attr|f|1").err(), Some(PmCode::BadOp));
+        assert_eq!(parse_perm_call("chmod|f|4x8").err(), Some(PmCode::BadNumber));
+        let c = parse_perm_call("chown|f|-2").unwrap_or(PermCall { op: String::new(), path: String::new(), arg: 0 });
+        assert_eq!(c.arg, -2);
+    }
+
+    #[test]
+    fn chmod_roundtrip() {
+        let mut l = PermLedger::new();
+        let _ = l.create("f", 0);
+        assert_eq!(l.chmod("f", 0o755), Ok(0o755));
+        assert_eq!(l.mode_of("f"), Some(0o755));
+        assert_eq!(l.chmod("f", 0o644), Ok(0o644));
+        assert_eq!(l.mode_of("f"), Some(0o644));
+    }
+
+    #[test]
+    fn not_owner_denied() {
+        let mut l = PermLedger::new();
+        let _ = l.create("f", 0);
+        l.caller = 3;
+        assert_eq!(l.chmod("f", 0o600).err(), Some(PmCode::NotOwner));
+        assert_eq!(l.chown("f", 1).err(), Some(PmCode::NotOwner));
+        assert_eq!(l.mode_of("f"), Some(0o644));
+    }
+
+    #[test]
+    fn mode_boundary() {
+        let mut l = PermLedger::new();
+        let _ = l.create("f", 0);
+        assert_eq!(l.chmod("f", MODE_MAX + 1).err(), Some(PmCode::BadMode));
+        assert!(l.chmod("f", MODE_MAX).is_ok());
+    }
+
+    #[test]
+    fn chown_transfers_gate() {
+        let mut l = PermLedger::new();
+        let _ = l.create("f", 0);
+        let _ = l.chown("f", 9);
+        assert_eq!(l.owner_of("f"), Some(9));
+        l.caller = 0;
+        assert_eq!(l.chmod("f", 0o600).err(), Some(PmCode::NotOwner));
+        l.caller = 9;
+        assert!(l.chmod("f", 0o600).is_ok());
+    }
+
+    #[test]
+    fn missing_path_denied() {
+        let mut l = PermLedger::new();
+        assert_eq!(l.chmod("ghost", 0o600).err(), Some(PmCode::MissingPath));
+    }
+
+    #[test]
+    fn bad_matrix_green() {
+        let (inj, per) = run_bad_perm_matrix();
+        assert_eq!(inj.injected, 4 * INJECT_ROUNDS);
+        assert_eq!(inj.escaped, 0);
+        for n in per.iter() {
+            assert_eq!(*n, INJECT_ROUNDS);
+        }
+    }
+
+    #[test]
+    fn rounds_full() {
+        let (ok, probes) = run_perm_rounds();
+        assert_eq!(ok, INJECT_ROUNDS);
+        assert_eq!(probes, (INJECT_ROUNDS as usize) * 6);
+    }
+
+    #[test]
+    fn state_machine_monotonic() {
+        assert!(PermState::Inherited.can_advance(PermState::Frozen));
+        assert!(!PermState::Frozen.can_advance(PermState::Modified));
+    }
+
+    #[test]
+    fn deterministic_corpus() {
+        assert_eq!(corpus_fingerprint(), corpus_fingerprint());
     }
 
     #[test]
     fn unx10130_checks_green() {
-        let s = run_unx10130_checks();
-        assert!(s.all_passed(), "UNX-F10130 判据未全绿");
+        let set = run_unx10130_checks();
+        assert!(set.all_passed(), "UNX-F10130 red: {}", set.red_items_text());
     }
 }

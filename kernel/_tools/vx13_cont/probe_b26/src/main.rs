@@ -29,6 +29,16 @@ mod unx10124;
 mod unx10125;
 #[path = "../../../../varix/src/unxstar/unx10126_rename.rs"]
 mod unx10126;
+#[path = "../../../../varix/src/unxstar/unx10127_truncate_ftruncate.rs"]
+mod unx10127;
+#[path = "../../../../varix/src/unxstar/unx10128_flock.rs"]
+mod unx10128;
+#[path = "../../../../varix/src/unxstar/unx10129_stat.rs"]
+mod unx10129;
+#[path = "../../../../varix/src/unxstar/unx10130_chmod_chown.rs"]
+mod unx10130;
+#[path = "../../../../varix/src/unxstar/unx10131_o_append.rs"]
+mod unx10131;
 
 #[cfg(test)]
 mod dbg {
@@ -37,7 +47,7 @@ mod dbg {
     #[test]
     fn debug_link_faces() {
         let mut l = unx10124::InoLedger::new();
-        let ino = l.create("a", unx10124::DEV_A, b"DATA").unwrap_or(0);
+        let ino = l.create("a", unx10124::DEV_A, false, b"DATA").unwrap_or(0);
         println!("f1 nlink={:?}", l.nlink_of("a"));
         let r = l.link("a", "b");
         println!("f2 link={:?} nlink={:?}", r, l.nlink_of("a"));
@@ -49,6 +59,19 @@ mod dbg {
         let u2 = l.unlink("a");
         println!("f5 unlink={:?} name_gone={} rel={}", u2, l.name_ino("a").is_none(), l.releases);
         println!("f6 conserved={}", l.conserved());
+    }
+
+    #[test]
+    fn debug_perm_faces() {
+        let mut l = unx10130::PermLedger::new();
+        let _ = l.create("f", 0);
+        println!("f1 {:?}", l.chmod("f", 0o600));
+        println!("f2 {:?}", l.chmod("f", 0o755));
+        println!("f3 {:?}", l.chmod("f", 0o755 & !0o111));
+        println!("f4 {:?}", l.chown("f", 7));
+        l.caller = 0;
+        println!("f5 {:?}", l.chmod("f", 0o600));
+        println!("f6 mods={} owns={} bits={}", l.chmods, l.chowns, l.bits_consistent());
     }
 
     /// B26 六单判据全绿回归锚（防止后续批次改动破坏 B26）。
@@ -82,6 +105,11 @@ fn main() {
         unx10124::run_unx10124_checks(),
         unx10125::run_unx10125_checks(),
         unx10126::run_unx10126_checks(),
+        unx10127::run_unx10127_checks(),
+        unx10128::run_unx10128_checks(),
+        unx10129::run_unx10129_checks(),
+        unx10130::run_unx10130_checks(),
+        unx10131::run_unx10131_checks(),
     ];
     let mut total = 0usize;
     let mut red = 0usize;
@@ -96,7 +124,7 @@ fn main() {
             println!();
         }
     }
-    println!("MODULES=12 TOTAL={} RED={} PANIC=0", total, red);
+    println!("MODULES=17 TOTAL={} RED={} PANIC=0", total, red);
     if red > 0 {
         std::process::exit(1);
     }
