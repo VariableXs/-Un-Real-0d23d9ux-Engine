@@ -39,6 +39,8 @@ mod unx10129;
 mod unx10130;
 #[path = "../../../../varix/src/unxstar/unx10131_o_append.rs"]
 mod unx10131;
+#[path = "../../../../varix/src/unxstar/unx10132_fsync_fdatasync_fd.rs"]
+mod unx10132;
 
 #[cfg(test)]
 mod dbg {
@@ -110,6 +112,7 @@ fn main() {
         unx10129::run_unx10129_checks(),
         unx10130::run_unx10130_checks(),
         unx10131::run_unx10131_checks(),
+        unx10132::run_unx10132_checks(),
     ];
     let mut total = 0usize;
     let mut red = 0usize;
@@ -124,7 +127,7 @@ fn main() {
             println!();
         }
     }
-    println!("MODULES=17 TOTAL={} RED={} PANIC=0", total, red);
+    println!("MODULES=18 TOTAL={} RED={} PANIC=0", total, red);
     if red > 0 {
         std::process::exit(1);
     }
