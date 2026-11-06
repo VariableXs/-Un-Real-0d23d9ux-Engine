@@ -19,10 +19,33 @@ mod unx10119;
 mod unx10120;
 #[path = "../../../../varix/src/unxstar/unx10121_open_o__o_excl.rs"]
 mod unx10121;
+#[path = "../../../../varix/src/unxstar/unx10122_t10122.rs"]
+mod unx10122;
+#[path = "../../../../varix/src/unxstar/unx10123_readdir.rs"]
+mod unx10123;
+#[path = "../../../../varix/src/unxstar/unx10124_link_unlink.rs"]
+mod unx10124;
 
 #[cfg(test)]
 mod dbg {
     use super::*;
+
+    #[test]
+    fn debug_link_faces() {
+        let mut l = unx10124::InoLedger::new();
+        let ino = l.create("a", unx10124::DEV_A, b"DATA").unwrap_or(0);
+        println!("f1 nlink={:?}", l.nlink_of("a"));
+        let r = l.link("a", "b");
+        println!("f2 link={:?} nlink={:?}", r, l.nlink_of("a"));
+        let ba = l.body_of("a").unwrap_or_default();
+        let bb = l.body_of("b").unwrap_or_default();
+        println!("f3 same={}", ba == bb);
+        let u = l.unlink("b");
+        println!("f4 unlink={:?} nlink={:?}", u, l.nlink_of("a"));
+        let u2 = l.unlink("a");
+        println!("f5 unlink={:?} name_gone={} rel={}", u2, l.name_ino("a").is_none(), l.releases);
+        println!("f6 conserved={}", l.conserved());
+    }
 
     /// B26 六单判据全绿回归锚（防止后续批次改动破坏 B26）。
     #[test]
@@ -50,6 +73,9 @@ fn main() {
         unx10119::run_unx10119_checks(),
         unx10120::run_unx10120_checks(),
         unx10121::run_unx10121_checks(),
+        unx10122::run_unx10122_checks(),
+        unx10123::run_unx10123_checks(),
+        unx10124::run_unx10124_checks(),
     ];
     let mut total = 0usize;
     let mut red = 0usize;
@@ -64,7 +90,7 @@ fn main() {
             println!();
         }
     }
-    println!("MODULES=7 TOTAL={} RED={} PANIC=0", total, red);
+    println!("MODULES=10 TOTAL={} RED={} PANIC=0", total, red);
     if red > 0 {
         std::process::exit(1);
     }
