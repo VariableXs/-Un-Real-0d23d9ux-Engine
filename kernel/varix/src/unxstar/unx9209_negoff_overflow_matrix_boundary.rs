@@ -269,6 +269,10 @@ pub fn judge_fallocate_mode_offset(mode: u32, off: i64, len: i64) -> SysResult<u
     if mode & FA_PUNCH_HOLE != 0 && mode & FA_KEEP_SIZE == 0 {
         return Err(EINVAL);
     }
+    // PUNCH_HOLE 与 ZERO_RANGE 是两种互斥的打洞机制，同置属矛盾组合。
+    if mode & FA_PUNCH_HOLE != 0 && mode & FA_ZERO_RANGE != 0 {
+        return Err(EINVAL);
+    }
     if mode & FA_COLLAPSE_RANGE != 0 && mode & FA_KEEP_SIZE != 0 {
         return Err(EINVAL);
     }

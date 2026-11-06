@@ -829,7 +829,7 @@ pub fn run_unx9245_checks() -> CheckSet {
     // 12. 容量与覆盖状态机
     let machine = {
         let mut t = VmaTable::new();
-        let start = t.coverage(MAP_BASE, PAGE_SIZE * 2);
+        let start = t.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2);
         let mut filled = true;
         let mut i = 0u64;
         while i < VMA_CAPACITY as u64 {
@@ -845,15 +845,15 @@ pub fn run_unx9245_checks() -> CheckSet {
             prot: PROT_READ,
         }) == Err(RangeCode::TableFull);
         let mut c = VmaTable::new();
-        let none = c.coverage(MAP_BASE, PAGE_SIZE * 2) == Coverage::None;
+        let none = c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2) == Coverage::None;
         let _ = c.insert(Vma { start: MAP_BASE, end: MAP_BASE + PAGE_SIZE, prot: PROT_READ });
-        let partial = c.coverage(MAP_BASE, PAGE_SIZE * 2) == Coverage::Partial;
+        let partial = c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2) == Coverage::Partial;
         let _ = c.insert(Vma {
             start: MAP_BASE + PAGE_SIZE, end: MAP_BASE + PAGE_SIZE * 2, prot: PROT_READ,
         });
-        let complete = c.coverage(MAP_BASE, PAGE_SIZE * 2) == Coverage::Full;
+        let complete = c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2) == Coverage::Full;
         let _ = c.munmap(MAP_BASE, PAGE_SIZE);
-        let back = c.coverage(MAP_BASE, PAGE_SIZE * 2) == Coverage::Partial;
+        let back = c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2) == Coverage::Partial;
         start == Coverage::None && filled && full && none && partial && complete && back
     };
     s.add("容量与状态机：8 段满拒，None→Partial→Full→Partial", machine,
@@ -1026,23 +1026,23 @@ mod tests {
             prot: PROT_READ,
         }), Err(RangeCode::TableFull));
         let mut c = VmaTable::new();
-        assert_eq!(c.coverage(MAP_BASE, PAGE_SIZE * 2), Coverage::None);
+        assert_eq!(c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2), Coverage::None);
         assert!(c.insert(Vma {
             start: MAP_BASE, end: MAP_BASE + PAGE_SIZE, prot: PROT_READ,
         }).is_ok());
-        assert_eq!(c.coverage(MAP_BASE, PAGE_SIZE * 2), Coverage::Partial);
+        assert_eq!(c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2), Coverage::Partial);
         assert!(c.insert(Vma {
             start: MAP_BASE + PAGE_SIZE,
             end: MAP_BASE + PAGE_SIZE * 2,
             prot: PROT_READ,
         }).is_ok());
-        assert_eq!(c.coverage(MAP_BASE, PAGE_SIZE * 2), Coverage::Full);
+        assert_eq!(c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2), Coverage::Full);
     }
 
     #[test]
     fn machine_terms_stepwise() {
         let mut t = VmaTable::new();
-        assert_eq!(t.coverage(MAP_BASE, PAGE_SIZE * 2), Coverage::None);
+        assert_eq!(t.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2), Coverage::None);
         let mut i = 0u64;
         while i < VMA_CAPACITY as u64 {
             let a = MAP_BASE + i * PAGE_SIZE * 2;
@@ -1062,7 +1062,7 @@ mod tests {
         assert!(c
             .insert(Vma { start: MAP_BASE, end: MAP_BASE + PAGE_SIZE, prot: PROT_READ })
             .is_ok());
-        assert_eq!(c.coverage(MAP_BASE, PAGE_SIZE * 2), Coverage::Partial);
+        assert_eq!(c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2), Coverage::Partial);
         assert!(c
             .insert(Vma {
                 start: MAP_BASE + PAGE_SIZE,
@@ -1070,9 +1070,9 @@ mod tests {
                 prot: PROT_READ,
             })
             .is_ok());
-        assert_eq!(c.coverage(MAP_BASE, PAGE_SIZE * 2), Coverage::Full);
+        assert_eq!(c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2), Coverage::Full);
         assert!(c.munmap(MAP_BASE, PAGE_SIZE).is_ok());
-        assert_eq!(c.coverage(MAP_BASE, PAGE_SIZE * 2), Coverage::Partial);
+        assert_eq!(c.coverage(MAP_BASE, MAP_BASE + PAGE_SIZE * 2), Coverage::Partial);
     }
 
     #[test]

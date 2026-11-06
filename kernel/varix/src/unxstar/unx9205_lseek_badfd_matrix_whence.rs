@@ -477,13 +477,24 @@ pub fn canonical_table() -> FdTable {
 ///   4) 偏移算术 checked_add，溢出与负结果统一回 EINVAL，
 ///      绝不回绕成一个大正数假成功。
 pub fn judge_lseek(fd: i32, offset: i64, whence: u32) -> Result<i64, i32> {
+    let mut table = canonical_table();
+    // Linux lseek(2) 判定次序：fget(fd) → 可 seek 性（ESPIPE）→
+    // whence 闭集（EINVAL）→ 偏移算术；失败路径零改位。
+    let snap = match table.handle(fd) {
+        Some(h) if h.state == SlotState::Open => match h.obj {
+            Some(o) if o.seekable => o,
+            Some(_) => return Err(ESPIPE),
+            None => return Err(EBADF),
+        },
+        _ => return Err(EBADF),
+    };
+    let _ = snap;
     let raw = match whence {
         SEEK_SET_U => SEEK_SET,
         SEEK_CUR_U => SEEK_CUR,
         SEEK_END_U => SEEK_END,
         _ => return Err(EINVAL),
     };
-    let table = canonical_table();
     table.lseek(fd, offset, raw)
 }
 

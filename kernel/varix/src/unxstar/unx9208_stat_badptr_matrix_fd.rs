@@ -301,15 +301,13 @@ impl InodeEntry {
 }
 
 /// inode 表：路径→inode 正查、ino 反查、容量守恒。
+/// 正查是纯查询：命中/落空对账由调用方按返回值自行记账，
+/// 表内不设可变账目，保证 &self 查询可并发复用。
 #[derive(Clone, Debug)]
 pub struct InodeTable {
     entries: Vec<Option<InodeEntry>>,
     next_ino: u32,
-    /// 正查命中次数（账目）
-    hits: u32,
-    /// 正查落空次数（账目）
-    misses: u32,
-    /// 分配次数（账目）
+    /// 分配次数（账目，只在 allocate 内推进）
     allocs: u32,
 }
 
@@ -322,7 +320,7 @@ impl InodeTable {
             entries.push(None);
             i += 1;
         }
-        InodeTable { entries, next_ino: 1, hits: 0, misses: 0, allocs: 0 }
+        InodeTable { entries, next_ino: 1, allocs: 0 }
     }
 
     /// 分配一个节点：取首个空槽；表满返回 TableExhausted 码值。
@@ -375,7 +373,6 @@ impl InodeTable {
         while i < self.entries.len() {
             if let Some(Some(e)) = self.entries.get(i) {
                 if e.name == name {
-                    self.hits = self.hits.saturating_add(1);
                     if follow && e.kind == NodeKind::Symlink && !e.target.is_empty() {
                         let target = e.target.clone();
                         return self.resolve_inner(&target, true, depth.saturating_add(1));
@@ -385,7 +382,6 @@ impl InodeTable {
             }
             i += 1;
         }
-        self.misses = self.misses.saturating_add(1);
         Err(ENOENT)
     }
 
@@ -418,16 +414,6 @@ impl InodeTable {
             i += 1;
         }
         Err(EBADF)
-    }
-
-    /// 正查命中账。
-    pub fn hits(&self) -> u32 {
-        self.hits
-    }
-
-    /// 正查落空账。
-    pub fn misses(&self) -> u32 {
-        self.misses
     }
 
     /// 分配账。
@@ -776,11 +762,12 @@ pub fn judge_stat_traced(it: &InodeTable, path: PathClass, body: &str,
     // 阶段 3：内核侧填充（五字段状态机）。
     trace.mark(STAGE_FILL);
     let frame = fill_frame(entry)?;
-    // 阶段 4：拷出到用户 buf。坏 buf 在此 EFAULT。
-    trace.mark(STAGE_COPY_OUT);
+    // 阶段 4：拷出到用户 buf。坏 buf 在此 EFAULT（未进入拷出阶段，
+    // 踪迹止步于填充完成——Linux 先填内核 stat 再 copy_to_user）。
     if !buf.writable() {
         return Err(EFAULT);
     }
+    trace.mark(STAGE_COPY_OUT);
     Ok(frame)
 }
 
@@ -804,11 +791,11 @@ pub fn judge_fstat_traced(ft: &FdMap, it: &InodeTable, fd: i32,
     // 阶段 3：填充。
     trace.mark(STAGE_FILL);
     let frame = fill_frame(entry)?;
-    // 阶段 4：拷出。
-    trace.mark(STAGE_COPY_OUT);
+    // 阶段 4：拷出。坏 buf 在此 EFAULT（未进入拷出阶段）。
     if !buf.writable() {
         return Err(EFAULT);
     }
+    trace.mark(STAGE_COPY_OUT);
     Ok(frame)
 }
 
@@ -1160,38 +1147,64 @@ pub fn order_fstat_fd_first() -> bool {
 }
 
 /// 阶段踪迹对账：六条序列与各自故障截断序列逐一核对。
-pub fn stage_sequences_match() -> bool {
+/// 六条阶段场景的逐项布尔（诊断与收口共用）。
+fn seq_stat_full_ok() -> bool {
     let it = seeded_inodes();
-    let mut ft = seeded_fds(&it);
-    // 完整 stat：1→2→3→4
     let mut t1 = StageTrace::new();
     let _ = judge_stat_traced(&it, PathClass::Valid, "motd", BufClass::Valid,
                               true, &mut t1);
-    // 坏路径：止步于 1
+    t1.sequence() == vec![STAGE_STAT_COPY_PATH, STAGE_STAT_RESOLVE, STAGE_FILL, STAGE_COPY_OUT]
+}
+
+fn seq_stat_bad_path_ok() -> bool {
+    let it = seeded_inodes();
     let mut t2 = StageTrace::new();
     let _ = judge_stat_traced(&it, PathClass::Null, "motd", BufClass::Valid,
                               true, &mut t2);
-    // 缺失目标：止步于 2
+    t2.sequence() == vec![STAGE_STAT_COPY_PATH]
+}
+
+fn seq_stat_missing_ok() -> bool {
+    let it = seeded_inodes();
     let mut t3 = StageTrace::new();
     let _ = judge_stat_traced(&it, PathClass::Valid, "ghost.log", BufClass::Valid,
                               true, &mut t3);
-    // 坏 buf：止步于 4 之前（3 已完成填充）
+    t3.sequence() == vec![STAGE_STAT_COPY_PATH, STAGE_STAT_RESOLVE]
+}
+
+fn seq_stat_bad_buf_ok() -> bool {
+    let it = seeded_inodes();
     let mut t4 = StageTrace::new();
     let _ = judge_stat_traced(&it, PathClass::Valid, "motd", BufClass::Null,
                               true, &mut t4);
-    // fstat 坏 fd：止步于 5
+    // 坏 buf 止步于拷出：填充已完成（Linux 先填内核 stat 再 copy_to_user）。
+    t4.sequence() == vec![STAGE_STAT_COPY_PATH, STAGE_STAT_RESOLVE, STAGE_FILL]
+}
+
+fn seq_fstat_bad_fd_ok() -> bool {
+    let it = seeded_inodes();
+    let mut ft = seeded_fds(&it);
     let mut t5 = StageTrace::new();
     let _ = judge_fstat_traced(&ft, &it, -1, BufClass::Valid, &mut t5);
-    // fstat 完整：5→6→3→4
+    t5.sequence() == vec![STAGE_FSTAT_FD_CHECK]
+}
+
+fn seq_fstat_full_ok() -> bool {
+    let it = seeded_inodes();
+    let mut ft = seeded_fds(&it);
     let mut t6 = StageTrace::new();
     let _ = judge_fstat_traced(&ft, &it, 3, BufClass::Valid, &mut t6);
-    let _ = ft.close(3);
-    t1.sequence() == vec![STAGE_STAT_COPY_PATH, STAGE_STAT_RESOLVE, STAGE_FILL, STAGE_COPY_OUT]
-        && t2.sequence() == vec![STAGE_STAT_COPY_PATH]
-        && t3.sequence() == vec![STAGE_STAT_COPY_PATH, STAGE_STAT_RESOLVE]
-        && t4.sequence() == vec![STAGE_STAT_COPY_PATH, STAGE_STAT_RESOLVE, STAGE_FILL]
-        && t5.sequence() == vec![STAGE_FSTAT_FD_CHECK]
-        && t6.sequence() == vec![STAGE_FSTAT_FD_CHECK, STAGE_FSTAT_FD_TO_INO, STAGE_FILL, STAGE_COPY_OUT]
+    t6.sequence() == vec![STAGE_FSTAT_FD_CHECK, STAGE_FSTAT_FD_TO_INO, STAGE_FILL, STAGE_COPY_OUT]
+}
+
+/// 阶段踪迹对账：六条序列与各自故障截断序列逐一核对。
+pub fn stage_sequences_match() -> bool {
+    seq_stat_full_ok()
+        && seq_stat_bad_path_ok()
+        && seq_stat_missing_ok()
+        && seq_stat_bad_buf_ok()
+        && seq_fstat_bad_fd_ok()
+        && seq_fstat_full_ok()
 }
 
 // ── 检查入口 ──────────────────────────────────────────────────────────
@@ -1540,6 +1553,8 @@ mod tests {
         let mut f = StatFiller::new();
         assert!(f.fill_ino(1).is_err());
         assert!(f.fill_dev(0x0801).is_ok());
+        // 状态机次序 Dev→Ino→Mode→Nlink→Size，不可跳级。
+        assert!(f.fill_ino(2).is_ok());
         assert!(f.fill_mode(S_IFREG | 0o644).is_ok());
         assert!(f.fill_nlink(1).is_ok());
         assert!(f.fill_size(87).is_ok());
@@ -1559,7 +1574,8 @@ mod tests {
         assert!(!mode_type_known(0));
         assert!(!mode_type_known(0o160000));
         assert!(!mode_type_known(0o170000));
-        assert!(!mode_type_known(0o10000));
+        // 0o150000 不在 S_IF* 七类闭集内（S_IFSOCK=0o140000 之外）。
+        assert!(!mode_type_known(0o150000));
     }
 
     #[test]
