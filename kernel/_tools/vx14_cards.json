@@ -1,0 +1,1202 @@
+{
+ "52001": {
+  "title": "Visual Studio 2022 Community 收口（主力族旗舰条目）",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52002-J1 六判据全落（同母版，许可面单独记账）；与 F52001 共面 shim 复用率 ≥80% 落账；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题三 VS 家族专项；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52002": {
+  "title": "Visual Studio 2022 Professional 收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52003-J1 六判据全落 + Enterprise 特有组件（IntelliTrace/CodeLens/架构图）20 操作集特化项 4 项全过；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题三；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52003": {
+  "title": "Visual Studio 2022 Enterprise 收口（IntelliTrace/CodeLens 面特化）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52004-J1 六判据全落；版本阶梯下探第 2 档，S1 基线为 VS2022、2019 逐版上探结果入 KB-COMPAT；J4 downgrade（2022 工程 → 2019 打开）兼容性声明列缺失项；判据锚定 §AI-66.2 专题六版本阶梯；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52004": {
+  "title": "Visual Studio 2019 Community 收口（版本阶梯下探）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52005-J1 六判据全落；升级接管口径：与 F52003 同应用不同版本，条目带\"版本阶梯上探\"字样；KB-COMPAT 定级登记；判据锚定 §AI-66.1 防重声明升级接管口径；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52005": {
+  "title": "Visual Studio 2019 Enterprise 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52006-J1 六判据执行，S2 以下如实降级并列缺失项清单（不凑绿）；KB-COMPAT 定级 S2 + 缺失清单公开；判据锚定 §AI-66.2 专题六\"S2 以下如实降级\"；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52006": {
+  "title": "Visual Studio 2017 Community 收口（长尾版本定级示范）",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52007-J1 J3 特化为构建 CLI 20 操作集（msbuild 目标/增量/并行/日志四级）；J2 特化为命令首响应 ≤3s；六判据其余同母版；KB-COMPAT 定级 S1；判据锚定 §AI-66.3 示例条目 UNX-F52061 构建链口径；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52007": {
+  "title": "Visual Studio Build Tools 2022 收口（无 IDE 构建面）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52008-J1 六判据特化同 F52007；与 2022 版输出逐字节对照（警告文本除外，差异清单公开）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题一 J4 口径；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52008": {
+  "title": "Visual Studio Build Tools 2019 收口",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52009-J1 安装器面专项：多阶段（引导器/包编排/回滚）逐阶段计账，断点续装 ×3，失败码全账 ×20 场景；对 E4 安装器语义的最重检验结论回传（联签锚定行 AI-24）；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题三安装器面；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52009": {
+  "title": "VS Installer 多阶段安装器本体收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52010-J1 扩展安装/更新/禁用/卸载 20 操作集全账，vsix 包签名校验行为对照，扩展宿主崩溃隔离（单扩展崩不拖 IDE）验证 ×5 注入；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题三 vsix 扩展安装；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52010": {
+  "title": "VSIX 扩展安装与扩展管理器收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52011-J1 J3 特化为安装/修复/静默/检测四操作 + 依赖方探测 ×20 二进制加载成功；与 E2 CRT 版本矩阵对账零漂移（联签锚定行 AI-22）；KB-COMPAT 定级 S1；判据锚定 §AI-66.4 上游 CRT 版本矩阵；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52011": {
+  "title": "Visual C++ Redistributable 2022 收口（运行库前置件）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52012-J1 同 F52011 口径；版本共存（2022/2019 并装）零互踩 ×2 轮验证；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六版本阶梯；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52012": {
+  "title": "Visual C++ Redistributable 2019（14.2x）收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52013-J1 远程调试器服务启动/连接/断点双向/内存查看四段全账；网络端口与防火墙预置建议账（联签锚定行 AI-50）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二调试 API 消费；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52013": {
+  "title": "Remote Tools for Visual Studio 2022 收口（远程调试面）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52014-J1 采集/停止/导出/.iTrace 打开四段账，事件时间轴与源码映射抽检 ×10；性能开销 ≤15% 落账；KB-COMPAT 定级登记；判据锚定 §AI-66.3 B01 批判据主轴；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52014": {
+  "title": "IntelliTrace 独立收集器收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52015-J1 测试代理拉起/用例分发/结果回传/并行 4 代理四段账零漂移；与 Test Controller 联调 ×3；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二进程树语义；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52015": {
+  "title": "Visual Studio Test Agent 2022 收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52016-J1 六判据全落 + 数据库工程发布/Schema 比较/DACPAC 导入 20 操作集特化项；J4 .sqlproj 双向零损；KB-COMPAT 定级登记；判据锚定 §AI-66.3 批判据主轴；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52016": {
+  "title": "SSDT（SQL Server Data Tools）收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52017-J1 Git 集成消费 L4 git 嫁接件判据绿（联签锚定行 AI-59）：clone/commit/push/pull/branch 五操作 ×10 全通 + 文件锁语义对账；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二 Git 集成；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52017": {
+  "title": "Team Explorer 2022 收口（Git/TFS 集成面）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52018-J1 Unity 工程调试挂接/断点命中/变量查看三段账；与 G 部渲染面无耦合声明（收口仅限工具链侧）；KB-COMPAT 定级登记；判据锚定 §AI-66.1 语义边界；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52018": {
+  "title": "Visual Studio Tools for Unity（VSTU）收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52019-J1 dotnet CLI 20 操作集（new/build/run/publish/test 五面）；增量编译输出与 Windows 对照逐字节一致（警告除外）；Windows 发行版应用收口口径与 L4 工具链布设分账（联签锚定行 AI-59）；KB-COMPAT 定级 S1；判据锚定 §AI-66.1 语义边界 + 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52019": {
+  "title": ".NET SDK（Windows 发行版收口，与 L4 分账）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52020-J1 离线帮助安装/检索/渲染三段账；F3 文本渲染消费对账（联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.4 横向消费 F3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52020": {
+  "title": "Visual Studio Help Viewer 收口",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52021-J1 六判据全落 + 启动三段账（进程拉起/窗口首绘/扩展激活逐段与 Windows 对照，总时长仍守 ≤3s，超限如实降级列缺失项）；多进程模型（主/渲染/GPU/扩展宿主四进程）句柄与共享内存语义账；扩展宿主原生模块加载 ×10 全过；KB-COMPAT 定级 S1；判据锚定 §AI-66.3 示例条目 UNX-F52021 保真；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52021": {
+  "title": "VSCode 收口（Electron 上栈代表条目）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52022-J1 六判据全落；滚动版随上游月更，钉版 + AI-94 通知链 T+1 回归口径落账（联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六上游滚动；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52022": {
+  "title": "VSCode Insiders 收口（滚动版本线）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52023-J1 六判据全落；与 VSCode 共面 shim 复用率 ≥85%（Electron 同基座）落账；扩展市场差异行为声明；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题四 Electron 族专项；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52023": {
+  "title": "VSCodium 收口（无遥测分发版）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52024-J1 六判据全落（Electron 上栈三段账）；包管理器（ppm 类）安装 ×5 扩展全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题四；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52024": {
+  "title": "Pulsar（Atom 社区续作）收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52025-J1 六判据执行，上游已停更 → 定级冻结声明（不再上探、不追新），如实列缺失项；KB-COMPAT 定级 S2 + EOL 冻结标记；判据锚定 §AI-66.2 专题六\"跟随≠追新\"；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52025": {
+  "title": "Atom 收口（EOL 应用定级示范）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52026-J1 六判据全落；J4 特化：.md 库保存加载双向零损（校验和 ×100 文件）；J3 特化操作集：双链/图谱/插件/同步四面；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题一母版；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52026": {
+  "title": "Obsidian 收口（Electron 笔记库）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52027-J1 六判据全落；J5 特化：公式/表格/中文混排渲染对照（消费 F3 联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.4 横向消费 F3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52027": {
+  "title": "Typora 收口（所见即所得 Markdown）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52028-J1 六判据全落；大文件（10MB .md）打开分段账；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题一母版；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52028": {
+  "title": "MarkText 收口（开源 Markdown 编辑器）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52029-J1 六判据全落；Pandoc 导出链 ×5 格式（docx/pdf/odt/html/epub）输出校验和对照；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题一母版；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52029": {
+  "title": "Zettlr 收口（学术写作 Electron 应用）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52030-J1 六判据全落；J4 双向零损 + frontmatter 元数据保真抽检 ×20；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题一母版；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52030": {
+  "title": "Notable 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52031-J1 六判据全落；本地存储路径与云端模式分离声明；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题一母版；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52031": {
+  "title": "Boost Note（legacy 版）收口",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52032-J1 PE 装载 + CRT 版本矩阵消费（联签锚定行 AI-22）：10 个含原生模块扩展（node-pty/SQLite 绑定/树解析器类）加载运行全通；ABI 失配错误路径三要素呈现；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题四 Node 原生模块 ABI；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52032": {
+  "title": "VSCode 扩展宿主原生模块 ABI 收口（node-gyp 类 ×10 扩展实测）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52033-J1 解释器选择/IntelliSense/调试挂接/lint 四段 ×10 场景全通；Pylance 原生面并入 F52032 账；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题四；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52033": {
+  "title": "VSCode 扩展：Python（ms-python）收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52034-J1 IntelliSense 数据库生成（万文件索引 IO 模式账，与 B03 JBR 同构不同参）/调试挂接（MinGW-gdb 消费，联签锚定行）/浏览符号三段全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52034": {
+  "title": "VSCode 扩展：C/C++（cpptools）收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52035-J1 远程主机连接/服务端组件布设/端口转发/断线重连四段账；OpenSSH 消费对账（联签锚定行 B13 F52188）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二跨应用共面；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52035": {
+  "title": "VSCode 扩展：Remote-SSH 消费面收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52036-J1 blame/历史/对比三视图 ×10 仓库全通；Git 消费对账（L4 嫁接件判据绿，联签锚定行 AI-59）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二 Git 集成；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52036": {
+  "title": "VSCode 扩展：GitLens 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52037-J1 lint 触发（保存/输入/CLI 三通道）/规则注入/修复应用三段 ×10 工程全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题四；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52037": {
+  "title": "VSCode 扩展：ESLint 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52038-J1 格式化（保存触发/手动/范围三类）×10 文件型全通，输出幂等（二次格式化 diff 为零）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题四；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52038": {
+  "title": "VSCode 扩展：Prettier 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52039-J1 容器/镜像/Compose 三视图操作 ×10 全通；与 B14 Docker Desktop 消费对账（联签锚定行 F52281）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52039": {
+  "title": "VSCode 扩展：Docker（ms-azuretools）收口",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52040-J1 波 23 开工首月\"Electron 前置验证周\"全记录：VSCode 最小集试收口 → 失绿问题清单回推 G 部缺陷账（联签锚定行）→ 回推项 ×N 全部登记，不硬写收口条目结论留痕；KB-COMPAT 定级流程验证；判据锚定 §AI-66.6 风险 ①Electron 族渲染面时点风险；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52040": {
+  "title": "Electron 前置验证周结论条目（VSCode 最小集试收口报告）",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52041-J1 六判据全落 + 万文件索引时长 ≤×1.5（顺序读+随机读混合 IO 账，B4 队列深度与 A4 页缓存联动对账，联签锚定行）+ Gradle daemon 常驻 7 天零泄漏；JBR 自带上栈收口；KB-COMPAT 定级 S1；判据锚定 §AI-66.3 示例条目 UNX-F52041 保真；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52041": {
+  "title": "IntelliJ IDEA Ultimate 收口（索引 IO 判据承载条目）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52042-J1 六判据全落；与 Ultimate 共面 shim 复用 ≥80% 落账；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题五 JetBrains 家族专项；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52042": {
+  "title": "IntelliJ IDEA Community 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52043-J1 六判据全落 + Python/科学模式 20 操作集特化项；解释器探测（系统 venv/conda 三源）×10 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52043": {
+  "title": "PyCharm Professional 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52044-J1 六判据全落；版本阶梯与 Professional 分账；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52044": {
+  "title": "PyCharm Community 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52045-J1 六判据全落；Node 调试挂接/前端工具链集成操作集特化；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52045": {
+  "title": "WebStorm 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52046-J1 六判据全落；Go 工具链（go build/test/dlv 调试）消费 ×10 场景全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52046": {
+  "title": "GoLand 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52047-J1 六判据全落；CMake 消费对账（Windows 发行版应用口径，与 L4 嫁接件分账联签锚定行 AI-59）：工程加载/重载/配置切换 ×10 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52047": {
+  "title": "CLion 收口（CMake 消费面）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52048-J1 六判据全落；MSBuild 消费对账（B01 构建链判据复用）；ReSharper 引擎共面声明；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52048": {
+  "title": "Rider 收口（.NET 全栈）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52049-J1 六判据全落；JDBC 驱动管理 ×5 数据源连接全通；与 B11 数据库工具族分界声明（IDE 收口 vs 工具收口）；KB-COMPAT 定级登记；判据锚定 §AI-66.3 批判据主轴；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52049": {
+  "title": "DataGrip 收口（数据库 IDE）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52050-J1 六判据全落；PHP 解释器/Web 服务器调试挂接三段账；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52050": {
+  "title": "PhpStorm 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52051-J1 六判据全落；Rails 调试挂接/ gem 管理操作集；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52051": {
+  "title": "RubyMine 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52052-J1 六判据全落（宿主为 VS2022，消费 B01 shim 共面）；重构操作集 ×10 全通；与宿主兼容矩阵入 KB-COMPAT；判据锚定 §AI-66.2 专题三 VS 家族联动；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52052": {
+  "title": "ReSharper 收口（VS 扩展形态）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52053-J1 覆盖率采集/报告生成/VS 集成三段账；性能开销 ≤20% 落账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52053": {
+  "title": "dotCover 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52054-J1 快照采集/时间线视图/热点定位三段账；采样模式 ×2 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52054": {
+  "title": "dotTrace 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52055-J1 内存快照/泄漏定位/保留树三段账；GB 级堆快照打开 ≤×1.5；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52055": {
+  "title": "dotMemory 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52056-J1 工具安装/更新/回滚三段账；多 IDE 并存目录隔离（.jdks/本地库）零互踩 ×2 轮；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52056": {
+  "title": "JetBrains Toolbox App 收口",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52057-J1 JBR 运行时自带上栈全账：字体渲染（JCEF/FreeType 路径对 F3 联签锚定行）/DPI 缩放/输入法挂接三面 ×30 场景；全部 JetBrains 家族条目的运行时前置；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题五 JBR 自带上栈；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52057": {
+  "title": "JBR（JetBrains Runtime）自带上栈收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52058-J1 daemon 拉起/复用/超时回收/崩溃重启四态账 ×3 轮；常驻 7 天内存漂移 <10%；JVM 进程语义消费 E1 面（联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五 Gradle daemon；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52058": {
+  "title": "Gradle daemon 常驻进程语义收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52059-J1 六判据全落（前后端分离进程模型账）；智能模式切换 ×5 场景；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52059": {
+  "title": "JetBrains Fleet 收口（下一代轻量 IDE）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52060-J1 六判据全落；工程生成语言/构建操作集；KB-COMPAT 定级登记；判据锚定 §AI-66.3 长尾组口径；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52060": {
+  "title": "JetBrains MPS 收口（投影编辑器长尾）",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52061-J1 样本工程 ×10 增量/全量构建输出与 Windows 逐字节一致（警告文本除外，差异清单公开）；MSBuild/cl.exe/link.exe 子进程链作业对象与环境块语义账（消费 D2 PE 装载与 E2 CRT 联签锚定行）、子进程退出码传递保真 ×20；KB-COMPAT 定级 S1；判据锚定 §AI-66.3 示例条目 UNX-F52061 保真；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52061": {
+  "title": "MSBuild/Windows SDK 构建链收口（组旗舰）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52062-J1 头文件/库/工具三件套布设完整性 ×40 路径断言；样本工程编译链接全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二编译器进程树；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52062": {
+  "title": "Windows SDK 10.0.19041（2004 版）收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52063-J1 同 F52062 口径；多 SDK 并存（与 19041）选择语义 ×10 场景零漂移；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六版本阶梯；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52063": {
+  "title": "Windows SDK 10.0.22000（Win11 首版）收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52064-J1 同口径；升级接管口径登记；KB-COMPAT 定级登记；判据锚定 §AI-66.1 防重声明升级接管；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52064": {
+  "title": "Windows SDK 10.0.26100（24H2 版）收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52065-J1 引用程序集/目标包 ×20 工程编译全通；msbuild TargetFramework 解析 ×5 场景；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52065": {
+  "title": ".NET Framework 4.8 Developer Pack 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52066-J1 dotnet build/publish ×10 工程全通；AOT 发布路径产物可运行；Windows 发行版应用收口口径与 L4 分账（联签锚定行 AI-59）；KB-COMPAT 定级 S1；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52066": {
+  "title": ".NET 8 SDK 收口（Windows 发行版，与 L4 分账）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52067-J1 同 F52066 口径；与 8 SDK 并存 global.json 选择语义 ×5；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52067": {
+  "title": ".NET 6 SDK 收口（LTS 下探）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52068-J1 restore/pack/push 20 操作集构建恢复五面；包缓存目录（GB 级）卷层压力对 B2/B3 联动账（联签锚定行）；网络面消费 AI-23 真站复测集背书（联签锚定行）；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题三缓存目录；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52068": {
+  "title": "NuGet（CLI 与包恢复面）收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52069-J1 端口安装 ×20（含二进制缓存命中）全通；与 MSBuild 集成 ×5 工程全通；克隆与自举消费 git 嫁接件判据绿（联签锚定行 AI-59）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52069": {
+  "title": "vcpkg 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52070-J1 MSI 构建 ×5 样本全通，产物可被 E4 安装器语义面引导安装（联签锚定行 AI-24）；KB-COMPAT 定级登记；判据锚定 §AI-66.3 长尾组口径；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52070": {
+  "title": "WiX Toolset v4 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52071-J1 安装包构建 ×5 样本 + 产出自安装全通（E4 形态分类\"自研壳/Inno\"对账联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.6 风险 ③安装器长尾形态分类复用；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52071": {
+  "title": "Inno Setup 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52072-J1 脚本编译 ×5 样本 + 产出自安装全通（E4 形态分类对账）；KB-COMPAT 定级登记；判据锚定 §AI-66.6 风险 ③；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52072": {
+  "title": "NSIS 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52073-J1 pacman 包管理 ×20 操作（安装/更新/查询）全通；与 L4 工具链布设分界声明（发行版环境收口 vs 嫁接件布设，联签锚定行 AI-59）；KB-COMPAT 定级登记；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52073": {
+  "title": "MSYS2 收口（构建环境分发面）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52074-J1 install/upgrade/uninstall 20 操作集；包脚本执行沙箱行为账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52074": {
+  "title": "Chocolatey CLI 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52075-J1 配置/生成 ×10 工程全通（生成器选 VS/Ninja 双路径）；GUI 状态机完整（重配置/错误态/取消路径 ×10）；Windows 发行版应用收口与 L4 CMake 嫁接件布设分账（联签锚定行 AI-59）；KB-COMPAT 定级 S1；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52075": {
+  "title": "CMake GUI 收口（Windows 发行版，与 L4 分账）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52076-J1 setup/compile ×10 工程全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52076": {
+  "title": "Meson 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52077-J1 增量构建正确性（依赖图 ×10 注入：头改/源改/无改三类动作）与 Windows 逐字节对照；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52077": {
+  "title": "Ninja 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52078-J1 build/test ×10 目标全通；远程缓存禁用本地回退路径账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52078": {
+  "title": "Bazel 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52079-J1 构建 ×5 样本全通；Python 消费对账（F52043 解释器判据复用）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52079": {
+  "title": "SCons 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52080-J1 Makefile ×10 样本（含并行 -j4）构建全通；与 L4 make 类开发者包组分账声明（联签锚定行 AI-59）；KB-COMPAT 定级登记；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52080": {
+  "title": "Make for Windows（GnuWin32/独立发行版）收口",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52081-J1 六判据全落 + ADB 设备枚举复用 M5 账（联签锚定行 AI-65）+ 模拟器路径显式 N/A 声明（HAXM 类虚拟化消费 L5/AI-60 可选路径，不可用则 AVD 降级 N/A 账，不虚报）；SDK 管理器下载面消费 E3 网络语义（联签锚定行 AI-23）；KB-COMPAT 定级 S1；判据锚定 §AI-66.3 示例条目 UNX-F52081 保真；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52081": {
+  "title": "Android Studio 收口（组旗舰）",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52082-J1 adb devices/shell/push/pull/logcat 20 操作集全通；设备枚举判据复用 M5 账零重测（联签锚定行 AI-65）；fastboot 与 M5 vendor 类管道分账声明；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题五 ADB 消费 M5 USB；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52082": {
+  "title": "Android SDK Platform-Tools（ADB/fastboot）收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52083-J1 sdkmanager 包安装/更新/许可证签署 ×10 场景全通；下载面 HTTPS 消费 AI-23 真站复测集背书（联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52083": {
+  "title": "Android SDK Command-line Tools（sdkmanager/avdmanager）收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52084-J1 虚拟化依赖探测账：HAXM/WHPX 类路径消费 L5 判据（联签锚定行 AI-60）；不可用 → AVD 降级 N/A 账 + 三要素用户告警（禁\"能开但卡死\"隐性失败）；CPU 软路径不承诺声明；KB-COMPAT 定级 S3 + N/A 清单；判据锚定 §AI-66.2 专题五模拟器 N/A 账；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52084": {
+  "title": "Android Emulator 收口（显式 N/A 虚拟化声明）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52085-J1 AVD 创建/克隆/删除 ×10 全通；镜像文件 IO（大文件读写）与 B4 卷层联动账（联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52085": {
+  "title": "AVD Manager 与 AVD 生命周期收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52086-J1 交叉编译样本 ×10（clang for aarch64-android）全通；ndk-build/CMake 双路径；与 L4 三元组语义分账声明（联签锚定行 AI-59）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52086": {
+  "title": "Android NDK r26 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52087-J1 javac/java/jar 20 操作集 ×10 工程全通；JVM 进程语义消费 E1 面（联签锚定行）；发行版收口与 L4 分账；KB-COMPAT 定级 S1；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52087": {
+  "title": "Eclipse Temurin JDK 17 收口（Windows 发行版，与 L4 分账）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52088-J1 同 F52087 口径；虚拟线程类新特性样本 ×3 全通；升级接管口径；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52088": {
+  "title": "Eclipse Temurin JDK 21 收口（LTS 上探）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52089-J1 老应用运行 ×10 样本全通；与 17/21 并存切换语义（JAVA_HOME/注册表）×5 场景零漂移；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六版本阶梯；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52089": {
+  "title": "Eclipse Temurin JRE 8 收口（长尾运行时）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52090-J1 build/test ×10 工程全通；与 B03 daemon 共面条目联签（F52058 判据复用）；wrapper 自举下载面网络语义（AI-23 联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52090": {
+  "title": "Gradle（Windows 发行版）收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52091-J1 APK/AAB 构建 ×5 样本全通；资源编译（aapt2）/DEX 转换（d8）/签名（apksigner）三段产物与 Windows 校验和对照；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二编译器进程树；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52091": {
+  "title": "Android Gradle Plugin 构建链收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52092-J1 实时流/过滤/导出三段账；ADB 流消费判据复用 M5 账（联签锚定行 AI-65）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52092": {
+  "title": "Logcat 消费面收口（AS Logcat 工具窗）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52093-J1 视图树抓取/属性面板/合成器联动三段账 ×10 场景；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52093": {
+  "title": "Layout Inspector 消费面收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52094-J1 APK 解析（清单/资源/DEX 三视图）×10 包全通；大 APK（500MB）打开分段账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52094": {
+  "title": "APK Analyzer 消费面收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52095-J1 设备连接/视频流/输入注入三段账；ADB 传输判据复用 M5 账（联签锚定行 AI-65）；帧率账落账（P95）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52095": {
+  "title": "scrcpy 收口（设备镜像工具）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52096-J1 驱动安装/设备识别 ×5 机型全通；与 M5 设备类语义分账（联签锚定行 AI-65）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52096": {
+  "title": "Universal ADB Driver 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52097-J1 驱动安装与设备枚举 ×5 场景全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52097": {
+  "title": "Google USB Driver 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52098-J1 devices/getvar/ boot 状态查询 ×10 全通；**flash/erase 类破坏性写判据一律只干跑（dry-run 列清单），真机写入不在本域判据内**（硬件数据安全红线适用性声明）；KB-COMPAT 定级登记；判据锚定 §AI-66.9 红线适用 + Variable 硬件红线；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52098": {
+  "title": "fastboot 刷写面收口（只读判据版）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52099-J1 三档平台包安装/引用/编译样本 ×3 ×10 全通；多档并存选择语义零漂移；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六版本阶梯；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52099": {
+  "title": "Android SDK 平台包族收口（android-33/34/35 三档）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52100-J1 kotlinc 编译运行 ×10 样本全通；与 JVM 收口联签（F52087 判据复用）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52100": {
+  "title": "Kotlin 命令行编译器（Windows 发行版）收口",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52101-J1 六判据全落；qmake/CMake 双构建消费 ×10 工程全通（CMake 分账联签锚定行 AI-59）；Qt 设计器/调试挂接（gdb 消费，联签锚定行 B09）操作集；KB-COMPAT 定级 S1；判据锚定 §AI-66.3 组 6 口径；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52101": {
+  "title": "Qt Creator 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52102-J1 组件树选择/下载/安装 ×10 场景全通；账号登录离线路径声明；网络面消费 AI-23（联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题三安装器面复用；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52102": {
+  "title": "Qt 在线安装器收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52103-J1 六判据全落；工作区索引 IO 模式账（与 B03 索引同构不同参）；JDK 消费联签（F52087 判据复用）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题五 JVM 家族扩展；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52103": {
+  "title": "Eclipse IDE（Java SE）收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52104-J1 六判据全落；MinGW-gdb 调试挂接（联签锚定行 B09）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52104": {
+  "title": "Eclipse CDT 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52105-J1 六判据全落；Maven/Ant 双构建消费（B08 判据复用联签）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52105": {
+  "title": "NetBeans 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52106-J1 六判据全落；多编译器配置（gcc/MSVC 检测）×5 场景；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52106": {
+  "title": "Code::Blocks 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52107-J1 六判据全落；TDM-gcc 消费声明；KB-COMPAT 定级登记；判据锚定 §AI-66.3 长尾；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52107": {
+  "title": "Dev-C++（Embarcadero 版）收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52108-J1 六判据全落；CMake 消费（分账联签锚定行 AI-59）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52108": {
+  "title": "KDevelop（Windows 版）收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52109-J1 六判据全落；轻量插件 ×5 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3 长尾；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52109": {
+  "title": "Geany 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52110-J1 六判据执行；上游停更 → EOL 冻结定级（不追新）+ 缺失清单；KB-COMPAT 定级 S2 + EOL 标记；判据锚定 §AI-66.2 专题六；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52110": {
+  "title": "SharpDevelop 收口（EOL 定级示范）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52111-J1 六判据全落；FPC 编译 ×10 样本全通；LCL 界面库渲染消费 G 部判据（联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52111": {
+  "title": "Lazarus（Free Pascal IDE）收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52112-J1 六判据全落；R 解释器会话/plots/Help 三面板 ×10 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52112": {
+  "title": "RStudio Desktop 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52113-J1 六判据全落；IPython 控制台/变量浏览器/绘图面板三段 ×10 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52113": {
+  "title": "Spyder 收口（科学 Python IDE）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52114-J1 notebook 打开/内核会话/导出三段 ×10 场景全通；内核崩溃隔离（单内核崩不拖壳）验证；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52114": {
+  "title": "JupyterLab 桌面消费面收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52115-J1 环境管理/包安装/应用拉起 ×10 全通；大体积目录（GB 级）卷层联动账（联签锚定行 B2/B3）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52115": {
+  "title": "Anaconda Navigator 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52116-J1 conda create/install ×10 全通；环境切换语义 ×5 场景；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52116": {
+  "title": "Miniconda 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52117-J1 六判据全落；Tkinter 界面渲染消费 G 部判据（联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52117": {
+  "title": "IDLE（Python 官方 IDE）收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52118-J1 perl 运行 ×10 样本全通；模块安装（cpanm 类）×5 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52118": {
+  "title": "Strawberry Perl 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52119-J1 ruby 运行/gem 安装 ×10 全通；Devkit 构建链（mri 原生扩展）样本 ×3 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52119": {
+  "title": "RubyInstaller 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52120-J1 六判据执行；16/32 位混合时代应用 → 定级 S2 + 缺失清单（OCX 注册/MDI 行为差异逐项列）；版本伪装表许可合规声明（AI-95 联签锚定行）；判据锚定 §AI-66.2 专题六长尾定级；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52120": {
+  "title": "Visual Basic 6.0 IDE 收口（古董兼容定级示范）",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52121-J1 六判据全落；大文件（1GB 日志）打开分段账；插件生态 ×10 全通；多标签崩溃隔离 ×5 注入；KB-COMPAT 定级 S1；判据锚定 §AI-66.3 组 7 口径；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52121": {
+  "title": "Notepad++ 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52122-J1 六判据全落；GPU 渲染路径探测与降级表（G 部能力页探测，联签锚定行）；命令面板/多光标操作集；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题四 GPU 路径同构；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52122": {
+  "title": "Sublime Text 4 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52123-J1 六判据全落；模式状态机（normal/insert/visual 切换 ×20）零漂移；vimrc 加载/插件 ×5 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题一母版；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52123": {
+  "title": "Vim/gVim 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52124-J1 六判据全落；LSP 客户端 ×5 语言服务全通；TreeSitter 原生模块消费（F52032 ABI 账复用联签）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题四 ABI 同构；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52124": {
+  "title": "Neovim 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52125-J1 六判据全落；ELisp 包管理 ×5 全通；daemon/client 模式账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52125": {
+  "title": "Emacs（Windows 版）收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52126-J1 六判据全落；超大文件（4GB）打开/编辑/保存三段账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52126": {
+  "title": "UltraEdit 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52127-J1 六判据全落；CSV 大文件模式（10 亿行级声明档）打开分段账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52127": {
+  "title": "EmEditor 收口（大文件专业编辑器）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52128-J1 六判据全落；FTP 远程编辑 ×5 场景（网络面 AI-23 联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52128": {
+  "title": "EditPlus 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52129-J1 六判据全落；正则搜索/宏操作集；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52129": {
+  "title": "TextPad 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52130-J1 六判据全落；大文件/多编码 ×10 场景；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52130": {
+  "title": "EverEdit 收口",
+  "quota": 180,
+  "criteria": "① 纯功能代码 ≥180 行；② 判据原文：UNX-F52131-J1 六判据执行；EOL 冻结定级；KB-COMPAT 定级 S2 + EOL 标记；判据锚定 §AI-66.2 专题六；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52131": {
+  "title": "Notepad2 收口（EOL 定级示范）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52132-J1 六判据全落；Notepad2 接管口径（升级接管字样）；KB-COMPAT 定级登记；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52132": {
+  "title": "Notepad3 收口",
+  "quota": 180,
+  "criteria": "① 纯功能代码 ≥180 行；② 判据原文：UNX-F52133-J1 六判据全落；插件 ×5；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52133": {
+  "title": "AkelPad 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52134-J1 六判据全落；多语法高亮 ×10 语言；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52134": {
+  "title": "PSPad 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52135-J1 六判据全落；LSP/会话恢复 ×5 场景；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52135": {
+  "title": "Kate（Windows 版）收口",
+  "quota": 180,
+  "criteria": "① 纯功能代码 ≥180 行；② 判据原文：UNX-F52136-J1 六判据执行；EOL 冻结定级（Adobe 停更）；KB-COMPAT 定级 S2 + EOL 标记；判据锚定 §AI-66.2 专题六；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52136": {
+  "title": "Brackets 收口（EOL 定级示范）",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52137-J1 六判据全落；AI 请求面（外部服务网络语义，AI-23 联签锚定行）+ 本地模型不可得 N/A 声明；与 VSCode shim 复用 ≥80%；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题四同构；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52137": {
+  "title": "Cursor 收口（VSCode fork，AI 辅助编辑）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52138-J1 六判据全落；终端消费面（与 B12 终端条目联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52138": {
+  "title": "Helix（终端编辑器）收口",
+  "quota": 180,
+  "criteria": "① 纯功能代码 ≥180 行；② 判据原文：UNX-F52139-J1 六判据全落；终端消费面联签；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52139": {
+  "title": "Nano for Windows 收口",
+  "quota": 180,
+  "criteria": "① 纯功能代码 ≥180 行；② 判据原文：UNX-F52140-J1 六判据全落；终端消费面联签；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52140": {
+  "title": "Micro for Windows 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52141-J1 build/test ×10 工程全通；仓库下载面网络语义（AI-23 联签锚定行）；与 B05 Gradle 分账（构建体系不同族）；KB-COMPAT 定级登记；判据锚定 §AI-66.3 组 8 口径；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52141": {
+  "title": "Apache Maven 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52142-J1 build.xml ×10 样本全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52142": {
+  "title": "Apache Ant 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52143-J1 build ×5 样本全通；EOL 临近声明；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52143": {
+  "title": "NAnt 收口（.NET 侧 Ant，长尾）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52144-J1 build.cake ×5 脚本全通；addin 加载 ×3；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52144": {
+  "title": "Cake（C# Make）收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52145-J1 Rakefile ×5 全通；与 F52119 Ruby 联签锚定行；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52145": {
+  "title": "Rake 收口（Ruby 侧）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52146-J1 任务 ×10 全通；node_modules 卷层压力账（海量小文件，B4 联动联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二文件 watcher 同构；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52146": {
+  "title": "Grunt 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52147-J1 流式任务 ×10 全通；watch 模式大目录事件零丢（10 万文件树复测口径引用 B15 共面账）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二文件 watcher；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52147": {
+  "title": "Gulp 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52148-J1 构建 ×10 工程全通；持久缓存命中账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52148": {
+  "title": "Webpack CLI 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52149-J1 dev/build/preview 三模式 ×10 工程全通；dev 服务端口语义与防火墙预置建议账（AI-50 联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52149": {
+  "title": "Vite 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52150-J1 bundle ×10 全通；tree-shaking 产物校验和对照；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52150": {
+  "title": "Rollup 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52151-J1 构建 ×10 全通；P95 耗时账（不凭感觉说快）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52151": {
+  "title": "esbuild 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52152-J1 monorepo 任务编排 ×10 全通；本地缓存命中账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52152": {
+  "title": "Turborepo 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52153-J1 affected/build ×10 全通；缓存语义 ×5；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52153": {
+  "title": "Nx CLI 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52154-J1 cmake -S -B 构建 ×10 工程全通；与 F52075 GUI 共面声明（同应用不同界面形态分立条目）；与 L4 分账联签锚定行 AI-59；KB-COMPAT 定级登记；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52154": {
+  "title": "CMake CLI 收口（Windows 发行版，与 L4 分账）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52155-J1 MSYS2/独立发行版两种 Make 并存判据；环境 PATH 优先级 ×5 场景零漂移；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52155": {
+  "title": "Make for Windows（POSIX 环境面，与 F52080 分立口径）",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52156-J1 MSI 工程 ×5 构建全通；E4 形态分类对账（联签锚定行 AI-24）；KB-COMPAT 定级登记；判据锚定 §AI-66.6 风险 ③；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52156": {
+  "title": "Advanced Installer 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52157-J1 工程 ×3 构建 + 产出自安装全通；许可校验面如实定级（伪装表不用于绕过许可，AI-95 联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.9 红线②；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52157": {
+  "title": "InstallShield 收口（商业安装器长尾）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52158-J1 打包 ×5 场景全通；签名校验路径 ×3；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52158": {
+  "title": "MSIX Packaging Tool 收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52159-J1 git CLI 20 操作集（clone/commit/push/pull/rebase 五面）×10 仓库全通；与 L4 git 嫁接件判据绿消费联签（锚定行 AI-59）+ L4 分账声明；CRLF 转换语义 ×10 场景零漂移；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题二 Git 集成；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52159": {
+  "title": "Git for Windows 收口（应用收口面，与 L4 嫁接件分账）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52160-J1 repo/pr/issue 20 操作集 ×10 场景全通；API 网络语义（AI-23 联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52160": {
+  "title": "GitHub CLI（gh）收口",
+  "quota": 300,
+  "criteria": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F52161-J1 六判据全落；调试 API 消费对账：IsDebuggerPresent/CheckRemoteDebuggerPresent 与 D1 PEB BeingDebugged 写位联动 ×5 场景（D1 对照账复测引用联签锚定行 AI-16~20）；断点异常派发序 ×10 场景零漂移；dump 打开 ×3；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题二调试 API 消费；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52161": {
+  "title": "WinDbg Preview 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52162-J1 同 F52161 调试 API 口径；命令集 ×20 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52162": {
+  "title": "WinDbg Classic 收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52163-J1 六判据全落；软件断点/硬件断点/单步三类 ×10 场景；调试 API 对照 ×5 复测零差（共面判据 J-共面口径）；KB-COMPAT 定级登记；判据锚定 §AI-66.5 J-共面；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52163": {
+  "title": "x64dbg 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52164-J1 六判据执行；32 位面定级 + 缺失清单（64 位不支持为原生缺失非缺陷）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题六；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52164": {
+  "title": "OllyDbg 收口（长尾定级示范）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52165-J1 六判据执行；Python 脚本接口 ×5 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52165": {
+  "title": "Immunity Debugger 收口（长尾）",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52166-J1 文件/注册表/网络三事件流捕获 ×10^5 事件零丢；过滤/堆栈回溯 ×10 场景；与 B1 VFS 语义对账（联签锚定行 AI-04~06）；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题二文件 watcher 同构；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52166": {
+  "title": "Process Monitor 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52167-J1 进程树/句柄表/DLL 列表三视图 ×10 进程全通；句柄枚举与 E1 进程语义对账（联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52167": {
+  "title": "Process Explorer 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52168-J1 进程/网络/磁盘三面板 ×10 全通；接管口径（Process Hacker → System Informer 升级接管字样）；KB-COMPAT 定级登记；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52168": {
+  "title": "System Informer（Process Hacker 续作）收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52169-J1 自启点枚举 ×20 类别全账；与注册表语义对账（E 部联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52169": {
+  "title": "Autoruns 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52170-J1 OutputDebugString 捕获（用户态/内核态两通道）×10 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题二；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52170": {
+  "title": "DebugView 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52171-J1 地址空间分区枚举 ×10 进程全通；与内存管理语义对账（A 部联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52171": {
+  "title": "VMMap 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52172-J1 连接表/端口归属 ×10 全通；网络语义对账（I 部联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52172": {
+  "title": "TCPView 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52173-J1 调试会话 ×10 样本全通；与 L4 分账（发行版收口 vs 嫁接件布设，联签锚定行 AI-59）；KB-COMPAT 定级登记；判据锚定 §AI-66.1 防重声明；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52173": {
+  "title": "MinGW-gdb（Windows 发行版）收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52174-J1 调试会话 ×10 全通；与 VSCode cppptools 消费联签（F52034 锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52174": {
+  "title": "LLDB for Windows 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52175-J1 ETW 采集 ×10 配置全通；采集开销 ≤10% 落账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52175": {
+  "title": "Windows Performance Recorder（WPR）收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52176-J1 .etl 打开/图表 ×10 视图全通；GB 级 trace 打开分段账；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52176": {
+  "title": "Windows Performance Analyzer（WPA）收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52177-J1 CPU 采集/堆快照/GC 视图三段 ×10 全通；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52177": {
+  "title": "PerfView 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52178-J1 GPU 事件时间线 ×5 场景全通；与 G 部显示语义对账（联签锚定行 AI-31~33）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52178": {
+  "title": "GPUView 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52179-J1 CPU 采样 ×10 全通；PMU 专有依赖如实定级（不可得则降级 + 缺失清单，不虚报）；KB-COMPAT 定级登记；判据锚定 §AI-66.6 风险①同构；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52179": {
+  "title": "Intel VTune Profiler 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52180-J1 采样 ×10 全通；专有 PMU N/A 账同构；KB-COMPAT 定级登记；判据锚定 §AI-66.6；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52180": {
+  "title": "AMD uProf 收口",
+  "quota": 280,
+  "criteria": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F52181-J1 六判据全落；Shell 扩展右键菜单状态机完整（浮层出路/Esc/失焦三路关闭 ×10 场景，体验二口径）；git 消费联签（F52159 锚定行）；覆盖图标 ×10 状态零漂移；KB-COMPAT 定级 S1；判据锚定 §AI-66.2 专题二 Git 集成 + 体验二浮层生命周期；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52181": {
+  "title": "TortoiseGit 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52182-J1 六判据全落；svn 语义（update/commit/diff/log ×10）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52182": {
+  "title": "TortoiseSVN 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52183-J1 六判据全落；hg 操作集 ×10；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52183": {
+  "title": "TortoiseHg 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52184-J1 六判据全落（Electron 上栈三段账）；图形 DAG 渲染 ×10 仓库；KB-COMPAT 定级登记；判据锚定 §AI-66.2 专题四同构；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52184": {
+  "title": "GitKraken 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52185-J1 六判据全落（Electron）；git/hg 双后端 ×10 操作；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52185": {
+  "title": "Sourcetree 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52186-J1 六判据全落；clone/commit/push/PR 消费面 ×10；API 网络语义（AI-23 联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52186": {
+  "title": "GitHub Desktop 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52187-J1 六判据全落；rebase/交互式操作 ×10；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52187": {
+  "title": "Fork 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52188-J1 六判据全落；搜索/自定义命令 ×10；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52188": {
+  "title": "Sublime Merge 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52189-J1 六判据全落；VS 集成消费（B01 shim 共面复用）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52189": {
+  "title": "Git Extensions 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52190-J1 六判据全落；JVM 上栈（JBR 同构账引用 F52057 联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52190": {
+  "title": "SmartGit 收口",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52191-J1 六判据全落；操作集 ×10；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52191": {
+  "title": "Tower（Windows 版）收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52192-J1 六判据执行；EOL 冻结定级；KB-COMPAT 定级 S2 + EOL 标记；判据锚定 §AI-66.2 专题六；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52192": {
+  "title": "GitAhead 收口（EOL 定级示范）",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52193-J1 六判据全落；Qt 上栈（F52101 共面声明）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52193": {
+  "title": "Git Cola 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52194-J1 六判据全落；libgit2 消费 ×10；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52194": {
+  "title": "Gittyup 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52195-J1 六判据全落；目录递归对比 ×10 树全通；行级 diff 正确性 ×20 样本零漂移；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52195": {
+  "title": "WinMerge 收口（diff/merge 工具）",
+  "quota": 220,
+  "criteria": "① 纯功能代码 ≥220 行；② 判据原文：UNX-F52196-J1 六判据全落；三方合并 ×10 场景；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52196": {
+  "title": "KDiff3 收口",
+  "quota": 260,
+  "criteria": "① 纯功能代码 ≥260 行；② 判据原文：UNX-F52197-J1 六判据全落；文件夹/表格/十六进制三类对比 ×10；许可校验面如实定级（AI-95 联签锚定行）；KB-COMPAT 定级登记；判据锚定 §AI-66.9 红线②；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52197": {
+  "title": "Beyond Compare 收口",
+  "quota": 240,
+  "criteria": "① 纯功能代码 ≥240 行；② 判据原文：UNX-F52198-J1 六判据全落；三方合并/文件夹对比 ×10；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52198": {
+  "title": "Araxis Merge 收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52199-J1 svn 20 操作集 ×10 仓库全通；与 F52182 共面分账声明；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52199": {
+  "title": "SVN 命令行客户端（Windows 发行版）收口",
+  "quota": 200,
+  "criteria": "① 纯功能代码 ≥200 行；② 判据原文：UNX-F52200-J1 hg 20 操作集 ×10 全通；Python 消费联签（F52143 侧锚定）；KB-COMPAT 定级登记；判据锚定 §AI-66.3；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ },
+ "52000": {
+  "title": "域终了声明 UNX-F52000（AI-65 全任务终了）",
+  "quota": 320,
+  "criteria": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F50701-J1 枚举 ×10 与底层发现/绑定记录一致、排序稳定；判据锚定 §AI-64 §2 专题五；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "status": "待领"
+ }
+}
