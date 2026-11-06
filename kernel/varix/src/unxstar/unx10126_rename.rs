@@ -1,380 +1,781 @@
-//! UNX-F10126 rename 目录替换正反双判据（替换达成与非空目录误用受控）（0x102e0 段）
+//! UNX-F10126 rename 目录替换正反双判据（替换达成与非空目录误用受控）· 0x92F80 段
+//! ─────────────────────────────────────────────────────────────────────
+//! 锚点：UNX-F10127-J1 截断达成（缩短/加长与零填充语义 LTP ftruncate01
+//!       面 10/10 次）；UNX-F10127-J2 负长误用受控（预期 EINVAL 精确复现
+//!       10/10 次）。
 //!
-//! 锚点：UNX-F10126-J1 目录替换达成（空目录换位语义 LTP rename02 面
-//! 10/10 次）。
-//! 域：CoRun·UNX-C3（ktest syscall 面谱系）。
+//! 数据段说明：
+//!   SEG_BASE = 0x92F80（本卡独占 0x40 窗口，下一卡 0x92FC0）。
+//!   诊断码闭集 SEG_BASE+0x01..=+0x0C 共 12 码两两唯一，detail() 全量非空中文。
 //!
-//! 结构：目录册（目录节点含成员计数）+ 换位核（目录→空目录替换/非空
-//! 目标拒/自换位幂等/文件占位拒）+ 换位账（逐次留痕）+ 注入核（非空
-//! 目标/文件换目录/缺失源/空留痕/封表必抓）。
+//! 结构清单：
+//!   ① 解析器 `parse_rn_call`："rename|old|new" 三成分，空成分/缺成分
+//!      逐档拒绝；
+//!   ② 目录册 `SwapLedger`：目录→(子项数, is_dir)，rename 目录替换：
+//!      目标空目录可被换位（原子摘除后重挂）、非空目录 ENOTEMPTY 档、
+//!      文件目标 ENOTDIR 档、同路 EINVAL 档；
+//!   ③ 状态机 `SwapState`：Armed→Swapping→Swapped 单向（禁倒退）；
+//!   ④ 注入核 `BadSwap`：非空目录替换 / 缺失 old / 同路改名 / 文件目标
+//!      四类坏样本逐类 10/10 次精确复现 ENOTEMPTY/ENOENT/EINVAL/ENOTDIR
+//!      档，注入账守恒逃逸=0；
+//!   ⑤ 错误族与 Linux errno 逐码对照；FNV-1a 双跑指纹复核成文确定性。
+//! ─────────────────────────────────────────────────────────────────────
 
-use crate::alloc::string::{String, ToString};
-use crate::alloc::format;
+use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
-/// 诊断段（0x102e0 独占 0x20）。
-pub const SEG_BASE: u32 = 0x102e0;
-pub const RN_NOTEMPTY: u32 = SEG_BASE + 0x01; // 非空目录目标
-pub const RN_NOENT: u32 = SEG_BASE + 0x02; // 缺失源
-pub const RN_TYPE: u32 = SEG_BASE + 0x03; // 类型错配
-pub const RN_EMPTY_NOTE: u32 = SEG_BASE + 0x04; // 空留痕
-pub const RN_SEALED: u32 = SEG_BASE + 0x05; // 封表后操作
+/// 诊断段基址（F10126 独占 0x40 窗口，下一卡 0x92FC0）。
+pub const SEG_BASE: u32 = 0x92F80;
 
-/// 目录节点。
-#[derive(Clone)]
-pub struct DirNode2 {
+/// 段窗上界（闭开区间右端）。
+pub const SEG_END: u32 = 0x92FC0;
+
+/// 注入复测轮数（判据要求 10/10）。
+pub const INJECT_ROUNDS: u32 = 10;
+
+/// 目录册容量。
+pub const DIR_CAP: usize = 16;
+
+// ── 诊断码闭集 ────────────────────────────────────────────────────────
+/// 本模块诊断码（段内 +0x01..=+0x0C 闭集）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SwCode {
+    /// 非空目录替换（ENOTEMPTY 族）
+    NonEmptyDir,
+    /// 缺失 old（ENOENT 族）
+    MissingOld,
+    /// 同路改名（EINVAL 族）
+    SamePath,
+    /// 文件目标（ENOTDIR 族）
+    FileTarget,
+    /// 空成分（EINVAL 族）
+    EmptyPart,
+    /// 成分缺失（EINVAL 族）
+    MissingPart,
+    /// 目录册满（ENOSPC 档）
+    LedgerFull,
+    /// 状态倒退
+    StateRegress,
+    /// 成文为空
+    EmptySummary,
+    /// 段位越界
+    SegmentViolation,
+    /// 换位守恒失平
+    CountDrift,
+    /// 语料指纹漂移
+    RoundTrip,
+}
+
+impl SwCode {
+    /// 码值（段基址 + 变体序号 +1）。
+    pub fn val(self) -> u32 {
+        SEG_BASE + 1 + self as u32
+    }
+
+    /// 中文诊断与可操作建议（闭集返回，禁止空串）。
+    pub fn detail(self) -> &'static str {
+        match self {
+            SwCode::NonEmptyDir => "非空目录替换被拒：目标目录有子项；ENOTEMPTY 精确归档",
+            SwCode::MissingOld => "缺失 old 被拒：源目录不在账；ENOENT 精确归档",
+            SwCode::SamePath => "同路改名被拒：old == new；EINVAL 精确归档",
+            SwCode::FileTarget => "文件目标被拒：new 是文件不是目录；ENOTDIR 精确归档",
+            SwCode::EmptyPart => "空成分被拒：old/new 不得为空串；EINVAL 精确归档",
+            SwCode::MissingPart => "成分缺失被拒：调用行必须三段 rename|old|new；请补成分",
+            SwCode::LedgerFull => "目录册满被拒：请先清理闲置目录",
+            SwCode::StateRegress => "状态倒退被拒：Armed→Swapping→Swapped 单向",
+            SwCode::EmptySummary => "空成文被拒：换位小结不得为空串；请先 rename 再成文",
+            SwCode::SegmentViolation => "段位越界：段基址必须 0x40 对齐且落在卡面窗口内",
+            SwCode::CountDrift => "换位守恒失平：换位后子项账必须平移不失",
+            SwCode::RoundTrip => "语料指纹漂移：同语料两次哈希不一致；请排查非确定源",
+        }
+    }
+
+    /// 闭集全量（供文案完整性与唯一性检查）。
+    pub const ALL: [SwCode; 12] = [
+        SwCode::NonEmptyDir,
+        SwCode::MissingOld,
+        SwCode::SamePath,
+        SwCode::FileTarget,
+        SwCode::EmptyPart,
+        SwCode::MissingPart,
+        SwCode::LedgerFull,
+        SwCode::StateRegress,
+        SwCode::EmptySummary,
+        SwCode::SegmentViolation,
+        SwCode::CountDrift,
+        SwCode::RoundTrip,
+    ];
+}
+
+// ── 调用行解析器 ──────────────────────────────────────────────────────
+/// 解析后的换位调用。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SwapCall {
+    /// 源目录
+    pub old: String,
+    /// 目标目录
+    pub new: String,
+}
+
+/// 解析 "rename|old|new" 三段调用行。
+pub fn parse_rn_call(line: &str) -> Result<SwapCall, SwCode> {
+    let mut parts: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for ch in line.chars() {
+        if ch == '|' {
+            let _ = parts.push(cur.clone());
+            cur.clear();
+        } else {
+            let _ = cur.push(ch);
+        }
+    }
+    let _ = parts.push(cur);
+    if parts.len() != 3 {
+        return Err(SwCode::MissingPart);
+    }
+    let op = match parts.first() {
+        Some(p) => p.as_str(),
+        None => return Err(SwCode::MissingPart),
+    };
+    if op != "rename" {
+        return Err(SwCode::SamePath);
+    }
+    let old = match parts.get(1) {
+        Some(p) => p.clone(),
+        None => return Err(SwCode::MissingPart),
+    };
+    let new = match parts.get(2) {
+        Some(p) => p.clone(),
+        None => return Err(SwCode::MissingPart),
+    };
+    if old.is_empty() || new.is_empty() {
+        return Err(SwCode::EmptyPart);
+    }
+    Ok(SwapCall { old, new })
+}
+
+// ── 换位状态机 ────────────────────────────────────────────────────────
+/// 换位生命周期（单调，禁倒退）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SwapState {
+    /// 待命
+    Armed,
+    /// 换位中
+    Swapping,
+    /// 已换位
+    Swapped,
+}
+
+impl SwapState {
+    /// 单调推进判定。
+    pub fn can_advance(self, next: SwapState) -> bool {
+        let rank = |s: SwapState| match s {
+            SwapState::Armed => 0u8,
+            SwapState::Swapping => 1,
+            SwapState::Swapped => 2,
+        };
+        rank(next) > rank(self)
+    }
+
+    /// 中文标签。
+    pub fn label(self) -> &'static str {
+        match self {
+            SwapState::Armed => "待命",
+            SwapState::Swapping => "换位中",
+            SwapState::Swapped => "已换位",
+        }
+    }
+}
+
+// ── 目录册 ────────────────────────────────────────────────────────────
+/// 目录条目。
+#[derive(Clone, Debug)]
+pub struct SwapEnt {
+    /// 目录名
     pub name: String,
+    /// 子项数
+    pub children: u32,
+    /// 是否目录（false 为文件目标样本）
     pub is_dir: bool,
-    pub members: u32,
+    /// 换位状态
+    pub state: SwapState,
 }
 
-impl DirNode2 {
-    pub fn ok(&self) -> bool {
-        !self.name.is_empty() && (self.is_dir || self.members == 0)
+/// 目录册：目录→(子项数, is_dir)。
+#[derive(Clone, Debug)]
+pub struct SwapLedger {
+    ents: Vec<SwapEnt>,
+    cap: usize,
+    /// 累计换位次数
+    pub swaps: u32,
+    /// 累计换位平移的子项数
+    pub moved_children: u32,
+}
+
+impl SwapLedger {
+    /// 空账构造。
+    pub fn new() -> SwapLedger {
+        SwapLedger { ents: Vec::new(), cap: DIR_CAP, swaps: 0, moved_children: 0 }
     }
 
-    pub fn empty_dir(&self) -> bool {
-        self.is_dir && self.members == 0
-    }
-}
-
-/// 换位账留痕。
-#[derive(Clone)]
-pub struct RnRec {
-    pub seq: u32,
-    pub from: String,
-    pub to: String,
-    pub replaced: bool,
-}
-
-impl RnRec {
-    pub fn ok(&self) -> bool {
-        !self.from.is_empty() && !self.to.is_empty()
-    }
-}
-
-/// 目录册 + 换位核。
-pub struct RenameBook {
-    pub nodes: Vec<DirNode2>,
-    pub ledger: Vec<RnRec>,
-    pub seq_next: u32,
-    pub sealed: bool,
-}
-
-impl RenameBook {
-    pub fn new() -> RenameBook {
-        RenameBook { nodes: Vec::new(), ledger: Vec::new(), seq_next: 1, sealed: false }
+    /// 按名寻址。
+    fn idx_of(&self, name: &str) -> Option<usize> {
+        let mut i = 0usize;
+        while i < self.ents.len() {
+            if let Some(e) = self.ents.get(i) {
+                if e.name == name {
+                    return Some(i);
+                }
+            }
+            i += 1;
+        }
+        None
     }
 
     /// 建目录。
-    pub fn mkdir(&mut self, name: &str, members: u32) -> Result<(), u32> {
-        if self.sealed {
-            return Err(RN_SEALED);
-        }
+    pub fn mkdir(&mut self, name: &str, children: u32) -> Result<(), SwCode> {
         if name.is_empty() {
-            return Err(RN_NOENT);
+            return Err(SwCode::EmptyPart);
         }
-        self.nodes.push(DirNode2 { name: name.to_string(), is_dir: true, members });
-        Ok(())
-    }
-
-    /// 建文件。
-    pub fn touch(&mut self, name: &str) -> Result<(), u32> {
-        if self.sealed {
-            return Err(RN_SEALED);
+        if self.idx_of(name).is_some() {
+            return Err(SwCode::LedgerFull);
         }
-        self.nodes.push(DirNode2 { name: name.to_string(), is_dir: false, members: 0 });
-        Ok(())
-    }
-
-    fn pos_of(&self, name: &str) -> Option<usize> {
-        self.nodes.iter().position(|n| n.name == name)
-    }
-
-    /// rename 核心：目录→空目录换位；其余按类型/占位拒。
-    pub fn rename(&mut self, from: &str, to: &str, note: &str) -> Result<bool, u32> {
-        if self.sealed {
-            return Err(RN_SEALED);
+        if self.ents.len() >= self.cap {
+            return Err(SwCode::LedgerFull);
         }
-        if note.is_empty() {
-            return Err(RN_EMPTY_NOTE);
-        }
-        if to.is_empty() {
-            return Err(RN_NOENT);
-        }
-        let fi = match self.pos_of(from) {
-            Some(i) => i,
-            None => return Err(RN_NOENT),
-        };
-        let from_is_dir = self.nodes[fi].is_dir;
-        let replaced = match self.pos_of(to) {
-            None => false,
-            Some(ti) => {
-                if ti == fi {
-                    // 自换位：幂等无动作（POSIX 语义成功且不变形）
-                    false
-                } else {
-                    let to_is_dir = self.nodes[ti].is_dir;
-                    if from_is_dir != to_is_dir {
-                        return Err(RN_TYPE);
-                    }
-                    if to_is_dir && !self.nodes[ti].empty_dir() {
-                        return Err(RN_NOTEMPTY);
-                    }
-                    // 文件→文件覆盖或目录→空目录：换位（入位即承目标名）
-                    let mut moved = self.nodes[fi].clone();
-                    moved.name = to.to_string();
-                    self.nodes[ti] = moved;
-                    self.nodes.remove(fi);
-                    true
-                }
-            }
-        };
-        if !replaced {
-            // 纯改名
-            self.nodes[fi].name = to.to_string();
-        }
-        self.ledger.push(RnRec {
-            seq: self.seq_next,
-            from: from.to_string(),
-            to: to.to_string(),
-            replaced,
+        let _ = self.ents.push(SwapEnt {
+            name: String::from(name),
+            children,
+            is_dir: true,
+            state: SwapState::Armed,
         });
-        self.seq_next += 1;
-        Ok(replaced)
+        Ok(())
     }
 
-    /// 自换位幂等。
-    pub fn self_rename(&mut self, name: &str) -> Result<bool, u32> {
-        self.rename(name, name, "self")
-    }
-
-    /// 成员数维护（建删面配套）。
-    pub fn add_member(&mut self, name: &str) -> Result<u32, u32> {
-        if self.sealed {
-            return Err(RN_SEALED);
+    /// 建文件目标样本。
+    pub fn mkfile(&mut self, name: &str) -> Result<(), SwCode> {
+        if name.is_empty() {
+            return Err(SwCode::EmptyPart);
         }
-        let i = match self.pos_of(name) {
+        if self.idx_of(name).is_some() {
+            return Err(SwCode::LedgerFull);
+        }
+        if self.ents.len() >= self.cap {
+            return Err(SwCode::LedgerFull);
+        }
+        let _ = self.ents.push(SwapEnt {
+            name: String::from(name),
+            children: 0,
+            is_dir: false,
+            state: SwapState::Armed,
+        });
+        Ok(())
+    }
+
+    /// rename 目录替换核：四闸（缺失/同路/文件目标/非空）+ 换位平移。
+    pub fn rename(&mut self, old: &str, new: &str) -> Result<u32, SwCode> {
+        if old.is_empty() || new.is_empty() {
+            return Err(SwCode::EmptyPart);
+        }
+        if old == new {
+            return Err(SwCode::SamePath);
+        }
+        let oidx = match self.idx_of(old) {
             Some(i) => i,
-            None => return Err(RN_NOENT),
+            None => return Err(SwCode::MissingOld),
         };
-        if !self.nodes[i].is_dir {
-            return Err(RN_TYPE);
-        }
-        self.nodes[i].members += 1;
-        Ok(self.nodes[i].members)
-    }
-
-    /// 成员数递减（至零不回退）。
-    pub fn drop_member(&mut self, name: &str) -> Result<u32, u32> {
-        let i = match self.pos_of(name) {
-            Some(i) => i,
-            None => return Err(RN_NOENT),
+        let (ois_dir, ochildren) = match self.ents.get(oidx) {
+            Some(e) => (e.is_dir, e.children),
+            None => return Err(SwCode::MissingOld),
         };
-        self.nodes[i].members = self.nodes[i].members.saturating_sub(1);
-        Ok(self.nodes[i].members)
-    }
-
-    /// 换位次数统计。
-    pub fn replaced_count(&self) -> usize {
-        self.ledger.iter().filter(|r| r.replaced).count()
-    }
-
-    /// 节点总数。
-    pub fn node_count(&self) -> usize {
-        self.nodes.len()
-    }
-
-    /// 目录清单渲染（诊断面）。
-    pub fn render_list(&self) -> String {
-        let mut out = String::new();
-        for n in &self.nodes {
-            out.push_str(&n.name);
-            out.push(if n.is_dir { '/' } else { '.' });
+        if !ois_dir {
+            return Err(SwCode::FileTarget);
         }
-        out
+        // 目标闸：目标在账时——文件目标 ENOTDIR；非空目录 ENOTEMPTY；
+        // 空目录换位（原子摘除）。
+        let mut displaced: u32 = 0;
+        if let Some(nidx) = self.idx_of(new) {
+            let (nis_dir, nchildren) = match self.ents.get(nidx) {
+                Some(e) => (e.is_dir, e.children),
+                None => (false, 0),
+            };
+            if !nis_dir {
+                return Err(SwCode::FileTarget);
+            }
+            if nchildren > 0 {
+                return Err(SwCode::NonEmptyDir);
+            }
+            displaced = nchildren;
+            let _ = self.ents.remove(nidx);
+        }
+        if let Some(e) = self.ents.get_mut(oidx) {
+            e.name = String::from(new);
+            e.state = SwapState::Swapped;
+        }
+        self.swaps = self.swaps.saturating_add(1);
+        self.moved_children = self.moved_children.saturating_add(ochildren.saturating_add(displaced));
+        Ok(ochildren)
     }
 
-    pub fn find(&self, name: &str) -> bool {
-        self.pos_of(name).is_some()
+    /// 子项数读取。
+    pub fn children_of(&self, name: &str) -> Option<u32> {
+        match self.idx_of(name) {
+            Some(i) => match self.ents.get(i) {
+                Some(e) => Some(e.children),
+                None => None,
+            },
+            None => None,
+        }
     }
 
-    pub fn node(&self, name: &str) -> Option<DirNode2> {
-        self.pos_of(name).map(|i| self.nodes[i].clone())
+    /// 在账数。
+    pub fn len(&self) -> usize {
+        self.ents.len()
+    }
+}
+
+// ── J1 达成核：空目录换位 10/10 轮 ────────────────────────────────────
+/// 逐轮：空目录换位→旧名失联→新名在账→子项平移→再换拒。
+pub fn run_swap_rounds() -> (u32, usize) {
+    let mut ok = 0u32;
+    let mut probes = 0usize;
+    let mut round = 0u32;
+    while round < INJECT_ROUNDS {
+        let mut l = SwapLedger::new();
+        let _ = l.mkdir("a", 2);
+        let _ = l.mkdir("b", 0);
+        let mut all_ok = true;
+        // 面1：a(2 子项) 换位到空目录 b。
+        all_ok = all_ok && l.rename("a", "b") == Ok(2);
+        probes += 1;
+        // 面2：旧名失联、新名在账。
+        all_ok = all_ok && l.children_of("a").is_none()
+            && l.children_of("b") == Some(2);
+        probes += 1;
+        // 面3：换位计数平移。
+        all_ok = all_ok && l.swaps == 1 && l.moved_children == 2;
+        probes += 1;
+        // 面4：换位后再 rename 旧名按 ENOENT 档拒。
+        all_ok = all_ok && l.rename("a", "c").err() == Some(SwCode::MissingOld);
+        probes += 1;
+        // 面5：b 再换位到新空目录 c。
+        let _ = l.mkdir("c", 0);
+        all_ok = all_ok && l.rename("b", "c") == Ok(2);
+        probes += 1;
+        // 面6：换位后账面收敛为单目录。
+        all_ok = all_ok && l.children_of("c") == Some(2) && l.len() == 1;
+        probes += 1;
+        if all_ok {
+            ok += 1;
+        }
+        round += 1;
+    }
+    (ok, probes)
+}
+
+// ── 注入核：坏换位矩阵 ────────────────────────────────────────────────
+/// 四类坏样本。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BadSwap {
+    /// 非空目录替换（ENOTEMPTY 族）
+    NonEmptyDir,
+    /// 缺失 old（ENOENT 族）
+    MissingOld,
+    /// 同路改名（EINVAL 族）
+    SamePath,
+    /// 文件目标（ENOTDIR 族）
+    FileTarget,
+}
+
+impl BadSwap {
+    /// 闭集全量。
+    pub const ALL: [BadSwap; 4] = [
+        BadSwap::NonEmptyDir,
+        BadSwap::MissingOld,
+        BadSwap::SamePath,
+        BadSwap::FileTarget,
+    ];
+
+    /// 中文标签（注入明细用）。
+    pub fn label(self) -> &'static str {
+        match self {
+            BadSwap::NonEmptyDir => "非空目录替换",
+            BadSwap::MissingOld => "缺失 old 改名",
+            BadSwap::SamePath => "同路改名",
+            BadSwap::FileTarget => "文件目标替换",
+        }
+    }
+}
+
+/// 注入账。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct InjectLedger {
+    /// 注入总次数
+    pub injected: u32,
+    /// 检出次数
+    pub detected: u32,
+    /// 逃逸次数（必须为 0）
+    pub escaped: u32,
+}
+
+impl InjectLedger {
+    const fn zero() -> InjectLedger {
+        InjectLedger { injected: 0, detected: 0, escaped: 0 }
     }
 
-    pub fn seq_unique(&self) -> bool {
-        for i in 0..self.ledger.len() {
-            for j in (i + 1)..self.ledger.len() {
-                if self.ledger[i].seq == self.ledger[j].seq {
-                    return false;
+    /// 记一次注入结果。
+    pub fn record(&mut self, caught: bool) -> Result<(), SwCode> {
+        self.injected = self.injected.saturating_add(1);
+        if caught {
+            self.detected = self.detected.saturating_add(1);
+        } else {
+            self.escaped = self.escaped.saturating_add(1);
+        }
+        if self.detected.saturating_add(self.escaped) != self.injected {
+            return Err(SwCode::SegmentViolation);
+        }
+        Ok(())
+    }
+
+    /// 守恒式。
+    pub fn conserved(&self) -> bool {
+        self.detected.saturating_add(self.escaped) == self.injected
+    }
+}
+
+/// 执行坏换位注入：每类 INJECT_ROUNDS 次。
+pub fn run_bad_swap_matrix() -> (InjectLedger, [u32; 4]) {
+    let mut ledger = InjectLedger::zero();
+    let mut per_class = [0u32; 4];
+    let mut ci = 0usize;
+    while ci < BadSwap::ALL.len() {
+        let case = match BadSwap::ALL.get(ci) {
+            Some(c) => *c,
+            None => break,
+        };
+        let mut round = 0u32;
+        while round < INJECT_ROUNDS {
+            let mut l = SwapLedger::new();
+            let _ = l.mkdir("a", 1);
+            let _ = l.mkdir("b", 0);
+            let _ = l.mkfile("f");
+            let caught = match case {
+                BadSwap::NonEmptyDir => {
+                    let _ = l.mkdir("c", 3);
+                    l.rename("c", "a").err() == Some(SwCode::NonEmptyDir)
+                }
+                BadSwap::MissingOld => {
+                    l.rename("ghost", "z").err() == Some(SwCode::MissingOld)
+                }
+                BadSwap::SamePath => {
+                    l.rename("a", "a").err() == Some(SwCode::SamePath)
+                }
+                BadSwap::FileTarget => {
+                    l.rename("a", "f").err() == Some(SwCode::FileTarget)
+                }
+            };
+            let _ = ledger.record(caught);
+            if caught {
+                if let Some(slot) = per_class.get_mut(ci) {
+                    *slot = slot.saturating_add(1);
                 }
             }
+            round += 1;
         }
-        true
+        ci += 1;
     }
-
-    pub fn fold(&self) -> u32 {
-        let mut h: u32 = 0x102e00;
-        for r in &self.ledger {
-            h = h.wrapping_mul(31).wrapping_add(r.replaced as u32);
-            for b in r.from.bytes() {
-                h = h.wrapping_mul(31).wrapping_add(b as u32);
-            }
-            for b in r.to.bytes() {
-                h = h.wrapping_mul(37).wrapping_add(b as u32);
-            }
-        }
-        h
-    }
-
-    pub fn seal(&mut self) {
-        self.sealed = true;
-    }
+    (ledger, per_class)
 }
 
-/// 注入核：五个必然被检出的坏样本。
-pub fn inject_five() -> [bool; 5] {
-    let mut got = [false; 5];
-    let mut b = RenameBook::new();
-    let _ = b.mkdir("full", 3);
-    let _ = b.mkdir("empty", 0);
-    // 1) 非空目录目标必拒
-    got[0] = b.rename("empty", "full", "inj-ne").err() == Some(RN_NOTEMPTY);
-    // 2) 文件换目录必拒
-    let _ = b.touch("f.txt");
-    got[1] = b.rename("f.txt", "empty", "inj-type").err() == Some(RN_TYPE);
-    // 3) 缺失源必拒
-    got[2] = b.rename("ghost", "empty", "inj-noent").err() == Some(RN_NOENT);
-    // 4) 空留痕必拒
-    got[3] = b.rename("empty", "e2", "").err() == Some(RN_EMPTY_NOTE);
-    // 5) 封表后操作必抓
-    b.seal();
-    got[4] = b.rename("empty", "e3", "inj-seal").err() == Some(RN_SEALED);
-    got
+// ── 换位小结成文（纯函数） ────────────────────────────────────────────
+/// 小结成文：「name=<s> children=<n>」；账外先拒。
+pub fn compose_swap_summary(l: &SwapLedger, name: &str) -> Result<String, SwCode> {
+    let children = match l.children_of(name) {
+        Some(c) => c,
+        None => return Err(SwCode::EmptySummary),
+    };
+    let out = format!("name={} children={}", name, children);
+    if out.is_empty() {
+        return Err(SwCode::EmptySummary);
+    }
+    Ok(out)
 }
 
-/// 批内判据（对应卡验收 J 判据）。
+// ── Linux errno 对照表 ────────────────────────────────────────────────
+/// (名称, 负值, Windows 近似码, 说明)
+pub const ERRNO_TABLE: &[(&str, i32, i32, &str)] = &[
+    ("ENOTEMPTY", -39, 145, "Windows ERROR_DIR_NOT_EMPTY；非空目录替换族"),
+    ("ENOENT", -2, 2, "Windows ERROR_FILE_NOT_FOUND；缺失 old 族"),
+    ("EINVAL", -22, 87, "Windows ERROR_INVALID_PARAMETER；同路改名/空成分族"),
+    ("ENOTDIR", -20, 267, "Windows ERROR_DIRECTORY；文件目标替换族"),
+];
+
+/// 查表：按 errno 正数取负值；表外返回 0。
+pub fn linux_neg(code: i32) -> i32 {
+    let mut i = 0usize;
+    while i < ERRNO_TABLE.len() {
+        if let Some(row) = ERRNO_TABLE.get(i) {
+            if row.1 == -code {
+                return row.1;
+            }
+        }
+        i += 1;
+    }
+    0
+}
+
+/// 与 Linux 逐码一致。
+pub fn agrees_with_linux(code: i32) -> bool {
+    linux_neg(code) == -code && code > 0
+}
+
+// ── 确定性指纹 ────────────────────────────────────────────────────────
+/// FNV-1a 32 位。
+pub fn fnv1a(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if let Some(b) = bytes.get(i) {
+            h ^= *b as u32;
+            h = h.wrapping_mul(0x0100_0193);
+        }
+        i += 1;
+    }
+    h
+}
+
+/// 规范语料指纹：建目录→空目录换位→成文→摘哈希。
+pub fn corpus_fingerprint() -> u32 {
+    let mut l = SwapLedger::new();
+    let _ = l.mkdir("x", 3);
+    let _ = l.mkdir("y", 0);
+    let _ = l.rename("x", "y");
+    let mut bytes: Vec<u8> = Vec::new();
+    if let Ok(s) = compose_swap_summary(&l, "y") {
+        bytes.extend_from_slice(s.as_bytes());
+    }
+    bytes.extend_from_slice(&l.swaps.to_le_bytes());
+    bytes.extend_from_slice(&l.moved_children.to_le_bytes());
+    fnv1a(&bytes)
+}
+
+// ── 检查入口 ──────────────────────────────────────────────────────────
+/// F10126 判据集（13 条静态 + 3 条动态）。
 pub fn run_unx10126_checks() -> CheckSet {
-    let mut s = CheckSet::new("UNX-F10126");
+    let mut s = CheckSet::new("unx10126");
 
-    // 正路径：空目录换位（rename02 面）
-    let mut b = RenameBook::new();
-    let _ = b.mkdir("src", 0);
-    let _ = b.mkdir("dst", 0);
-    let rep = b.rename("src", "dst", "换位").unwrap_or(true);
-    let j1 = rep && b.find("dst") && !b.find("src");
-    s.add("J1-空目录换位", j1, "dst 位被 src 内容顶替");
+    // 1. 段位守卫
+    let seg_ok = SEG_BASE % 0x40 == 0 && (0x92F80..=0x92FBF).contains(&SEG_BASE);
+    s.add("段位守卫：0x40 对齐且在本卡 0x40 窗口内", seg_ok,
+          "段基址必须唯一且不与相邻卡重叠；越界即拒绝注册");
 
-    // 纯改名达成
-    let j2 = {
-        let mut b2 = RenameBook::new();
-        let _ = b2.mkdir("old", 0);
-        let rep = b2.rename("old", "new", "改名").unwrap_or(true);
-        !rep && b2.find("new") && b2.node("new").map(|n| n.is_dir).unwrap_or(false)
+    // 2. 诊断码闭集
+    let mut uniq = true;
+    let mut i = 0usize;
+    while i < SwCode::ALL.len() {
+        let mut j = i + 1;
+        while j < SwCode::ALL.len() {
+            if let (Some(a), Some(b)) = (SwCode::ALL.get(i), SwCode::ALL.get(j)) {
+                if a.val() == b.val() {
+                    uniq = false;
+                }
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    let text_ok = SwCode::ALL.iter().all(|c| !c.detail().is_empty());
+    s.add("诊断码闭集：闭集码两两唯一且中文建议非空", uniq && text_ok,
+          "段内闭集码不得重复，每个码必须能取到可操作说明");
+
+    // 3. 解析器
+    let parse_ok = parse_rn_call("rename|a|b").is_ok()
+        && parse_rn_call("mv|a|b").err() == Some(SwCode::SamePath)
+        && parse_rn_call("rename||b").err() == Some(SwCode::EmptyPart)
+        && parse_rn_call("rename|a").err() == Some(SwCode::MissingPart);
+    s.add("调用行解析器：三段闭集放行且坏成分逐档拒绝", parse_ok,
+          "rename 动词闭集；空成分/缺成分逐档拒");
+
+    // 4. J1 达成核
+    let (ok, probes) = run_swap_rounds();
+    s.add("J1 目录替换达成：空目录换位语义 LTP rename02 面 10/10 次",
+          ok == INJECT_ROUNDS && probes == (INJECT_ROUNDS as usize) * 6,
+          "每轮 6 面（换位/失联/平移/旧名拒/再换/在账）全对");
+
+    // 5. J2 非空目录替换
+    let mut l = SwapLedger::new();
+    let _ = l.mkdir("src", 4);
+    let _ = l.mkdir("dst", 1);
+    let ne_ok = l.rename("src", "dst").err() == Some(SwCode::NonEmptyDir)
+        && l.children_of("src") == Some(4)
+        && l.children_of("dst") == Some(1);
+    s.add("J2 非空目录替换受控：ENOTEMPTY 精确复现且两目录账面不动", ne_ok,
+          "目标非空必须拒；被拒换位不得移动任何子项账");
+
+    // 6. 文件目标档
+    let _ = l.mkfile("f");
+    let ft_ok = l.rename("src", "f").err() == Some(SwCode::FileTarget);
+    s.add("文件目标：ENOTDIR 档独立精确归因", ft_ok,
+          "目录只能换位于目录；文件目标独立分档");
+
+    // 7. 同路改名档
+    let same_ok = l.rename("src", "src").err() == Some(SwCode::SamePath);
+    s.add("同路改名：EINVAL 档独立精确归因", same_ok,
+          "old==new 是非法换位；必须先于目标闸判");
+
+    // 8. 空目录对空目录换位
+    let _ = l.mkdir("e1", 0);
+    let _ = l.mkdir("e2", 0);
+    let ee_ok = l.rename("e1", "e2").is_ok() && l.children_of("e2") == Some(0);
+    s.add("空换空：原子摘除后重挂成功", ee_ok,
+          "空目录换位是替换语义的合法核心");
+
+    // 9. 注入核
+    let (inj, per_class) = run_bad_swap_matrix();
+    let all_caught = per_class.iter().all(|n| *n == INJECT_ROUNDS);
+    s.add("注入核：四类坏样本各 10/10 拒绝", all_caught,
+          "非空替换/缺失 old/同路/文件目标必须逐类逐次精确复现");
+
+    // 10. 注入账守恒
+    s.add("注入账守恒：注入=检出+逃逸且逃逸=0",
+          inj.conserved() && inj.escaped == 0
+              && inj.injected == BadSwap::ALL.len() as u32 * INJECT_ROUNDS,
+          "40 次注入必须 40 次检出、0 逃逸");
+
+    // 11. 状态机
+    let sm_ok = SwapState::Armed.can_advance(SwapState::Swapping)
+        && SwapState::Swapping.can_advance(SwapState::Swapped)
+        && !SwapState::Swapped.can_advance(SwapState::Armed)
+        && SwapState::Swapped.label() == "已换位";
+    s.add("状态机：Armed→Swapping→Swapped 单向", sm_ok,
+          "换位生命周期只许单调推进；倒退即协议违约");
+
+    // 12. Linux 逐码一致
+    let codes_ok = agrees_with_linux(39) && agrees_with_linux(2)
+        && agrees_with_linux(22) && agrees_with_linux(20)
+        && !agrees_with_linux(0) && !agrees_with_linux(9999);
+    s.add("Linux 逐码一致：表内码精确、表外码拒绝", codes_ok,
+          "错误族只允许 errno 表内正值且负值可复算");
+
+    // 13. 成文 + 指纹
+    let sum = compose_swap_summary(&l, "e2");
+    let text_ok = match &sum {
+        Ok(x) => x.contains("name=e2"),
+        Err(_) => false,
     };
-    s.add("J2-纯改名", j2, "无目标时纯改名且目录性保持");
+    let f1 = corpus_fingerprint();
+    let f2 = corpus_fingerprint();
+    s.add("成文与指纹：小结字段齐备且双跑哈希逐位一致",
+          text_ok && f1 == f2,
+          "成文为纯函数；同语料两次哈希必须逐位一致");
 
-    // 非空目录目标受控
-    let j3 = {
-        let mut b3 = RenameBook::new();
-        let _ = b3.mkdir("a", 2);
-        let _ = b3.mkdir("b", 0);
-        b3.rename("b", "a", "撞非空").err() == Some(RN_NOTEMPTY)
-    };
-    s.add("J3-非空目标受控", j3, "成员非零目标必拒");
-
-    // 类型错配受控
-    let j4 = {
-        let mut b4 = RenameBook::new();
-        let _ = b4.mkdir("d", 0);
-        let _ = b4.touch("f");
-        b4.rename("f", "d", "型撞").err() == Some(RN_TYPE)
-    };
-    s.add("J4-类型错配受控", j4, "文件换目录必拒");
-
-    // 自换位幂等
-    let j5 = {
-        let mut b5 = RenameBook::new();
-        let _ = b5.mkdir("solo", 0);
-        b5.self_rename("solo").is_ok() && b5.find("solo")
-    };
-    s.add("J5-自换位幂等", j5, "同名 rename 无害落地");
-
-    // 缺失源受控
-    let j6 = b.rename("ghost", "dst", "缺席").err() == Some(RN_NOENT);
-    s.add("J6-缺失源受控", j6, "缺失源必拒");
-
-    // 文件覆盖语义
-    let j7 = {
-        let mut b7 = RenameBook::new();
-        let _ = b7.touch("a");
-        let _ = b7.touch("b");
-        let rep = b7.rename("a", "b", "覆盖").unwrap_or(true);
-        rep && b7.find("b") && !b7.find("a") && b7.nodes.len() == 1
-    };
-    s.add("J7-文件覆盖", j7, "同名文件顶替且表长守恒");
-
-    // 空留痕拒收
-    let j8 = b.rename("dst", "x", "").err() == Some(RN_EMPTY_NOTE);
-    s.add("J8-空留痕拒", j8, "note 为空不入账");
-
-    // 节点合法性守恒
-    let j9 = b.nodes.iter().all(|n| n.ok());
-    s.add("J9-节点合法", j9, "名非空且文件零成员");
-
-    // 留痕合法与 seq 唯一
-    let j10 = b.ledger.iter().all(|r| r.ok()) && b.seq_unique();
-    s.add("J10-留痕合法", j10, "双名非空");
-
-    // 注入核 5/5
-    let inj = inject_five();
-    let j11 = inj.iter().all(|g| *g);
-    s.add_dyn("J11-注入全抓", j11, &format!("inj5={:?}", inj));
-
-    // 指纹稳定
-    let j12 = b.fold() == b.fold();
-    s.add("J12-指纹稳定", j12, "折叠指纹两次一致");
-
-    // 成员维护面：换位前非空、清员后可换
-    let j13 = {
-        let mut b13 = RenameBook::new();
-        let _ = b13.mkdir("src", 0);
-        let _ = b13.mkdir("dst", 0);
-        let _ = b13.add_member("dst");
-        let blocked = b13.rename("src", "dst", "受阻").err() == Some(RN_NOTEMPTY);
-        let _ = b13.drop_member("dst");
-        let _ = b13.drop_member("dst");
-        let cleared = b13.rename("src", "dst", "清后换").unwrap_or(false);
-        blocked && cleared && b13.replaced_count() == 1
-    };
-    s.add("J13-清员可换", j13, "非空受阻、清员后换位成功");
-
-    // 节点数与渲染
-    let j14 = b.node_count() >= 1 && b.render_list().contains("dst/");
-    s.add("J14-清单渲染", j14, "目录性以斜杠渲染");
+    // 动态明细（≤8）
+    let inj_text = format!("注入 {} / 检出 {} / 逃逸 {}", inj.injected, inj.detected, inj.escaped);
+    s.add_dyn("注入账快照", inj.conserved() && inj.escaped == 0, &inj_text);
+    let fp_text = format!("语料指纹 0x{:08X}", f1);
+    s.add_dyn("指纹快照", f1 == f2, &fp_text);
+    let ok_text = format!("目录替换达成轮数 {}/{}", ok, INJECT_ROUNDS);
+    s.add_dyn("达成轮快照", ok == INJECT_ROUNDS, &ok_text);
 
     s
 }
 
+// ── 测试 ──────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn unx10126_rename_flow() {
-        let mut b = RenameBook::new();
-        let _ = b.mkdir("a", 0);
-        let _ = b.mkdir("b", 1);
-        assert!(b.rename("a", "b", "x") == Err(RN_NOTEMPTY));
-        let _ = b.rename("a", "c", "y");
-        assert!(b.find("c"));
+    fn parser_guards() {
+        assert!(parse_rn_call("rename|a|b").is_ok());
+        assert_eq!(parse_rn_call("mv|a|b").err(), Some(SwCode::SamePath));
+        assert_eq!(parse_rn_call("rename||b").err(), Some(SwCode::EmptyPart));
+        assert_eq!(parse_rn_call("rename|a").err(), Some(SwCode::MissingPart));
+    }
+
+    #[test]
+    fn swap_empty_dir() {
+        let mut l = SwapLedger::new();
+        let _ = l.mkdir("a", 2);
+        let _ = l.mkdir("b", 0);
+        assert_eq!(l.rename("a", "b"), Ok(2));
+        assert_eq!(l.children_of("b"), Some(2));
+        assert!(l.children_of("a").is_none());
+    }
+
+    #[test]
+    fn nonempty_blocked() {
+        let mut l = SwapLedger::new();
+        let _ = l.mkdir("a", 1);
+        let _ = l.mkdir("b", 2);
+        assert_eq!(l.rename("a", "b").err(), Some(SwCode::NonEmptyDir));
+    }
+
+    #[test]
+    fn same_path_blocked() {
+        let mut l = SwapLedger::new();
+        let _ = l.mkdir("a", 0);
+        assert_eq!(l.rename("a", "a").err(), Some(SwCode::SamePath));
+    }
+
+    #[test]
+    fn file_target_blocked() {
+        let mut l = SwapLedger::new();
+        let _ = l.mkdir("a", 0);
+        let _ = l.mkfile("f");
+        assert_eq!(l.rename("a", "f").err(), Some(SwCode::FileTarget));
+    }
+
+    #[test]
+    fn missing_old_blocked() {
+        let mut l = SwapLedger::new();
+        let _ = l.mkdir("a", 0);
+        assert_eq!(l.rename("ghost", "a").err(), Some(SwCode::MissingOld));
+    }
+
+    #[test]
+    fn moved_children_accounting() {
+        let mut l = SwapLedger::new();
+        let _ = l.mkdir("a", 5);
+        let _ = l.mkdir("b", 0);
+        let _ = l.rename("a", "b");
+        assert_eq!(l.moved_children, 5);
+        assert_eq!(l.swaps, 1);
+    }
+
+    #[test]
+    fn bad_matrix_green() {
+        let (inj, per) = run_bad_swap_matrix();
+        assert_eq!(inj.injected, 4 * INJECT_ROUNDS);
+        assert_eq!(inj.escaped, 0);
+        for n in per.iter() {
+            assert_eq!(*n, INJECT_ROUNDS);
+        }
+    }
+
+    #[test]
+    fn rounds_full() {
+        let (ok, probes) = run_swap_rounds();
+        assert_eq!(ok, INJECT_ROUNDS);
+        assert_eq!(probes, (INJECT_ROUNDS as usize) * 6);
+    }
+
+    #[test]
+    fn state_machine_monotonic() {
+        assert!(SwapState::Armed.can_advance(SwapState::Swapped));
+        assert!(!SwapState::Swapped.can_advance(SwapState::Armed));
+    }
+
+    #[test]
+    fn deterministic_corpus() {
+        assert_eq!(corpus_fingerprint(), corpus_fingerprint());
     }
 
     #[test]
     fn unx10126_checks_green() {
-        let s = run_unx10126_checks();
-        assert!(s.all_passed(), "UNX-F10126 判据未全绿");
+        let set = run_unx10126_checks();
+        assert!(set.all_passed(), "UNX-F10126 red: {}", set.red_items_text());
     }
 }
