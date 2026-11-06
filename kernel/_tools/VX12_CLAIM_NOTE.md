@@ -9,8 +9,8 @@
 - 公式：`SEG_BASE = 0xC0000 + 0x40 × (id − 51501)`
 - 区间：51501→0xC0000 … 51700→0xC31C0，全批 %0x40==0。
 
-## 已完成并本地探针验证（vx12probe：cargo test 全绿）
-- **UNX-F51501~F51527 共 27 单**（约 19,300 行纯功能代码，每单 ≥300 行、
+## 已完成并本地探针验证（vx12probe：cargo test 全绿，当前 478/478）
+- **UNX-F51501~F51539 共 39 单**（约 28,500 行纯功能代码，每单 ≥300 行、
   ≥12 条检查、≥8 条 #[test]、诊断码闭集、注入=检出+逃逸守恒）：
   - 51501 trim_passthrough / 51502 cache_flush / 51503 media_change /
     51504 stream_priority / 51505 cmd_direct / 51506 mode_switch /
@@ -20,9 +20,14 @@
     51516 b16_errpath / 51517 b16_obs / 51518 b16_errcode / 51519 b16_dedup /
     51520 b16_close / 51521 bw_budget / 51522 mixed_qos / 51523 bw_reject /
     51524 bw_view / 51525 cam_audio_bw / 51526 fair_assertor /
-    51527 low_speed_guard
-- 51528~51533 写码进行中；剩余 51534~51700 未写。
-- 任务板 51501~51527 已写回「已完成 + 结果摘要」。
+    51527 low_speed_guard / 51528 burst_shaper / 51529 bw_h4_net /
+    51530 dual_ctrl_bw / 51531 b17_errpath / 51532 b17_obs /
+    51533 b17_perf_baseline / 51534 b17_errcode / 51535 cfg_persist /
+    51536 b17_j5_anchor / 51537 hub_stress / 51538 fair_longterm /
+    51539 b17_dedup
+- 51540~51545 写码进行中；剩余 51546~51700 未写。
+- 任务板 51501~51539 已写回「已完成 + 结果摘要」。
+- mod.rs 已登记至 unx51539（本批 39 单全在册）。
 
 ## 收库与修复（本会话对共享面的改动）
 - mod.rs：清掉 AI-VX11-1106 尾块与既有登记重复的 78 条声明；再清与
@@ -33,8 +38,11 @@
 - 修复：unx10107_fcntl（u32/usize 比较错型）、unx10113_getdents_fd
   （Dent 缺 PartialEq/Eq derive）；unx515xx 探针暴露的 9 处语义错均已修。
 - 11xxx 系列历史编译错误（unx11665/11666/11671/11673/11677/11667/11669/
-  11685/11689/11692/11693/11697 共 ~148 处）分包代理修复进行中，
-  完成态见下方「交接」节。
+  11685/11689/11692/11693/11697 共 ~148 处）：分包代理已修复完毕
+  （补齐 from_order/Option 化、count()/tag()/success_cells()/silent_zero_check()
+  等缺失方法、message_ok/detail_ok/gate_ok/ledger_ok/judge/define 等 18 个
+  缺失判定函数、Option/引用比较 derive、deref 笔误、const fn 口径核对；
+  其中 6 文件经全量符号扫描确认已被并行会话先行修复）。
 
 ## 仓库整备
 - 已删除杂物：unxstar/_intake_*.part、_miss_all.txt、_missing.txt、
