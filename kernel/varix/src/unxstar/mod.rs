@@ -17230,6 +17230,8 @@ pub mod unx52078_bazel;
 pub mod unx52079_scons;
 // unx52080_makegnu（收库补登记）
 pub mod unx52080_makegnu;
+// unx52081_astudio（收库补登记）
+pub mod unx52081_astudio;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
