@@ -17224,6 +17224,8 @@ pub mod unx52075_cmakegui;
 pub mod unx52076_meson;
 // unx52077_ninja（收库补登记）
 pub mod unx52077_ninja;
+// unx52078_bazel（收库补登记）
+pub mod unx52078_bazel;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
