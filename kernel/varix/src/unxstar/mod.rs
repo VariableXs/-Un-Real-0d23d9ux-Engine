@@ -17088,3 +17088,7 @@ pub mod unx52029_zettlr_frontmatter;
 pub mod unx52030_notable_storemode;
 // unx52031_boostnote_crt（收库补登记）
 pub mod unx52031_boostnote_crt;
+// unx52032_vsc_host_abi（收库补登记）
+pub mod unx52032_vsc_host_abi;
+// unx52033_mspython（收库补登记）
+pub mod unx52033_mspython;
