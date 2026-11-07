@@ -17174,6 +17174,8 @@ pub mod unx52050_phpstorm;
 pub mod unx52051_rubymine;
 // unx52052_resharper（收库补登记）
 pub mod unx52052_resharper;
+// unx52053_dotcover（收库补登记）
+pub mod unx52053_dotcover;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
