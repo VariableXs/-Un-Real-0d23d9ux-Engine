@@ -17184,6 +17184,8 @@ pub mod unx52055_dotmemory;
 pub mod unx52056_toolbox;
 // unx52057_jbr_stack（收库补登记）
 pub mod unx52057_jbr_stack;
+// unx52058_gradle_daemon（收库补登记）
+pub mod unx52058_gradle_daemon;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
