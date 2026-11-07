@@ -17150,6 +17150,8 @@ pub mod unx9412_sysinfo_times_face;
 pub mod unx9413_miscfd_closure;
 // unx943_tophalfdeep（收库补登记）
 pub mod unx943_tophalfdeep;
+// unx52041_idea_ultimate（收库补登记）
+pub mod unx52041_idea_ultimate;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
