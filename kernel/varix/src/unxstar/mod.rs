@@ -17226,6 +17226,8 @@ pub mod unx52076_meson;
 pub mod unx52077_ninja;
 // unx52078_bazel（收库补登记）
 pub mod unx52078_bazel;
+// unx52079_scons（收库补登记）
+pub mod unx52079_scons;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
