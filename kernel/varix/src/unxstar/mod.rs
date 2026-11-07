@@ -17254,6 +17254,8 @@ pub mod unx52100_kotlinc;
 pub mod unx52101_qtcreator;
 // unx52102_qtonline（收库补登记，VX14 段 52102）
 pub mod unx52102_qtonline;
+// unx52103_eclipse（收库补登记，VX14 段 52103）
+pub mod unx52103_eclipse;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
@@ -17372,3 +17374,27 @@ pub mod unx52187_fork;
 pub mod unx52186_githubdesktop;
 // unx52185_sourcetree（收库补登记·下行线 AI-VX11-1107）
 pub mod unx52185_sourcetree;
+// unx52213_tableplus（VX15 批二登记）
+pub mod unx52213_tableplus;
+// unx52214_beekeeper（VX15 批二登记）
+pub mod unx52214_beekeeper;
+// unx52215_dbvisualizer（VX15 批二登记）
+pub mod unx52215_dbvisualizer;
+// unx52216_squirrel（VX15 批二登记）
+pub mod unx52216_squirrel;
+// unx52217_razorsql（VX15 批二登记）
+pub mod unx52217_razorsql;
+// unx52218_toad_oracle（VX15 批二登记）
+pub mod unx52218_toad_oracle;
+// unx52219_plsqldev（VX15 批二登记）
+pub mod unx52219_plsqldev;
+// unx52220_sqlyog（VX15 批二登记）
+pub mod unx52220_sqlyog;
+// unx52221_winterminal（VX15 批二登记）
+pub mod unx52221_winterminal;
+// unx52222_conemu（VX15 批二登记）
+pub mod unx52222_conemu;
+// unx52223_cmder（VX15 批二登记）
+pub mod unx52223_cmder;
+// unx52224_putty（VX15 批二登记）
+pub mod unx52224_putty;
