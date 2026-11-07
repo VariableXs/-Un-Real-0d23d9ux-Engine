@@ -17178,6 +17178,8 @@ pub mod unx52052_resharper;
 pub mod unx52053_dotcover;
 // unx52054_dottrace（收库补登记）
 pub mod unx52054_dottrace;
+// unx52055_dotmemory（收库补登记）
+pub mod unx52055_dotmemory;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
