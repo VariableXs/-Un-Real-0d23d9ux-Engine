@@ -17210,6 +17210,8 @@ pub mod unx52068_nuget;
 pub mod unx52069_vcpkg;
 // unx52070_wix（收库补登记）
 pub mod unx52070_wix;
+// unx52071_inno（收库补登记）
+pub mod unx52071_inno;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
