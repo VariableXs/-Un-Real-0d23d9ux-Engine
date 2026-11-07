@@ -17196,6 +17196,8 @@ pub mod unx52061_mssdk;
 pub mod unx52062_sdk19041;
 // unx52063_sdk22000（收库补登记）
 pub mod unx52063_sdk22000;
+// unx52064_sdk26100（收库补登记）
+pub mod unx52064_sdk26100;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
