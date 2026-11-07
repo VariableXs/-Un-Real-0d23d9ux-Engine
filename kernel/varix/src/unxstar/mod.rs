@@ -17134,3 +17134,5 @@ pub mod unx52032_vsc_host_abi;
 pub mod unx52033_mspython;
 // unx52034_cpptools（收库补登记）
 pub mod unx52034_cpptools;
+// unx52035_git_views（收库补登记）
+pub mod unx52035_git_views;
