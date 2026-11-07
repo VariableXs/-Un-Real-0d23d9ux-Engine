@@ -17250,22 +17250,8 @@ pub mod unx52098_fastbootdry;
 pub mod unx52099_sdkpkgs;
 // unx52100_kotlinc（收库补登记，VX14 段 52100）
 pub mod unx52100_kotlinc;
-// unx52087_temurin17（VX14 批次：Temurin JDK 17 收口，与 L4 分账）
-pub mod unx52087_temurin17;
-// unx52088_temurin21（VX14 批次：Temurin JDK 21 收口，LTS 上探）
-pub mod unx52088_temurin21;
-// unx52089_temurin8（VX14 批次：Temurin JRE 8 收口，长尾运行时）
-pub mod unx52089_temurin8;
-// unx52090_gradle（VX14 批次：Gradle Windows 发行版收口）
-pub mod unx52090_gradle;
-// unx52091_agp（VX14 批次：AGP 构建链收口）
-pub mod unx52091_agp;
-// unx52092_logcatwin（VX14 批次：Logcat 工具窗消费面收口）
-pub mod unx52092_logcatwin;
-// unx52093_layoutinsp（VX14 批次：Layout Inspector 消费面收口）
-pub mod unx52093_layoutinsp;
-// unx52094_apkanalyzer（VX14 批次：APK Analyzer 消费面收口）
-pub mod unx52094_apkanalyzer;
+// unx52101_qtcreator（收库补登记，VX14 段 52101）
+pub mod unx52101_qtcreator;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
@@ -17322,3 +17308,65 @@ pub mod unx52038_msdocker;
 pub mod unx52039_electron_preverify;
 // unx52040_vscode_minreport（收库补登记）
 pub mod unx52040_vscode_minreport;
+// unx52201_ssms（VX15 批一登记）
+pub mod unx52201_ssms;
+// unx52202_azuredatastudio（VX15 批一登记）
+pub mod unx52202_azuredatastudio;
+// unx52203_dbeaver（VX15 批一登记）
+pub mod unx52203_dbeaver;
+// unx52204_navicat_premium（VX15 批一登记）
+pub mod unx52204_navicat_premium;
+// unx52205_navicat_mysql（VX15 批一登记）
+pub mod unx52205_navicat_mysql;
+// unx52206_heidisql（VX15 批一登记）
+pub mod unx52206_heidisql;
+// unx52207_pgadmin4（VX15 批一登记）
+pub mod unx52207_pgadmin4;
+// unx52208_mysqlworkbench（VX15 批一登记）
+pub mod unx52208_mysqlworkbench;
+// unx52209_mongocompass（VX15 批一登记）
+pub mod unx52209_mongocompass;
+// unx52210_redisinsight（VX15 批一登记）
+pub mod unx52210_redisinsight;
+// unx52211_sqlitestudio（VX15 批一登记）
+pub mod unx52211_sqlitestudio;
+// unx52212_dbbrowser（VX15 批一登记）
+pub mod unx52212_dbbrowser;
+// unx52213_tableplus（VX15 批二登记）
+pub mod unx52213_tableplus;
+// unx52214_beekeeper（VX15 批二登记）
+pub mod unx52214_beekeeper;
+// unx52215_dbvisualizer（VX15 批二登记）
+pub mod unx52215_dbvisualizer;
+// unx52216_squirrel（VX15 批二登记）
+pub mod unx52216_squirrel;
+// unx52199_svn_cli（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52199_svn_cli;
+// unx52198_araxis_merge（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52198_araxis_merge;
+// unx52197_beyond_compare（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52197_beyond_compare;
+// unx52196_kdiff3（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52196_kdiff3;
+// unx52195_winmerge（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52195_winmerge;
+// unx52194_gittyup（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52194_gittyup;
+// unx52193_gitcola（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52193_gitcola;
+// unx52192_gitahead（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52192_gitahead;
+// unx52191_tower（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52191_tower;
+// unx52190_smartgit（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52190_smartgit;
+// unx52189_gitextensions（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52189_gitextensions;
+// unx52188_sublimemerge（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52188_sublimemerge;
+// unx52187_fork（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52187_fork;
+// unx52186_githubdesktop（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52186_githubdesktop;
+// unx52185_sourcetree（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52185_sourcetree;
