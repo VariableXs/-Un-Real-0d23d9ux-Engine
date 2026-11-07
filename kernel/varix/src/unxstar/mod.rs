@@ -17238,6 +17238,16 @@ pub mod unx52082_adbfastboot;
 pub mod unx52083_gradle;
 // unx52084_kotlin（收库补登记）
 pub mod unx52084_kotlin;
+// unx52095_scrcpy（收库补登记，VX14 段 52095，并行会话已占 52086–52094）
+pub mod unx52095_scrcpy;
+// unx52087_temurin17（VX14 批次：Temurin JDK 17 收口，与 L4 分账）
+pub mod unx52087_temurin17;
+// unx52088_temurin21（VX14 批次：Temurin JDK 21 收口，LTS 上探）
+pub mod unx52088_temurin21;
+// unx52089_temurin8（VX14 批次：Temurin JRE 8 收口，长尾运行时）
+pub mod unx52089_temurin8;
+// unx52090_gradle（VX14 批次：Gradle Windows 发行版收口）
+pub mod unx52090_gradle;
 // unx52091_agp（VX14 批次：AGP 构建链收口）
 pub mod unx52091_agp;
 // unx52092_logcatwin（VX14 批次：Logcat 工具窗消费面收口）
