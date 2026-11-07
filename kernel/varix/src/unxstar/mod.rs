@@ -16800,6 +16800,46 @@ pub mod unx51698_b25_grep_record;
 pub mod unx51699_b25_seal;
 // unx51700_b25_closure（收库补登记）
 pub mod unx51700_b25_closure;
+// unx51671_b24_errcode（收库补登记）
+pub mod unx51671_b24_errcode;
+// unx51672_b24_j1j1r_machine（收库补登记）
+pub mod unx51672_b24_j1j1r_machine;
+// unx51673_adv_sample_ext_40（收库补登记）
+pub mod unx51673_adv_sample_ext_40;
+// unx51674_adv_normal_concur（收库补登记）
+pub mod unx51674_adv_normal_concur;
+// unx51675_fuzz_csw_iu_1e4（收库补登记）
+pub mod unx51675_fuzz_csw_iu_1e4;
+// unx51676_adv_attribution（收库补登记）
+pub mod unx51676_adv_attribution;
+// unx51677_drill_auto_adv（收库补登记）
+pub mod unx51677_drill_auto_adv;
+// unx51678_b24_grep_record（收库补登记）
+pub mod unx51678_b24_grep_record;
+// unx51679_b24_seal（收库补登记）
+pub mod unx51679_b24_seal;
+// unx51680_hid_desc_bomb（收库补登记）
+pub mod unx51680_hid_desc_bomb;
+// unx51681_hid_report_flood（收库补登记）
+pub mod unx51681_hid_report_flood;
+// unx51682_hid_reportid_flood（收库补登记）
+pub mod unx51682_hid_reportid_flood;
+// unx51683_mtp_bad_txn（收库补登记）
+pub mod unx51683_mtp_bad_txn;
+// unx51684_mtp_handle_scan（收库补登记）
+pub mod unx51684_mtp_handle_scan;
+// unx51685_mtp_flood（收库补登记）
+pub mod unx51685_mtp_flood;
+// unx51686_cdc_bad_frame_flood（收库补登记）
+pub mod unx51686_cdc_bad_frame_flood;
+// unx51687_cdc_dtr_rts_storm（收库补登记）
+pub mod unx51687_cdc_dtr_rts_storm;
+// unx51688_baud_spoof（收库补登记）
+pub mod unx51688_baud_spoof;
+// unx51689_b25_regress（收库补登记）
+pub mod unx51689_b25_regress;
+// unx51690_isolation_no_collar（收库补登记）
+pub mod unx51690_isolation_no_collar;
 // unx52001_vs2022_community（收库补登记）
 pub mod unx52001_vs2022_community;
 // unx52002_vs2022_professional（收库补登记）
@@ -17164,3 +17204,5 @@ pub mod unx52037_prettier;
 pub mod unx52038_msdocker;
 // unx52039_electron_preverify（收库补登记）
 pub mod unx52039_electron_preverify;
+// unx52040_vscode_minreport（收库补登记）
+pub mod unx52040_vscode_minreport;
