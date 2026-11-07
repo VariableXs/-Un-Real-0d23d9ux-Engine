@@ -16760,6 +16760,26 @@ pub mod unx51658_b23_grep_record;
 pub mod unx51659_b23_seal;
 // unx51660_csw_spoof_spectrum（收库补登记）
 pub mod unx51660_csw_spoof_spectrum;
+// unx51661_fake_capacity_defense（收库补登记）
+pub mod unx51661_fake_capacity_defense;
+// unx51662_uasp_iu_spoof（收库补登记）
+pub mod unx51662_uasp_iu_spoof;
+// unx51663_stream_overflow（收库补登记）
+pub mod unx51663_stream_overflow;
+// unx51664_tmf_storm（收库补登记）
+pub mod unx51664_tmf_storm;
+// unx51665_scsi_inject_20（收库补登记）
+pub mod unx51665_scsi_inject_20;
+// unx51666_halfwrite_ledger（收库补登记）
+pub mod unx51666_halfwrite_ledger;
+// unx51667_media_life（收库补登记）
+pub mod unx51667_media_life;
+// unx51668_b24_adversarial_regress（收库补登记）
+pub mod unx51668_b24_adversarial_regress;
+// unx51669_precheck_bypass_probe（收库补登记）
+pub mod unx51669_precheck_bypass_probe;
+// unx51670_uasp_bot_downgrade（收库补登记）
+pub mod unx51670_uasp_bot_downgrade;
 // unx52001_vs2022_community（收库补登记）
 pub mod unx52001_vs2022_community;
 // unx52002_vs2022_professional（收库补登记）
