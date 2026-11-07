@@ -17392,3 +17392,5 @@ pub mod unx52222_conemu;
 pub mod unx52223_cmder;
 // unx52224_putty（VX15 批二登记）
 pub mod unx52224_putty;
+// unx52184_gitkraken（收库补登记·下行线 AI-VX11-1107）
+pub mod unx52184_gitkraken;
