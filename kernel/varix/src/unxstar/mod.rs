@@ -17176,6 +17176,8 @@ pub mod unx52051_rubymine;
 pub mod unx52052_resharper;
 // unx52053_dotcover（收库补登记）
 pub mod unx52053_dotcover;
+// unx52054_dottrace（收库补登记）
+pub mod unx52054_dottrace;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
