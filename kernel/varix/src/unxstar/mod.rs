@@ -16740,6 +16740,26 @@ pub mod unx51648_cb_exception_isolation;
 pub mod unx51649_b23_converge_gate;
 // unx51650_post_cancel_ring_consist（收库补登记）
 pub mod unx51650_post_cancel_ring_consist;
+// unx51651_err_attribution_3party（收库补登记）
+pub mod unx51651_err_attribution_3party;
+// unx51652_b23_errcode（收库补登记）
+pub mod unx51652_b23_errcode;
+// unx51653_b23_j1j1r_machine（收库补登记）
+pub mod unx51653_b23_j1j1r_machine;
+// unx51654_multi_err_combo（收库补登记）
+pub mod unx51654_multi_err_combo;
+// unx51655_err_ledger_replay（收库补登记）
+pub mod unx51655_err_ledger_replay;
+// unx51656_inject_rate_limit（收库补登记）
+pub mod unx51656_inject_rate_limit;
+// unx51657_drill_auto（收库补登记）
+pub mod unx51657_drill_auto;
+// unx51658_b23_grep_record（收库补登记）
+pub mod unx51658_b23_grep_record;
+// unx51659_b23_seal（收库补登记）
+pub mod unx51659_b23_seal;
+// unx51660_csw_spoof_spectrum（收库补登记）
+pub mod unx51660_csw_spoof_spectrum;
 // unx52001_vs2022_community（收库补登记）
 pub mod unx52001_vs2022_community;
 // unx52002_vs2022_professional（收库补登记）
@@ -17092,3 +17112,5 @@ pub mod unx52031_boostnote_crt;
 pub mod unx52032_vsc_host_abi;
 // unx52033_mspython（收库补登记）
 pub mod unx52033_mspython;
+// unx52034_cpptools（收库补登记）
+pub mod unx52034_cpptools;
