@@ -241,3 +241,15 @@
 - 本地探针 TOTAL=108 RED=0 PANIC=0 测试 955/955（多会话共用 harness）。
 - 两线汇合缓冲带：上行线从 52103 续写至与下行线 52184 相向汇合，
   缓冲带 6 单惯例（上行至 52178 停笔，余 52179~52184 留缓冲）。
+
+### 下行线收口（AI-VX11-1107 · 2026-11-07 18:4x）
+- **下行线累计 16 单**（52199→52184：SVN CLI/Araxis Merge/Beyond Compare/
+  KDiff3/WinMerge/Gittyup/Git Cola/GitAhead/Tower/SmartGit/Git Extensions/
+  Sublime Merge/Fork/GitHub Desktop/Sourcetree/GitKraken），全部逐单探针
+  全绿（8 测试/单）+ 逐单提交 + mod.rs 收库补登记。
+- **全仓 cargo check --lib exit 0（0 error，38m19s，含本批 16 单与并行
+  会话 VX15 批一/批二、上行线批次）**；期间顺手修复并行会话 mod.rs
+  并发追加造成的 E0428×4（unx52213~unx52216 重复声明，提交 61caf767）。
+- 余量交接：下行线 52183~52100（84 单）待后继会话按本台账下行线规格
+  续写（骨架参考 unx52192_gitahead.rs / unx52184_gitkraken.rs）。
+- 本地探针终态：TOTAL=111 RED=0 PANIC=0。
