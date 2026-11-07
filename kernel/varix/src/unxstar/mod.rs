@@ -17220,6 +17220,8 @@ pub mod unx52073_msys2;
 pub mod unx52074_cmake;
 // unx52075_cmakegui（收库补登记）
 pub mod unx52075_cmakegui;
+// unx52076_meson（收库补登记）
+pub mod unx52076_meson;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
