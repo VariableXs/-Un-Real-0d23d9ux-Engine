@@ -17216,6 +17216,8 @@ pub mod unx52071_inno;
 pub mod unx52072_nsis;
 // unx52073_msys2（收库补登记）
 pub mod unx52073_msys2;
+// unx52074_cmake（收库补登记）
+pub mod unx52074_cmake;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
