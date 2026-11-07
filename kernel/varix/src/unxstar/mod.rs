@@ -17256,6 +17256,8 @@ pub mod unx52101_qtcreator;
 pub mod unx52102_qtonline;
 // unx52103_eclipse（收库补登记，VX14 段 52103）
 pub mod unx52103_eclipse;
+// unx52104_eclipsecdt（收库补登记，VX14 段 52104）
+pub mod unx52104_eclipsecdt;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
