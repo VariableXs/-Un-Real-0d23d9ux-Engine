@@ -17252,6 +17252,8 @@ pub mod unx52099_sdkpkgs;
 pub mod unx52100_kotlinc;
 // unx52101_qtcreator（收库补登记，VX14 段 52101）
 pub mod unx52101_qtcreator;
+// unx52102_qtonline（收库补登记，VX14 段 52102）
+pub mod unx52102_qtonline;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
