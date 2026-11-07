@@ -82,10 +82,18 @@
   - 52046 GoLand（build/test/dlv ×10 场景 30 格+go 环境三元闸）
   - 52047 CLion（CMake 五段 ×8 工程 40 格+MSBuild 消费 6 格+前置闸
     +ReSharper 声明四行）
-- [ ] 写码 52048~52199（152 单待写）
-- mod.rs 已补登记 52014~52047（52001~52013 此前已登记）；
-  本地探针 VX14 全量 47 单 TOTAL=47 RED=0 PANIC=0 测试 505/505
-  （提交 baa8e029；探针 harness 重建后仅挂 VX14 模块）。
+  - 52048 Rider（JDBC 5 驱动 ×4 场景 20 格+B11 分界声明四行）
+  - 52049 DataGrip（挂接三段 ×5 站点 15 格+三元闸+回路拍单调）
+  - 52050 PhpStorm（Rails 挂接 15 格+gem 12 操作集拍序单调）
+  - 52051 RubyMine（重构十段 ×6 场景 60 格+VS shim 消费 6 格+前置闸）
+  - 52052 ReSharper（三段 ×6 工程 18 格+开销 ≤×20% 封顶）
+  - 52053 dotCover（三段 18 格+双模式 12 格+时间线 12 拍单调+热点 Σ守恒）
+  - 52054 dotTrace（三段 18 格+GB 级打开 ≤×3/2 封顶+泄漏零误报）
+  - 52055 dotMemory（三段 15 格+目录隔离 6 槽零互踩+回滚零残留）
+- [ ] 写码 52056~52199（144 单待写）
+- mod.rs 已补登记 52014~52055（52001~52013 此前已登记）；
+  本地探针 VX14 全量 55 单 TOTAL=55 RED=0 PANIC=0 测试 564/564
+  （提交 68e93a65；探针 harness 重建后仅挂 VX14 模块）。
 - 云端通道（AI-VX11-1107）：AutoDL 4090D connect.cqa1.seetacloud.com:27347
   实例关机中（TCP 主动拒绝，出网正常）——待控制台开机后切云端编译验证；
   通道脚本 %LOCALAPPDATA%/Temp/vx9_probe/cloud_run.py（paramiko，密码经
@@ -93,7 +101,7 @@
 - [ ] 完成单任务板写回「已完成 + 结果摘要」
 
 ## 交接（下一会话）
-1. **52048~52199 共 152 单待写**：逐卡取 _tools/vx14_cards.json（title/
+1. **52056~52199 共 144 单待写**：逐卡取 _tools/vx14_cards.json（title/
    quota/criteria 逐字锚定），SEG=0xC4000+0x40×(id−52000)。板面判据锚
    后一编号 J1 条款为惯例（off-by-one 板式），照原文锚定即可。
 2. 域语义分层（KB-COMPAT 六判据收口）五样板已立：
