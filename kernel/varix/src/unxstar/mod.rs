@@ -17154,6 +17154,8 @@ pub mod unx943_tophalfdeep;
 pub mod unx52041_idea_ultimate;
 // unx52042_idea_community（收库补登记）
 pub mod unx52042_idea_community;
+// unx52043_pycharm_pro（收库补登记）
+pub mod unx52043_pycharm_pro;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
