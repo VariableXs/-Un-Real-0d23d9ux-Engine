@@ -308,9 +308,10 @@ impl B17ErrPath {
         if self.qos_cur == self.qos_prev {
             return Err(B17Code::RollbackBroken);
         }
-        let keep = self.qos_cur;
-        self.qos_cur = self.qos_prev;
-        self.qos_prev = keep;
+        let prev = self.qos_prev;
+        self.qos_cur = prev;
+        // 前像复位为当前像：回滚后无二级前像（再滚即破，禁回滚乒乓）。
+        self.qos_prev = prev;
         self.rollback_cnt += 1;
         self.cfg_version += 1;
         self.version += 1;
@@ -478,7 +479,7 @@ pub fn run_unx51531_checks() -> CheckSet {
         let mut caught = 0u32;
         let mut rebuilt_ok = true;
         for i in 0..INJ_ROUNDS {
-            e.corrupt_entry(1, 7 + i);
+            e.corrupt_entry(1, 7 + i as u32);
             if e.audit_table() == Err(B17Code::TableChecksumBad) {
                 caught += 1;
                 e.note_detected();
@@ -538,7 +539,7 @@ pub fn run_unx51531_checks() -> CheckSet {
         for i in 0..INJ_ROUNDS {
             let bad = QosCfg {
                 weights: [4, 4, 2, 1],
-                lat_tier: [1 + i, 1 + i, 5, 9],
+                lat_tier: [1 + i as u32, 1 + i as u32, 5, 9],
             };
             if e.apply_qos(bad) == Err(B17Code::QosInvalid) {
                 caught += 1;

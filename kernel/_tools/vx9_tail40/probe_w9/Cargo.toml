@@ -1,0 +1,10 @@
+[package]
+name = "probe_w9"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "probe_w9"
+path = "src/main.rs"
+
+[workspace]

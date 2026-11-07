@@ -664,7 +664,8 @@ mod tests {
 
     #[test]
     fn injections_four_classes_all_caught() {
-        let inj = inject_round(10).unwrap_or_else(|_| InjectLedger::new());
+        // 收库修正（AI-INTAKE-1107）：inject_round 直接返回 InjectLedger，去掉误加的 unwrap_or_else。
+        let inj = inject_round(10);
         assert!(inj.all_caught(10), "四类篡改必须 10/10 检出");
         assert_eq!(inj.missed(), 0);
     }

@@ -6067,6 +6067,8 @@ fn other_note(n: Note) -> Note {
     if n.success() {
         return match n {
             Note::Hit => Note::Builtin,
+            // 收库修正（AI-INTAKE-1107）：穷尽性护栏——success() 档之外不可达
+            // 此分支，保底原样返回（换落点注入不得越档改写）。
             Note::Direct => Note::Cached,
             Note::Builtin => Note::Cached,
             Note::Cached => Note::Hit,
@@ -6074,6 +6076,7 @@ fn other_note(n: Note) -> Note {
             Note::AssignOnly => Note::EmptyWord,
             Note::HookOk => Note::Direct,
             Note::Script => Note::Hit,
+            other => other,
         };
     }
     match n {
@@ -6819,7 +6822,7 @@ fn dec_of(text: &str) -> Option<u32> {
 }
 
 /// 取 `键=值` 里的值部分。
-fn field_value(token: &str, key: &str) -> Option<&str> {
+fn field_value<'a>(token: &'a str, key: &str) -> Option<&'a str> {
     if !token.starts_with(key) {
         return None;
     }
@@ -7179,8 +7182,10 @@ fn reds_ok() -> bool {
         i += 1;
     }
     // 反向：注入成另一种缺陷，matched 必须掉，rate 必须离开 1000。
-    let faults = match fault_line().get(..) {
-        Some(x) => *x,
+    // 收库修正（AI-INTAKE-1107）：fault_line() 临时值先行落绑，防 E0716。
+    let line = fault_line();
+    let faults = match line.get(..) {
+        Some(x) => x,
         None => return false,
     };
     i = 0usize;

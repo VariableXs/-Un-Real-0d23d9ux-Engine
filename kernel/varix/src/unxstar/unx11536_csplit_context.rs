@@ -1117,7 +1117,8 @@ mod tests {
 
     const DATA: [u8; 23] = *b"alpha\nbeta\ngamma\ndelta\n";
 
-    fn open(p: &[Pat<'_>]) -> Csplit<'_> {
+    // 收库修正（AI-INTAKE-1107）：显式命名返回生存期，避免临时模式表被并入返回借用（E0106）。
+    fn open<'a>(p: &[Pat<'a>]) -> Csplit<'a> {
         match Csplit::open(&DATA, p) {
             Ok(v) => v,
             Err(_) => Csplit::open(&DATA, &[Pat::line(1, 0, 1)]).ok().unwrap(),

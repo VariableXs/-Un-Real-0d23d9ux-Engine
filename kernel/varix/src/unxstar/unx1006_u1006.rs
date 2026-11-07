@@ -29,6 +29,7 @@ pub const FREQ_MIN_HZ: u64 = 1_000_000;
 pub const FREQ_MAX_HZ: u64 = 10_000_000_000;
 
 /// 换算器（移位实现，零除法热路径）。
+#[derive(PartialEq, Eq)]
 pub struct TscConv {
     freq_hz: u64,
     /// 定点乘子：round(2^SHIFT / (freq/1e9)) = 2^SHIFT * 1e9 / freq —— 预计算一次。

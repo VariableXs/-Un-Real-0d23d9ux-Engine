@@ -18,6 +18,7 @@
 use crate::alloc::format;
 use crate::alloc::string::ToString;
 use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 诊断段基址（0x7E600，G1 工单 A03 批02 独占窗口，0x40 对齐）。

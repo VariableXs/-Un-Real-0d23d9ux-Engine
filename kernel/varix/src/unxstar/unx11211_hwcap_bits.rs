@@ -91,6 +91,19 @@ impl Hwcap {
         m
     }
 
+    /// 未覆盖位号：已登记但不被掩码覆盖的位（一位一集之差，收库修正 AI-INTAKE-1107）。
+    pub fn uncovered(&self, mask: u32) -> Vec<u32> {
+        let mut out: Vec<u32> = Vec::new();
+        let mut k = 0usize;
+        while k < self.bits.len() {
+            if mask & self.bits[k].mask() == 0 {
+                out.push(self.bits[k].no);
+            }
+            k += 1;
+        }
+        out
+    }
+
     /// 未实现位名清单。
     pub fn unimplemented(&self) -> Vec<&'static str> {
         let mut out: Vec<&'static str> = Vec::new();
@@ -353,7 +366,8 @@ mod tests {
         assert_eq!(run_selects(&h, &mut b), (2, 1));
         assert_eq!(b.sels[2].pick(h.mask()), "strcmp_generic");
         assert!(b.sels[2].fallback_accounted());
-        assert_eq!(h.uncovered(h.mask()).len(), 3);
+        // 收库修正（AI-INTAKE-1107）：八位清单七位入掩码，未覆盖位仅 ERMS 一位。
+        assert_eq!(h.uncovered(h.mask()).len(), 1);
         let root = h.freeze();
         assert_eq!(h.fold(), root);
         assert_eq!(h.add(1, "AVX", true), Err(HW_DUP));

@@ -41,7 +41,8 @@ pub enum SlotState {
 }
 
 /// IOSB 档。
-#[derive(Clone, Copy, PartialEq, Eq)]
+// 收库修正（AI-INTAKE-1107）：补派生 Debug，供测试断言 Result<Iosb,_> 打印。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Iosb {
     /// 模型内 0 = 成功。
     pub status: u32,

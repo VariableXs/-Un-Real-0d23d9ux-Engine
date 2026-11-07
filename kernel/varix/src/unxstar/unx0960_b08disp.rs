@@ -23,6 +23,7 @@ const E_COAL: u16 = SEG_ERR + 3;  // 合并域失守
 const E_BUD: u16 = SEG_ERR + 4;   // 预算域失守
 const E_STALL: u16 = SEG_ERR + 5; // 停滞域失守
 const E_COUNT: u16 = SEG_ERR + 6; // 断言数不足或账不平
+const E_STATE: u16 = SEG_ERR + 7;  // 状态域失守（补 E_STATE：verdict 归因错类路径）
 
 pub const MIN_ASSERTS: u32 = 40;
 
@@ -170,4 +171,59 @@ pub fn drill() -> Result<u32, u16> {
     let mut l3 = B08Ledger::new();
     if l3.judge("probe", false, SEG_ERR) != Err(E_COUNT) { return Err(E_COUNT); }
     Ok(0)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx960_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx960_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0960_b08disp");
+    // J1 核心路径：B08 全量跑批账回放与批判全过。
+    s.add("核心路径drill全过", drill() == Ok(0), "run_b08 跑满批+失守路径抽样+无归因拒全过返回 0");
+    // J2 正例：B08 批全绿（≥40 断言、零失守、恒等式平）。
+    let led = match run_b08() {
+        Ok(l) => l,
+        Err(_) => B08Ledger::new(),
+    };
+    let b08_ok = led.len() >= MIN_ASSERTS as usize
+        && led.passed() == led.len() as u32
+        && led.failed() == 0
+        && led.invariant_ok();
+    s.add("B08批全绿", b08_ok, "断言数 ≥40、过+失=总恒等式、零失守");
+    // J3 批判放行：verdict 返回通过数。
+    s.add("批判放行", led.verdict() == Ok(led.passed()), "verdict 对全绿账返回 passed 数");
+    // J4 批判唯一性：断言数不足必拦。
+    s.add("空账批判拦", B08Ledger::new().verdict() == Err(E_COUNT), "0 < 40 断言下限被 E_COUNT 拒");
+    // J5 反例一：单条失守必落账且批判转红。
+    let mut l2 = B08Ledger::new();
+    let fail_ok = l2.judge("probe", false, E_TRIG).is_ok()
+        && l2.failed() == 1
+        && l2.verdict() == Err(E_BASE);
+    s.add("失守批判转红", fail_ok, "一条失守 → failed=1、verdict E_BASE");
+    // J6 反例二：无归因失守必拒（E_COUNT）。
+    let mut l4 = B08Ledger::new();
+    s.add("无归因失守拒", l4.judge("probe", false, SEG_ERR) == Err(E_COUNT),
+        "失守不带段内诊断码被 E_COUNT 拒");
+    // J7 正例记账序：判词编号单调递增。
+    let mut l5 = B08Ledger::new();
+    let num_ok = l5.judge("dom", true, 0) == Ok(1) && l5.judge("dom", true, 0) == Ok(2)
+        && l5.passed() == 2 && l5.invariant_ok();
+    s.add("判词编号单调", num_ok, "judge 返回 recs.len()+1（1、2）、两过账平");
+    // J8 断言下限常量冻结。
+    s.add("断言下限冻结", MIN_ASSERTS == 40, "≥40 断言批判条件唯一不漂移");
+    // J9 复跑确定性：双跑 run_b08 均绿。
+    s.add("复跑确定性", run_b08().is_ok() && run_b08().is_ok(), "两次全量跑批均 Ok（断言账零漂移）");
+    // J10 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0x7E00, "0x7E00 段本单独占不漂移");
+    // 动态明细两列。
+    let verdict_val = match led.verdict() { Ok(n) => n, Err(_) => 0 };
+    s.add_dyn("批判值可报", verdict_val >= MIN_ASSERTS, &alloc::format!("B08 批判通过 {} 条（下限 {}）", verdict_val, MIN_ASSERTS));
+    let lens = run_b08().map(|l| l.len()).unwrap_or(0);
+    s.add_dyn("断言账规模", lens >= MIN_ASSERTS as usize, &alloc::format!("单次跑批落账 {} 条", lens));
+    s
 }

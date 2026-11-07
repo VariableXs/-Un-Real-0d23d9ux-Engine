@@ -3997,7 +3997,8 @@ mod tests {
 
     #[test]
     fn t39_ledger_broken() {
-        let b = build_ledger_broken();
+        // 收库修正（AI-INTAKE-1107）：poke 需 &mut，b 声明为 mut。
+        let mut b = build_ledger_broken();
         assert!(b.is_frozen());
         assert!(!b.replay());
         assert!(b.rejected() > 0u32);

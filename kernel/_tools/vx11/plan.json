@@ -1,0 +1,1602 @@
+[
+ {
+  "id": 9202,
+  "title": "read/write 坏 fd 矩阵（全 EBADF）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9202-J1 负 fd/未开 fd/已关 fd 三类注入矩阵判据过，全返回 -EBADF 与 Linux 逐码一致，10/10 次检出复测格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9202_rw_badfd_matrix_ebadf",
+  "seg": 499712
+ },
+ {
+  "id": 9203,
+  "title": "read/write 坏指针矩阵（全 EFAULT）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9203-J1 NULL/-1/未映射/只读映射写路径四类注入矩阵判据过，全 -EFAULT 格过，部分拷贝残留量声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9203_rw_badptr_matrix_efault",
+  "seg": 499776
+ },
+ {
+  "id": 9204,
+  "title": "close 坏 fd 矩阵（含双关闭竞态）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9204-J1 坏 fd 全 EBADF 判据过，双 close 竞态注入第二次全 EBADF 格过，fd 槽位复用零泄漏格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9204_close_badfd_matrix_race",
+  "seg": 499840
+ },
+ {
+  "id": 9205,
+  "title": "lseek 坏 fd/坏 whence 矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9205-J1 坏 fd 全 EBADF 判据过，非法 whence 全 EINVAL 格过，负偏移全 EINVAL 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9205_lseek_badfd_matrix_whence",
+  "seg": 499904
+ },
+ {
+  "id": 9206,
+  "title": "open 坏路径指针 EFAULT 矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9206-J1 坏路径指针注入全 EFAULT 判据过，路径截断注入零越界读格过，10/10 次检出格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9206_open_badptr_matrix_efault",
+  "seg": 499968
+ },
+ {
+  "id": 9207,
+  "title": "open 坏 flags 组合 EINVAL 矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9207-J1 O_CREAT 缺 mode/非法 O_ 位组合注入矩阵判据过，全 EINVAL 或按 Linux 语义位忽略格过，逐码对账一致；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9207_open_badflags_matrix_einval",
+  "seg": 500032
+ },
+ {
+  "id": 9208,
+  "title": "stat/fstat 坏指针/坏 fd 矩阵",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9208-J1 坏 buf 指针全 EFAULT 判据过，坏 fd 全 EBADF 格过，路径不存在全 ENOENT 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9208_stat_badptr_matrix_fd",
+  "seg": 500096
+ },
+ {
+  "id": 9209,
+  "title": "文件族负偏移与溢出边界矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9209-J1 负 offset 注入全 EINVAL 判据过，off_t 溢出边界截断语义格过，与 B04 lseek 档对账一致；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9209_negoff_overflow_matrix_boundary",
+  "seg": 500160
+ },
+ {
+  "id": 9210,
+  "title": "文件族零长度读写边界矩阵",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9210-J1 零长度 read/write 正判据（零副作用返回 0）判据过，反向判序（坏 fd 优先于零长度）格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9210_zerolen_matrix_boundary",
+  "seg": 500224
+ },
+ {
+  "id": 9211,
+  "title": "坏 fd 注入跨号段扫描（fd 空间全域）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9211-J1 fd 空间全域扫描注入判据过，未开槽位全 EBADF 逐格检出，越上限与 RLIMIT_NOFILE 分界格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9211_badfd_sweep_global_fd",
+  "seg": 500288
+ },
+ {
+  "id": 9212,
+  "title": "EFAULT 拷贝半程探针（copy_to_user 半途）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9212-J1 半途拷贝注入判据过，已拷贝字节数返回语义与 Linux 一致格过，半程残留可观测格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9212_efault_halfcopy_copy_to_user",
+  "seg": 500352
+ },
+ {
+  "id": 9213,
+  "title": "错误码编码器一致性矩阵（Errno→sysret 逐码）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9213-J1 Errno 全集逐码注入判据过，sysret 编码逐码一致格过，与 B13 映射账零漂移格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9213_errno_encoder_matrix_errno",
+  "seg": 500416
+ },
+ {
+  "id": 9214,
+  "title": "文件族 E 型参数探针总成",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9214-J1 nargs 逐位提取判据过，坏指针全 EFAULT 格过，与参数拷贝探针总成单源；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9214_eprobe_suite_file",
+  "seg": 500480
+ },
+ {
+  "id": 9215,
+  "title": "文件族 E 型与 B03–B05 深化册对账格",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9215-J1 对账判据过，与 open/close/lseek/stat 深化册逐条判据零冲突，正反分层声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9215_etype_vs_reconcile_file",
+  "seg": 500544
+ },
+ {
+  "id": 9216,
+  "title": "文件族 E 型与 Windows GetLastError 对照格",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9216-J1 ERROR_INVALID_HANDLE/ERROR_NOACCESS 映射表判据过，差异账三条全列格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9216_etype_vs_compare_file",
+  "seg": 500608
+ },
+ {
+  "id": 9217,
+  "title": "E 型判据可复测性声明（10/10 次检出）",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9217-J1 全矩阵 10 次重复注入判据过，10/10 次检出统计格过，零 flaky 声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9217_etype_recheck_declare",
+  "seg": 500672
+ },
+ {
+  "id": 9218,
+  "title": "文件族 E 型升级接管注记",
+  "quota": 280,
+  "accept": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F9218-J1 接管边界声明判据过，存量错误路径零重写承诺格过，增量清单落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9218_etype_takeover_note_file",
+  "seg": 500736
+ },
+ {
+  "id": 9219,
+  "title": "文件族 E 型与 glibc errno 透传消费核",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9219-J1 glibc errno 读取透传链判据过，perror/strerror 输出逐码一致格过，消费号登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9219_etype_vs_consumer_file",
+  "seg": 500800
+ },
+ {
+  "id": 9220,
+  "title": "ktest syscall 面 B21 批断言集",
+  "quota": 420,
+  "accept": "① 纯功能代码 ≥420 行；② 判据原文：UNX-F9220-J1 本批 19 条判据聚合判据过，文件族 E 型矩阵一次跑通，域累计 105,700 收口断言；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9220_ktest_syscall_b21",
+  "seg": 500864
+ },
+ {
+  "id": 9221,
+  "title": "fd 语义域总纲（EBADF 判定域与 fd 空间模型）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9221-J1 fd 空间模型（0/1/2 基座+分配序）判据过，EBADF 判定域三条件（越界/未开/已关）逐格落账，判定先于操作语义格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9221_charter_domain_fd",
+  "seg": 500928
+ },
+ {
+  "id": 9222,
+  "title": "dup/dup2/dup3 坏 fd 矩阵",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9222-J1 oldfd/newfd 坏值注入矩阵判据过，全 EBADF 逐格检出，dup2 equal-fd 返回 newfd 正判据格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9222_matrix_dup_dup2",
+  "seg": 500992
+ },
+ {
+  "id": 9223,
+  "title": "pipe 系统调用错误矩阵（EFAULT/EMFILE/ENFILE）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9223-J1 三错误码注入矩阵判据过，坏 pipefd 指针全 EFAULT 格过，逐码与 Linux 一致；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9223_matrix_syscall_err_pipe",
+  "seg": 501056
+ },
+ {
+  "id": 9224,
+  "title": "fd 表耗尽 EMFILE 矩阵（RLIMIT_NOFILE 联动）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9224-J1 限额触顶注入判据过，分配全 EMFILE 格过，限额上调后恢复正判据格过，与 B19 资源族联动格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9224_matrix_fd_emfile",
+  "seg": 501120
+ },
+ {
+  "id": 9225,
+  "title": "系统级 ENFILE 矩阵（文件表上限）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9225-J1 系统级上限注入判据过，全 ENFILE 格过，与进程级 EMFILE 判序（先进程后系统）格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9225_matrix_enfile",
+  "seg": 501184
+ },
+ {
+  "id": 9226,
+  "title": "ENOENT 判定域总纲（路径解析错误面）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9226-J1 路径解析错误面判据过，ENOENT 触发三态（末段缺失/中间段缺失/空组件）逐格落账，与 B1 VFS 冻结接口消费格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9226_charter_domain_enoent",
+  "seg": 501248
+ },
+ {
+  "id": 9227,
+  "title": "open/stat/unlink ENOENT 矩阵",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9227-J1 三 syscall 缺失路径注入矩阵判据过，全 ENOENT 逐格检出，O_CREAT 正判据（存在即打开）格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9227_matrix_open_stat",
+  "seg": 501312
+ },
+ {
+  "id": 9228,
+  "title": "目录操作 ENOENT/ENOTDIR/EISDIR 矩阵",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9228-J1 三错误码注入矩阵判据过，目录尾段缺失全 ENOENT 格过，文件作目录全 ENOTDIR 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9228_matrix_enoent_enotdir",
+  "seg": 501376
+ },
+ {
+  "id": 9229,
+  "title": "相对路径与 AT_FDCWD 边界矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9229-J1 AT_FDCWD 正判据判据过，坏 dirfd 全 EBADF 格过，绝对路径忽略 dirfd 语义格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9229_matrix_boundary_at_fdcwd",
+  "seg": 501440
+ },
+ {
+  "id": 9230,
+  "title": "dirfd 坏值矩阵（AT_EMPTY_PATH/AT_SYMLINK_FOLLOW）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9230-J1 两标志判据过，坏 dirfd 全 EBADF 格过，非目录 fd 全 ENOTDIR 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9230_matrix_dirfd_at_empty_path",
+  "seg": 501504
+ },
+ {
+  "id": 9231,
+  "title": "EBADF vs ENOENT 判定次序协议（先 fd 后路径）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9231-J1 判序协议判据过，坏 fd 优先返回 EBADF 逐格检出，判序与 Linux 逐例一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9231_order_ebadf_enoent",
+  "seg": 501568
+ },
+ {
+  "id": 9232,
+  "title": "fd 复用竞态注入（close-then-use TOCTOU）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9232-J1 close-then-use 竞态注入判据过，槽位复用窗口可观测格过，100 次注入零越权写格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9232_race_fd_close",
+  "seg": 501632
+ },
+ {
+  "id": 9233,
+  "title": "错误码返回路径探针（负值编码与 err 链路）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9233-J1 负值编码探针判据过，-Errno 逐码编码一致格过，err 链路与 B13 编码器单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9233_err",
+  "seg": 501696
+ },
+ {
+  "id": 9234,
+  "title": "fd 族 E 型参数探针总成",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9234-J1 nargs 逐位提取判据过，坏指针全 EFAULT 格过，与参数拷贝探针单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9234_eprobe_suite_fd",
+  "seg": 501760
+ },
+ {
+  "id": 9235,
+  "title": "fd 族 E 型与 B08/B15 深化册对账格",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9235-J1 对账判据过，与 dup 族/管道深化册逐条判据零冲突格过，正反分层声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9235_etype_vs_reconcile_fd",
+  "seg": 501824
+ },
+ {
+  "id": 9236,
+  "title": "fd 族 E 型与 Windows INVALID_HANDLE_VALUE 对照格",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9236-J1 INVALID_HANDLE_VALUE 映射判据过，WSA 错误差异账三条全列格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9236_etype_vs_compare_fd",
+  "seg": 501888
+ },
+ {
+  "id": 9237,
+  "title": "E 型判据可复测性声明（10/10 次检出）",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9237-J1 全矩阵 10 次重复注入判据过，10/10 次检出统计格过，零 flaky 声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9237_etype_recheck_declare",
+  "seg": 501952
+ },
+ {
+  "id": 9238,
+  "title": "fd 族 E 型升级接管注记",
+  "quota": 280,
+  "accept": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F9238-J1 接管边界声明判据过，存量错误路径零重写承诺格过，增量清单落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9238_etype_takeover_note_fd",
+  "seg": 502016
+ },
+ {
+  "id": 9239,
+  "title": "fd 族 E 型与 glibc perror/strerror 消费核",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9239-J1 strerror 逐码输出判据过，与 errno 透传单源格过，消费号登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9239_etype_vs_consumer_fd",
+  "seg": 502080
+ },
+ {
+  "id": 9240,
+  "title": "ktest syscall 面 B22 批断言集",
+  "quota": 460,
+  "accept": "① 纯功能代码 ≥460 行；② 判据原文：UNX-F9240-J1 本批 19 条判据聚合判据过，fd 族 E 型矩阵一次跑通，域累计 112,400 收口断言；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9240_ktest_syscall_b22",
+  "seg": 502144
+ },
+ {
+  "id": 9241,
+  "title": "内存族 E 型总纲（地址空间错误面）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9241-J1 地址空间错误面判据过，四类错误域（对齐/越界/耗尽/权限）逐格落账，与本批矩阵映射一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9241_charter_mem",
+  "seg": 502208
+ },
+ {
+  "id": 9242,
+  "title": "mmap 坏 addr 提示与坏映射探针矩阵",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9242-J1 mmap addr 非法提示值注入判据过，提示值零副作用正判据格过，映射后访问坏区间 SIGSEGV 路径格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9242_matrix_mmap_addr",
+  "seg": 502272
+ },
+ {
+  "id": 9243,
+  "title": "mmap 未对齐 EINVAL 矩阵",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9243-J1 非页对齐 addr/length 注入矩阵判据过，全 EINVAL 逐格检出（MAP_FIXED 时全 EINVAL），页掩码对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9243_matrix_mmap_einval",
+  "seg": 502336
+ },
+ {
+  "id": 9244,
+  "title": "mmap ENOMEM 矩阵（超限/无空间）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9244-J1 地址空间耗尽注入判据过，全 ENOMEM 格过，max_map_count 上限格过，与 RLIMIT_AS 联动格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9244_matrix_mmap_enomem",
+  "seg": 502400
+ },
+ {
+  "id": 9245,
+  "title": "munmap/mprotect 坏区间矩阵",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9245-J1 未对齐区间注入判据过，munmap 全 EINVAL 格过，mprotect 坏 prot 全 EINVAL 格过，区间不存在全 ENOMEM 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9245_matrix_munmap_mprotect",
+  "seg": 502464
+ },
+ {
+  "id": 9246,
+  "title": "brk 坏值矩阵（越下界 EINVAL）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9246-J1 低于初始堆底注入判据过，全 EINVAL 格过，返回新 break 正判据格过，与 B07 brk 档对账一致；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9246_matrix_brk_einval",
+  "seg": 502528
+ },
+ {
+  "id": 9247,
+  "title": "mremap 错误矩阵（EINVAL/ENOMEM/EPERM 联 B17）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9247-J1 三错误码注入矩阵判据过，非对齐 old_addr 全 EINVAL 格过，与 B17 矩阵零重复分层声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9247_matrix_mremap_einval",
+  "seg": 502592
+ },
+ {
+  "id": 9248,
+  "title": "madvise 错误矩阵（EINVAL/ENOMEM 联 B17）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9248-J1 未知 advice 全 EINVAL 判据过，越界区间全 ENOMEM 格过，与 B17 矩阵零重复分层声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9248_matrix_madvise_einval",
+  "seg": 502656
+ },
+ {
+  "id": 9249,
+  "title": "mlock/mprotect 权限边界矩阵（与 B24 分界声明）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9249-J1 锁页越限全 EPERM 判据过，与 B24 权限矩阵分界声明格过，零重复判据格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9249_matrix_boundary_declare",
+  "seg": 502720
+ },
+ {
+  "id": 9250,
+  "title": "地址空间越界访问 SIGSEGV 路径矩阵",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9250-J1 越界读写触发 #PF 判据过，SIGSEGV 投递可观测格过，si_addr 逐格正确格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9250_matrix_sigsegv",
+  "seg": 502784
+ },
+ {
+  "id": 9251,
+  "title": "页对齐边界值矩阵（4K/2M 大页）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9251-J1 4K 页界逐位注入判据过，2M 大页边界格过，跨界映射拒绝语义格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9251_matrix_boundary",
+  "seg": 502848
+ },
+ {
+  "id": 9252,
+  "title": "零长度映射边界矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9252-J1 零长度 mmap 正判据（返回合法地址零副作用）判据过，零长度 munmap 全 EINVAL 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9252_matrix_boundary",
+  "seg": 502912
+ },
+ {
+  "id": 9253,
+  "title": "MAP_FIXED 冲突矩阵（ENOENT/EEXIST）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9253-J1 MAP_FIXED 覆盖语义判据过，与现存映射冲突覆盖可观测格过，MAP_FIXED_NOREPLACE 全 EEXIST 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9253_matrix_map_fixed_enoent",
+  "seg": 502976
+ },
+ {
+  "id": 9254,
+  "title": "内存族 E 型参数探针总成",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9254-J1 nargs 逐位提取判据过，坏指针全 EFAULT 格过，与参数拷贝探针单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9254_eprobe_suite_mem",
+  "seg": 503040
+ },
+ {
+  "id": 9255,
+  "title": "内存族 E 型与 B06/B07 深化册对账格",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9255-J1 对账判据过，与 mmap 三联/brk 档深化册逐条判据零冲突格过，正反分层声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9255_etype_vs_reconcile_mem",
+  "seg": 503104
+ },
+ {
+  "id": 9256,
+  "title": "内存族 E 型与 Windows VirtualAlloc 错误码对照格",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9256-J1 ERROR_INVALID_ADDRESS 映射判据过，差异账三条全列格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9256_etype_vs_compare_mem",
+  "seg": 503168
+ },
+ {
+  "id": 9257,
+  "title": "E 型判据可复测性声明（10/10 次检出）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9257-J1 全矩阵 10 次重复注入判据过，10/10 次检出统计格过，零 flaky 声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9257_etype_recheck_declare",
+  "seg": 503232
+ },
+ {
+  "id": 9258,
+  "title": "内存族 E 型升级接管注记",
+  "quota": 280,
+  "accept": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F9258-J1 接管边界声明判据过，存量错误路径零重写承诺格过，增量清单落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9258_etype_takeover_note_mem",
+  "seg": 503296
+ },
+ {
+  "id": 9259,
+  "title": "内存族 E 型与 glibc malloc 失败路径消费核",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9259-J1 malloc 返回 NULL 路径判据过，ENOMEM 透传可观测格过，消费号登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9259_etype_vs_consumer_mem",
+  "seg": 503360
+ },
+ {
+  "id": 9260,
+  "title": "ktest syscall 面 B23 批断言集",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9260-J1 本批 19 条判据聚合判据过，内存族 E 型矩阵一次跑通，域累计 119,200 收口断言；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9260_ktest_syscall_b23",
+  "seg": 503424
+ },
+ {
+  "id": 9261,
+  "title": "权限错误面总纲（EPERM vs EACCES 判定域）",
+  "quota": 420,
+  "accept": "① 纯功能代码 ≥420 行；② 判据原文：UNX-F9261-J1 两错误码判定域判据过，EPERM（操作特权缺失）与 EACCES（对象权限不足）分界逐格落账，与 Linux 语义逐例一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9261_charter_domain_perm",
+  "seg": 503488
+ },
+ {
+  "id": 9262,
+  "title": "open EACCES 矩阵（rwx 三位逐格）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9262-J1 rwx 三位逐格注入判据过，缺 r 读全 EACCES 格过，缺 w 写全 EACCES 格过，缺 x 执行全 EACCES 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9262_matrix_open_eacces",
+  "seg": 503552
+ },
+ {
+  "id": 9263,
+  "title": "chmod/chown EPERM 矩阵（非属主）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9263-J1 非属主注入判据过，全 EPERM 格过，特权路径正判据格过，与 B05 三身份档对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9263_matrix_chmod_chown",
+  "seg": 503616
+ },
+ {
+  "id": 9264,
+  "title": "权限位模型（st_mode 九位逐格矩阵）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9264-J1 九位逐格矩阵判据过，ugo×rwx 逐格可观测，S_IFMT 类型位掩码格过，与 stat 结构单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9264_matrix_perm_st_mode",
+  "seg": 503680
+ },
+ {
+  "id": 9265,
+  "title": "setuid/setgid 文件位与执行路径矩阵",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9265-J1 s 位语义挂点判据过，目录 setgid 位继承挂点格过，实装归 C1/B1 联签声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9265_matrix_setuid_setgid",
+  "seg": 503744
+ },
+ {
+  "id": 9266,
+  "title": "目录搜索权限 EACCES 矩阵（路径逐段）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9266-J1 路径逐段缺 x 注入判据过，全 EACCES 格过，错误点（首段缺失优先）判序格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9266_matrix_perm_eacces",
+  "seg": 503808
+ },
+ {
+  "id": 9267,
+  "title": "EPERM 特权操作矩阵（root-only 全集）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9267-J1 root-only 操作全集注入判据过，非 root 全 EPERM 逐格检出，CAP 消费声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9267_matrix_eperm_root",
+  "seg": 503872
+ },
+ {
+  "id": 9268,
+  "title": "能力位 CAP_* 与 EPERM 判定矩阵",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9268-J1 guard::CAP_* 能力位逐位注入判据过，缺 CAP 全 EPERM 逐格检出，能力位与 uid 判序格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9268_matrix_cap_eperm",
+  "seg": 503936
+ },
+ {
+  "id": 9269,
+  "title": "只读文件系统 EROFS 矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9269-J1 EROFS 注入判据过，写路径全 EROFS 逐格检出，与 EACCES 判序（先挂载只读后权限）格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9269_matrix_erofs",
+  "seg": 504000
+ },
+ {
+  "id": 9270,
+  "title": "EBUSY/EEXIST 冲突矩阵（独占创建）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9270-J1 O_EXCL 冲突注入判据过，全 EEXIST 格过，EBUSY 独占冲突格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9270_matrix_ebusy_eexist",
+  "seg": 504064
+ },
+ {
+  "id": 9271,
+  "title": "身份翻转 EPERM 矩阵（联 B20 对账）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9271-J1 非特权提限注入判据过，全 EPERM 逐格检出，与 B20 身份矩阵零重复分层格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9271_matrix_eperm_b20",
+  "seg": 504128
+ },
+ {
+  "id": 9272,
+  "title": "ioctl ioperm/iopl 禁用格 EPERM 矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9272-J1 ioperm/iopl 注入判据过，全 EPERM 拒绝格过，与 B16 红线注记（禁用格）对账一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9272_matrix_ioctl_ioperm",
+  "seg": 504192
+ },
+ {
+  "id": 9273,
+  "title": "rlimit 硬限提升 EPERM 矩阵（联 B19 对账）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9273-J1 硬限提升注入判据过，非特权全 EPERM 格过，与 B19 资源矩阵零重复分层格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9273_matrix_rlimit_eperm",
+  "seg": 504256
+ },
+ {
+  "id": 9274,
+  "title": "权限族 E 型参数探针总成",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9274-J1 nargs 逐位提取判据过，坏指针全 EFAULT 格过，与参数拷贝探针单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9274_eprobe_suite_perm",
+  "seg": 504320
+ },
+ {
+  "id": 9275,
+  "title": "权限族 E 型与三身份档/B05 深化册对账格",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9275-J1 对账判据过，与 B05 三身份语义基准逐条零冲突格过，正反分层声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9275_etype_vs_reconcile_perm",
+  "seg": 504384
+ },
+ {
+  "id": 9276,
+  "title": "权限族 E 型与 Windows Access Denied 对照格",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9276-J1 ERROR_ACCESS_DENIED 映射判据过，差异账三条全列格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9276_etype_vs_compare_perm",
+  "seg": 504448
+ },
+ {
+  "id": 9277,
+  "title": "E 型判据可复测性声明（10/10 次检出）",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9277-J1 全矩阵 10 次重复注入判据过，10/10 次检出统计格过，零 flaky 声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9277_etype_recheck_declare",
+  "seg": 504512
+ },
+ {
+  "id": 9278,
+  "title": "权限族 E 型升级接管注记",
+  "quota": 280,
+  "accept": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F9278-J1 接管边界声明判据过，存量错误路径零重写承诺格过，增量清单落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9278_etype_takeover_note_perm",
+  "seg": 504576
+ },
+ {
+  "id": 9279,
+  "title": "权限族 E 型与 glibc access/euid 消费核",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9279-J1 access 族真实 uid 语义判据过，与 euid 差异可观测格过，消费号登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9279_etype_vs_consumer_perm",
+  "seg": 504640
+ },
+ {
+  "id": 9280,
+  "title": "ktest syscall 面 B24 批断言集",
+  "quota": 480,
+  "accept": "① 纯功能代码 ≥480 行；② 判据原文：UNX-F9280-J1 本批 19 条判据聚合判据过，权限族 E 型矩阵一次跑通，域累计 126,000 收口断言；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9280_ktest_syscall_b24",
+  "seg": 504704
+ },
+ {
+  "id": 9281,
+  "title": "进程族 E 型总纲（进程空间错误面）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9281-J1 进程空间错误面判据过，四类错误域（pid 不存在/权限/资源耗尽/参数坏值）逐格落账，判序协议声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9281_charter_proc",
+  "seg": 504768
+ },
+ {
+  "id": 9282,
+  "title": "kill 坏 pid 矩阵（ESRCH/EPERM/EINVAL）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9282-J1 三错误码注入矩阵判据过，pid=1 EPERM 特例格过，非法 sig 全 EINVAL 格过，不存在 pid 全 ESRCH 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9282_matrix_kill_pid",
+  "seg": 504832
+ },
+ {
+  "id": 9283,
+  "title": "wait 坏 pid ECHILD 矩阵（联 B18 对账）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9283-J1 无子进程注入判据过，全 ECHILD 格过，与 B18 wait 矩阵零重复分层格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9283_matrix_wait_pid",
+  "seg": 504896
+ },
+ {
+  "id": 9284,
+  "title": "fork/clone EAGAIN 矩阵（RLIMIT_NPROC 联动）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9284-J1 进程数触顶注入判据过，全 EAGAIN 格过，与 B19 NPROC 联动格过，释放后恢复正判据格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9284_matrix_fork_clone",
+  "seg": 504960
+ },
+ {
+  "id": 9285,
+  "title": "fork/clone ENOMEM 矩阵（地址空间耗尽）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9285-J1 地址空间耗尽注入判据过，全 ENOMEM 格过，COW 挂点依赖声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9285_matrix_fork_clone",
+  "seg": 505024
+ },
+ {
+  "id": 9286,
+  "title": "setpgid 坏 pid ESRCH 矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9286-J1 坏 pid 注入判据过，全 ESRCH 格过，跨会话 EPERM 格过，与 B18 对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9286_matrix_setpgid_pid",
+  "seg": 505088
+ },
+ {
+  "id": 9287,
+  "title": "setsid EPERM 矩阵（会话首规则联 B18）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9287-J1 会话首注入判据过，全 EPERM 格过，与 B18 选举语义对账一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9287_matrix_setsid_eperm",
+  "seg": 505152
+ },
+ {
+  "id": 9288,
+  "title": "execve 错误矩阵（EACCES/ENOEXEC/E2BIG/EFAULT）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9288-J1 四错误码注入矩阵判据过，坏路径全 EFAULT 格过，非脚本非 ELF 全 ENOEXEC 格过，判序与 Linux 一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9288_matrix_execve_eacces",
+  "seg": 505216
+ },
+ {
+  "id": 9289,
+  "title": "参数长度 E2BIG 矩阵（argv/envp 上限）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9289-J1 超限 argv 注入判据过，全 E2BIG 格过，单参数上限 MAX_ARG_STRLEN 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9289_matrix_e2big_argv",
+  "seg": 505280
+ },
+ {
+  "id": 9290,
+  "title": "零参数 execve 边界矩阵",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9290-J1 空 argv 正判据（argv[0] 可空）判据过，空 envp 正判据格过，坏指针优先判序格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9290_matrix_boundary_execve",
+  "seg": 505344
+ },
+ {
+  "id": 9291,
+  "title": "僵尸收割竞态注入（wait vs exit 竞态）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9291-J1 wait-exit 竞态注入判据过，单次收割唯一性 100 次统计格过，双 wait 第二次全 ECHILD 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9291_race_wait_exit",
+  "seg": 505408
+ },
+ {
+  "id": 9292,
+  "title": "进程退出竞态注入（SIGCHLD 投递竞态）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9292-J1 SIGCHLD 投递竞态注入判据过，投递不丢失 100 次统计格过，与 B11 链对账一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9292_race_sigchld",
+  "seg": 505472
+ },
+ {
+  "id": 9293,
+  "title": "ESRCH 判定次序协议（pid 存在性先于权限）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9293-J1 判序协议判据过，不存在 pid 全 ESRCH 逐格检出（先于 EPERM），与 Linux 逐例一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9293_order_perm_esrch",
+  "seg": 505536
+ },
+ {
+  "id": 9294,
+  "title": "进程族 E 型参数探针总成",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9294-J1 nargs 逐位提取判据过，坏指针全 EFAULT 格过，与参数拷贝探针单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9294_eprobe_suite_proc",
+  "seg": 505600
+ },
+ {
+  "id": 9295,
+  "title": "进程族 E 型与 B04/B08 深化册对账格",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9295-J1 对账判据过，与 fork 档/进程族地基深化册逐条零冲突格过，正反分层声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9295_etype_vs_reconcile_proc",
+  "seg": 505664
+ },
+ {
+  "id": 9296,
+  "title": "进程族 E 型与 Windows 进程句柄错误对照格",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9296-J1 ERROR_INVALID_PARAMETER 映射判据过，差异账三条全列格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9296_etype_vs_compare_proc",
+  "seg": 505728
+ },
+ {
+  "id": 9297,
+  "title": "E 型判据可复测性声明（10/10 次检出）",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9297-J1 全矩阵 10 次重复注入判据过，10/10 次检出统计格过，零 flaky 声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9297_etype_recheck_declare",
+  "seg": 505792
+ },
+ {
+  "id": 9298,
+  "title": "进程族 E 型升级接管注记",
+  "quota": 280,
+  "accept": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F9298-J1 接管边界声明判据过，存量错误路径零重写承诺格过，增量清单落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9298_etype_takeover_note_proc",
+  "seg": 505856
+ },
+ {
+  "id": 9299,
+  "title": "进程族 E 型与 glibc fork/exec 错误路径消费核",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9299-J1 fork 返回 -1 errno 透传判据过，exec 失败子进程 _exit(127) 惯例格过，消费号登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9299_etype_vs_consumer_proc",
+  "seg": 505920
+ },
+ {
+  "id": 9300,
+  "title": "ktest syscall 面 B25 批断言集",
+  "quota": 440,
+  "accept": "① 纯功能代码 ≥440 行；② 判据原文：UNX-F9300-J1 本批 19 条判据聚合判据过，进程族 E 型矩阵一次跑通，域累计 132,700 收口断言；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9300_ktest_syscall_b25",
+  "seg": 505984
+ },
+ {
+  "id": 9301,
+  "title": "EINTR 语义总纲（慢系统调用中断面）",
+  "quota": 420,
+  "accept": "① 纯功能代码 ≥420 行；② 判据原文：UNX-F9301-J1 慢系统调用中断面判据过，EINTR 触发三条件（信号到达/无 SA_RESTART/阻塞中）逐格落账，与 Linux 语义一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9301_charter_eintr",
+  "seg": 506048
+ },
+ {
+  "id": 9302,
+  "title": "SA_RESTART 重启语义矩阵（逐 syscall 重启面）",
+  "quota": 420,
+  "accept": "① 纯功能代码 ≥420 行；② 判据原文：UNX-F9302-J1 SA_RESTART 逐 syscall 重启面矩阵判据过，可重启族逐格重启可观测，不可重启族逐格 EINTR 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9302_matrix_sa_restart_syscall",
+  "seg": 506112
+ },
+ {
+  "id": 9303,
+  "title": "read/write EINTR 矩阵（部分读写残留量）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9303-J1 部分读写后中断注入判据过，已传字节数返回正判据格过，零字节残留 EINTR 格过，与 B03/B04 对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9303_matrix_read_write",
+  "seg": 506176
+ },
+ {
+  "id": 9304,
+  "title": "nanosleep EINTR remaining 回写矩阵（联 B20）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9304-J1 中断注入 remaining 回写判据过，剩余量逐 ns 可观测格过，与 B20 休眠族对账一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9304_matrix_nanosleep_eintr",
+  "seg": 506240
+ },
+ {
+  "id": 9305,
+  "title": "wait EINTR 矩阵（联 B18）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9305-J1 阻塞 wait 中断注入判据过，全 EINTR 格过，WNOHANG 零中断正判据格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9305_matrix_wait_eintr",
+  "seg": 506304
+ },
+ {
+  "id": 9306,
+  "title": "poll/epoll EINTR 矩阵（就绪前中断）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9306-J1 就绪前中断注入判据过，全 EINTR 格过，重启后重入正确格过，与 B09 四件套对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9306_matrix_poll_epoll",
+  "seg": 506368
+ },
+ {
+  "id": 9307,
+  "title": "阻塞挂点 EINTR 矩阵（waitqueue 等待中断窗）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9307-J1 等待队列中断注入判据过，全 EINTR 格过，唤醒零丢失格过，与 A3 fake 原语对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9307_matrix_hook_eintr",
+  "seg": 506432
+ },
+ {
+  "id": 9308,
+  "title": "flock/lockf EINTR 矩阵（锁等待中断）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9308-J1 锁等待中断注入判据过，全 EINTR 格过，锁状态零破坏格过，与 B16 记录锁挂点对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9308_matrix_flock_lockf",
+  "seg": 506496
+ },
+ {
+  "id": 9309,
+  "title": "信号投递时机竞态矩阵（阻塞前后双窗）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9309-J1 阻塞前后双窗注入判据过，双窗逐格可观测，信号不丢失 100 次统计格过，与 B11/B12 对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9309_matrix_race",
+  "seg": 506560
+ },
+ {
+  "id": 9310,
+  "title": "EINTR 与线程取消联动矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9310-J1 取消点注入判据过，取消点集逐格落账，实装归 C1 线程联签声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9310_matrix_eintr",
+  "seg": 506624
+ },
+ {
+  "id": 9311,
+  "title": "部分完成语义矩阵（bytes-copied-before-signal）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9311-J1 半程拷贝后中断注入判据过，已拷贝字节返回语义格过，与 EFAULT 半程探针对账一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9311_matrix_bytes_copied",
+  "seg": 506688
+ },
+ {
+  "id": 9312,
+  "title": "EINTR 错误注入器（信号发生器协议）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9312-J1 信号发生器注入协议判据过，注入时序可控可观测，100 次注入统计复测格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9312_injector_eintr",
+  "seg": 506752
+ },
+ {
+  "id": 9313,
+  "title": "EINTR 判定次序协议（先完成后中断）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9313-J1 判序协议判据过，完成优先于中断逐格检出，与 Linux 语义一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9313_order_eintr",
+  "seg": 506816
+ },
+ {
+  "id": 9314,
+  "title": "E 型竞态可复测性声明（竞态 100 次注入统计）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9314-J1 竞态 100 次注入统计判据过，统计分布落账格过，零 flaky 阈值声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9314_race_stats_declare",
+  "seg": 506880
+ },
+ {
+  "id": 9315,
+  "title": "EINTR 与 B12 事件挂点族对账格",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9315-J1 对账判据过，与 B12 四输入判定器逐条零冲突格过，正反分层声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9315_reconcile_hook_eintr",
+  "seg": 506944
+ },
+ {
+  "id": 9316,
+  "title": "EINTR 与 A1 调度让出协议对账格",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9316-J1 对账判据过，让出协议单源格过，上游依赖登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9316_reconcile_eintr_a1",
+  "seg": 507008
+ },
+ {
+  "id": 9317,
+  "title": "EINTR 与 Windows ERROR_INTERRUPTED 对照格",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9317-J1 映射判据过，APC 中断差异账三条全列格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9317_compare_eintr_windows",
+  "seg": 507072
+ },
+ {
+  "id": 9318,
+  "title": "EINTR 与 glibc TEMP_FAILURE_RETRY 消费核",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9318-J1 重试宏消费链判据过，重试后语义正确可观测，消费号登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9318_consumer_eintr_glibc",
+  "seg": 507136
+ },
+ {
+  "id": 9319,
+  "title": "E 型竞态参数探针总成",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9319-J1 nargs 逐位提取判据过，坏指针全 EFAULT 格过，与参数拷贝探针单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9319_race_suite",
+  "seg": 507200
+ },
+ {
+  "id": 9320,
+  "title": "ktest syscall 面 B26 批断言集",
+  "quota": 480,
+  "accept": "① 纯功能代码 ≥480 行；② 判据原文：UNX-F9320-J1 本批 19 条判据聚合判据过，EINTR 竞态矩阵一次跑通，域累计 139,900 收口断言；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9320_ktest_syscall_b26",
+  "seg": 507264
+ },
+ {
+  "id": 9321,
+  "title": "时间资源错误面总纲（EINVAL 判定域）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9321-J1 时间资源错误面判据过，EINVAL 触发域（非法时钟/非法标志/值域越界）逐格落账，与 Linux 语义一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9321_charter_domain_einval",
+  "seg": 507328
+ },
+ {
+  "id": 9322,
+  "title": "gettimeofday/clock_gettime 坏指针矩阵（EFAULT）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9322-J1 坏指针注入判据过，全 EFAULT 格过，10/10 次检出格过，与 B06 时间族对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9322_matrix_gettimeofday_clock_gettim",
+  "seg": 507392
+ },
+ {
+  "id": 9323,
+  "title": "clock_settime 非法时钟 EINVAL 矩阵",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9323-J1 非法 clockid 注入判据过，全 EINVAL 格过，CLOCK_REALTIME 正判据格过，特权检查挂点格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9323_matrix_clock_settime_einval",
+  "seg": 507456
+ },
+ {
+  "id": 9324,
+  "title": "timer_create/timer_settime 错误矩阵（EINVAL/EAGAIN）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9324-J1 两错误码注入矩阵判据过，非法 sigevent 全 EINVAL 格过，定时器耗尽全 EAGAIN 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9324_matrix_timer_create_timer_settim",
+  "seg": 507520
+ },
+ {
+  "id": 9325,
+  "title": "POSIX 定时器耗尽 EAGAIN 矩阵（RLIMIT_SIGPENDING 联动）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9325-J1 定时器上限注入判据过，全 EAGAIN 格过，与 B19 SIGPENDING 联动格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9325_matrix_posix_eagain",
+  "seg": 507584
+ },
+ {
+  "id": 9326,
+  "title": "setitimer 非法间隔矩阵",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9326-J1 负值/超上界注入判据过，全 EINVAL 格过，ITIMER_REAL 三类正判据格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9326_matrix_setitimer",
+  "seg": 507648
+ },
+ {
+  "id": 9327,
+  "title": "clock_nanosleep 非法标志/时钟矩阵",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9327-J1 非法标志注入判据过，全 EINVAL/ENOTSUP 逐格检出，非法时钟全 EINVAL 格过，与 B20 对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9327_matrix_clock_nanosleep",
+  "seg": 507712
+ },
+ {
+  "id": 9328,
+  "title": "getrusage 坏指针矩阵（联 B15/B19 对账）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9328-J1 坏指针注入判据过，全 EFAULT 格过，非法 who 全 EINVAL 格过，与 B19 对账零重复格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9328_matrix_getrusage_b15",
+  "seg": 507776
+ },
+ {
+  "id": 9329,
+  "title": "setrlimit 坏结构指针矩阵",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9329-J1 坏 rlim 指针注入判据过，全 EFAULT 格过，10/10 次检出格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9329_matrix_setrlimit",
+  "seg": 507840
+ },
+ {
+  "id": 9330,
+  "title": "rlimit 软硬倒置 EINVAL 矩阵（联 B19 对账）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9330-J1 软硬倒置注入判据过，全 EINVAL 格过，与 B19 矩阵零重复分层格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9330_matrix_rlimit_einval",
+  "seg": 507904
+ },
+ {
+  "id": 9331,
+  "title": "sched_setaffinity 坏掩码 EINVAL 矩阵",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9331-J1 全零掩码注入判据过，全 EINVAL 格过，坏 mask 指针全 EFAULT 格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9331_matrix_sched_setaffinity_einval",
+  "seg": 507968
+ },
+ {
+  "id": 9332,
+  "title": "sched_setscheduler 非法策略 EINVAL 矩阵",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9332-J1 非法策略注入判据过，全 EINVAL 格过，非法 param 全 EINVAL 格过，A1 消费声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9332_matrix_sched_setscheduler_einval",
+  "seg": 508032
+ },
+ {
+  "id": 9333,
+  "title": "时间值规范化边界矩阵（tv_nsec 上限 1e9）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9333-J1 tv_nsec 越界注入判据过，≥1e9 全 EINVAL 格过，规范化（tv_sec 进位）语义格过，与 B20 规范化对账一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9333_matrix_boundary_tv_nsec",
+  "seg": 508096
+ },
+ {
+  "id": 9334,
+  "title": "时间/资源族 E 型参数探针总成",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9334-J1 nargs 逐位提取判据过，坏指针全 EFAULT 格过，与参数拷贝探针单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9334_eprobe_suite_timeres",
+  "seg": 508160
+ },
+ {
+  "id": 9335,
+  "title": "时间/资源族 E 型与 B06/B19 深化册对账格",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9335-J1 对账判据过，与时间族/资源族深化册逐条零冲突格过，正反分层声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9335_etype_vs_reconcile_timeres",
+  "seg": 508224
+ },
+ {
+  "id": 9336,
+  "title": "时间/资源族 E 型与 Windows 计时器错误对照格",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9336-J1 ERROR_INVALID_PARAMETER 映射判据过，差异账三条全列格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9336_etype_vs_compare_timeres",
+  "seg": 508288
+ },
+ {
+  "id": 9337,
+  "title": "E 型判据可复测性声明（10/10 次检出）",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9337-J1 全矩阵 10 次重复注入判据过，10/10 次检出统计格过，零 flaky 声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9337_etype_recheck_declare",
+  "seg": 508352
+ },
+ {
+  "id": 9338,
+  "title": "时间/资源族 E 型升级接管注记",
+  "quota": 280,
+  "accept": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F9338-J1 接管边界声明判据过，存量错误路径零重写承诺格过，增量清单落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9338_etype_takeover_note_timeres",
+  "seg": 508416
+ },
+ {
+  "id": 9339,
+  "title": "时间/资源族 E 型与 glibc clock 家族消费核",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9339-J1 clock_gettime errno 透传判据过，失效时钟全 EINVAL 可观测，消费号登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9339_etype_vs_consumer_timeres",
+  "seg": 508480
+ },
+ {
+  "id": 9340,
+  "title": "ktest syscall 面 B27 批断言集",
+  "quota": 440,
+  "accept": "① 纯功能代码 ≥440 行；② 判据原文：UNX-F9340-J1 本批 19 条判据聚合判据过，时间资源族 E 型矩阵一次跑通，域累计 146,800 收口断言；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9340_ktest_syscall_b27",
+  "seg": 508544
+ },
+ {
+  "id": 9341,
+  "title": "E 型总装总纲（全错误码矩阵收口协议）",
+  "quota": 420,
+  "accept": "① 纯功能代码 ≥420 行；② 判据原文：UNX-F9341-J1 八批错误矩阵收口协议判据过，全错误码账逐码落账，收口判序（EFAULT>EBADF>EINVAL>EPERM）声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9341_charter_matrix_assembly",
+  "seg": 508608
+ },
+ {
+  "id": 9342,
+  "title": "全域 EFAULT 矩阵总装（跨五族逐格）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9342-J1 五族坏指针逐格总装判据过，全 EFAULT 逐格检出，拷贝方向（in/out）双向逐格格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9342_matrix_assembly_global",
+  "seg": 508672
+ },
+ {
+  "id": 9343,
+  "title": "全域 EBADF 矩阵总装",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9343-J1 五族坏 fd 逐格总装判据过，全 EBADF 逐格检出，fd 空间全域扫描格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9343_matrix_assembly_global",
+  "seg": 508736
+ },
+ {
+  "id": 9344,
+  "title": "全域 EINVAL 矩阵总装",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9344-J1 五族非法参数逐格总装判据过，全 EINVAL 逐格检出，与 Linux 逐例一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9344_matrix_assembly_global",
+  "seg": 508800
+ },
+ {
+  "id": 9345,
+  "title": "全域 EPERM/EACCES 矩阵总装",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9345-J1 五族权限注入逐格总装判据过，EPERM/EACCES 分界逐格检出，与 B24 判定域对账一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9345_matrix_assembly_global",
+  "seg": 508864
+ },
+ {
+  "id": 9346,
+  "title": "全域 ENOSYS 未实装号矩阵（号面全扫）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9346-J1 号面全扫注入判据过，未实装号全 ENOSYS 逐格检出，与 18 号注册面/COMPAT_TABLE 对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9346_matrix_global_nosys",
+  "seg": 508928
+ },
+ {
+  "id": 9347,
+  "title": "错误码优先级链总装（EFAULT>EBADF>EINVAL 判序）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9347-J1 判序链逐例总装判据过，多错误并发时取高优先逐格检出，与 Linux 判序逐例一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9347_assembly_efault_ebadf",
+  "seg": 508992
+ },
+ {
+  "id": 9348,
+  "title": "errno 透传全链路总装（Errno→lxerrno→glibc）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9348-J1 全链路逐码总装判据过，Errno→sysret→glibc errno 逐码一致格过，与 B13 编码器零漂移格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9348_assembly_errno_errno",
+  "seg": 509056
+ },
+ {
+  "id": 9349,
+  "title": "坏值注入器总装（fuzz 值域全集）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9349-J1 fuzz 值域全集注入判据过（零/负/上限/上限+1/全 F/全 0），检出率统计格过，零内核 panic 声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9349_injector_assembly_fuzz",
+  "seg": 509120
+ },
+ {
+  "id": 9350,
+  "title": "边界值等价类总装（零/负/上限/上限+1）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9350-J1 四等价类逐类总装判据过，逐类期望值逐格检出，等价类账落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9350_boundary_equiv_assembly",
+  "seg": 509184
+ },
+ {
+  "id": 9351,
+  "title": "指针等价类总装（NULL/-1/非映射/只读映射）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9351-J1 四指针等价类总装判据过，逐类期望 EFAULT 逐格检出，只读映射写路径格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9351_equiv_assembly_null",
+  "seg": 509248
+ },
+ {
+  "id": 9352,
+  "title": "fd 等价类总装（负值/未开/已关/越限）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9352-J1 四 fd 等价类总装判据过，逐类期望 EBADF 逐格检出，等价类账落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9352_equiv_assembly_fd",
+  "seg": 509312
+ },
+ {
+  "id": 9353,
+  "title": "竞态注入总装（EINTR×五族）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9353-J1 EINTR×五族竞态总装判据过，逐族 100 次统计格过，与 B26 注入器单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9353_race_assembly_eintr",
+  "seg": 509376
+ },
+ {
+  "id": 9354,
+  "title": "全域错误回归矩阵（与 B21–B27 判据联动）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9354-J1 回归矩阵判据过，与七批判据逐条联动可观测，回归零回退声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9354_matrix_regression_global",
+  "seg": 509440
+ },
+ {
+  "id": 9355,
+  "title": "E 型与 B13 错误编码器总成对账格",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9355-J1 对账判据过，与 errno.rs 编码族逐码零冲突格过，升级接管口径声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9355_etype_vs_reconcile_suite",
+  "seg": 509504
+ },
+ {
+  "id": 9356,
+  "title": "E 型与 lxerrno::VarixErr 映射总装",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9356-J1 映射总装判据过，VarixErr 逐码映射一致格过，单源声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9356_etype_vs_assembly_lxerrno",
+  "seg": 509568
+ },
+ {
+  "id": 9357,
+  "title": "E 型与 Windows 错误码全域对照账",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9357-J1 全域对照账判据过，逐码映射表落账，差异账五条全列格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9357_etype_vs_global_windows",
+  "seg": 509632
+ },
+ {
+  "id": 9358,
+  "title": "E 型判据可复测性总声明（全矩阵 10/10）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9358-J1 全矩阵 10 次重复注入判据过，10/10 次检出总统计格过，零 flaky 总声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9358_etype_recheck_matrix_declare",
+  "seg": 509696
+ },
+ {
+  "id": 9359,
+  "title": "E 型升级接管总注记（错误面增量清单）",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9359-J1 接管边界总声明判据过，存量错误面零重写承诺格过，增量清单落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9359_etype_takeover_list_note",
+  "seg": 509760
+ },
+ {
+  "id": 9360,
+  "title": "ktest syscall 面 B28 批断言集 + E 型收口断言",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9360-J1 本批 19 条判据聚合判据过，E 型八批（B21–B28）收口一次跑通断言过，域累计 154,100 收口断言；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9360_ktest_closure_syscall",
+  "seg": 509824
+ },
+ {
+  "id": 9361,
+  "title": "I 型联调总纲一（C2×C3 联签协议与共享判据面）",
+  "quota": 480,
+  "accept": "① 纯功能代码 ≥480 行；② 判据原文：UNX-F9361-J1 联签协议判据过，C2（syscall 号面）×C3（LTP 回归基建）双方判据面互认格过，跨界代写禁令声明格过（联测共享只写编号+一句话）；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9361_charter_cosign_c2",
+  "seg": 509888
+ },
+ {
+  "id": 9362,
+  "title": "C3 账本消费协议（LTP 用例号面只读消费）",
+  "quota": 440,
+  "accept": "① 纯功能代码 ≥440 行；② 判据原文：UNX-F9362-J1 消费协议判据过，C3 LTP 用例号面只读消费声明格过，零写入 C3 账本格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9362_c3_ltp",
+  "seg": 509952
+ },
+ {
+  "id": 9363,
+  "title": "LTP「可跑」登记联测面（C2 号面 × C3 回归基建）",
+  "quota": 420,
+  "accept": "① 纯功能代码 ≥420 行；② 判据原文：UNX-F9363-J1 「可跑」登记联测判据过，C2 号面逐号与 C3 回归基建对接可观测，登记口径单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9363_jointest_regression_ltp",
+  "seg": 510016
+ },
+ {
+  "id": 9364,
+  "title": "分发表注册协议联签（table.rs 注册接口 × C3 注入点）",
+  "quota": 460,
+  "accept": "① 纯功能代码 ≥460 行；② 判据原文：UNX-F9364-J1 注册接口联签判据过，table::SyscallDesc/resolve 与 C3 注入点对接可观测，18 号注册面+COMPAT_TABLE 零改动格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9364_cosign_table_rs",
+  "seg": 510080
+ },
+ {
+  "id": 9365,
+  "title": "syscall 路由联测（entry.rs 双门 × C3 探针）",
+  "quota": 440,
+  "accept": "① 纯功能代码 ≥440 行；② 判据原文：UNX-F9365-J1 双门路由联测判据过，SYSCALL/int 0x80 双门逐门可观测，C3 探针注入零改动格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9365_jointest_syscall_entry",
+  "seg": 510144
+ },
+ {
+  "id": 9366,
+  "title": "errno 编码联测（Errno 全集 × C3 断言库）",
+  "quota": 440,
+  "accept": "① 纯功能代码 ≥440 行；② 判据原文：UNX-F9366-J1 Errno 全集联测判据过，逐码与 C3 断言库对接一致格过，LTP 期望值逐码对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9366_jointest_errno_errno",
+  "seg": 510208
+ },
+ {
+  "id": 9367,
+  "title": "参数探针联测（uaccess 拷贝 × C3 值域库）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9367-J1 拷贝探针联测判据过，copy_from_user/copy_to_user 与 C3 值域库对接可观测，坏指针 EFAULT 对账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9367_jointest_uaccess_c3",
+  "seg": 510272
+ },
+ {
+  "id": 9368,
+  "title": "meter 计量联测（SyscallMeter × C3 统计账）",
+  "quota": 420,
+  "accept": "① 纯功能代码 ≥420 行；② 判据原文：UNX-F9368-J1 计量联测判据过，SyscallMeter 统计与 C3 统计账对接可观测，计数逐号一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9368_jointest_stats_meter",
+  "seg": 510336
+ },
+ {
+  "id": 9369,
+  "title": "guard 能力位联测（CAP_* × C3 权限判据库）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9369-J1 能力位联测判据过，CAP_* 与 C3 权限判据库对接可观测，EPERM 判定逐格一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9369_jointest_perm_guard",
+  "seg": 510400
+ },
+ {
+  "id": 9370,
+  "title": "号面冻结清单联签（F9600 冻结协议与 C3 台账互认）",
+  "quota": 460,
+  "accept": "① 纯功能代码 ≥460 行；② 判据原文：UNX-F9370-J1 冻结协议联签判据过，F8801–F9600 号面冻结清单与 C3 台账互认可观测，零重编声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9370_cosign_freeze_list",
+  "seg": 510464
+ },
+ {
+  "id": 9371,
+  "title": "LTP 子集清单联测（C2 号面覆盖率账）",
+  "quota": 440,
+  "accept": "① 纯功能代码 ≥440 行；② 判据原文：UNX-F9371-J1 覆盖率账联测判据过，C2 号面 LTP 子集覆盖率逐号落账，缺口清单登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9371_jointest_list_ltp",
+  "seg": 510528
+ },
+ {
+  "id": 9372,
+  "title": "回归基线联测（ktest -f c2 与 C3 回归 runner 对接）",
+  "quota": 440,
+  "accept": "① 纯功能代码 ≥440 行；② 判据原文：UNX-F9372-J1 基线联测判据过，ktest -f c2 与 C3 runner 对接可观测，fail==0 判据联测格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9372_ktest_jointest_baseline",
+  "seg": 510592
+ },
+ {
+  "id": 9373,
+  "title": "联测判据共享账（只写编号+一句话协议逐条）",
+  "quota": 420,
+  "accept": "① 纯功能代码 ≥420 行；② 判据原文：UNX-F9373-J1 共享账判据过，逐条只写编号+一句话协议格过，跨界代写零发生声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9373_jointest",
+  "seg": 510656
+ },
+ {
+  "id": 9374,
+  "title": "联签交接包（F9095/F9097 移交包升级版）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9374-J1 交接包升级判据过，B15 移交包逐项升级可观测，交接清单落账格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9374_cosign_handoff_f9095",
+  "seg": 510720
+ },
+ {
+  "id": 9375,
+  "title": "联调防重声明（C2×C3 号面零冲突 grep）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9375-J1 防重判据过，四范围 grep 零冲突格过，条目名零命中格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9375_declare_dedup_c2",
+  "seg": 510784
+ },
+ {
+  "id": 9376,
+  "title": "联调上游依赖登记（C3 未 finalize 依赖声明）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9376-J1 依赖声明判据过，C3 上游未 finalize 显式登记格过，fake 开发路径格过（§52 防卡死规则一）；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9376_declare_deps_c3",
+  "seg": 510848
+ },
+ {
+  "id": 9377,
+  "title": "联调与 Windows 对照账联测面",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9377-J1 对照账联测判据过，Windows 对照格与联测面对接可观测，差异账复用格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9377_jointest_windows",
+  "seg": 510912
+ },
+ {
+  "id": 9378,
+  "title": "联调与 glibc 消费核联测面",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9378-J1 消费核联测判据过，glibc 消费清单与联测面对接可观测，消费号登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9378_consumer_jointest_glibc",
+  "seg": 510976
+ },
+ {
+  "id": 9379,
+  "title": "I 型联调判据可复测性声明",
+  "quota": 300,
+  "accept": "① 纯功能代码 ≥300 行；② 判据原文：UNX-F9379-J1 联测判据 10 次重复判据过，10/10 次通过统计格过，零 flaky 声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9379_declare",
+  "seg": 511040
+ },
+ {
+  "id": 9380,
+  "title": "ktest syscall 面 B29 批断言集",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9380-J1 本批 19 条判据聚合判据过，C2×C3 联调一次跑通，域累计 162,000 收口断言；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9380_ktest_syscall_b29",
+  "seg": 511104
+ },
+ {
+  "id": 9381,
+  "title": "I 型联调总纲二（C2×C4 联签协议与挂点面）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9381-J1 联签协议判据过，C2（阻塞挂点）×C4（futex/epoll/pty 面）双方挂点面互认格过，跨界代写禁令声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9381_charter_cosign_hook",
+  "seg": 511168
+ },
+ {
+  "id": 9382,
+  "title": "futex 四操作挂点联签（WAIT/WAKE/FD/REQUEUE 协议）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9382-J1 四操作挂点联签判据过，C4 futex 四操作协议逐操作对接可观测，挂点单源格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9382_cosign_hook_futex",
+  "seg": 511232
+ },
+ {
+  "id": 9383,
+  "title": "futex EAGAIN/EINVAL 矩阵联测（C2 错误矩阵 × C4 挂点）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9383-J1 矩阵联测判据过，EAGAIN 耗尽格与 EINVAL 参数格逐格联测可观测，与 B23 判定域一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9383_matrix_jointest_hook",
+  "seg": 511296
+ },
+ {
+  "id": 9384,
+  "title": "epoll_ctl/epoll_wait 挂点联签（就绪队列协议）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9384-J1 两挂点联签判据过，就绪队列协议对接可观测，与 B09 四件套语义一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9384_cosign_hook_epoll_ctl",
+  "seg": 511360
+ },
+ {
+  "id": 9385,
+  "title": "epoll 错误矩阵联测（EBADF/EINVAL/EPERM）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9385-J1 三错误码联测判据过，逐码与 C4 挂点联测一致格过，与 B22 判定域一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9385_matrix_jointest_epoll",
+  "seg": 511424
+ },
+ {
+  "id": 9386,
+  "title": "多路复用四件套联测（poll/select/ppoll/pselect × C4 事件面）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9386-J1 四件套联测判据过，逐件与 C4 事件面对接可观测，timeout 语义逐件一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9386_jointest_poll_select",
+  "seg": 511488
+ },
+ {
+  "id": 9387,
+  "title": "pty 缺席 ENOTTY 联签（B16 终端挂点 × C4 pty 面）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9387-J1 缺席联签判据过，pty 缺席全 ENOTTY 逐格联测可观测，C4 pty 上线后翻转挂点声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9387_cosign_hook_pty",
+  "seg": 511552
+ },
+ {
+  "id": 9388,
+  "title": "信号挂点联签（B11/B12 挂点 × C4 futex 唤醒链）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9388-J1 唤醒链联签判据过，信号到达唤醒 futex 等待逐格联测可观测，零丢唤醒声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9388_cosign_hook_b11",
+  "seg": 511616
+ },
+ {
+  "id": 9389,
+  "title": "阻塞唤醒原语联测（A3 fake × C4 等待队列）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9389-J1 原语联测判据过，A3 fake 原语与 C4 等待队列对接可观测，Schema 先行声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9389_jointest_a3_fake",
+  "seg": 511680
+ },
+ {
+  "id": 9390,
+  "title": "futex 竞态注入联测（唤醒丢失窗 100 次统计）",
+  "quota": 380,
+  "accept": "① 纯功能代码 ≥380 行；② 判据原文：UNX-F9390-J1 竞态联测判据过，唤醒丢失窗 100 次注入统计格过，零丢失声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9390_race_jointest_stats",
+  "seg": 511744
+ },
+ {
+  "id": 9391,
+  "title": "EINTR 重启联测（B26 矩阵 × C4 挂点）",
+  "quota": 340,
+  "accept": "① 纯功能代码 ≥340 行；② 判据原文：UNX-F9391-J1 重启联测判据过，B26 EINTR 矩阵逐格与 C4 挂点联测可观测，SA_RESTART 语义一致格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9391_matrix_jointest_hook",
+  "seg": 511808
+ },
+ {
+  "id": 9392,
+  "title": "号面冻结互认联签（C2 F9400 冻结 × C4 台账）",
+  "quota": 360,
+  "accept": "① 纯功能代码 ≥360 行；② 判据原文：UNX-F9392-J1 互认联签判据过，F9101–F9400 号面冻结与 C4 台账互认可观测，零重编声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9392_cosign_freeze_c2",
+  "seg": 511872
+ },
+ {
+  "id": 9393,
+  "title": "联签交接包（F9400 冻结面移交清单）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9393-J1 交接包判据过，F9400 冻结面移交清单逐项落账，接手会话就绪格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9393_cosign_freeze_list",
+  "seg": 511936
+ },
+ {
+  "id": 9394,
+  "title": "联调防重声明（C2×C4 号面零冲突 grep）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9394-J1 防重判据过，四范围 grep 零冲突格过，条目名零命中格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9394_declare_dedup_c2",
+  "seg": 512000
+ },
+ {
+  "id": 9395,
+  "title": "联调上游依赖登记（C4 未 finalize 依赖声明）",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9395-J1 依赖声明判据过，C4 上游未 finalize 显式登记格过，fake 开发路径格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9395_declare_deps_c4",
+  "seg": 512064
+ },
+ {
+  "id": 9396,
+  "title": "联调与 Windows WaitableTimer/IOCP 对照账",
+  "quota": 280,
+  "accept": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F9396-J1 对照账判据过，WaitableTimer/IOCP 映射表落账，差异账三条全列格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9396_windows_waitabletimer_iocp",
+  "seg": 512128
+ },
+ {
+  "id": 9397,
+  "title": "联调与 glibc pthread futex 消费核",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9397-J1 消费核联测判据过，pthread futex 消费链对接可观测，消费号登记格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9397_consumer_glibc_pthread",
+  "seg": 512192
+ },
+ {
+  "id": 9398,
+  "title": "I 型联调判据可复测性声明",
+  "quota": 280,
+  "accept": "① 纯功能代码 ≥280 行；② 判据原文：UNX-F9398-J1 联测判据 10 次重复判据过，10/10 次通过统计格过，零 flaky 声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9398_declare",
+  "seg": 512256
+ },
+ {
+  "id": 9399,
+  "title": "I 型与 glibc 消费清单逐号核联测",
+  "quota": 320,
+  "accept": "① 纯功能代码 ≥320 行；② 判据原文：UNX-F9399-J1 逐号核联测判据过，消费清单逐号联测可观测，零号面冲突格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9399_jointest_list_glibc",
+  "seg": 512320
+ },
+ {
+  "id": 9400,
+  "title": "ktest syscall 面 B30 批断言集 + B16–B30 半域收口断言",
+  "quota": 460,
+  "accept": "① 纯功能代码 ≥460 行；② 判据原文：UNX-F9400-J1 本批 19 条判据聚合判据过，B16–B30 十五批半域收口一次跑通断言过，域累计 169,000 收口断言（B31–B40 预算 71,000 待领，域账守恒 240,000）；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9400_ktest_closure_syscall",
+  "seg": 512384
+ },
+ {
+  "id": 9401,
+  "title": "I 型联调总纲三（C2×C3 联签协议与对账面）",
+  "quota": 400,
+  "accept": "① 纯功能代码 ≥400 行；② 判据原文：UNX-F9401-J1 联签协议判据过，C2（错误矩阵面）×C3（errno 账本面）双方对账面互认格过，跨界代写禁令声明格过；③ 完成时 API/软件写回：状态=已完成、结果摘要非空。",
+  "stem": "unx9401_charter_cosign_c2",
+  "seg": 512448
+ }
+]

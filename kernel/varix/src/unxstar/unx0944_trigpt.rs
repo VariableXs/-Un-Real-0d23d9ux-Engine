@@ -212,7 +212,7 @@ pub fn site_dist(pm: &PendingMap) -> [u32; 3] {
 pub fn coalesce_ratio(pm: &PendingMap) -> u32 {
     if pm.trigs.is_empty() { return 0; }
     let c = pm.trigs.iter().filter(|t| t.coalesced).count();
-    c * 100 / pm.trigs.len()
+    (c * 100 / pm.trigs.len()) as u32
 }
 
 /// 槽位热度：各槽位触发次数。
@@ -300,4 +300,66 @@ pub fn pending_bitmap(pm: &PendingMap) -> String {
 /// 有效触发吞吐：未合并触发数。
 pub fn effective_trigs(pm: &PendingMap) -> u32 {
     pm.trigs.iter().filter(|t| !t.coalesced).count() as u32
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx944_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx944_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0944_trigpt");
+    // J1 核心路径：三处触发、合并幂等、绕入口必抓。
+    s.add("核心路径drill全过", drill() == Ok(0), "生命周期/多槽并发/绕入口注入/未pending清位全过返回 0");
+    // J2 扩展审计：全槽扫描/分布账/合并率/批回归。
+    s.add("扩展审计drill全过", drill_ext() == Ok(0), "六场景（扫描/分布/合并率/热度/批回归/合并账）全过返回 0");
+    // J3 批回归 10/10。
+    s.add("批回归10/10", trig_regress(10) == Ok(10), "10 轮完整生命周期全部闭环");
+    // J4 状态机不变量：空面 run_cnt 总和 ≤ 未合并触发数。
+    s.add("空面不变量", PendingMap::new().invariant_ok(), "空面 0 ≤ 0 恒等式成立");
+    // J5 槽位闭集冻结。
+    s.add("槽位闭集冻结", NSLOT == 8, "pending 面 8 槽不漂移");
+    // J6 正例：完整生命周期三处触发只产生 1 次有效（2 次合并）。
+    let mut pm = PendingMap::new();
+    let pos_ok = interrupt_lifecycle(&mut pm, 3, 100, true) == Ok(1)
+        && pm.trigs.len() == 3
+        && pm.trigs.iter().filter(|t| t.coalesced).count() == 2
+        && pm.pending_count() == 1
+        && pm.is_pending(3) == Ok(true)
+        && pm.sites_covered()
+        && pm.invariant_ok();
+    s.add("正例三处触发合并", pos_ok, "TopTail/IrqRet/SchedPoint 三触发，后两次合并，pending 恰 1");
+    // J7 收口执行与闭窗。
+    let close_ok = pm.run_bh(3).is_ok() && pm.final_close().is_ok() && pm.pending_count() == 0;
+    s.add("收口执行闭窗", close_ok, "run_bh 清位后 final_close 双闸（未决/恒等式）全过");
+    // J8 反例一：未 pending 清位必拒。
+    s.add("未pending清位拒", PendingMap::new().run_bh(0) == Err(E_STATE), "清位专属下半——位未置被 E_STATE 拒");
+    // J9 反例二：槽位越界必拒。
+    let mut pm2 = PendingMap::new();
+    s.add("槽位越界拒", pm2.raise(TrigSite::TopTail, NSLOT, 0) == Err(E_SLOT) && pm2.run_bh(NSLOT) == Err(E_SLOT), "slot==NSLOT 走 raise/run_bh 双口均被 E_SLOT 拒");
+    // J10 绕入口零误报：合法 raise 的槽不报「有位无账」。
+    let mut pm3 = PendingMap::new();
+    let _ = pm3.raise(TrigSite::TopTail, 5, 1);
+    s.add("绕入口零误报", !inject_bypass_entry(&mut pm3, 5), "有位有账的槽不触发绕入口告警");
+    // J11 三时机闭集与命名。
+    let [n0, n1, n2] = site_names();
+    s.add("三时机闭集命名", n0 == "top-tail" && n1 == "irq-ret" && n2 == "sched",
+        "site_names 与冻结口径逐字一致");
+    // J12 全槽扫描 8/8 且合并率 50%。
+    let mut pm4 = PendingMap::new();
+    let scan_ok = full_slot_scan(&mut pm4, 100) == Ok(NSLOT as u32)
+        && coalesce_ratio(&pm4) == 50
+        && effective_trigs(&pm4) == NSLOT as u32;
+    s.add("全槽扫描合并率", scan_ok, "8 槽×2 触发全过，IrqRet 全合并 → 合并率 50%");
+    // J13 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0x7C00, "0x7C00 段本单独占不漂移");
+    // 动态明细两列。
+    let sum_len = pm4.summary().len();
+    s.add_dyn("触发面摘要非空", sum_len > 0, &alloc::format!("summary {} 字节（pending/trigs/runs + 三时机分账）", sum_len));
+    let bm_len = pending_bitmap(&pm4).len();
+    s.add_dyn("pending位图可渲染", bm_len == NSLOT + 9, &alloc::format!("pending_bitmap {} 字节（MSB→LSB 8 位带框）", bm_len));
+    s
 }

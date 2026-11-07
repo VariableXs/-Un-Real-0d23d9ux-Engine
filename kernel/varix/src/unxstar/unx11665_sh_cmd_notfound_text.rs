@@ -5538,7 +5538,7 @@ fn echo_ok() -> bool {
         let mut b = a.saturating_add(1usize);
         while b < forms.len() {
             if let Some(y) = forms.get(b) {
-                if y.name() == x.name() || y == x {
+                if y.name() == x.name() || *y == x {
                     return false;
                 }
             }

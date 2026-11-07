@@ -88,11 +88,12 @@ pub fn filter_construct(full: &FullToken) -> Result<FilteredToken, u16> {
     }
     let mut kept_privs = alloc::vec::Vec::new();
     let mut stripped = alloc::vec::Vec::new();
+    // 收库修正：遍历引用得 &&str，解一层引用入账，匹配 Vec<&str> 字段。
     for p in &full.privs {
         if KEEP_PRIVS.contains(&p) {
-            kept_privs.push(p);
+            kept_privs.push(*p);
         } else {
-            stripped.push(p);
+            stripped.push(*p);
         }
     }
     Ok(FilteredToken { groups, kept_privs, stripped, il: full.il })

@@ -134,6 +134,16 @@ impl StyledGloss {
     }
 }
 
+/// 收库修正：判据面占位释文构造辅（收库新增；enroll 直收 StyledGloss 值，
+/// 而三段字面量恒非空、构造恒成，此辅以同模块直构兜底，全程不 panic）。
+fn gloss3(why: &str, how: &str, next: &str) -> StyledGloss {
+    match StyledGloss::new(why, how, next) {
+        Ok(gl) => gl,
+        // 兜底分支仅当入参含空段时可达：三段统一以「占位」补齐，保持 no_std 无 panic 口径。
+        Err(_) => StyledGloss { why: String::from("占位"), how: String::from("占位"), next: String::from("占位") },
+    }
+}
+
 /// 一条词条：类 / 键 / 释文 / 释出态。
 #[derive(Clone, Debug)]
 pub struct StormTerm {
@@ -344,13 +354,18 @@ pub fn drill() -> Result<u32, u16> {
     // 判据词条。
     g.enroll(GlossCat::Criterion, "静默窗", StyledGloss::new("恢复评估需要连续静默窗", "看静默连击计数", "连击满三窗才可申请解除")?)?;
     // 注入面：空键、重复、缺段释文、未知键全拦。
-    if g.enroll(GlossCat::State, "", StyledGloss::new("为什么段", "怎么定位段", "下一步段")) != Err(XC_KEY_EMPTY) {
+    // 收库修正：StyledGloss::new 返回 Result，须先构造成功再入册，不得把 Result 直接当实参传给 enroll。
+    let gl_probe = match StyledGloss::new("为什么段", "怎么定位段", "下一步段") {
+        Ok(gl) => gl,
+        Err(_) => return Err(XC_GLOSS_MISSING), // 三段字面量恒非空，此分支不可达
+    };
+    if g.enroll(GlossCat::State, "", gl_probe.clone()) != Err(XC_KEY_EMPTY) {
         return Err(XC_KEY_EMPTY);
     }
-    if g.enroll(GlossCat::State, "静默", StyledGloss::new("为什么段", "怎么定位段", "下一步段")) != Err(XC_KEY_DUP) {
+    if g.enroll(GlossCat::State, "静默", gl_probe) != Err(XC_KEY_DUP) {
         return Err(XC_KEY_DUP);
     }
-    if StyledGloss::new("只有一段", "", "第三段") != Err(XC_GLOSS_MISSING) {
+    if !matches!(StyledGloss::new("只有一段", "", "第三段"), Err(XC_GLOSS_MISSING)) {
         return Err(XC_GLOSS_MISSING);
     }
     if g.explain("不存在") != Err(XC_KEY_UNKNOWN) {
@@ -374,4 +389,117 @@ pub fn drill() -> Result<u32, u16> {
         return Err(XC_DRIFT);
     }
     Ok(0)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx988_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx988_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0988_stormexplain");
+    // J1 核心路径：三类词条入册→释出→注入拦→守恒→双导出。
+    s.add("核心路径drill全过", drill() == Ok(0), "6 词条入册/释出/四注入拦/守恒/指纹稳定返回 0");
+    // J2 词条三类闭集（码 1..=3 双向可逆）。
+    let cat_closed = GlossCat::from_code(1) == Some(GlossCat::State)
+        && GlossCat::from_code(2) == Some(GlossCat::Action)
+        && GlossCat::from_code(3) == Some(GlossCat::Criterion)
+        && GlossCat::from_code(0).is_none()
+        && GlossCat::from_code(4).is_none()
+        && GlossCat::State.code() == 1 && GlossCat::Criterion.code() == 3;
+    s.add("词条三类闭集", cat_closed, "态/动作/判据 from_code 可逆、0/4 拒、码值冻结");
+    // J3 三段式体例段名冻结（为什么/怎么定位/下一步）。
+    let [sec0, sec1, sec2] = GLOSS_SECTIONS;
+    s.add("体例段名冻结", GLOSS_SECTIONS.len() == 3 && sec0 == "为什么" && sec1 == "怎么定位" && sec2 == "下一步",
+        "explain 对齐体例三段名逐字一致");
+    // J4 正例：三段式释文构造与渲染带段名。
+    let gloss_ok = match StyledGloss::new("现象A", "定位B", "动作C") {
+        Ok(g) => {
+            let r = g.render();
+            r.contains("为什么") && r.contains("怎么定位") && r.contains("下一步")
+                && r.contains("现象A") && r.contains("定位B") && r.contains("动作C")
+        }
+        Err(_) => false,
+    };
+    s.add("三段式释文渲染", gloss_ok, "render 拼段名前缀且三段原文全含");
+    // J5 反例一：缺段释文拒收。
+    let missing_rej = match StyledGloss::new("只有一段", "", "第三段") {
+        Err(XC_GLOSS_MISSING) => true,
+        _ => false,
+    };
+    s.add("缺段释文拒收", missing_rej, "空段被 XC_GLOSS_MISSING 拒——三段缺一不可");
+    // J6 正例：三类词条入册、explain 命中释出、release_all 补齐。
+    let pos_ok = match StormGlossary::new(GLOSS_CAP) {
+        Ok(mut g) => {
+            // 收库修正：enroll 实参改经 gloss3 构造辅（StyledGloss::new 的 Result 不得直接入册）。
+            let e1 = g.enroll(GlossCat::State, "静默", gloss3("w", "h", "n"));
+            let e2 = g.enroll(GlossCat::Action, "节流", gloss3("w", "h", "n"));
+            let e3 = g.enroll(GlossCat::Criterion, "静默窗", gloss3("w", "h", "n"));
+            let ex = g.explain("静默");
+            let rel = g.release_all();
+            e1.is_ok() && e2.is_ok() && e3.is_ok()
+                && g.len() == 3
+                && match ex { Ok(t) => t.contains("[风暴面|") && t.contains("静默"), Err(_) => false }
+                && rel == 2
+                && g.audit_conservation().is_ok()
+        }
+        Err(_) => false,
+    };
+    s.add("入册释出补齐", pos_ok, "三型各 1 条、explain 带面标头、release_all 补 2、守恒过");
+    // J7 反例二：空键/重复键/未知键/未释出册四类注入全拦且拒收记账。
+    let neg_ok = match StormGlossary::new(GLOSS_CAP) {
+        Ok(mut g) => {
+            let _ = g.enroll(GlossCat::State, "k", gloss3("w", "h", "n")); // 收库修正：实参经 gloss3 构造辅
+            let r1 = match g.enroll(GlossCat::State, "", gloss3("w", "h", "n")) {
+                Err(XC_KEY_EMPTY) => true, _ => false,
+            };
+            let r2 = match g.enroll(GlossCat::State, "k", gloss3("w", "h", "n")) {
+                Err(XC_KEY_DUP) => true, _ => false,
+            };
+            let r3 = match g.explain("无此键") {
+                Err(XC_KEY_UNKNOWN) => true, _ => false,
+            };
+            let r4 = match g.export() {
+                Err(XC_NOT_ALL_RELEASED) => true, _ => false,
+            };
+            r1 && r2 && r3 && r4 && g.rejected() == 4
+        }
+        Err(_) => false,
+    };
+    s.add("四类注入全拦", neg_ok, "空键/重复/未知/未释出册全拒且 rejected 显性记 4");
+    // J8 反例三：定容非法（容量为零）拒收。
+    let cap_ok = match StormGlossary::new(0) {
+        Err(XC_CAP_INVALID) => true,
+        _ => false,
+    };
+    s.add("零容量拒收", cap_ok, "new(0) 被 XC_CAP_INVALID 拒");
+    // J9 词条账定容冻结。
+    s.add("词条账定容冻结", GLOSS_CAP == 24, "24 条容量（三态+六动作+九判据+余量）不漂移");
+    // J10 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0x8180, "0x8180 段本单独占不漂移");
+    // 动态明细两列。
+    let (fp_stable, exp_len) = match StormGlossary::new(GLOSS_CAP) {
+        Ok(mut g) => {
+            let _ = g.enroll(GlossCat::State, "确认", gloss3("w", "h", "n")); // 收库修正：实参经 gloss3 构造辅
+            let _ = g.explain("确认");
+            let fp1 = g.fingerprint();
+            let e1 = g.export();
+            let fp2 = g.fingerprint();
+            (fp1 == fp2, e1.map(|t| t.len()).unwrap_or(0))
+        }
+        Err(_) => (false, 0),
+    };
+    s.add_dyn("导出对拍稳定", fp_stable && exp_len > 0, &alloc::format!("词条账导出 {} 字节、双指纹一致 {}", exp_len, fp_stable));
+    let explain_len = match StormGlossary::new(GLOSS_CAP) {
+        Ok(mut g) => {
+            let _ = g.enroll(GlossCat::Criterion, "静默窗", gloss3("恢复要连续静默窗", "看静默连击计数", "连击满三窗才解除")); // 收库修正：实参经 gloss3 构造辅
+            g.explain("静默窗").map(|t| t.len()).unwrap_or(0)
+        }
+        Err(_) => 0,
+    };
+    s.add_dyn("explain人话可报", explain_len > 0, &alloc::format!("explain 输出 {} 字节（面标头+三段式）", explain_len));
+    s
 }

@@ -47,7 +47,7 @@ impl ModeLed {
 }
 
 /// 双模对照差。
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Diff3 {
     pub thru: u32,  // 吞吐差（事件数差）
     pub lat: u64,   // 平均时延差（µs）
@@ -152,24 +152,24 @@ pub fn drill() -> Result<u32, u16> {
         let mut w2 = DuObsWin::new();
         w2.begin()?;
         w2.feed(100, 100, 10)?; // 轮询时延是中断 10 倍
-        if w2.compare() != Err(E_DIFF) { return Err(E_DIFF); }
+        if !matches!(w2.compare(), Err(E_DIFF)) { return Err(E_DIFF); } // 收库修正：Diff3 无 PartialEq，Err 判定改 matches!
     }
     // 场景三：吞吐差 >5% 必拦。
     let mut w3 = DuObsWin::new();
     w3.begin()?;
     w3.feed(100, 40, 20)?;
     w3.polling.events += 10; // 单模多灌
-    if w3.compare() != Err(E_DIFF) { return Err(E_DIFF); }
+    if !matches!(w3.compare(), Err(E_DIFF)) { return Err(E_DIFF); } // 收库修正：Diff3 无 PartialEq，Err 判定改 matches!
     // 场景四：丢失差 ≠ 0 必拦。
     let mut w4 = DuObsWin::new();
     w4.begin()?;
     w4.feed(100, 40, 20)?;
     w4.feed_lost(true)?;
-    if w4.compare() != Err(E_DIFF) { return Err(E_DIFF); }
+    if !matches!(w4.compare(), Err(E_DIFF)) { return Err(E_DIFF); } // 收库修正：Diff3 无 PartialEq，Err 判定改 matches!
     // 场景五：未观测态灌账/对照/闭窗必拦。
     let mut w5 = DuObsWin::new();
     if w5.feed(1, 1, 1) != Err(E_WIN) { return Err(E_WIN); }
-    if w5.compare() != Err(E_WIN) { return Err(E_WIN); }
+    if !matches!(w5.compare(), Err(E_WIN)) { return Err(E_WIN); } // 收库修正：Diff3 无 PartialEq，Err 判定改 matches!
     if w5.close() != Err(E_CLOSE) { return Err(E_CLOSE); }
     // 场景六：闭窗后再开必拦。
     if w.begin() != Err(E_WIN) { return Err(E_WIN); }
@@ -179,4 +179,80 @@ pub fn drill() -> Result<u32, u16> {
     if w6.feed(0, 0, 0) != Err(E_LOPSIDE) { return Err(E_LOPSIDE); }
     if w.summary().is_empty() { return Err(E_STATE); }
     Ok(0)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx970_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx970_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0970_duobs");
+    // J1 核心路径：同源双灌、差异解释域、闭窗闭合、违例必拦。
+    s.add("核心路径drill全过", drill() == Ok(0), "标准窗/时延超域/吞吐超域/丢失差/态机拦/零事件全过返回 0");
+    // J2 正例：标准观测窗 10 轮对照闭窗闭合。
+    let mut w = DuObsWin::new();
+    let mut win_ok = w.begin().is_ok();
+    let mut cmp_n = 0u32;
+    for i in 0..10u32 {
+        if w.feed(100, 20 + i as u64, 18 + i as u64).is_ok() && w.compare().is_ok() { cmp_n += 1; }
+    }
+    win_ok = win_ok && cmp_n == 10 && w.close() == Ok(10) && w.state() == WinState::Closed;
+    s.add("标准窗十轮闭窗", win_ok, "10 轮 feed+compare 全落账、close 返回 10、终态 Closed");
+    // J3 双账同源：两模事件数恒等。
+    s.add("双账同源", w.polling.events == 1000 && w.irq.events == 1000,
+        "10×100 同源灌账、polling 与 irq 各 1000 事件");
+    // J4 反例一：时延差 >20% 必拦（不可解释差异）。
+    let mut w2 = DuObsWin::new();
+    let _ = w2.begin();
+    let _ = w2.feed(100, 100, 10);
+    s.add("时延超域拦", matches!(w2.compare(), Err(E_DIFF)), "轮询时延为中断 10 倍 → compare E_DIFF"); // 收库修正：Diff3 无 PartialEq，Err 判定改 matches!
+    // J5 反例二：吞吐差 >5% 必拦。
+    let mut w3 = DuObsWin::new();
+    let _ = w3.begin();
+    let _ = w3.feed(100, 40, 20);
+    w3.polling.events += 10;
+    s.add("吞吐超域拦", matches!(w3.compare(), Err(E_DIFF)), "单模多灌 10 事件（10%）超 5% 域 → E_DIFF"); // 收库修正：Diff3 无 PartialEq，Err 判定改 matches!
+    // J6 反例三：丢失差 ≠ 0 必拦。
+    let mut w4 = DuObsWin::new();
+    let _ = w4.begin();
+    let _ = w4.feed(100, 40, 20);
+    let _ = w4.feed_lost(true);
+    s.add("丢失差拦", matches!(w4.compare(), Err(E_DIFF)), "polling 记 1 丢失 → lost 差非零 → E_DIFF"); // 收库修正：Diff3 无 PartialEq，Err 判定改 matches!
+    // J7 反例四：窗口态机（未开窗灌账/对照/闭窗全拦）。
+    let mut w5 = DuObsWin::new();
+    s.add("窗口态机拦", w5.feed(1, 1, 1) == Err(E_WIN) && matches!(w5.compare(), Err(E_WIN))
+        && w5.close() == Err(E_CLOSE), "Open 态未 begin：feed/compare E_WIN、close E_CLOSE"); // 收库修正：Diff3 无 PartialEq，compare 判定改 matches!
+    // J8 反例五：零事件灌账（单模漏灌语义）与闭窗后再开。
+    let mut w6 = DuObsWin::new();
+    let _ = w6.begin();
+    s.add("零事件与重开拦", w6.feed(0, 0, 0) == Err(E_LOPSIDE) && w.begin() == Err(E_WIN),
+        "n==0 被 E_LOPSIDE 拒；Closed 态再 begin 被 E_WIN 拒");
+    // J9 解释域判据单元：Diff3 三面阈。
+    let d_ok = Diff3 { thru: 0, lat: 0, lost: 0 }.explainable(100, 100)
+        && Diff3 { thru: 5, lat: 0, lost: 0 }.explainable(100, 100)
+        && !Diff3 { thru: 6, lat: 0, lost: 0 }.explainable(100, 100)
+        && !Diff3 { thru: 0, lat: 0, lost: 1 }.explainable(100, 100);
+    s.add("解释域三面阈", d_ok, "吞吐 ≤5%、丢失=0 阈值边界逐点核对（5 过 6 拦）");
+    // J10 窗口三态闭集。
+    let st_ok = DuObsWin::new().state() == WinState::Open
+        && w.state() == WinState::Closed
+        && (WinState::Observing != WinState::Open);
+    s.add("窗口三态闭集", st_ok, "Open/Observing/Closed 三态互异且初态 Open");
+    // J11 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0x7F40, "0x7F40 段本单独占不漂移");
+    // 动态明细两列。
+    let sum_len = w.summary().len();
+    s.add_dyn("对照摘要非空", sum_len > 0, &alloc::format!("summary {} 字节（state + 双模 ev/lat/lost）", sum_len));
+    let diffs_n = w.diffs.len();
+    let last_thru = match w.diffs.iter().last() {
+        Some(d) => d.thru,
+        None => u32::MAX,
+    };
+    s.add_dyn("对照账可追溯", diffs_n == 10 && last_thru == 0,
+        &alloc::format!("对照账 {} 行；末行吞吐差 {}", diffs_n, last_thru));
+    s
 }

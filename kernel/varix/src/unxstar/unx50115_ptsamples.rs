@@ -21,6 +21,7 @@
 use crate::alloc::format;
 use crate::alloc::string::ToString;
 use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 诊断段（0x43a80 独占 0x20）。

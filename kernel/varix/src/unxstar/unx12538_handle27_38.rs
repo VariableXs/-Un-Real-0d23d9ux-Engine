@@ -177,6 +177,11 @@ impl AssetBook {
         }
     }
 
+    /// 资产行账深度（收库修正：账深度查询入口缺失，调用点 bk.len() 无法解析）。
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
     /// 注入例入库（四列齐 + 版本一致 + 例号唯一 + 封顶拒）。
     pub fn ingest(&mut self, case: usize, face: usize, code: u32) -> Result<bool, AsCode> {
         if self.rows.len() >= ASSET_CAP {

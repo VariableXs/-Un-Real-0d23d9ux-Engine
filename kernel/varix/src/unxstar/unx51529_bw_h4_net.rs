@@ -102,6 +102,8 @@ pub struct H4NetEngine {
     max_rows: usize,
     window: u64,
     remaining: u64,
+    /// 本窗口已授予量（窗口推进即清零，与 remaining 同步）。
+    window_granted: u64,
     version: u64,
     arb: Vec<ArbRow>,
     h4: Vec<H4Row>,
@@ -128,6 +130,7 @@ impl H4NetEngine {
             max_rows,
             window: 1,
             remaining: budget,
+            window_granted: 0,
             version: 0,
             arb: Vec::new(),
             h4: Vec::new(),
@@ -165,9 +168,10 @@ impl H4NetEngine {
             return Err(H4NetCode::WindowBackward);
         }
         if window > self.window {
-            // 前向推进：重置窗口余额。
+            // 前向推进：重置窗口余额与本窗口账。
             self.window = window;
             self.remaining = self.window_budget;
+            self.window_granted = 0;
         }
         if self.arb.len() >= self.max_rows {
             return Err(H4NetCode::LedgerFull);
@@ -176,6 +180,7 @@ impl H4NetEngine {
             .min(self.per_grant_cap)
             .min(self.remaining);
         self.remaining -= granted;
+        self.window_granted += granted;
         let row = ArbRow {
             seq: self.arb.len() as u32,
             ctrl,
@@ -265,8 +270,10 @@ impl H4NetEngine {
             && g1 == self.granted1
             && c0 == self.consumed0
             && c1 == self.consumed1;
-        let remain_ok = self.window_budget >= g0 + g1
-            && self.remaining == self.window_budget - (g0 + g1);
+        // 窗口余额守恒：remaining = 预算 − 本窗口已授予（窗口推进即重置，
+        // 生命周期账 g0+g1 只验非负不与 remaining 混算）。
+        let remain_ok = self.window_granted <= self.window_budget
+            && self.remaining == self.window_budget - self.window_granted;
         ledger_ok && remain_ok
     }
 

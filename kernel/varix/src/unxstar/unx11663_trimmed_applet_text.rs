@@ -8218,9 +8218,11 @@ mod tests {
 
     #[test]
     fn run_with_injects_only_inside_the_corpus() {
-        assert_eq!(run_with(None).map(|r| r.matched), Some(WANT_MATCHED));
-        assert_eq!(run_with(Some((CORPUS, Fault::Ok))), Err(TR_ESLOT));
-        assert_eq!(run_with(Some((99usize, Fault::Value))), Err(TR_ESLOT));
+        // 收库修正（AI-INTAKE-1107）：run_with 返回 Result，matched 对账用 Ok 包装比较。
+        assert_eq!(run_with(None).map(|r| r.matched), Ok(WANT_MATCHED));
+        // 收库修正（AI-INTAKE-1107）：Report 无 PartialEq/Debug，改用 matches! 判错码。
+        assert!(matches!(run_with(Some((CORPUS, Fault::Ok))), Err(TR_ESLOT)));
+        assert!(matches!(run_with(Some((99usize, Fault::Value))), Err(TR_ESLOT)));
         // 把活槽 0 的申报打断任一维：对齐数必须掉一，且掉在绿档行里
         let mut i = 0usize;
         while i < REJECT_FAULTS.len() {

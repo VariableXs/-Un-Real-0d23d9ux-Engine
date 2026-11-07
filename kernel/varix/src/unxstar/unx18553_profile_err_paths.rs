@@ -390,8 +390,8 @@ pub fn make_corrupt_samples() -> [Vec<u8>; CORRUPT_FORMS] {
             b
         },
         make_clean_sample(&[(0, 1), (2, 2), (99, 0)], 1, 0), // 6 键越界——注意：构造器校验和有效但闸 7 先拦
-        b"",                                  // 7 占位（下方重填，重复键需手拼）
-        b"",                                  // 8 占位（乱序手拼）
+        Vec::new(),                           // 7 占位（下方重填，重复键需手拼）
+        Vec::new(),                           // 8 占位（乱序手拼）
         {                                     // 9 校验和错
             let mut b = make_clean_sample(&[(0, 1), (2, 2)], 1, 0);
             let cl = b.len();

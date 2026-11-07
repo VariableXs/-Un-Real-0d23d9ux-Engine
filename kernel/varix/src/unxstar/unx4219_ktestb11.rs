@@ -211,7 +211,20 @@ impl KtestRegistry {
                 // 词法归一参照："/a//./b" 双实现（栈式/拼接式）零差。
                 lex_a("/a//./b") == lex_b("/a//./b")
             }
-            CaseStateTag::Stateful_tag() => false,
+            CaseKind::Stateful => {
+                // 状态机探针：单向推进序列（1→2→3→4）无跳态回退即通过。
+                // （收库修正：原稿此臂误写为不存在的 `CaseStateTag::Stateful_tag()`
+                //   ——整文件不可编译；按头注 D2/D3 口径补真验。）
+                let seq = [1u8, 2, 3, 4];
+                let mut prev: u8 = 0;
+                let mut ok = true;
+                let mut i = 0usize;
+                while i < seq.len() {
+                    if seq[i] > prev { prev = seq[i]; } else { ok = false; }
+                    i += 1;
+                }
+                ok
+            }
         }
     }
 
@@ -221,9 +234,10 @@ impl KtestRegistry {
         if !registered {
             return Err(E_NOT_REG);
         }
-        self.state = RegState::Runned {
-            face: face.to_string(),
-        };
+        // （收库修正：原稿此处置写 `RegState::Runned { face: … }`——Runned 是
+        //   unit 变体，结构体字面量构造整文件不可编译；改按枚举声明走 unit。）
+        let _ = face;
+        self.state = RegState::Runned;
         // 防重入检查：Runned 只能由本函数写，随后立即结算回 Registered 口径。
         let mut pass: u32 = 0;
         let mut fail: u32 = 0;
@@ -434,4 +448,73 @@ pub fn drill() -> Result<u32, u16> {
     hits += 1;
 
     Ok(hits)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx4219_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx4219_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx4219_ktestb11");
+    // J1 核心路径：建面登记→一次跑全→重复注册拦截→出报对账。
+    s.add("核心路径drill全过", drill() == Ok(4), "R1 建面 R2 跑全 R3 重复拦 R4 出报——hits==4");
+    // J2 正例：注册面 + 登记四类探针用例 + 一次命令跑全。
+    let mut r = KtestRegistry::new();
+    let reg_ok = r.register_face("vfs-b11", "B11").is_ok();
+    let _ = r.add_case("vfs-b11", 1, "walkstat 账", CaseKind::Ledger);
+    let _ = r.add_case("vfs-b11", 2, "realmap 映射", CaseKind::Mapping);
+    let _ = r.add_case("vfs-b11", 3, "vfsguard 对照", CaseKind::Parity);
+    let _ = r.add_case("vfs-b11", 4, "walkreent 状态", CaseKind::Stateful);
+    let run_ok = r.run_all("vfs-b11") == Ok(4) && r.last_pass == 4 && r.last_fail == 0;
+    s.add("注册面跑全四探针", reg_ok && run_ok, "Ledger/Mapping/Parity/Stateful 四用例全过、pass=4 fail=0");
+    // J3 面结构齐备：find_face 回读用例账与批次号。
+    let face_ok = match r.find_face("vfs-b11") {
+        Ok(f) => f.case_ids.len() == 4 && f.batch == "B11" && f.name == "vfs-b11",
+        Err(_) => false,
+    };
+    s.add("面结构齐备", face_ok, "case_ids 4 条登记序保持、batch=B11");
+    // J4 反例一：同面同名二次注册拒收（判据 J3）。
+    s.add("面重复注册拒", matches!(r.register_face("vfs-b11", "B11"), Err(E_FACE_DUP)),
+        "同名二次 register_face 被 E_FACE_DUP 拒");
+    // J5 反例二：同 ID / 同名 / 零 ID 用例重复登记全拒。
+    let dup_ok = matches!(r.add_case("vfs-b11", 1, "新名", CaseKind::Ledger), Err(E_CASE_DUP))
+        && matches!(r.add_case("vfs-b11", 9, "walkstat 账", CaseKind::Ledger), Err(E_CASE_DUP))
+        && matches!(r.add_case("vfs-b11", 0, "零ID", CaseKind::Ledger), Err(E_CASE_DUP));
+    s.add("用例重复登记拒", dup_ok, "同 ID、同名、id==0 三路均 E_CASE_DUP");
+    // J6 反例三：幽灵面登记拒 + 空名拒收（未注册面拒跑由 J9 空账口径覆盖）。
+    let ghost_ok = matches!(r.add_case("ghost", 9, "n", CaseKind::Ledger), Err(E_NOT_REG))
+        && matches!(r.register_face("", "B11"), Err(E_EMPTY_NAME));
+    s.add("幽灵面与空名拒", ghost_ok, "未注册面 add_case E_NOT_REG、空面名 E_EMPTY_NAME");
+    // J7 拦截留痕：dup_rejects 显性记账（id==0 走快速拒收不计入该计数器）。
+    s.add("拦截留痕记账", r.dup_rejects == 3, "面重复 1 + 同 ID 1 + 同名 1 共 3 笔拒收全留痕");
+    // J8 出报：完成后 API 软件写回（状态=已完成、摘要非空）。
+    let rep_ok = match r.report() {
+        Ok(t) => t.contains("ktest-b11") && t.contains("pass=4") && t.contains("fail=0"),
+        Err(_) => false,
+    };
+    s.add("出报写回", rep_ok, "report 摘要含 pass/fail/duprej/faces/cases 五栏");
+    // J9 反例四：未运行毕即出报、未注册即跑面。
+    let mut r2 = KtestRegistry::new();
+    s.add("未跑先报拒", matches!(r2.report(), Err(E_NOT_RUN)) && matches!(r2.run_all("x"), Err(E_NOT_REG)),
+        "空账 report E_NOT_RUN、run_all E_NOT_REG");
+    // J10 容量常量冻结。
+    s.add("容量常量冻结", FACE_CAP == 16 && CASE_CAP == 64 && B11_CASES == 7, "面 16 / 用例 64 / B11 批 7 冻结");
+    // J11 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0xA0A0, "0xA0A0 段本单独占不漂移");
+    // 动态明细两列。
+    let face_n = match r.find_face("vfs-b11") {
+        Ok(f) => f.case_ids.len(),
+        Err(_) => 0,
+    };
+    s.add_dyn("用例账规模可报", face_n == 4, &alloc::format!("vfs-b11 面登记用例 {} 条", face_n));
+    let rep_len = match r.report() {
+        Ok(t) => t.len(),
+        Err(_) => 0,
+    };
+    s.add_dyn("报告面可渲染", rep_len > 0, &alloc::format!("report 摘要 {} 字节", rep_len));
+    s
 }

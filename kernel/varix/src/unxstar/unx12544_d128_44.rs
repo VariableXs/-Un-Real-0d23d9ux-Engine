@@ -77,14 +77,20 @@ impl RgCode {
         SEG_BASE + self as u32
     }
     /// 全码闭集。
+    // 收库修正（AI-INTAKE-1107）：原 ALL 只列 4 格且带占位辅助函数，与
+    // 声明长度 10 不符（E0308）——按枚举十码闭集逐格补齐，占位函数撤销。
     pub const ALL: [RgCode; 10] = [
-        RgCode::StDomain, RgCode::CaseShort, RgCode::CaseDrift, RfAnchorPlaceholder0(),
+        RgCode::StDomain,
+        RgCode::CaseShort,
+        RgCode::CaseDrift,
+        RgCode::AnchorMissing,
+        RgCode::GateOrder,
+        RgCode::PositiveBlocked,
+        RgCode::LedgerShrink,
+        RgCode::NotRun,
+        RgCode::TierDiff,
+        RgCode::TopDiff,
     ];
-}
-
-/// 占位（保持闭集长度对齐的编译期辅助）。
-const fn RfAnchorPlaceholder0() -> RgCode {
-    RgCode::StDomain
 }
 
 /// 诊断码 → 中文可操作建议。

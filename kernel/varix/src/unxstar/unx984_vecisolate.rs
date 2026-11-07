@@ -332,6 +332,17 @@ impl VecIsolate {
             self.note(ViCode::RowFull);
             return Err((ViCode::RowFull, ViCode::RowFull.advice().to_string()));
         }
+        // 收库补全（R1）：入队尾段散佚——push 通知并显性 Ok 收口。
+        self.notifies.push(Notify {
+            vector,
+            kind,
+            reason: String::from(reason),
+            tick: self.tick,
+            delivered: false,
+        });
+        Ok(())
+    }
+
     /// 屏蔽单个向量（F0984 主操作）。
     pub fn isolate(&mut self, vector: usize, reason: &str) -> Result<(), (ViCode, String)> {
         if vector >= VI_VECTOR_MAX {

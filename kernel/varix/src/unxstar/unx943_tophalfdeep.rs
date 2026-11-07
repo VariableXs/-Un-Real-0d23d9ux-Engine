@@ -86,6 +86,8 @@ impl ThClass {
             ThClass::Timestamp => "计时器读一次",
             ThClass::NmiHandshake => "处理器间握手信封",
         }
+    }
+}
 
 /// top half 禁区（六条闭集；判据「最小化清单」的禁令侧）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -198,7 +200,7 @@ pub enum ThCode {
 
 impl ThCode {
     /// 全量闭集。
-    pub const ALL: [ThCode; 13] = [
+    pub const ALL: [ThCode; 14] = [
         ThCode::OverBudget,
         ThCode::ZoneHit,
         ThCode::DutyMiss,
@@ -263,6 +265,27 @@ impl ThCode {
     /// 严重度映射（供清单排序与拦截判定）。
     pub const fn severity(self) -> ThSeverity {
         match self {
+            // 收库补全（R1）：本 fn 尾段散佚；按三档闭集语义逐码回填——
+            // 预算/禁区/义务/时间源/归因/类目六类硬违例落 Violation；
+            // 容量与可用性类（采样/清单满、类目外、时钟错配、空窗）落 Advisory；
+            // 口径篡改与重复入账落 Repeat（重犯档，记账点最重）。
+            ThCode::OverBudget => ThSeverity::Violation,
+            ThCode::ZoneHit => ThSeverity::Violation,
+            ThCode::DutyMiss => ThSeverity::Violation,
+            ThCode::SampleFull => ThSeverity::Advisory,
+            ThCode::LedgerFull => ThSeverity::Advisory,
+            ThCode::ClassUnknown => ThSeverity::Advisory,
+            ThCode::TimeMix => ThSeverity::Violation,
+            ThCode::AttributionOver => ThSeverity::Violation,
+            ThCode::ClassDup => ThSeverity::Violation,
+            ThCode::PctlTamper => ThSeverity::Repeat,
+            ThCode::ClockMismatch => ThSeverity::Advisory,
+            ThCode::EmptyWindow => ThSeverity::Advisory,
+            ThCode::DupLedger => ThSeverity::Repeat,
+            ThCode::SegmentGuard => ThSeverity::Advisory,
+        }
+    }
+}
 
 /// 归因步骤（一条 handler 的每一步；归因用）。
 #[derive(Clone, Copy, Debug)]
@@ -356,6 +379,8 @@ impl ThSample {
             time_mixed: false,
             seq: 0,
         })
+    }
+}
 
 /// handler 窗口（同一 handler 的采样序列 + 预算档）。
 #[derive(Clone, Debug)]
@@ -528,6 +553,10 @@ impl ThWindow {
     }
 
     /// 类目外样本数。
+    pub fn class_unknown_count(&self) -> u64 {
+        self.samples.iter().filter(|s| s.class_unknown).count() as u64
+    }
+}
 
 /// 超预算清单条目（每例一条）。
 #[derive(Clone, Debug)]

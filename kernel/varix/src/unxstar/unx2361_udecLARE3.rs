@@ -4229,3 +4229,94 @@ pub fn run_and_report(seed: u64) -> (DecResult<u64>, String) {
     let r = run_full(seed).map(|e| e.seal_fp);
     (r, export_kv(&observe(seed)))
 }
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx2361_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx2361_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx2361_udecLARE3");
+    // J1 全量自检断言面：J1-a..J1-r 十八判据全过。
+    s.add("全量自检全过", self_check_ok(42), "self_check 18 判据（三段/五证据/五条件/封账/回放/矩阵）全绿");
+    // J2 正路径：三段编排跑满、封账落档、指纹可校验。
+    let run_ok = match run_full(7) {
+        Ok(e) => e.stages_ok() && e.reconcile() && e.sealed && e.finalized && e.verify(),
+        Err(_) => false,
+    };
+    s.add("正路径三段跑满", run_ok, "run_full 证据段→宣告段→封账段→终态、守恒平、seal_fp 校验过");
+    // J3 判定矩阵：18 格全过。
+    let mat_ok = match run_full(8) {
+        Ok(e) => {
+            let cells = run_matrix(&e);
+            matrix_ok(&cells) && cells.len() == MATRIX_CELLS
+        }
+        Err(_) => false,
+    };
+    s.add("判定矩阵18格全过", mat_ok, "3 段×6 格 measured==expect、格数 18 冻结");
+    // J4 注入核：十形态全检出且拒记三要素齐备。
+    let mut probe = Declare3::new(9);
+    let _ = inject_all(&mut probe, 9);
+    let det = scan_detect(&probe);
+    let inj_ok = detect_all_ok(&det)
+        && detect_ok(&det) == INJECT_TOTAL
+        && probe.reject_count() >= INJECT_TOTAL
+        && no_silent_catch(&probe);
+    s.add("十形态注入全检出", inj_ok, "独立扫查 10/10 caught、拒记留痕 ≥10、三要素零缺");
+    // J5 确定性回放：多轮轨迹全等。
+    let rep = replay(42, 3);
+    let rep_ok = rep.all_ok() && rep.rounds == 3 && rep.trace.len() == 3 && rep.stable();
+    s.add("确定性回放稳定", rep_ok, "3 轮 seal_fp 轨迹全等、caught==total、守恒与比率达标");
+    // J6 体验收口：日志五字段齐备。
+    s.add("体验日志齐备", experience_ok(11), "inject_all 后逐条 ExpLog complete 且五字段口径不变");
+    // J7 合法边闭集：仅 3 条合法边、其余拒。
+    let edge_ok = Declare3::legal_edge(0, 1) && Declare3::legal_edge(1, 2) && Declare3::legal_edge(2, 3)
+        && !Declare3::legal_edge(0, 0) && !Declare3::legal_edge(0, 2) && !Declare3::legal_edge(0, 3)
+        && !Declare3::legal_edge(1, 0) && !Declare3::legal_edge(1, 3)
+        && !Declare3::legal_edge(2, 0) && !Declare3::legal_edge(2, 1)
+        && LEGAL_EDGE_COUNT == 3 && ILLEGAL_EDGE_COUNT == 6;
+    s.add("合法边闭集3条", edge_ok, "0→1/1→2/2→3 唯三合法，自环/回头/跳边 6 条全拒口径");
+    // J8 闭集枚举完整性：段/证据/条件/证明/链 from_index 双向可逆。
+    let enums_ok = Stage::from_index(0).is_some() && Stage::from_index(2).is_some() && Stage::from_index(3).is_none()
+        && Evidence::from_index(0).is_some() && Evidence::from_index(4).is_some() && Evidence::from_index(5).is_none()
+        && Cond::from_index(0).is_some() && Cond::from_index(4).is_some() && Cond::from_index(5).is_none()
+        && Proof::from_index(0).is_some() && Proof::from_index(4).is_some() && Proof::from_index(5).is_none()
+        && Chain::from_index(0).is_some() && Chain::from_index(3).is_some() && Chain::from_index(4).is_none();
+    s.add("闭集枚举完整", enums_ok, "3/5/5/5/4 五闭集界内 Some、界外 None");
+    // J9 诊断码全表：21 变体唯一、全落 0x15C0 段、三要素齐备。
+    s.add("诊断码全表自洽", code_table_ok(), "21 变体码唯一、全落 0x15C0..0x15FF、detail 三要素齐");
+    // J10 冻结基准指纹：表指纹非基值。
+    s.add("冻结基准自洽", baseline_ok() && frozen_baseline_fp() != FNV_BASIS,
+        "五闭集表+边矩阵混成的基准指纹非零基");
+    // J11 反例：未启动跳段/零 tick 推进全拒。
+    let mut e0 = Declare3::new(5);
+    let t0 = e0.tick;
+    let neg_ok = matches!(e0.enter_stage(STAGE_SEAL as u8, t0), Err(_))
+        && matches!(e0.enter_stage(STAGE_DECLARE as u8, t0), Err(_))
+        && matches!(e0.advance(0), Err(DecErr::TickMissing));
+    s.add("未启动与零tick拒", neg_ok, "跳段/倒序 IllegalStageEdge、advance(0) TickMissing");
+    // J12 环形账下溢显性拒记。
+    let mut e1 = Declare3::new(6);
+    let under_ok = matches!(ring_underflow_err(&mut e1), Err(DecErr::RingUnderflow(_)));
+    s.add("环形账下溢拒", under_ok, "空账 pop 被 RingUnderflow 拒而非补零");
+    // J13 封账后写白名单：只许校验类只读。
+    s.add("封账后写白名单", sealed_write_allowed("verify_seal") && sealed_write_allowed("seal_readback")
+        && !sealed_write_allowed("collect_evidence") && !sealed_write_allowed("advance"),
+        "白名单仅 verify_seal/seal_readback 两只读动作");
+    // J14 清单账：不变式 24 条 / 形态 10 式 / 错误 21 码。
+    s.add("清单账守恒", invariant_manifest().len() == 24 && form_names().len() == 10
+        && err_table().len() == 21 && !semantic_boundary().is_empty(),
+        "L1..L24 不变式、十形态、21 码闭集逐条在册");
+    // 动态明细两列。
+    let fp_a = match run_full(12) { Ok(e) => e.seal_fp, Err(_) => 0 };
+    let fp_b = match run_full(12) { Ok(e) => e.seal_fp, Err(_) => 0 };
+    s.add_dyn("封账哈希同种子复现", fp_a != 0 && fp_a == fp_b, &alloc::format!("seed=12 双跑 seal_fp {:016x} 一致", fp_a));
+    let checks = self_check(42);
+    let passed = checks.iter().filter(|c| c.ok).count();
+    s.add_dyn("自检判据逐条可报", !checks.is_empty() && passed == checks.len(),
+        &alloc::format!("自检 {}/{} 条全过（J1-a..J1-r）", passed, checks.len()));
+    s
+}

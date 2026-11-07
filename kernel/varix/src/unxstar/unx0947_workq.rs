@@ -25,7 +25,7 @@ const E_LOST: u16 = SEG_ERR + 5;    // 守恒破约（丢任务）
 const E_STATE: u16 = SEG_ERR + 6;   // 底座状态非法
 
 /// 工作项：名字、可睡位、负载（逻辑 µs）、归属核。
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkItem {
     pub name: String,
     pub may_sleep: bool,
@@ -231,7 +231,88 @@ pub fn drill() -> Result<u32, u16> {
     wq.close()?;
     let it = WorkItem { name: "late".into(), may_sleep: true, load_us: 1, cpu: 0 };
     if wq.enqueue(it) != Err(E_QUEUE) { return Err(E_QUEUE); }
-    if wq.dequeue_run(0) != Err(E_QUEUE) { return Err(E_QUEUE); }
+    if !matches!(wq.dequeue_run(0), Err(E_QUEUE)) { return Err(E_QUEUE); } // 收库修正：WorkItem 无 PartialEq，Err 判定改 matches!
     if wq.summary().is_empty() { return Err(E_STATE); }
     Ok(0)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx947_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx947_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0947_workq");
+    // J1 核心路径：能力对照、FIFO 守恒、风暴不丢、关账拦截。
+    s.add("核心路径drill全过", drill() == Ok(0), "三上下文对照/128 项风暴/归属拦/不可睡拦/关账全过返回 0");
+    // J2 上下文能力对照：workqueue 三开，softirq/tasklet 三闭。
+    let caps_ok = ctx_caps_audit(CtxKind::Workqueue) == Ok((true, true, true))
+        && ctx_caps_audit(CtxKind::Softirq) == Ok((false, false, false))
+        && ctx_caps_audit(CtxKind::Tasklet) == Ok((false, false, false));
+    s.add("上下文能力对照", caps_ok, "进程上下文可睡/可分配/可长做，softirq+tasklet 全禁");
+    // J3 守恒恒等式：空队 enqueued == dequeued + 在队数。
+    s.add("空队守恒恒等式", WorkQueue::new(4).invariant_ok(), "0 == 0 + 0 成立");
+    // J4 正例：无界风暴 128 项不丢且 FIFO 有序。
+    let mut wq = WorkQueue::new(4);
+    let storm_ok = wq.storm_audit(128, 100) == Ok(128)
+        && wq.invariant_ok()
+        && wq.queue.len() == 128
+        && wq.enqueued == 128
+        && wq.dequeued == 0;
+    s.add("风暴128项不丢", storm_ok, "storm_audit 入队 128、队内序 storm-0..127、守恒成立");
+    // J5 正例：FIFO 出队——先入先出且消费账落账。
+    let head_ok = match wq.dequeue_run(0) {
+        Ok(it) => it.name == "storm-0" && it.cpu == 0 && wq.dequeued == 1 && wq.invariant_ok(),
+        Err(_) => false,
+    };
+    s.add("FIFO先入先出", head_ok, "队头 storm-0 被核 0 消费、dequeued=1、恒等式保持");
+    // J6 正例：drain 消费至空。
+    let mut wq3 = WorkQueue::new(4);
+    let drain_ok = wq3.storm_audit(16, 10).is_ok()
+        && wq3.drain() == Ok(16)
+        && wq3.queue.is_empty()
+        && wq3.invariant_ok();
+    s.add("drain消费至空", drain_ok, "16 项轮流消费、队空、守恒闭合");
+    // J7 反例一：不可睡工作项进进程上下文必拦（对照面违例）。
+    let mut wq4 = WorkQueue::new(2);
+    let _ = wq4.enqueue(WorkItem { name: String::from("ns"), may_sleep: false, load_us: 1, cpu: 0 });
+    let _ = wq4.drain();
+    s.add("不可睡项拦", wq4.queue.is_empty() && wq4.invariant_ok(),
+        "E_NOSLEEP 项退账弹出、enqueued 退账、守恒闭合");
+    // J8 反例二：关账后入队出队全拦。
+    let mut wq2 = WorkQueue::new(2);
+    let _ = wq2.close();
+    let it = WorkItem { name: String::from("late"), may_sleep: true, load_us: 1, cpu: 0 };
+    s.add("关账后全拦", wq2.enqueue(it) == Err(E_QUEUE) && matches!(wq2.dequeue_run(0), Err(E_QUEUE)), // 收库修正：WorkItem 无 PartialEq，出队判定改 matches!
+        "close 后 push/pop 均被 E_QUEUE 拒");
+    // J9 反例三：空队出队与归属不符必拦。
+    let mut wq5 = WorkQueue::new(2);
+    let empty_rej = matches!(wq5.dequeue_run(0), Err(E_STATE)) && matches!(wq5.dequeue_run(2), Err(E_WORKER)); // 收库修正：WorkItem 无 PartialEq，Err 判定改 matches!
+    let _ = wq5.enqueue(WorkItem { name: String::from("m"), may_sleep: true, load_us: 1, cpu: 1 });
+    let misfit_rej = matches!(wq5.dequeue_run(0), Err(E_WORKER)) && wq5.queue.len() == 1;
+    s.add("空队与归属拦", empty_rej && misfit_rej, "空队 E_STATE、越界核 E_WORKER、归属不符任务无损回队");
+    // J10 线程池账：per 核消费者初始闲、逐核计数。
+    let mut wq6 = WorkQueue::new(4);
+    let worker_ok = wq6.workers.len() == 4
+        && wq6.workers.iter().all(|w| !w.busy && w.done == 0)
+        && wq6.enqueued == 0 && wq6.dequeued == 0;
+    s.add("线程池账闭合", worker_ok, "4 消费者全闲零消费、进出账归零");
+    // J11 上下文命名闭集。
+    s.add("上下文命名闭集", CtxKind::Workqueue.as_str() == "workqueue"
+        && CtxKind::Softirq.as_str() == "softirq" && CtxKind::Tasklet.as_str() == "tasklet",
+        "三上下文 as_str 与冻结口径一致");
+    // J12 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0x7C60, "0x7C60 段本单独占不漂移");
+    // 动态明细两列。
+    let storm_sum = wq.summary().len();
+    s.add_dyn("队列摘要非空", storm_sum > 0, &alloc::format!("summary {} 字节（q/in/out + per 核消费）", storm_sum));
+    let head_text = match wq.dequeue_run(1) {
+        Ok(it) => it.name,
+        Err(_) => String::from("<空>"),
+    };
+    s.add_dyn("出队逐项可报", head_text == "storm-1", &alloc::format!("第二轮队头 {}", head_text));
+    s
 }

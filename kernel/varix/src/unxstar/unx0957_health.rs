@@ -110,9 +110,10 @@ impl HealthSummary {
         if !self.registered { return Err(E_ALIGN); }
         if !self.cols.coherent() { return Err(E_REG); }
         // 口径一致性：置信 = 100 - 失守率（域内简化口径）。
-        let rate = if self.total == 0 { 0 } else { self.failed * 100 / self.total };
+        // 收库修正：总账/失守数在 SummaryCols 三栏（self.cols.total/failed），非摘要直挂字段。
+        let rate = if self.cols.total == 0 { 0 } else { self.cols.failed * 100 / self.cols.total };
         let expect = 100u32.saturating_sub(rate);
-        if self.conf() != expect && self.total > 0 {
+        if self.conf() != expect && self.cols.total > 0 {
             // 允许 ±5 偏差（口径平滑）。
             let diff = if self.conf() > expect { self.conf() - expect } else { expect - self.conf() };
             if diff > 5 { return Err(E_ALIGN); }
@@ -179,4 +180,75 @@ pub fn drill() -> Result<u32, u16> {
     }
     if hs.render().is_empty() { return Err(E_STATE); }
     Ok(0)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx957_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx957_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0957_health");
+    // J1 核心路径：注册、五级降级、链审计、口径抽检。
+    s.add("核心路径drill全过", drill() == Ok(0), "全绿注册/四级降级/无因拦/口径拦/五级映射全过返回 0");
+    // J2 五级映射全档（失守率 → 健康级闭集）。
+    let m0 = level_of(&SummaryCols { total: 0, failed: 0, conf: 0 }) == Health::Dark;
+    let m1 = level_of(&SummaryCols { total: 100, failed: 3, conf: 97 }) == Health::Yellow;
+    let m2 = level_of(&SummaryCols { total: 100, failed: 20, conf: 80 }) == Health::Orange;
+    let m3 = level_of(&SummaryCols { total: 100, failed: 50, conf: 50 }) == Health::Red;
+    let m4 = level_of(&SummaryCols { total: 100, failed: 90, conf: 10 }) == Health::Dark;
+    s.add("五级映射全档", m0 && m1 && m2 && m3 && m4, "0/3/20/50/90% 失守率逐档落 Dark/Yellow/Orange/Red/Dark");
+    // J3 口径自洽卫：失守 ≤ 总账、置信 0..=100。
+    let coh_ok = SummaryCols { total: 100, failed: 0, conf: 100 }.coherent()
+        && !SummaryCols { total: 10, failed: 11, conf: 0 }.coherent()
+        && !SummaryCols { total: 10, failed: 0, conf: 101 }.coherent();
+    s.add("三栏口径自洽卫", coh_ok, "coherent 正反例：失守超账/置信越界均不自洽");
+    // J4 正例：全绿注册 + F0899 口径抽检。
+    let mut hs = HealthSummary::new(SummaryCols { total: 100, failed: 0, conf: 100 });
+    let reg_ok = hs.register().is_ok() && hs.is_registered()
+        && hs.level == Health::Green && hs.align_check() == Ok(3);
+    s.add("全绿注册抽检", reg_ok, "注册一次成功、level=Green、align_check 三栏齐");
+    // J5 五级降级逐档走且降级必落账（链审计 4 级）。
+    let steps = [(Health::Yellow, 5u32), (Health::Orange, 15), (Health::Red, 30), (Health::Dark, 60)];
+    let mut deg_ok = true;
+    for (i, (lv, fail)) in steps.iter().enumerate() {
+        hs.cols.failed = *fail;
+        if hs.relevel(alloc::format!("degrade-step-{}", i).as_str()) != Ok(*lv) { deg_ok = false; }
+    }
+    s.add("五级降级链落账", deg_ok && hs.chain_audit() == Ok(4) && hs.level == Health::Dark,
+        "Yellow→Orange→Red→Dark 逐级、chain_audit 4 行、终态 Dark");
+    // J6 反例一：无因降级必拦（E_TRACE）。
+    s.add("无因降级拦", hs.relevel("") == Err(E_TRACE), "relevel 空因被 E_TRACE 拒——降级必须可追溯");
+    // J7 反例二：口径不符注册必拦 + 未注册抽检必拦。
+    let mut bad = HealthSummary::new(SummaryCols { total: 10, failed: 11, conf: 0 });
+    s.add("口径不符拦", bad.register() == Err(E_REG) && bad.align_check() == Err(E_ALIGN)
+        && !bad.is_registered(), "失守>总账注册 E_REG、未注册抽检 E_ALIGN");
+    // J8 反例三：置信偏差 >5 必拦。
+    let mut mis = HealthSummary::new(SummaryCols { total: 100, failed: 10, conf: 3 });
+    s.add("置信偏差拦", mis.register().is_ok() && mis.align_check() == Err(E_ALIGN),
+        "conf=3 对 expect=90 偏差超 ±5 被 E_ALIGN 拒");
+    // J9 健康级闭集与序：Green<Yellow<Orange<Red<Dark。
+    let ord_ok = Health::Green < Health::Yellow && Health::Yellow < Health::Orange
+        && Health::Orange < Health::Red && Health::Red < Health::Dark
+        && Health::Green.idx() == 0 && Health::Dark.idx() == 4
+        && Health::Green.as_str() == "green" && Health::Dark.as_str() == "dark";
+    s.add("五级闭集有序", ord_ok, "PartialOrd 五级递增、idx 0..4、命名冻结");
+    // J10 空降级链审计合法（0 行即过）。
+    let empty_ok = HealthSummary::new(SummaryCols { total: 1, failed: 0, conf: 100 }).chain_audit() == Ok(0);
+    s.add("空降级链审计", empty_ok, "无降级时 chain_audit Ok(0)");
+    // J11 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0x7DA0, "0x7DA0 段本单独占不漂移");
+    // 动态明细两列。
+    let render_len = hs.render().len();
+    s.add_dyn("健康摘要可渲染", render_len > 0, &alloc::format!("render {} 字节（total/failed/conf/level）", render_len));
+    let chain_len = hs.degrade_chain.len();
+    let last_reason = match hs.degrade_chain.iter().last() {
+        Some((h, r)) => alloc::format!("终级 {} 因 {}", h.as_str(), r),
+        None => String::from("<无降级>"),
+    };
+    s.add_dyn("降级链可追溯", chain_len == 4, &alloc::format!("链 {} 行；{}", chain_len, last_reason));
+    s
 }

@@ -963,3 +963,149 @@ pub fn judge(c: &Case) -> Fault {
     }
     Fault::Ok
 }
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx11699_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx11699_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx11699_enospc_dual_snapshot");
+    // J1 判据卡闭集：B25 批 F11681..=F11698 双向可逆。
+    let card_ok = Card::new(11681).is_some() && Card::new(11698).is_some()
+        && Card::new(11680).is_none() && Card::new(11699).is_none()
+        && Card::new(11681).map(|c| c.num()).unwrap_or(0) == 11681
+        && Card::new(11681).map(|c| c.slug()).unwrap_or("") == "f11681";
+    s.add("判据卡闭集18张", card_ok, "Card::new 11681..=11698 收、界外拒、号与短名一致");
+    // J2 六道闸秩序：秩 1..=6 与短名冻结。
+    let rank_ok = Stage::Check.rank() == 1 && Stage::Report.rank() == 2
+        && Stage::Capture.rank() == 3 && Stage::Arbitrate.rank() == 4
+        && Stage::Compare.rank() == 5 && Stage::Exit.rank() == 6
+        && Stage::Check.slug() == "check" && Stage::Exit.slug() == "exit";
+    s.add("六道闸秩序", rank_ok, "用法→兜底→抓取→结论码→观测值→漂移 秩序冻结");
+    // J3 正例：双机全同 → 通过收场（Exit/0/Same）。
+    let healthy = match Card::new(11681) {
+        Some(c) => {
+            let o = define(&Shape::pair(c));
+            o.ok() && o.stage == Stage::Exit && o.code == 0 && o.note == Note::Same
+                && o.value == 0 && !o.dangling()
+        }
+        None => false,
+    };
+    s.add("双机全同判过", healthy, "Shape::pair 经 define 五闸落 Exit/0/Same、ok=true");
+    // J4 申报对判：健康格照抄申报 → Fault::Ok。
+    let judge_ok = match Card::new(11682) {
+        Some(c) => {
+            let sh = Shape::pair(c);
+            let a = define(&sh);
+            let k = Claim::from_outcome(&a, true, "健康格");
+            judge(&Case::new(sh, k)) == Fault::Ok
+        }
+        None => false,
+    };
+    s.add("申报对判归Ok", judge_ok, "from_outcome 照抄申报 + judge 六维零差 = Fault::Ok");
+    // J5 已仲裁显式冲突：按 glibc 基线和解（Held）。
+    let held_ok = match Card::new(11683) {
+        Some(c) => {
+            let o = define(&Shape::held(c));
+            o.ok() && o.stage == Stage::Exit && o.note == Note::Held
+        }
+        None => false,
+    };
+    s.add("仲裁冲突判过", held_ok, "码不等 + Arbiter::Glibc → Held 通过收场");
+    // J6 仲裁死锁：无人拍板 → Arbitrate 闸 breach。
+    let dead_ok = match Card::new(11684) {
+        Some(c) => {
+            let o = define(&Shape::deadlock(c));
+            o.failed() && o.stage == Stage::Arbitrate && o.note == Note::Conflict
+        }
+        None => false,
+    };
+    s.add("死锁显式冲突", dead_ok, "Deadlock 不算 resolved → Conflict 失败收场");
+    // J7 观测值错档：值差轮不到仲裁粉饰（Compare 闸）。
+    let val_ok = match Card::new(11685) {
+        Some(c) => {
+            let o = define(&Shape::value_off(c, 5, 7));
+            o.failed() && o.stage == Stage::Compare && o.code == SN_VALUE
+        }
+        None => false,
+    };
+    s.add("观测值错档拦", val_ok, "两机码同值不同 → Compare 闸 SN_VALUE 失败收场");
+    // J8 缺快照：单机缺席 → Capture 闸 breach。
+    let miss_ok = match Card::new(11686) {
+        Some(c) => {
+            let o = define(&Shape::missing(c, Machine::Musl));
+            o.failed() && o.stage == Stage::Capture && o.code == SN_MISSING
+        }
+        None => false,
+    };
+    s.add("缺快照拦", miss_ok, "musl 缺席 → Capture 闸 SN_MISSING 失败收场");
+    // J9 用法错：命令行非法 → Check 闸 breach。
+    let usage_ok = match Card::new(11687) {
+        Some(c) => {
+            let o = define(&Shape::usage(c));
+            o.failed() && o.stage == Stage::Check && o.code == SN_SLOT && o.note == Note::Usage
+        }
+        None => false,
+    };
+    s.add("用法错首闸拦", usage_ok, "bad_call 在秩 1 Check 闸即死、SN_SLOT/Usage");
+    // J10 兜底档：可判定卡丢进未判（Report/99/Nil）。
+    let unj_ok = match Card::new(11688) {
+        Some(c) => {
+            let o = define(&Shape::unjudged(c));
+            o.dangling() && o.value == VERDICT_UNJUDGED && o.stage == Stage::Report
+        }
+        None => false,
+    };
+    s.add("兜底档悬空", unj_ok, "default=true → Report 闸 VERDICT_UNJUDGED 悬空");
+    // J11 文案漂移两形态分记（措辞/顺序各记各的）。
+    let drift_ok = match Card::new(11689) {
+        Some(c) => define(&Shape::wording(c)).note == Note::Wording,
+        None => false,
+    } && match Card::new(11690) {
+        Some(c) => define(&Shape::ordering(c)).note == Note::Ordering,
+        None => false,
+    } && DriftKind::Wording.is_drift()
+        && !DriftKind::None.is_drift();
+    s.add("漂移两形态分记", drift_ok, "Wording/Ordering 各归各档、None 非漂移");
+    // J12 缺陷维序位双射：7 维 fault_ndx/ndx_fault 往返一致。
+    let faults = [Fault::Estate, Fault::Stage, Fault::Code, Fault::Value, Fault::Note, Fault::Default, Fault::Ok];
+    let mut rt = true;
+    for f in faults.iter() {
+        if ndx_fault(fault_ndx(*f)) != Some(*f) { rt = false; }
+    }
+    s.add("缺陷维序位双射", rt && fault_ndx(Fault::Ok) == 6 && fault_ndx(Fault::Estate) == 0,
+        "Estate..Ok 七维序位往返无损、申报次序冻结");
+    // J13 域合法性卫与文本渲染基元。
+    let base_ok = match Card::new(11691) {
+        Some(c) => Shape::pair(c).domain_ok(),
+        None => false,
+    } && seg_text(SEG_BASE) == "0x6d430"
+        && dec_text(0) == "0" && dec_text(12345) == "12345"
+        && bool_text(true) == "true" && bool_text(false) == "false";
+    s.add("域卫与渲染基元", base_ok, "domain_ok 过、0x6d430/十进制/布尔文本冻结口径");
+    // 动态明细两列。
+    let mask_zero = match Card::new(11692) {
+        Some(c) => {
+            let sh = Shape::pair(c);
+            let a = define(&sh);
+            Claim::from_outcome(&a, true, "掩码零差").diff_mask(&a) == 0
+        }
+        None => false,
+    };
+    s.add_dyn("申报差掩码零", mask_zero, "照抄申报对真实结果六维掩码全零");
+    let seal_len = match Card::new(11693) {
+        Some(c) => {
+            let o = define(&Shape::pair(c));
+            let k = Claim::from_outcome(&o, true, "指纹格");
+            let cs = Case::new(Shape::pair(c), k);
+            alloc::format!("case_seal={:016x} outcome={}", cs.seal(), o.render()).len()
+        }
+        None => 0,
+    };
+    s.add_dyn("指纹与呈现可报", seal_len > 0, &alloc::format!("语料指纹+Outcome 呈现共 {} 字节", seal_len));
+    s
+}

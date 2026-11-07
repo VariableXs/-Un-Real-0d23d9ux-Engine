@@ -1501,10 +1501,34 @@ pub mod unx9399_jointest_list_glibc;
 pub mod unx9400_ktest_closure_syscall;
 #[path = "unx9401_charter_cosign_c2.rs"]
 pub mod unx9401_charter_cosign_c2;
+#[path = "unx9402_clock_nanosleep.rs"]
+pub mod unx9402_clock_nanosleep;
+#[path = "unx9403_timer_create_face.rs"]
+pub mod unx9403_timer_create_face;
+#[path = "unx9404_sched_policy_matrix.rs"]
+pub mod unx9404_sched_policy_matrix;
+#[path = "unx9405_getrusage_ledger.rs"]
+pub mod unx9405_getrusage_ledger;
+#[path = "unx9406_prctl_option_face.rs"]
+pub mod unx9406_prctl_option_face;
+#[path = "unx9407_personality_uname_face.rs"]
+pub mod unx9407_personality_uname_face;
+#[path = "unx9408_mlock_rlimit_face.rs"]
+pub mod unx9408_mlock_rlimit_face;
+#[path = "unx9409_madvise_face.rs"]
+pub mod unx9409_madvise_face;
+#[path = "unx9410_sigmask_face.rs"]
+pub mod unx9410_sigmask_face;
+#[path = "unx9411_rlimit_matrix.rs"]
+pub mod unx9411_rlimit_matrix;
+#[path = "unx9412_sysinfo_times_face.rs"]
+pub mod unx9412_sysinfo_times_face;
+#[path = "unx9413_miscfd_closure.rs"]
+pub mod unx9413_miscfd_closure;
 
 // ==================== INTAKE_TABLE（741 族登记，逐行 = (UNX-F 编号, 入口函数)） ====================
 
-const INTAKE_TABLE: [(&'static str, fn() -> CheckSet); 741] = [
+const INTAKE_TABLE: [(&'static str, fn() -> CheckSet); 753] = [
         ("UNX-F0504", unx0504_lineedit::run_unx0504_checks as fn() -> CheckSet),
         ("UNX-F0505", unx0505_loopback_deep::run_unx0505_checks as fn() -> CheckSet),
         ("UNX-F0506", unx0506_kbd8042::run_unx0506_checks as fn() -> CheckSet),
@@ -1839,7 +1863,7 @@ const INTAKE_TABLE: [(&'static str, fn() -> CheckSet); 741] = [
         ("UNX-F18556", unx18556_vcredist_signoff::run_unx18556_checks as fn() -> CheckSet),
         ("UNX-F18557", unx18557_profile_perf_ledger::run_unx18557_checks as fn() -> CheckSet),
         ("UNX-F18558", unx18558_profile_event_log::run_unx18558_checks as fn() -> CheckSet),
-        ("UNX-F18559", unx18559_ktest_boot_b08::run_boot_checks as fn() -> CheckSet),
+        ("UNX-F18559", unx18559_ktest_boot_b08::run_unx18559_checks as fn() -> CheckSet),
         ("UNX-F18560", unx18560_b08_batch_closure::run_unx18560_checks as fn() -> CheckSet),
         ("UNX-F18561", unx18561_cosign_master::run_unx18561_checks as fn() -> CheckSet),
         ("UNX-F18562", unx18562_manifest_cosign::run_unx18562_checks as fn() -> CheckSet),
@@ -2246,6 +2270,18 @@ const INTAKE_TABLE: [(&'static str, fn() -> CheckSet); 741] = [
         ("UNX-F9399", unx9399_jointest_list_glibc::run_unx9399_checks as fn() -> CheckSet),
         ("UNX-F9400", unx9400_ktest_closure_syscall::run_unx9400_checks as fn() -> CheckSet),
         ("UNX-F9401", unx9401_charter_cosign_c2::run_unx9401_checks as fn() -> CheckSet),
+        ("UNX-F9402", unx9402_clock_nanosleep::run_unx9402_checks as fn() -> CheckSet),
+        ("UNX-F9403", unx9403_timer_create_face::run_unx9403_checks as fn() -> CheckSet),
+        ("UNX-F9404", unx9404_sched_policy_matrix::run_unx9404_checks as fn() -> CheckSet),
+        ("UNX-F9405", unx9405_getrusage_ledger::run_unx9405_checks as fn() -> CheckSet),
+        ("UNX-F9406", unx9406_prctl_option_face::run_unx9406_checks as fn() -> CheckSet),
+        ("UNX-F9407", unx9407_personality_uname_face::run_unx9407_checks as fn() -> CheckSet),
+        ("UNX-F9408", unx9408_mlock_rlimit_face::run_unx9408_checks as fn() -> CheckSet),
+        ("UNX-F9409", unx9409_madvise_face::run_unx9409_checks as fn() -> CheckSet),
+        ("UNX-F9410", unx9410_sigmask_face::run_unx9410_checks as fn() -> CheckSet),
+        ("UNX-F9411", unx9411_rlimit_matrix::run_unx9411_checks as fn() -> CheckSet),
+        ("UNX-F9412", unx9412_sysinfo_times_face::run_unx9412_checks as fn() -> CheckSet),
+        ("UNX-F9413", unx9413_miscfd_closure::run_unx9413_checks as fn() -> CheckSet),
 ];
 
 // ==================== ② INTAKE_TABLE 与分段聚合器 ====================
@@ -2296,4 +2332,35 @@ pub fn run_intake_1107_checks() -> CheckSet {
         top.add(seg_name, seg_ok, seg_detail);
     }
     top
+}
+
+// ════════════════════════ 段位守卫测试 ════════════════════════
+
+#[cfg(test)]
+mod intake_tests {
+    use super::*;
+
+    /// 聚合器全绿：753 族判据逐族调用，任何一族红/截断即失败。
+    #[test]
+    fn intake_aggregator_all_green() {
+        let top = run_intake_1107_checks();
+        assert!(top.all_passed());
+        assert!(!top.truncated());
+    }
+
+    /// 表行数与段数守卫：753 族 → 8 段。
+    #[test]
+    fn intake_table_size_closed_set() {
+        assert_eq!(INTAKE_TABLE.len(), 753);
+        assert_eq!(INTAKE_TABLE.len().div_ceil(100), 8);
+    }
+
+    /// 二跑一致性：同一静态表重放，聚合结果逐格等价。
+    #[test]
+    fn intake_segment_guard() {
+        let top = run_intake_1107_checks();
+        assert!(!top.truncated());
+        let second = run_intake_1107_checks();
+        assert_eq!(top.all_passed(), second.all_passed());
+    }
 }

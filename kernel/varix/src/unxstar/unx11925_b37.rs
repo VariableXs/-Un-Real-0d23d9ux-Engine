@@ -10,6 +10,7 @@
 
 use crate::alloc::string::{String, ToString};
 use crate::alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段（0x42C00 独占 0x20）。
@@ -162,7 +163,12 @@ pub fn mk_ledger() -> EcLedger {
     let mut l = EcLedger::new();
     for b in 0..8u8 {
         let _ = l.record(b, 1);
-        let t = l.issue_ticket(b).expect("ticket");
+        // 收库修正（AI-INTAKE-1107）：生产区禁 expect（红线）——合法批号
+        // 0..8 必出票，Err 分支为不可达护栏，跳过闭批即账平语义不变。
+        let t = match l.issue_ticket(b) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
         let _ = l.close_force_with(t);
     }
     l
@@ -179,7 +185,11 @@ pub fn inject_five() -> [bool; 5] {
         == Some(EC_NO_EVID);
     // 2) 证据复用
     let mut l2 = EcLedger::new();
-    let t = l2.issue_ticket(0).expect("t");
+    // 收库修正（AI-INTAKE-1107）：expect 改 match 早退（不可达护栏）。
+    let t = match l2.issue_ticket(0) {
+        Ok(t) => t,
+        Err(_) => return got,
+    };
     let _ = l2.close_force_with(t);
     got[1] = l2.close_force_with(t).err() == Some(EC_EVID_DUP);
     // 3) 野批号
@@ -187,7 +197,11 @@ pub fn inject_five() -> [bool; 5] {
     // 4) 红残留凭证闭批
     let mut l3 = EcLedger::new();
     let _ = l3.record(1, 5);
-    let t3 = l3.issue_ticket(1).expect("t3");
+    // 收库修正（AI-INTAKE-1107）：expect 改 match 早退（不可达护栏）。
+    let t3 = match l3.issue_ticket(1) {
+        Ok(t) => t,
+        Err(_) => return got,
+    };
     got[3] = l3.close_with(t3).err() == Some(EC_RED_LEFT);
     // 5) 印后操作
     let mut l4 = mk_ledger();
@@ -232,9 +246,14 @@ pub fn run_unx11925_checks() -> CheckSet {
     // J6 证据复用拒
     let j6 = {
         let mut l2 = EcLedger::new();
-        let t = l2.issue_ticket(2).expect("t");
-        let _ = l2.close_force_with(t);
-        l2.close_force_with(t).err() == Some(EC_EVID_DUP)
+        // 收库修正（AI-INTAKE-1107）：expect 改 match（Err 分支判据为假）。
+        match l2.issue_ticket(2) {
+            Ok(t) => {
+                let _ = l2.close_force_with(t);
+                l2.close_force_with(t).err() == Some(EC_EVID_DUP)
+            }
+            Err(_) => false,
+        }
     };
     s.add("J6-复用拒", j6, "同串二次必拒");
 
@@ -247,26 +266,39 @@ pub fn run_unx11925_checks() -> CheckSet {
     let j8 = {
         let mut l2 = EcLedger::new();
         let _ = l2.record(0, 3);
-        let t = l2.issue_ticket(0).expect("t");
-        l2.close_with(t).err() == Some(EC_RED_LEFT)
+        // 收库修正（AI-INTAKE-1107）：expect 改 match（Err 分支判据为假）。
+        match l2.issue_ticket(0) {
+            Ok(t) => l2.close_with(t).err() == Some(EC_RED_LEFT),
+            Err(_) => false,
+        }
     };
     s.add("J8-红残留拒", j8, "红未清闭批必拒");
 
     // J9 串号自增
     let j9 = {
         let mut l2 = EcLedger::new();
-        let a = l2.issue_ticket(0).expect("a").serial;
-        let b = l2.issue_ticket(1).expect("b").serial;
-        a == 1 && b == 2
+        // 收库修正（AI-INTAKE-1107）：expect 改嵌套 match（Err 分支判据为假）。
+        match l2.issue_ticket(0) {
+            Ok(a) => match l2.issue_ticket(1) {
+                Ok(b) => a.serial == 1 && b.serial == 2,
+                Err(_) => false,
+            },
+            Err(_) => false,
+        }
     };
     s.add("J9-串号自增", j9, "1,2 递增");
 
     // J10 票批一致性：票记批即闭批
     let j10 = {
         let mut l2 = EcLedger::new();
-        let t = l2.issue_ticket(4).expect("t");
-        let _ = l2.close_force_with(t);
-        l2.tickets.last().map(|x| x.batch) == Some(4)
+        // 收库修正（AI-INTAKE-1107）：expect 改 match（Err 分支判据为假）。
+        match l2.issue_ticket(4) {
+            Ok(t) => {
+                let _ = l2.close_force_with(t);
+                l2.tickets.last().map(|x| x.batch) == Some(4)
+            }
+            Err(_) => false,
+        }
     };
     s.add("J10-票批一致", j10, "账留票批");
 

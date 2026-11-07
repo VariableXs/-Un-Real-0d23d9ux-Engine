@@ -235,7 +235,14 @@ pub fn drill() -> Result<u32, u16> {
         return Err(E_DECLARE);
     }
     // 有绿位但计数缩水的伪全绿也必须拒收（全绿位与计数双验证）。
-    let fake = Declaration { green_n: 299, total_n: 300, all_green: true, declare_id: 7 };
+    let fake = Declaration {
+        first: d.first,
+        last: d.last,
+        green_n: 299,
+        total_n: 300,
+        all_green: true,
+        declare_id: 7,
+    };
     if arch2.file(fake).err() != Some(E_DECLARE) {
         return Err(E_DECLARE);
     }

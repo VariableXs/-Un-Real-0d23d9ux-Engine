@@ -286,7 +286,7 @@ pub fn unacked_list(seq: &BootSeq) -> Vec<u32> {
 pub fn online_ratio(seq: &BootSeq) -> u32 {
     if seq.aps.is_empty() { return 0; }
     let on = seq.aps.iter().filter(|a| a.online).count();
-    on * 100 / seq.aps.len()
+    (on * 100 / seq.aps.len()) as u32
 }
 
 /// 批回归驱动：N 轮全流程构建-回放-收口，10/10 账平。
@@ -328,4 +328,92 @@ pub fn drill_ext() -> Result<u32, u16> {
     // 场景五：报告与账面步数一致。
     if replay_report(&s)?.is_empty() || s.recs().is_empty() { return Err(E_REPLAY); }
     Ok(0)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx939_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx939_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0939_apseq");
+    // J1 核心路径：BSP→AP 全流程构建-回放-收口-断言。
+    s.add("核心路径drill全过", drill() == Ok(0), "build_sample(4)-replay-seal-收口断言返回 0");
+    // J2 扩展审计：回放报告/计数账/在线率/批回归。
+    s.add("扩展审计drill全过", drill_ext() == Ok(0), "五场景（报告/计数/未应答/在线率/批回归）全过返回 0");
+    // J3 批回归 10/10。
+    s.add("批回归10/10", boot_regress(10, 4) == Ok(10), "10 轮构建-回放-收口全部账平");
+    // J4 状态机不变量：空账恒等式。
+    s.add("空账恒等式", BootSeq::new().invariant_ok(), "空账步数+1==next_step 且步号 1..next 连续");
+    // J5 反例一：广播步不接受 Probe/Handoff/Seal（E_STEP 拒收）。
+    s.add("广播步反例拒收", BootSeq::new().bsp_broadcast(StepKind::Probe, 1) == Err(E_STEP), "Probe 走广播口被 E_STEP 拒");
+    // J6 反例二：定向步不接受 Announce/Kick（E_STEP 拒收）。
+    s.add("定向步反例拒收", BootSeq::new().bsp_target(StepKind::Announce, 1, 1) == Err(E_STEP), "Announce 走定向口被 E_STEP 拒");
+    // J7 反例三：同核重复登记（E_ROLE 拒收）。
+    let mut dup = BootSeq::new();
+    let _ = dup.register_ap(1);
+    s.add("重复登记AP拒收", dup.register_ap(1) == Err(E_ROLE), "cpu=1 二次 register_ap 被 E_ROLE 拒");
+    // J8 正例：2 样本账构建后逐步回放与封账全过。
+    let pos_ok = match build_sample(2, 100) {
+        Ok(mut seq) => {
+            let last = seq.recs().len() as u32;
+            seq.ack(last).is_ok() && seq.seal(999).is_ok() && seq.invariant_ok()
+                && seq.replay() == Ok(seq.recs().len())
+        }
+        Err(_) => false,
+    };
+    s.add("正例构建回放封账", pos_ok, "2 AP 样本 ack-Seal-replay 全过且恒等式成立");
+    // J9 收口断言：10/10 在线确认。
+    let seal_ok = match build_sample(2, 100) {
+        Ok(mut seq) => {
+            let last = seq.recs().len() as u32;
+            let _ = seq.ack(last);
+            let _ = seq.seal(999);
+            seal_confirm_loop(&mut seq, 10) == Ok(10)
+        }
+        Err(_) => false,
+    };
+    s.add("收口确认10/10", seal_ok, "seal_confirm_loop 10 轮全部命中");
+    // J10 收口后账面卫生：未应答清单空 + 在线率满档 + Announce/Seal 各恰一次。
+    let hyg_ok = match build_sample(2, 100) {
+        Ok(mut seq) => {
+            let last = seq.recs().len() as u32;
+            let _ = seq.ack(last);
+            let _ = seq.seal(999);
+            let kc = kind_count(&seq);
+            let [k_announce, _, _, _, k_seal] = kc;
+            unacked_list(&seq).is_empty() && online_ratio(&seq) == 100
+                && k_announce == 1 && k_seal == 1
+        }
+        Err(_) => false,
+    };
+    s.add("收口账面卫生", hyg_ok, "未应答清零、在线率 100%、Announce/Seal 各 1 条");
+    // J11 步类别闭集：五类名与序号冻结。
+    s.add("步类别闭集冻结",
+        StepKind::Announce.as_str() == "announce" && StepKind::Handoff.as_str() == "handoff"
+            && StepKind::Kick.as_str() == "kick" && StepKind::Probe.as_str() == "probe"
+            && StepKind::Seal.as_str() == "seal" && StepKind::Seal.idx() == 4,
+        "五类 as_str/idx 与冻结口径逐字一致");
+    // J12 诊断段独占：SEG_BASE 恒 0x7BA0。
+    s.add("诊断段位独占", SEG_BASE == 0x7BA0, "0x7BA0 段本单独占不漂移");
+    // 动态明细两列。
+    let rep_len = match build_sample(2, 100) {
+        Ok(mut seq) => {
+            let last = seq.recs().len() as u32;
+            let _ = seq.ack(last);
+            let _ = seq.seal(999);
+            replay_report(&seq).map(|t| t.len()).unwrap_or(0)
+        }
+        Err(_) => 0,
+    };
+    s.add_dyn("回放报告可渲染", rep_len > 0, &alloc::format!("回放报告 {} 字节（逐步渲染账面）", rep_len));
+    let sum_len = match build_sample(2, 100) {
+        Ok(seq) => seq.summary().len(),
+        Err(_) => 0,
+    };
+    s.add_dyn("收口摘要非空", sum_len > 0, &alloc::format!("summary 渲染 {} 字节（steps/aps/online/sealed）", sum_len));
+    s
 }

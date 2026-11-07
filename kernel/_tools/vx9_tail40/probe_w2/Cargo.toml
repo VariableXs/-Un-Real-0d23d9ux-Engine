@@ -1,0 +1,11 @@
+[package]
+name = "probe_w2"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "probe_w2"
+path = "src/main.rs"
+
+# 独立探针，不入 kernel workspace。
+[workspace]

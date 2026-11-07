@@ -2883,6 +2883,8 @@ pub fn unxstar_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
 /// 二级折叠族）。
 pub fn unxstar_secondary_blocks() -> &'static [(&'static str, fn() -> CheckSet)] {
     &[
+        // AI-INTAKE-1107 收库聚合（741 族历史落盘未注册模块经 intake_1107.rs 入册）
+        ("UNX-INTAKE-1107", intake_1107::run_intake_1107_checks as fn() -> CheckSet),
         ("UNX-F0082", run_unx20_t082 as fn() -> CheckSet),
         ("UNX-F0123", run_unx20_t126 as fn() -> CheckSet),
         ("UNX-F0143", run_unx20_t147 as fn() -> CheckSet),
@@ -14905,3 +14907,2184 @@ pub mod unx12716_ktest_agg_six;
 pub mod unx12717_type1_final_ledger;
 pub mod unx12718_ctype_reg_framework;
 pub mod unx12719_b37_b40_preview;
+
+// ── AI-VX11-1106 收库：VX11 批（POSIX/Linux 系统调用错误面 errno 矩阵
+//    200 单，0x7A000..=0x7D1C0 段独占。云端 4090D 共享探针 + 本地探针双
+//    验证 TOTAL=200 RED=0 PANIC=0，测试 2328/2328）──
+// UNX-F9202 read/write 坏 fd 矩阵（全 EBADF） · 0x7A000段
+// UNX-F9203 read/write 坏指针矩阵（全 EFAULT） · 0x7A040段
+// UNX-F9204 close 坏 fd 矩阵（含双关闭竞态） · 0x7A080段
+// UNX-F9205 lseek 坏 fd/坏 whence 矩阵 · 0x7A0C0段
+// UNX-F9206 open 坏路径指针 EFAULT 矩阵 · 0x7A100段
+// UNX-F9207 open 坏 flags 组合 EINVAL 矩阵 · 0x7A140段
+// UNX-F9208 stat/fstat 坏指针/坏 fd 矩阵 · 0x7A180段
+// UNX-F9209 文件族负偏移与溢出边界矩阵 · 0x7A1C0段
+// UNX-F9210 文件族零长度读写边界矩阵 · 0x7A200段
+// UNX-F9211 坏 fd 注入跨号段扫描（fd 空间全域） · 0x7A240段
+// UNX-F9212 EFAULT 拷贝半程探针（copy_to_user 半途） · 0x7A280段
+// UNX-F9213 错误码编码器一致性矩阵（Errno→sysret 逐码） · 0x7A2C0段
+// UNX-F9214 文件族 E 型参数探针总成 · 0x7A300段
+// UNX-F9215 文件族 E 型与 B03–B05 深化册对账格 · 0x7A340段
+// UNX-F9216 文件族 E 型与 Windows GetLastError 对照格 · 0x7A380段
+// UNX-F9217 E 型判据可复测性声明（10/10 次检出） · 0x7A3C0段
+// UNX-F9218 文件族 E 型升级接管注记 · 0x7A400段
+// UNX-F9219 文件族 E 型与 glibc errno 透传消费核 · 0x7A440段
+// UNX-F9220 ktest syscall 面 B21 批断言集 · 0x7A480段
+// UNX-F9221 fd 语义域总纲（EBADF 判定域与 fd 空间模型） · 0x7A4C0段
+// UNX-F9222 dup/dup2/dup3 坏 fd 矩阵 · 0x7A500段
+// UNX-F9223 pipe 系统调用错误矩阵（EFAULT/EMFILE/ENFILE） · 0x7A540段
+// UNX-F9224 fd 表耗尽 EMFILE 矩阵（RLIMIT_NOFILE 联动） · 0x7A580段
+// UNX-F9225 系统级 ENFILE 矩阵（文件表上限） · 0x7A5C0段
+// UNX-F9226 ENOENT 判定域总纲（路径解析错误面） · 0x7A600段
+// UNX-F9227 open/stat/unlink ENOENT 矩阵 · 0x7A640段
+// UNX-F9228 目录操作 ENOENT/ENOTDIR/EISDIR 矩阵 · 0x7A680段
+// UNX-F9229 相对路径与 AT_FDCWD 边界矩阵 · 0x7A6C0段
+// UNX-F9230 dirfd 坏值矩阵（AT_EMPTY_PATH/AT_SYMLINK_FOLLOW） · 0x7A700段
+// UNX-F9231 EBADF vs ENOENT 判定次序协议（先 fd 后路径） · 0x7A740段
+// UNX-F9232 fd 复用竞态注入（close-then-use TOCTOU） · 0x7A780段
+// UNX-F9233 错误码返回路径探针（负值编码与 err 链路） · 0x7A7C0段
+// UNX-F9234 fd 族 E 型参数探针总成 · 0x7A800段
+// UNX-F9235 fd 族 E 型与 B08/B15 深化册对账格 · 0x7A840段
+// UNX-F9236 fd 族 E 型与 Windows INVALID_HANDLE_VALUE 对照格 · 0x7A880段
+// UNX-F9237 E 型判据可复测性声明（10/10 次检出） · 0x7A8C0段
+// UNX-F9238 fd 族 E 型升级接管注记 · 0x7A900段
+// UNX-F9239 fd 族 E 型与 glibc perror/strerror 消费核 · 0x7A940段
+// UNX-F9240 ktest syscall 面 B22 批断言集 · 0x7A980段
+// UNX-F9241 内存族 E 型总纲（地址空间错误面） · 0x7A9C0段
+// UNX-F9242 mmap 坏 addr 提示与坏映射探针矩阵 · 0x7AA00段
+// UNX-F9243 mmap 未对齐 EINVAL 矩阵 · 0x7AA40段
+// UNX-F9244 mmap ENOMEM 矩阵（超限/无空间） · 0x7AA80段
+// UNX-F9245 munmap/mprotect 坏区间矩阵 · 0x7AAC0段
+// UNX-F9246 brk 坏值矩阵（越下界 EINVAL） · 0x7AB00段
+// UNX-F9247 mremap 错误矩阵（EINVAL/ENOMEM/EPERM 联 B17） · 0x7AB40段
+// UNX-F9248 madvise 错误矩阵（EINVAL/ENOMEM 联 B17） · 0x7AB80段
+// UNX-F9249 mlock/mprotect 权限边界矩阵（与 B24 分界声明） · 0x7ABC0段
+// UNX-F9250 地址空间越界访问 SIGSEGV 路径矩阵 · 0x7AC00段
+// UNX-F9251 页对齐边界值矩阵（4K/2M 大页） · 0x7AC40段
+// UNX-F9252 零长度映射边界矩阵 · 0x7AC80段
+// UNX-F9253 MAP_FIXED 冲突矩阵（ENOENT/EEXIST） · 0x7ACC0段
+// UNX-F9254 内存族 E 型参数探针总成 · 0x7AD00段
+// UNX-F9255 内存族 E 型与 B06/B07 深化册对账格 · 0x7AD40段
+// UNX-F9256 内存族 E 型与 Windows VirtualAlloc 错误码对照格 · 0x7AD80段
+// UNX-F9257 E 型判据可复测性声明（10/10 次检出） · 0x7ADC0段
+// UNX-F9258 内存族 E 型升级接管注记 · 0x7AE00段
+// UNX-F9259 内存族 E 型与 glibc malloc 失败路径消费核 · 0x7AE40段
+// UNX-F9260 ktest syscall 面 B23 批断言集 · 0x7AE80段
+// UNX-F9261 权限错误面总纲（EPERM vs EACCES 判定域） · 0x7AEC0段
+// UNX-F9262 open EACCES 矩阵（rwx 三位逐格） · 0x7AF00段
+// UNX-F9263 chmod/chown EPERM 矩阵（非属主） · 0x7AF40段
+// UNX-F9264 权限位模型（st_mode 九位逐格矩阵） · 0x7AF80段
+// UNX-F9265 setuid/setgid 文件位与执行路径矩阵 · 0x7AFC0段
+// UNX-F9266 目录搜索权限 EACCES 矩阵（路径逐段） · 0x7B000段
+// UNX-F9267 EPERM 特权操作矩阵（root-only 全集） · 0x7B040段
+// UNX-F9268 能力位 CAP_* 与 EPERM 判定矩阵 · 0x7B080段
+// UNX-F9269 只读文件系统 EROFS 矩阵 · 0x7B0C0段
+// UNX-F9270 EBUSY/EEXIST 冲突矩阵（独占创建） · 0x7B100段
+// UNX-F9271 身份翻转 EPERM 矩阵（联 B20 对账） · 0x7B140段
+// UNX-F9272 ioctl ioperm/iopl 禁用格 EPERM 矩阵 · 0x7B180段
+// UNX-F9273 rlimit 硬限提升 EPERM 矩阵（联 B19 对账） · 0x7B1C0段
+// UNX-F9274 权限族 E 型参数探针总成 · 0x7B200段
+// UNX-F9275 权限族 E 型与三身份档/B05 深化册对账格 · 0x7B240段
+// UNX-F9276 权限族 E 型与 Windows Access Denied 对照格 · 0x7B280段
+// UNX-F9277 E 型判据可复测性声明（10/10 次检出） · 0x7B2C0段
+// UNX-F9278 权限族 E 型升级接管注记 · 0x7B300段
+// UNX-F9279 权限族 E 型与 glibc access/euid 消费核 · 0x7B340段
+// UNX-F9280 ktest syscall 面 B24 批断言集 · 0x7B380段
+// UNX-F9281 进程族 E 型总纲（进程空间错误面） · 0x7B3C0段
+// UNX-F9282 kill 坏 pid 矩阵（ESRCH/EPERM/EINVAL） · 0x7B400段
+// UNX-F9283 wait 坏 pid ECHILD 矩阵（联 B18 对账） · 0x7B440段
+// UNX-F9284 fork/clone EAGAIN 矩阵（RLIMIT_NPROC 联动） · 0x7B480段
+// UNX-F9285 fork/clone ENOMEM 矩阵（地址空间耗尽） · 0x7B4C0段
+// UNX-F9286 setpgid 坏 pid ESRCH 矩阵 · 0x7B500段
+// UNX-F9287 setsid EPERM 矩阵（会话首规则联 B18） · 0x7B540段
+// UNX-F9288 execve 错误矩阵（EACCES/ENOEXEC/E2BIG/EFAULT） · 0x7B580段
+// UNX-F9289 参数长度 E2BIG 矩阵（argv/envp 上限） · 0x7B5C0段
+// UNX-F9290 零参数 execve 边界矩阵 · 0x7B600段
+// UNX-F9291 僵尸收割竞态注入（wait vs exit 竞态） · 0x7B640段
+// UNX-F9292 进程退出竞态注入（SIGCHLD 投递竞态） · 0x7B680段
+// UNX-F9293 ESRCH 判定次序协议（pid 存在性先于权限） · 0x7B6C0段
+// UNX-F9294 进程族 E 型参数探针总成 · 0x7B700段
+// UNX-F9295 进程族 E 型与 B04/B08 深化册对账格 · 0x7B740段
+// UNX-F9296 进程族 E 型与 Windows 进程句柄错误对照格 · 0x7B780段
+// UNX-F9297 E 型判据可复测性声明（10/10 次检出） · 0x7B7C0段
+// UNX-F9298 进程族 E 型升级接管注记 · 0x7B800段
+// UNX-F9299 进程族 E 型与 glibc fork/exec 错误路径消费核 · 0x7B840段
+// UNX-F9300 ktest syscall 面 B25 批断言集 · 0x7B880段
+// UNX-F9301 EINTR 语义总纲（慢系统调用中断面） · 0x7B8C0段
+// UNX-F9302 SA_RESTART 重启语义矩阵（逐 syscall 重启面） · 0x7B900段
+// UNX-F9303 read/write EINTR 矩阵（部分读写残留量） · 0x7B940段
+// UNX-F9304 nanosleep EINTR remaining 回写矩阵（联 B20） · 0x7B980段
+// UNX-F9305 wait EINTR 矩阵（联 B18） · 0x7B9C0段
+// UNX-F9306 poll/epoll EINTR 矩阵（就绪前中断） · 0x7BA00段
+// UNX-F9307 阻塞挂点 EINTR 矩阵（waitqueue 等待中断窗） · 0x7BA40段
+// UNX-F9308 flock/lockf EINTR 矩阵（锁等待中断） · 0x7BA80段
+// UNX-F9309 信号投递时机竞态矩阵（阻塞前后双窗） · 0x7BAC0段
+// UNX-F9310 EINTR 与线程取消联动矩阵 · 0x7BB00段
+// UNX-F9311 部分完成语义矩阵（bytes-copied-before-signal） · 0x7BB40段
+// UNX-F9312 EINTR 错误注入器（信号发生器协议） · 0x7BB80段
+// UNX-F9313 EINTR 判定次序协议（先完成后中断） · 0x7BBC0段
+// UNX-F9314 E 型竞态可复测性声明（竞态 100 次注入统计） · 0x7BC00段
+// UNX-F9315 EINTR 与 B12 事件挂点族对账格 · 0x7BC40段
+// UNX-F9316 EINTR 与 A1 调度让出协议对账格 · 0x7BC80段
+// UNX-F9317 EINTR 与 Windows ERROR_INTERRUPTED 对照格 · 0x7BCC0段
+// UNX-F9318 EINTR 与 glibc TEMP_FAILURE_RETRY 消费核 · 0x7BD00段
+// UNX-F9319 E 型竞态参数探针总成 · 0x7BD40段
+// UNX-F9320 ktest syscall 面 B26 批断言集 · 0x7BD80段
+// UNX-F9321 时间资源错误面总纲（EINVAL 判定域） · 0x7BDC0段
+// UNX-F9322 gettimeofday/clock_gettime 坏指针矩阵（EFAULT） · 0x7BE00段
+// UNX-F9323 clock_settime 非法时钟 EINVAL 矩阵 · 0x7BE40段
+// UNX-F9324 timer_create/timer_settime 错误矩阵（EINVAL/EAGAIN） · 0x7BE80段
+// UNX-F9325 POSIX 定时器耗尽 EAGAIN 矩阵（RLIMIT_SIGPENDING 联动） · 0x7BEC0段
+// UNX-F9326 setitimer 非法间隔矩阵 · 0x7BF00段
+// UNX-F9327 clock_nanosleep 非法标志/时钟矩阵 · 0x7BF40段
+// UNX-F9328 getrusage 坏指针矩阵（联 B15/B19 对账） · 0x7BF80段
+// UNX-F9329 setrlimit 坏结构指针矩阵 · 0x7BFC0段
+// UNX-F9330 rlimit 软硬倒置 EINVAL 矩阵（联 B19 对账） · 0x7C000段
+// UNX-F9331 sched_setaffinity 坏掩码 EINVAL 矩阵 · 0x7C040段
+// UNX-F9332 sched_setscheduler 非法策略 EINVAL 矩阵 · 0x7C080段
+// UNX-F9333 时间值规范化边界矩阵（tv_nsec 上限 1e9） · 0x7C0C0段
+// UNX-F9334 时间/资源族 E 型参数探针总成 · 0x7C100段
+// UNX-F9335 时间/资源族 E 型与 B06/B19 深化册对账格 · 0x7C140段
+// UNX-F9336 时间/资源族 E 型与 Windows 计时器错误对照格 · 0x7C180段
+// UNX-F9337 E 型判据可复测性声明（10/10 次检出） · 0x7C1C0段
+// UNX-F9338 时间/资源族 E 型升级接管注记 · 0x7C200段
+// UNX-F9339 时间/资源族 E 型与 glibc clock 家族消费核 · 0x7C240段
+// UNX-F9340 ktest syscall 面 B27 批断言集 · 0x7C280段
+// UNX-F9341 E 型总装总纲（全错误码矩阵收口协议） · 0x7C2C0段
+// UNX-F9342 全域 EFAULT 矩阵总装（跨五族逐格） · 0x7C300段
+// UNX-F9343 全域 EBADF 矩阵总装 · 0x7C340段
+// UNX-F9344 全域 EINVAL 矩阵总装（五族非法参数逐格） · 0x7C380段
+// UNX-F9345 全域 EPERM/EACCES 矩阵总装（五族权限注入逐格） · 0x7C3C0段
+// UNX-F9346 全域 ENOSYS 未实装号矩阵（号面全扫） · 0x7C400段
+// UNX-F9347 错误码优先级链总装（EFAULT>EBADF>EINVAL 判序） · 0x7C440段
+// UNX-F9348 errno 透传全链路总装（Errno→lxerrno→glibc） · 0x7C480段
+// UNX-F9349 坏值注入器总装（fuzz 值域全集） · 0x7C4C0段
+// UNX-F9350 边界值等价类总装（零/负/上限/上限+1） · 0x7C500段
+// UNX-F9351 指针等价类总装（NULL/-1/非映射/只读映射） · 0x7C540段
+// UNX-F9352 fd 等价类总装（负值/未开/已关/越限） · 0x7C580段
+// UNX-F9353 竞态注入总装（EINTR×五族） · 0x7C5C0段
+// UNX-F9354 全域错误回归矩阵（与 B21–B27 判据联动） · 0x7C600段
+// UNX-F9355 E 型与 B13 错误编码器总成对账格 · 0x7C640段
+// UNX-F9356 E 型与 lxerrno::VarixErr 映射总装 · 0x7C680段
+// UNX-F9357 E 型与 Windows 错误码全域对照账 · 0x7C6C0段
+// UNX-F9358 E 型判据可复测性总声明（全矩阵 10/10） · 0x7C700段
+// UNX-F9359 E 型升级接管总注记（错误面增量清单） · 0x7C740段
+// UNX-F9360 ktest syscall 面 B28 批断言集 + E 型收口断言 · 0x7C780段
+// UNX-F9361 I 型联调总纲一（C2×C3 联签协议与共享判据面） · 0x7C7C0段
+// UNX-F9362 C3 账本消费协议（LTP 用例号面只读消费） · 0x7C800段
+// UNX-F9363 LTP「可跑」登记联测面（C2 号面 × C3 回归基建） · 0x7C840段
+// UNX-F9364 分发表注册协议联签（table.rs 注册接口 × C3 注入点） · 0x7C880段
+// UNX-F9365 syscall 路由联测（entry.rs 双门 × C3 探针） · 0x7C8C0段
+// UNX-F9366 errno 编码联测（Errno 全集 × C3 断言库） · 0x7C900段
+// UNX-F9367 参数探针联测（uaccess 拷贝 × C3 值域库） · 0x7C940段
+// UNX-F9368 meter 计量联测（SyscallMeter × C3 统计账） · 0x7C980段
+// UNX-F9369 guard 能力位联测（CAP_* × C3 权限判据库） · 0x7C9C0段
+// UNX-F9370 号面冻结清单联签（F9600 冻结协议与 C3 台账互认） · 0x7CA00段
+// UNX-F9371 LTP 子集清单联测（C2 号面覆盖率账） · 0x7CA40段
+// UNX-F9372 回归基线联测（ktest -f c2 与 C3 回归 runner 对接） · 0x7CA80段
+// UNX-F9373 联测判据共享账（只写编号+一句话协议逐条） · 0x7CAC0段
+// UNX-F9374 联签交接包（F9095/F9097 移交包升级版） · 0x7CB00段
+// UNX-F9375 联调防重声明（C2×C3 号面零冲突 grep） · 0x7CB40段
+// UNX-F9376 联调上游依赖登记（C3 未 finalize 依赖声明） · 0x7CB80段
+// UNX-F9377 联调与 Windows 对照账联测面 · 0x7CBC0段
+// UNX-F9378 联调与 glibc 消费核联测面 · 0x7CC00段
+// UNX-F9379 I 型联调判据可复测性声明 · 0x7CC40段
+// UNX-F9380 ktest syscall 面 B29 批断言集 · 0x7CC80段
+// UNX-F9381 I 型联调总纲二（C2×C4 联签协议与挂点面） · 0x7CCC0段
+// UNX-F9382 futex 四操作挂点联签（WAIT/WAKE/FD/REQUEUE 协议） · 0x7CD00段
+// UNX-F9383 futex EAGAIN/EINVAL 矩阵联测（C2 错误矩阵 × C4 挂点） · 0x7CD40段
+// UNX-F9384 epoll_ctl/epoll_wait 挂点联签（就绪队列协议） · 0x7CD80段
+// UNX-F9385 epoll 错误矩阵联测（EBADF/EINVAL/EPERM） · 0x7CDC0段
+// UNX-F9386 多路复用四件套联测（poll/select/ppoll/pselect × C4 事件面） · 0x7CE00段
+// UNX-F9387 pty 缺席 ENOTTY 联签（B16 终端挂点 × C4 pty 面） · 0x7CE40段
+// UNX-F9388 信号挂点联签（B11/B12 挂点 × C4 futex 唤醒链） · 0x7CE80段
+// UNX-F9389 阻塞唤醒原语联测（A3 fake × C4 等待队列） · 0x7CEC0段
+// UNX-F9390 futex 竞态注入联测（唤醒丢失窗 100 次统计） · 0x7CF00段
+// UNX-F9391 EINTR 重启联测（B26 矩阵 × C4 挂点） · 0x7CF40段
+// UNX-F9392 号面冻结互认联签（C2 F9400 冻结 × C4 台账） · 0x7CF80段
+// UNX-F9393 联签交接包（F9400 冻结面移交清单） · 0x7CFC0段
+// UNX-F9394 联调防重声明（C2×C4 号面零冲突 grep） · 0x7D000段
+// UNX-F9395 联调上游依赖登记（C4 未 finalize 依赖声明） · 0x7D040段
+// UNX-F9396 联调与 Windows WaitableTimer/IOCP 对照账 · 0x7D080段
+// UNX-F9397 联调与 glibc pthread futex 消费核 · 0x7D0C0段
+// UNX-F9398 I 型联调判据可复测性声明 · 0x7D100段
+// UNX-F9399 I 型与 glibc 消费清单逐号核联测 · 0x7D140段
+// UNX-F9400 ktest syscall 面 B30 批断言集 + B16–B30 半域收口断言 · 0x7D180段
+// UNX-F9401 I 型联调总纲三（C2×C3 联签协议与对账面） · 0x7D1C0段
+
+// ══════════════ 收库补登记（AI-VX9-1106 · 752 项） ══════════════
+// UNX-F18411 VerifyVersionInfo 入口注册（条件掩码预告） · 0x7E280段
+// UNX-F18412 VerSetConditionMask 位构造语义 · 0x7E2C0段
+// UNX-F18413 版本查询线程/进程上下文隔离 · 0x7E300段
+// UNX-F18414 版本查询与 bottle 上下文绑定（E1 衔接） · 0x7E340段
+// UNX-F18415 版本查询性能账（热路径缓存） · 0x7E380段
+// UNX-F18416 版本查询防重声明（与 D1 ntdll 划界） · 0x7E3C0段
+// UNX-F18417 版本谎报总开关数据结构（version_report_matrix 预留） · 0x7E400段
+// UNX-F18418 版本面错误路径账（非法参数/空结构） · 0x7E440段
+// UNX-F18419 ktest 引导面 B01 批断言集 · 0x7E480段
+// UNX-F18420 B01 批守恒闭合断言 · 0x7E4C0段
+// UNX-F18461 兼容层标志面总纲（读取链冻结） · 0x7EF00段
+// UNX-F18462 HKCU Compatibility 层键族语义 · 0x7EF40段
+// UNX-F18463 HKLM 全局兼容标志读取 · 0x7EF80段
+// UNX-F18464 Layers 栏目语法解析（版本串/标志串） · 0x7EFC0段
+// UNX-F18465 HIGHDPIAWARE/DPIUNAWARE 标志消费预告 · 0x7F000段
+// UNX-F18466 RUNASADMIN 标志与提示联动 · 0x7F040段
+// UNX-F18467 WIN7RTM/WIN8RTM 等版本标志映射 · 0x7F080段
+// UNX-F18468 兼容标志优先级仲裁（多标志叠加） · 0x7F0C0段
+// UNX-F18469 标志变更即时生效（hive 通知消费） · 0x7F100段
+// UNX-F18470 非法标志值防御（畸形串/未知令牌） · 0x7F140段
+// UNX-F18471 兼容层→矩阵写入路径 · 0x7F180段
+// UNX-F18472 通配路径与精确路径匹配 · 0x7F1C0段
+// UNX-F18473 兼容层读取性能账（缓存+失效） · 0x7F200段
+// UNX-F18474 标志面观测导出（兼容设置画像） · 0x7F240段
+// UNX-F18475 键写入辅助（Varix 兼容设置写入口） · 0x7F280段
+// UNX-F18476 兼容层防重声明（与 D3 划界） · 0x7F2C0段
+// UNX-F18477 兼容层错误路径账（hive 不可达降级） · 0x7F300段
+// UNX-F18478 与安装器家族联动预告（B25 识别层消费） · 0x7F340段
+// UNX-F18479 ktest 引导面 B04 批断言集 · 0x7F380段
+// UNX-F18480 B04 批守恒闭合断言 · 0x7F3C0段
+// UNX-F18521 探针库总纲（50 例分层结构冻结） · 0x7FE00段
+// UNX-F18522 兼容值口径探针（10 例） · 0x7FE40段
+// UNX-F18523 supportedOS 声明探针（15 例） · 0x7FE80段
+// UNX-F18524 ActCtx 覆写探针（10 例） · 0x7FEC0段
+// UNX-F18525 条件掩码探针（10 例） · 0x7FF00段
+// UNX-F18526 混合场景探针（5 例四源叠加） · 0x7FF40段
+// UNX-F18527 探针自动跑批器（一命令全绿/偏差账） · 0x7FF80段
+// UNX-F18528 Windows 口径基准账（实机对照记录） · 0x7FFC0段
+// UNX-F18529 探针失败归因账（Varix 缺陷/样本缺陷分流） · 0x80000段
+// UNX-F18530 探针版本化与回归纪律（零回退） · 0x80040段
+// UNX-F18561 版本面联签总纲（三段联合冻结） · 0x80800段
+// UNX-F18562 manifest 解析挂接联签（对 AI-17） · 0x80840段
+// UNX-F18563 hive 访问挂接联签（对 AI-18） · 0x80880段
+// UNX-F18564 Wine 上栈环境联签（对 AI-21） · 0x808C0段
+// UNX-F18565 vcredist 免装联签收口（对 AI-22） · 0x80900段
+// UNX-F18566 三段联合通判据（锚 2 前半集成跑） · 0x80940段
+// UNX-F18567 MSI 引擎前置联检（表模型/事务预告） · 0x80980段
+// UNX-F18568 版本面全量回归（B01–B08 判据联合） · 0x809C0段
+// UNX-F18569 版本面域账守恒核（B01–B09 累计） · 0x80A00段
+// UNX-F18570 上游变更跟随账（接口漂移监测） · 0x80A40段
+// UNX-F18571 ADR-UNX-008 锚基线填充判据（波 07 裁决消费） · 0x80A80段
+// UNX-F18572 版本面防重总声明（九批全量聚类） · 0x80AC0段
+// UNX-F18573 版本面缺陷账聚合（BUG-UNX E4 分册开账） · 0x80B00段
+// UNX-F18574 版本面体验完整性映射（章 4 前半） · 0x80B40段
+// UNX-F18575 版本面 20 维验收自查映射（前半） · 0x80B80段
+// UNX-F18576 版本面观测总出口（统一导出器） · 0x80BC0段
+// 未解析文档头的模块（收库补登记）
+pub mod unx0587_dupkey;
+pub mod unx0939_apseq;
+pub mod unx0943_tophalf;
+pub mod unx0944_trigpt;
+pub mod unx0946_tasklet;
+pub mod unx0947_workq;
+pub mod unx0950_stall;
+pub mod unx0957_health;
+pub mod unx0960_b08disp;
+pub mod unx0962_tiermap;
+pub mod unx0970_duobs;
+pub mod unx0983_stormtier;
+pub mod unx0988_stormexplain;
+pub mod unx11699_enospc_dual_snapshot;
+pub mod unx4219_ktestb11;
+
+// ── AI-VX12-1106 收库补登记：127xx 孤儿件 ×10（前波遗留未登记，0x8xxxx 段沿用原模块头）──
+pub mod unx12729_context_frame;
+pub mod unx12730_critsec_bits;
+pub mod unx12733_vmem_threestate;
+pub mod unx12754_seh_doc_align;
+pub mod unx12755_risk_recheck_rd1008;
+pub mod unx12789_risk_handoff;
+
+// ── AI-VX12-1106 新批：UNX-F51501~F51513（USB 存储传输/错误面/账面深化，
+//    0xC0000..=0xC03C0 段独占，本地探针逐模块验证）──
+pub mod unx51502_cache_flush;
+pub mod unx51503_media_change;
+pub mod unx51504_stream_priority;
+pub mod unx51505_cmd_direct;
+pub mod unx51508_msc_stats;
+pub mod unx51509_uasp_stats;
+pub mod unx51510_hot_partition;
+pub mod unx51511_timeout_class;
+pub mod unx51512_tmfu_queue;
+pub mod unx51513_precheck_hook;
+pub mod unx51514_sleep_resume;
+pub mod unx51515_cold_boot_path;
+pub mod unx51516_b16_errpath;
+pub mod unx51517_b16_obs;
+pub mod unx51518_b16_errcode;
+pub mod unx51519_b16_dedup;
+pub mod unx51520_b16_close;
+pub mod unx51521_bw_budget;
+pub mod unx51522_mixed_qos;
+pub mod unx51523_bw_reject;
+pub mod unx51524_bw_view;
+pub mod unx51525_cam_audio_bw;
+pub mod unx51526_fair_assertor;
+pub mod unx51527_low_speed_guard;
+pub mod unx51528_burst_shaper;
+pub mod unx51529_bw_h4_net;
+pub mod unx51530_dual_ctrl_bw;
+pub mod unx51531_b17_errpath;
+pub mod unx51532_b17_obs;
+pub mod unx51533_b17_perf_baseline;
+pub mod unx51534_b17_errcode;
+pub mod unx51535_cfg_persist;
+pub mod unx51536_b17_j5_anchor;
+pub mod unx51537_hub_stress;
+pub mod unx51538_fair_longterm;
+pub mod unx51539_b17_dedup;
+pub mod unx51540_b17_close;
+pub mod unx51541_port_policy;
+pub mod unx51542_port_suspend;
+pub mod unx51543_hub_sleep;
+pub mod unx51544_power_reneg;
+pub mod unx51545_policy_persist;
+
+// ==================== AI-INTAKE-1107 收库登记簿（758 族历史模块统一入册，见 intake_1107.rs） ====================
+pub mod intake_1107;
+
+// ══════════════ VX9 尾批 40 单收库登记（AI-VX9-1106） ══════════════
+// UNX-F12728 尾批收库登记 · 0xNone段
+pub mod unx12728_unwindinfo_family;
+// UNX-F12731 尾批收库登记 · 0xNone段
+pub mod unx12731_oa_fields;
+// UNX-F12732 尾批收库登记 · 0xNone段
+pub mod unx12732_sync_family;
+// UNX-F12734 尾批收库登记 · 0xNone段
+pub mod unx12734_nativefile_disp;
+// UNX-F12735 尾批收库登记 · 0xNone段
+pub mod unx12735_registry_family;
+// UNX-F12736 尾批收库登记 · 0xNone段
+pub mod unx12736_token_family;
+// UNX-F12737 尾批收库登记 · 0xNone段
+pub mod unx12737_diff_ledger;
+// UNX-F12738 尾批收库登记 · 0xNone段
+pub mod unx12738_dual_ledger_agreement;
+// UNX-F12739 尾批收库登记 · 0xNone段
+pub mod unx12739_ktest_b37;
+// UNX-F12740 尾批收库登记 · 0xNone段
+pub mod unx12740_b38_preview;
+// UNX-F12742 尾批收库登记 · 0xNone段
+pub mod unx12742_disp_stress;
+// UNX-F12743 尾批收库登记 · 0xNone段
+pub mod unx12743_unwind_chain;
+// UNX-F12752 尾批收库登记 · 0xNone段
+pub mod unx12752_stress_boundary_corpus;
+// UNX-F12756 尾批收库登记 · 0xNone段
+pub mod unx12756_ktest_b38;
+// UNX-F12757 尾批收库登记 · 0xNone段
+pub mod unx12757_stress_close;
+// UNX-F12758 尾批收库登记 · 0xNone段
+pub mod unx12758_b39_preview;
+// UNX-F12759 尾批收库登记 · 0xNone段
+pub mod unx12759_asset_sha;
+// UNX-F12760 尾批收库登记 · 0xNone段
+pub mod unx12760_seh_chain_decl;
+// UNX-F12762 尾批收库登记 · 0xNone段
+pub mod unx12762_semantic_confirm;
+// UNX-F12763 尾批收库登记 · 0xNone段
+pub mod unx12763_adr_anchors;
+// UNX-F12764 尾批收库登记 · 0xNone段
+pub mod unx12764_tbt_ledger;
+// UNX-F12765 尾批收库登记 · 0xNone段
+pub mod unx12765_offset_prov;
+// UNX-F12766 尾批收库登记 · 0xNone段
+pub mod unx12766_ntstatus_prov;
+// UNX-F12767 尾批收库登记 · 0xNone段
+pub mod unx12767_layout_prov;
+// UNX-F12780 尾批收库登记 · 0xNone段
+pub mod unx12780_doc_closure;
+// UNX-F12782 尾批收库登记 · 0xNone段
+pub mod unx12782_plane_freeze;
+// UNX-F12783 尾批收库登记 · 0xNone段
+pub mod unx12783_takeover;
+// UNX-F12784 尾批收库登记 · 0xNone段
+pub mod unx12784_audit_table;
+// UNX-F12785 尾批收库登记 · 0xNone段
+pub mod unx12785_seal_ledger;
+// UNX-F12786 尾批收库登记 · 0xNone段
+pub mod unx12786_close_bar;
+// UNX-F12787 尾批收库登记 · 0xNone段
+pub mod unx12787_criteria_unique;
+// UNX-F12788 尾批收库登记 · 0xNone段
+pub mod unx12788_line_ledger;
+// UNX-F12790 尾批收库登记 · 0xNone段
+pub mod unx12790_freeze_handoff;
+// UNX-F12791 尾批收库登记 · 0xNone段
+pub mod unx12791_handoff_decl;
+
+// ══════════════ 收库补登记第二轮（AI-VX9-1107 · 781 项，补并行提交冲销） ══════════════
+// unx0504_lineedit（收库补登记）
+pub mod unx0504_lineedit;
+// unx0505_loopback_deep（收库补登记）
+pub mod unx0505_loopback_deep;
+// unx0506_kbd8042（收库补登记）
+pub mod unx0506_kbd8042;
+// unx0507_scancode（收库补登记）
+pub mod unx0507_scancode;
+// unx0508_asciimap（收库补登记）
+pub mod unx0508_asciimap;
+// unx10000_milestone_recap（收库补登记）
+pub mod unx10000_milestone_recap;
+// unx10002_wave_aggregator（收库补登记）
+pub mod unx10002_wave_aggregator;
+// unx10003_batch_aggregator（收库补登记）
+pub mod unx10003_batch_aggregator;
+// unx10004_front_aggregator（收库补登记）
+pub mod unx10004_front_aggregator;
+// unx10005_module_aggregator（收库补登记）
+pub mod unx10005_module_aggregator;
+// unx10006_pass_rate_column（收库补登记）
+pub mod unx10006_pass_rate_column;
+// unx10007_exposure_column（收库补登记）
+pub mod unx10007_exposure_column;
+// unx10008_exemption_occupancy（收库补登记）
+pub mod unx10008_exemption_occupancy;
+// unx10009_line_conservation（收库补登记）
+pub mod unx10009_line_conservation;
+// unx10010_snapshot_freeze（收库补登记）
+pub mod unx10010_snapshot_freeze;
+// unx10011_procfs_readonly（收库补登记）
+pub mod unx10011_procfs_readonly;
+// unx10012_two_period_diff（收库补登记）
+pub mod unx10012_two_period_diff;
+// unx10013_anomaly_detect（收库补登记）
+pub mod unx10013_anomaly_detect;
+// unx10014_md_export（收库补登记）
+pub mod unx10014_md_export;
+// unx10015_archive_version（收库补登记）
+pub mod unx10015_archive_version;
+// unx10016_access_audit（收库补登记）
+pub mod unx10016_access_audit;
+// unx10017_sample_audit（收库补登记）
+pub mod unx10017_sample_audit;
+// unx10018_wave_gate（收库补登记）
+pub mod unx10018_wave_gate;
+// unx10019_handoff_sync（收库补登记）
+pub mod unx10019_handoff_sync;
+// unx10020_closeout_budget（收库补登记）
+pub mod unx10020_closeout_budget;
+// unx10021_sprint_master（收库补登记）
+pub mod unx10021_sprint_master;
+// unx10022_stock_enumerate（收库补登记）
+pub mod unx10022_stock_enumerate;
+// unx10023_stock_classify（收库补登记）
+pub mod unx10023_stock_classify;
+// unx10024_plan_batch（收库补登记）
+pub mod unx10024_plan_batch;
+// unx10025_retest_exec（收库补登记）
+pub mod unx10025_retest_exec;
+// unx10026_pass_verdict（收库补登记）
+pub mod unx10026_pass_verdict;
+// unx10027_red_ledger（收库补登记）
+pub mod unx10027_red_ledger;
+// unx10028_adr_evidence（收库补登记）
+pub mod unx10028_adr_evidence;
+// unx10029_rate_sentinel（收库补登记）
+pub mod unx10029_rate_sentinel;
+// unx10030_ledger_version（收库补登记）
+pub mod unx10030_ledger_version;
+// unx10031_special_batch（收库补登记）
+pub mod unx10031_special_batch;
+// unx10032_repay_guard（收库补登记）
+pub mod unx10032_repay_guard;
+// unx10033_evidence_chain（收库补登记）
+pub mod unx10033_evidence_chain;
+// unx10034_repay_report（收库补登记）
+pub mod unx10034_repay_report;
+// unx10035_repay_gate（收库补登记）
+pub mod unx10035_repay_gate;
+// unx10036_audit_rerun（收库补登记）
+pub mod unx10036_audit_rerun;
+// unx10037_dual_retest（收库补登记）
+pub mod unx10037_dual_retest;
+// unx10038_repay_drill（收库补登记）
+pub mod unx10038_repay_drill;
+// unx10039_allgreen_loop（收库补登记）
+pub mod unx10039_allgreen_loop;
+// unx10040_b22_closing（收库补登记）
+pub mod unx10040_b22_closing;
+// unx10041_regress_rhythm（收库补登记）
+pub mod unx10041_regress_rhythm;
+// unx10042_period_table（收库补登记）
+pub mod unx10042_period_table;
+// unx10043_trigger_matrix（收库补登记）
+pub mod unx10043_trigger_matrix;
+// unx10044_pick_policy（收库补登记）
+pub mod unx10044_pick_policy;
+// unx10045_incremental_pick（收库补登记）
+pub mod unx10045_incremental_pick;
+// unx10046_stratified_pick（收库补登记）
+pub mod unx10046_stratified_pick;
+// unx10047_regress_exec（收库补登记）
+pub mod unx10047_regress_exec;
+// unx10048_merge_rounds（收库补登记）
+pub mod unx10048_merge_rounds;
+// unx10049_baseline_diff（收库补登记）
+pub mod unx10049_baseline_diff;
+// unx10050_red_classify（收库补登记）
+pub mod unx10050_red_classify;
+// unx10051_escalation（收库补登记）
+pub mod unx10051_escalation;
+// unx10052_trend_report（收库补登记）
+pub mod unx10052_trend_report;
+// unx10053_cost_guard（收库补登记）
+pub mod unx10053_cost_guard;
+// unx10054_dual_track（收库补登记）
+pub mod unx10054_dual_track;
+// unx10055_evidence_retention（收库补登记）
+pub mod unx10055_evidence_retention;
+// unx10056_batch_gate（收库补登记）
+pub mod unx10056_batch_gate;
+// unx10057_green_bridge（收库补登记）
+pub mod unx10057_green_bridge;
+// unx10058_circuit_breaker（收库补登记）
+pub mod unx10058_circuit_breaker;
+// unx10059_quarterly_drill（收库补登记）
+pub mod unx10059_quarterly_drill;
+// unx10060_closure_summary（收库补登记）
+pub mod unx10060_closure_summary;
+// unx10061_m_closure_charter（收库补登记）
+pub mod unx10061_m_closure_charter;
+// unx10062_rescan_engine（收库补登记）
+pub mod unx10062_rescan_engine;
+// unx10063_range_continuity（收库补登记）
+pub mod unx10063_range_continuity;
+// unx10064_triad_recheck（收库补登记）
+pub mod unx10064_triad_recheck;
+// unx10065_line_conservation（收库补登记）
+pub mod unx10065_line_conservation;
+// unx10066_state_consistency（收库补登记）
+pub mod unx10066_state_consistency;
+// unx10067_triple_recon（收库补登记）
+pub mod unx10067_triple_recon;
+// unx10068_red_ledger_audit（收库补登记）
+pub mod unx10068_red_ledger_audit;
+// unx10069_exempt_recon（收库补登记）
+pub mod unx10069_exempt_recon;
+// unx1006_u1006（收库补登记）
+pub mod unx1006_u1006;
+// unx10070_snapshot_chain（收库补登记）
+pub mod unx10070_snapshot_chain;
+// unx10071_dual_coverage（收库补登记）
+pub mod unx10071_dual_coverage;
+// unx10072_graft_refs（收库补登记）
+pub mod unx10072_graft_refs;
+// unx10073_uniqueness（收库补登记）
+pub mod unx10073_uniqueness;
+// unx10074_diff_list（收库补登记）
+pub mod unx10074_diff_list;
+// unx10075_diff_route（收库补登记）
+pub mod unx10075_diff_route;
+// unx10076_report_gen（收库补登记）
+pub mod unx10076_report_gen;
+// unx10077_close_gate（收库补登记）
+pub mod unx10077_close_gate;
+// unx10078_handover（收库补登记）
+pub mod unx10078_handover;
+// unx10079_archive_freeze（收库补登记）
+pub mod unx10079_archive_freeze;
+// unx10080_b24_closeout（收库补登记）
+pub mod unx10080_b24_closeout;
+// unx10081_e_opening_charter（收库补登记）
+pub mod unx10081_e_opening_charter;
+// unx10082_dual_struct_protocol（收库补登记）
+pub mod unx10082_dual_struct_protocol;
+// unx10083_pos_criterion_spec（收库补登记）
+pub mod unx10083_pos_criterion_spec;
+// unx10084_neg_criterion_spec（收库补登记）
+pub mod unx10084_neg_criterion_spec;
+// unx10085_tri_split_protocol（收库补登记）
+pub mod unx10085_tri_split_protocol;
+// unx10086_dual_retest（收库补登记）
+pub mod unx10086_dual_retest;
+// unx10087_j2_red_channel（收库补登记）
+pub mod unx10087_j2_red_channel;
+// unx10088_checkset_ring（收库补登记）
+pub mod unx10088_checkset_ring;
+// unx10089_batch_gate_e（收库补登记）
+pub mod unx10089_batch_gate_e;
+// unx10090_report_two_column（收库补登记）
+pub mod unx10090_report_two_column;
+// unx10091_sample_entry（收库补登记）
+pub mod unx10091_sample_entry;
+// unx10092_review_fiveq（收库补登记）
+pub mod unx10092_review_fiveq;
+// unx10093_expdiff_link（收库补登记）
+pub mod unx10093_expdiff_link;
+// unx10094_j2_exemption（收库补登记）
+pub mod unx10094_j2_exemption;
+// unx10095_snapshot_j2_fields（收库补登记）
+pub mod unx10095_snapshot_j2_fields;
+// unx10096_dedupe_protocol（收库补登记）
+pub mod unx10096_dedupe_protocol;
+// unx10097_frontline_alloc（收库补登记）
+pub mod unx10097_frontline_alloc;
+// unx10098_criterion_template（收库补登记）
+pub mod unx10098_criterion_template;
+// unx10099_f9900_linkage（收库补登记）
+pub mod unx10099_f9900_linkage;
+// unx11672_install_skip（收库补登记）
+pub mod unx11672_install_skip;
+// unx11687_mv_cross_enospc_rollback（收库补登记）
+pub mod unx11687_mv_cross_enospc_rollback;
+// unx11696_release_retry_recover（收库补登记）
+pub mod unx11696_release_retry_recover;
+// unx11925_b37（收库补登记）
+pub mod unx11925_b37;
+// unx12538_handle27_38（收库补登记）
+pub mod unx12538_handle27_38;
+// unx12544_d128_44（收库补登记）
+pub mod unx12544_d128_44;
+// unx12720_type1_anchor（收库补登记）
+pub mod unx12720_type1_anchor;
+// unx12721_regress_master（收库补登记）
+pub mod unx12721_regress_master;
+// unx12722_ntdos_regress（收库补登记）
+pub mod unx12722_ntdos_regress;
+// unx12723_objbits_regress（收库补登记）
+pub mod unx12723_objbits_regress;
+// unx12724_peb_offset_regress（收库补登记）
+pub mod unx12724_peb_offset_regress;
+// unx12725_teb_slot_regress（收库补登记）
+pub mod unx12725_teb_slot_regress;
+// unx12726_ustr_semantic（收库补登记）
+pub mod unx12726_ustr_semantic;
+// unx12727_pdata_runtime（收库补登记）
+pub mod unx12727_pdata_runtime;
+// unx12744_uwop_fullcode_stress（收库补登记）
+pub mod unx12744_uwop_fullcode_stress;
+// unx12745_badinfo_failclosed（收库补登记）
+pub mod unx12745_badinfo_failclosed;
+// unx12746_context_trapframe_stress（收库补登记）
+pub mod unx12746_context_trapframe_stress;
+// unx12747_critsec_dual_source（收库补登记）
+pub mod unx12747_critsec_dual_source;
+// unx12748_inject_b25b26_link（收库补登记）
+pub mod unx12748_inject_b25b26_link;
+// unx12749_assert_ledger_40beat（收库补登记）
+pub mod unx12749_assert_ledger_40beat;
+// unx12750_dispatch_p95_budget（收库补登记）
+pub mod unx12750_dispatch_p95_budget;
+// unx12751_stress_dual_machine（收库补登记）
+pub mod unx12751_stress_dual_machine;
+// unx12753_twostate_bookkeeping（收库补登记）
+pub mod unx12753_twostate_bookkeeping;
+// unx12768_semantic_boundary_verify（收库补登记）
+pub mod unx12768_semantic_boundary_verify;
+// unx12769_glossary_consistency（收库补登记）
+pub mod unx12769_glossary_consistency;
+// unx12770_domain_wisdom_ten（收库补登记）
+pub mod unx12770_domain_wisdom_ten;
+// unx12771_doc_snapshot_freeze（收库补登记）
+pub mod unx12771_doc_snapshot_freeze;
+// unx12772_doc_diff_ledger（收库补登记）
+pub mod unx12772_doc_diff_ledger;
+// unx12773_doc_align_dual_machine（收库补登记）
+pub mod unx12773_doc_align_dual_machine;
+// unx12774_ktest_aggregator_b39（收库补登记）
+pub mod unx12774_ktest_aggregator_b39;
+// unx12775_doc_align_closure_ledger（收库补登记）
+pub mod unx12775_doc_align_closure_ledger;
+// unx12776_b40_announce_gate（收库补登记）
+pub mod unx12776_b40_announce_gate;
+// unx12777_deepen_guide_archive（收库补登记）
+pub mod unx12777_deepen_guide_archive;
+// unx12778_doc_asset_handoff（收库补登记）
+pub mod unx12778_doc_asset_handoff;
+// unx12779_pending_retest_handoff（收库补登记）
+pub mod unx12779_pending_retest_handoff;
+// unx12792_handoff2_closure（收库补登记）
+pub mod unx12792_handoff2_closure;
+// unx12793_handoff3_sync_declare（收库补登记）
+pub mod unx12793_handoff3_sync_declare;
+// unx12794_ktest_assert_assets（收库补登记）
+pub mod unx12794_ktest_assert_assets;
+// unx12795_retest_asset_library（收库补登记）
+pub mod unx12795_retest_asset_library;
+// unx12796_dualtrack_declare（收库补登记）
+pub mod unx12796_dualtrack_declare;
+// unx12797_hw_retest_list（收库补登记）
+pub mod unx12797_hw_retest_list;
+// unx12798_f12800_sentinel（收库补登记）
+pub mod unx12798_f12800_sentinel;
+// unx12799_domain_closure_flag（收库补登记）
+pub mod unx12799_domain_closure_flag;
+// unx1442_jsonexport（收库补登记）
+pub mod unx1442_jsonexport;
+// unx1462_seqgap（收库补登记）
+pub mod unx1462_seqgap;
+// unx1485_gapfill3（收库补登记）
+pub mod unx1485_gapfill3;
+// unx1504_takeover_replay（收库补登记）
+pub mod unx1504_takeover_replay;
+// unx1505_injregrun（收库补登记）
+pub mod unx1505_injregrun;
+// unx1506_regrexec（收库补登记）
+pub mod unx1506_regrexec;
+// unx1506_regrun（收库补登记）
+pub mod unx1506_regrun;
+// unx1522_assetledger（收库补登记）
+pub mod unx1522_assetledger;
+// unx1544_ifacereg（收库补登记）
+pub mod unx1544_ifacereg;
+// unx1564_irqconsume（收库补登记）
+pub mod unx1564_irqconsume;
+// unx1584_grandfinal（收库补登记）
+pub mod unx1584_grandfinal;
+// unx1608_ap7path（收库补登记）
+pub mod unx1608_ap7path;
+// unx1626_ctxswcnt（收库补登记）
+pub mod unx1626_ctxswcnt;
+// unx1646_loadweight（收库补登记）
+pub mod unx1646_loadweight;
+// unx1665_placedtree（收库补登记）
+pub mod unx1665_placedtree;
+// unx1683_quanta（收库补登记）
+pub mod unx1683_quanta;
+// unx1705_loadtrack（收库补登记）
+pub mod unx1705_loadtrack;
+// unx1724_migrback（收库补登记）
+pub mod unx1724_migrback;
+// unx1747_wakeprim（收库补登记）
+pub mod unx1747_wakeprim;
+// unx1766_cpuload（收库补登记）
+pub mod unx1766_cpuload;
+// unx1786_apfirstchk（收库补登记）
+pub mod unx1786_apfirstchk;
+// unx1806_cutin（收库补登记）
+pub mod unx1806_cutin;
+// unx1827_fpenabled（收库补登记）
+pub mod unx1827_fpenabled;
+// unx18401_verfamily_gate（收库补登记）
+pub mod unx18401_verfamily_gate;
+// unx18402_dword_packing（收库补登记）
+pub mod unx18402_dword_packing;
+// unx18403_osviexw_layout（收库补登记）
+pub mod unx18403_osviexw_layout;
+// unx18404_major_minor_matrix（收库补登记）
+pub mod unx18404_major_minor_matrix;
+// unx18405_build_platform_id（收库补登记）
+pub mod unx18405_build_platform_id;
+// unx18406_servicepack_csd（收库补登记）
+pub mod unx18406_servicepack_csd;
+// unx18407_product_type_gate（收库补登记）
+pub mod unx18407_product_type_gate;
+// unx18408_suite_mask_bits（收库补登记）
+pub mod unx18408_suite_mask_bits;
+// unx18409_csd_string_bound（收库补登记）
+pub mod unx18409_csd_string_bound;
+// unx18410_product_sku_map（收库补登记）
+pub mod unx18410_product_sku_map;
+// UNX-F18411 VerifyVersionInfo 入口注册（条件掩码预告） · 0x7E280段
+pub mod unx18411_verify_entry_reg;
+// UNX-F18412 VerSetConditionMask 位构造语义 · 0x7E2C0段
+pub mod unx18412_cond_mask_bits;
+// UNX-F18413 版本查询线程/进程上下文隔离 · 0x7E300段
+pub mod unx18413_ctx_isolation;
+// UNX-F18414 版本查询与 bottle 上下文绑定（E1 衔接） · 0x7E340段
+pub mod unx18414_bottle_bind;
+// UNX-F18415 版本查询性能账（热路径缓存） · 0x7E380段
+pub mod unx18415_hotpath_cache;
+// UNX-F18416 版本查询防重声明（与 D1 ntdll 划界） · 0x7E3C0段
+pub mod unx18416_dedup_d1_face;
+// UNX-F18417 版本谎报总开关数据结构（version_report_matrix 预留） · 0x7E400段
+pub mod unx18417_report_keys;
+// UNX-F18418 版本面错误路径账（非法参数/空结构） · 0x7E440段
+pub mod unx18418_error_paths;
+// UNX-F18419 ktest 引导面 B01 批断言集 · 0x7E480段
+pub mod unx18419_ktest_b01;
+// UNX-F18420 B01 批守恒闭合断言 · 0x7E4C0段
+pub mod unx18420_batch_conserve;
+// unx18421_verdict_matrix（收库补登记）
+pub mod unx18421_verdict_matrix;
+// unx18422_priority_chain（收库补登记）
+pub mod unx18422_priority_chain;
+// unx18423_basis_registry（收库补登记）
+pub mod unx18423_basis_registry;
+// unx18424_process_key（收库补登记）
+pub mod unx18424_process_key;
+// unx18425_api_enum（收库补登记）
+pub mod unx18425_api_enum;
+// unx18426_query_enum（收库补登记）
+pub mod unx18426_query_enum;
+// unx18427_default_layer（收库补登记）
+pub mod unx18427_default_layer;
+// unx18428_compat_values（收库补登记）
+pub mod unx18428_compat_values;
+// unx18429_hot_update（收库补登记）
+pub mod unx18429_hot_update;
+// unx18430_persist（收库补登记）
+pub mod unx18430_persist;
+// unx18431_obs_export（收库补登记）
+pub mod unx18431_obs_export;
+// unx18432_probe_clamp（收库补登记）
+pub mod unx18432_probe_clamp;
+// unx18433_vvi_consumer（收库补登记）
+pub mod unx18433_vvi_consumer;
+// unx18434_gvex_consumer（收库补登记）
+pub mod unx18434_gvex_consumer;
+// unx18435_conflict_alert（收库补登记）
+pub mod unx18435_conflict_alert;
+// unx18436_cap_perf（收库补登记）
+pub mod unx18436_cap_perf;
+// unx18437_stale_fallback（收库补登记）
+pub mod unx18437_stale_fallback;
+// unx18438_recipe_bridge（收库补登记）
+pub mod unx18438_recipe_bridge;
+// unx18439_ktest_b02（收库补登记）
+pub mod unx18439_ktest_b02;
+// unx18440_b02_closure（收库补登记）
+pub mod unx18440_b02_closure;
+// unx18441_decl_master（收库补登记）
+pub mod unx18441_decl_master;
+// unx18442_guid_era_table（收库补登记）
+pub mod unx18442_guid_era_table;
+// unx18443_multi_guid_max（收库补登记）
+pub mod unx18443_multi_guid_max;
+// unx18444_undeclared_verdict（收库补登记）
+pub mod unx18444_undeclared_verdict;
+// unx18445_d2_load_consume（收库补登记）
+pub mod unx18445_d2_load_consume;
+// unx18446_exec_level_parse（收库补登记）
+pub mod unx18446_exec_level_parse;
+// unx18447_compat_elem_reg（收库补登记）
+pub mod unx18447_compat_elem_reg;
+// unx18448_missing_degrade（收库补登记）
+pub mod unx18448_missing_degrade;
+// unx18449_decl_cache_hash（收库补登记）
+pub mod unx18449_decl_cache_hash;
+// unx18450_errpath_ledger（收库补登记）
+pub mod unx18450_errpath_ledger;
+// unx18451_decl_matrix_write（收库补登记）
+pub mod unx18451_decl_matrix_write;
+// unx18452_anchor_linkage（收库补登记）
+pub mod unx18452_anchor_linkage;
+// unx18453_semantic_probe（收库补登记）
+pub mod unx18453_semantic_probe;
+// unx18454_dual_mf_arbiter（收库补登记）
+pub mod unx18454_dual_mf_arbiter;
+// unx18455_topic_boundary（收库补登记）
+pub mod unx18455_topic_boundary;
+// unx18456_load_perf（收库补登记）
+pub mod unx18456_load_perf;
+// unx18457_profile_export（收库补登记）
+pub mod unx18457_profile_export;
+// unx18458_actctx_hook（收库补登记）
+pub mod unx18458_actctx_hook;
+// unx18459_ktest_b03（收库补登记）
+pub mod unx18459_ktest_b03;
+// unx18460_b03_closure（收库补登记）
+pub mod unx18460_b03_closure;
+// UNX-F18461 兼容层标志面总纲（读取链冻结） · 0x7EF00段
+pub mod unx18461_flag_read_chain;
+// UNX-F18462 HKCU Compatibility 层键族语义 · 0x7EF40段
+pub mod unx18462_hkcu_layers_keys;
+// UNX-F18463 HKLM 全局兼容标志读取 · 0x7EF80段
+pub mod unx18463_hklm_global_flags;
+// UNX-F18464 Layers 栏目语法解析（版本串/标志串） · 0x7EFC0段
+pub mod unx18464_layers_column_syntax;
+// UNX-F18465 HIGHDPIAWARE/DPIUNAWARE 标志消费预告 · 0x7F000段
+pub mod unx18465_dpi_flag_hooks;
+// UNX-F18466 RUNASADMIN 标志与提示联动 · 0x7F040段
+pub mod unx18466_runas_admin_link;
+// UNX-F18467 WIN7RTM/WIN8RTM 等版本标志映射 · 0x7F080段
+pub mod unx18467_version_flag_map;
+// UNX-F18468 兼容标志优先级仲裁（多标志叠加） · 0x7F0C0段
+pub mod unx18468_flag_arbiter;
+// UNX-F18469 标志变更即时生效（hive 通知消费） · 0x7F100段
+pub mod unx18469_hive_notify_live;
+// UNX-F18470 非法标志值防御（畸形串/未知令牌） · 0x7F140段
+pub mod unx18470_malformed_defense;
+// UNX-F18471 兼容层→矩阵写入路径 · 0x7F180段
+pub mod unx18471_matrix_write;
+// UNX-F18472 通配路径与精确路径匹配 · 0x7F1C0段
+pub mod unx18472_wild_path_match;
+// UNX-F18473 兼容层读取性能账（缓存+失效） · 0x7F200段
+pub mod unx18473_read_perf_cache;
+// UNX-F18474 标志面观测导出（兼容设置画像） · 0x7F240段
+pub mod unx18474_flag_profile_export;
+// UNX-F18475 键写入辅助（Varix 兼容设置写入口） · 0x7F280段
+pub mod unx18475_key_write_gate;
+// UNX-F18476 兼容层防重声明（与 D3 划界） · 0x7F2C0段
+pub mod unx18476_dup_decl_guard;
+// UNX-F18477 兼容层错误路径账（hive 不可达降级） · 0x7F300段
+pub mod unx18477_hive_fallback;
+// UNX-F18478 与安装器家族联动预告（B25 识别层消费） · 0x7F340段
+pub mod unx18478_installer_link;
+// UNX-F18479 ktest 引导面 B04 批断言集 · 0x7F380段
+pub mod unx18479_ktest_b04_gate;
+// unx1847_ipihier（收库补登记）
+pub mod unx1847_ipihier;
+// UNX-F18480 B04 批守恒闭合断言 · 0x7F3C0段
+pub mod unx18480_b04_conserve;
+// unx18481_actctx_lifecycle（收库补登记）
+pub mod unx18481_actctx_lifecycle;
+// unx18482_ovr_create_bind（收库补登记）
+pub mod unx18482_ovr_create_bind;
+// unx18483_ovr_scope（收库补登记）
+pub mod unx18483_ovr_scope;
+// unx18484_ovr_priority_arb（收库补登记）
+pub mod unx18484_ovr_priority_arb;
+// unx18485_ovr_revert（收库补登记）
+pub mod unx18485_ovr_revert;
+// unx18486_exit_sweep（收库补登记）
+pub mod unx18486_exit_sweep;
+// unx18487_nested_ovr_stack（收库补登记）
+pub mod unx18487_nested_ovr_stack;
+// unx18488_six_dim_write（收库补登记）
+pub mod unx18488_six_dim_write;
+// unx18489_four_verdict_loop（收库补登记）
+pub mod unx18489_four_verdict_loop;
+// unx18490_conflict_ledger（收库补登记）
+pub mod unx18490_conflict_ledger;
+// unx18491_ovr_trace_export（收库补登记）
+pub mod unx18491_ovr_trace_export;
+// unx18492_token_discipline（收库补登记）
+pub mod unx18492_token_discipline;
+// unx18493_dim_value_errpath（收库补登记）
+pub mod unx18493_dim_value_errpath;
+// unx18494_presc_probe_run（收库补登记）
+pub mod unx18494_presc_probe_run;
+// unx18495_probe_b07_dryrun（收库补登记）
+pub mod unx18495_probe_b07_dryrun;
+// unx18496_actctx_dedup_face（收库补登记）
+pub mod unx18496_actctx_dedup_face;
+// unx18497_hotpath_perf_ledger（收库补登记）
+pub mod unx18497_hotpath_perf_ledger;
+// unx18498_semface_batch_sign（收库补登记）
+pub mod unx18498_semface_batch_sign;
+// unx18499_ktest_b05_asserts（收库补登记）
+pub mod unx18499_ktest_b05_asserts;
+// unx18500_b05_conserve_close（收库补登记）
+pub mod unx18500_b05_conserve_close;
+// unx18501_flow_freeze（收库补登记）
+pub mod unx18501_flow_freeze;
+// unx18502_ge_boundary（收库补登记）
+pub mod unx18502_ge_boundary;
+// unx18503_gt_equal_edge（收库补登记）
+pub mod unx18503_gt_equal_edge;
+// unx18504_lt_dual_lane（收库补登记）
+pub mod unx18504_lt_dual_lane;
+// unx18505_eq_dim_tags（收库补登记）
+pub mod unx18505_eq_dim_tags;
+// unx18506_cond_mask_build（收库补登记）
+pub mod unx18506_cond_mask_build;
+// unx18507_dim_bit_consume（收库补登记）
+pub mod unx18507_dim_bit_consume;
+// unx18508_and_truth_table（收库补登记）
+pub mod unx18508_and_truth_table;
+// unx18509_pt_any_class（收库补登记）
+pub mod unx18509_pt_any_class;
+// unx18510_suite_bitand（收库补登记）
+pub mod unx18510_suite_bitand;
+// unx18511_sp_dim_compare（收库补登记）
+pub mod unx18511_sp_dim_compare;
+// unx18512_matrix_basis_link（收库补登记）
+pub mod unx18512_matrix_basis_link;
+// unx18513_probe_clamp_adv（收库补登记）
+pub mod unx18513_probe_clamp_adv;
+// unx18514_probe_cases_20（收库补登记）
+pub mod unx18514_probe_cases_20;
+// unx18515_errpath_mask_cond（收库补登记）
+pub mod unx18515_errpath_mask_cond;
+// unx18516_trace_export（收库补登记）
+pub mod unx18516_trace_export;
+// unx18517_gvex_vvi_align（收库补登记）
+pub mod unx18517_gvex_vvi_align;
+// unx18518_judge_perf_ledger（收库补登记）
+pub mod unx18518_judge_perf_ledger;
+// unx18519_ktest_b06_gate（收库补登记）
+pub mod unx18519_ktest_b06_gate;
+// unx18520_b06_closure（收库补登记）
+pub mod unx18520_b06_closure;
+// UNX-F18521 探针库总纲（50 例分层结构冻结） · 0x7FE00段
+pub mod unx18521_probe_master_ledger;
+// UNX-F18522 兼容值口径探针（10 例） · 0x7FE40段
+pub mod unx18522_compat_value_probes;
+// UNX-F18523 supportedOS 声明探针（15 例） · 0x7FE80段
+pub mod unx18523_supportedos_decl;
+// UNX-F18524 ActCtx 覆写探针（10 例） · 0x7FEC0段
+pub mod unx18524_actctx_override;
+// UNX-F18525 条件掩码探针（10 例） · 0x7FF00段
+pub mod unx18525_cond_mask;
+// UNX-F18526 混合场景探针（5 例四源叠加） · 0x7FF40段
+pub mod unx18526_mix_four_src;
+// UNX-F18527 探针自动跑批器（一命令全绿/偏差账） · 0x7FF80段
+pub mod unx18527_probe_batch_run;
+// UNX-F18528 Windows 口径基准账（实机对照记录） · 0x7FFC0段
+pub mod unx18528_win_baseline_ledger;
+// UNX-F18529 探针失败归因账（Varix 缺陷/样本缺陷分流） · 0x80000段
+pub mod unx18529_fail_attribution;
+// UNX-F18530 探针版本化与回归纪律（零回退） · 0x80040段
+pub mod unx18530_regression_guard;
+// unx18531_probe_registry（收库补登记）
+pub mod unx18531_probe_registry;
+// unx18532_result_export（收库补登记）
+pub mod unx18532_result_export;
+// unx18533_perf_ledger（收库补登记）
+pub mod unx18533_perf_ledger;
+// unx18534_dedup_declare（收库补登记）
+pub mod unx18534_dedup_declare;
+// unx18535_sample_ingest（收库补登记）
+pub mod unx18535_sample_ingest;
+// unx18536_xp_event_log（收库补登记）
+pub mod unx18536_xp_event_log;
+// unx18537_wave_anchor（收库补登记）
+pub mod unx18537_wave_anchor;
+// unx18538_doc_coverage（收库补登记）
+pub mod unx18538_doc_coverage;
+// unx18539_ktest_bootface（收库补登记）
+pub mod unx18539_ktest_bootface;
+// unx18540_b07_closure（收库补登记）
+pub mod unx18540_b07_closure;
+// unx18541_profile_master（收库补登记）
+pub mod unx18541_profile_master;
+// unx18542_bottle_default（收库补登记）
+pub mod unx18542_bottle_default;
+// unx18543_app_bind（收库补登记）
+pub mod unx18543_app_bind;
+// unx18544_field_set（收库补登记）
+pub mod unx18544_field_set;
+// unx18545_matrix_inject（收库补登记）
+pub mod unx18545_matrix_inject;
+// unx18546_atomic_persist（收库补登记）
+pub mod unx18546_atomic_persist;
+// unx18547_json_roundtrip（收库补登记）
+pub mod unx18547_json_roundtrip;
+// unx18548_template_lib（收库补登记）
+pub mod unx18548_template_lib;
+// unx18549_knowledge_bridge（收库补登记）
+pub mod unx18549_knowledge_bridge;
+// unx18550_schema_migrate（收库补登记）
+pub mod unx18550_schema_migrate;
+// unx18551_profile_conflict（收库补登记）
+pub mod unx18551_profile_conflict;
+// unx18552_profile_hotswap（收库补登记）
+pub mod unx18552_profile_hotswap;
+// unx18553_profile_err_paths（收库补登记）
+pub mod unx18553_profile_err_paths;
+// unx18554_profile_dedup_decl（收库补登记）
+pub mod unx18554_profile_dedup_decl;
+// unx18555_profile_pano_export（收库补登记）
+pub mod unx18555_profile_pano_export;
+// unx18556_vcredist_signoff（收库补登记）
+pub mod unx18556_vcredist_signoff;
+// unx18557_profile_perf_ledger（收库补登记）
+pub mod unx18557_profile_perf_ledger;
+// unx18558_profile_event_log（收库补登记）
+pub mod unx18558_profile_event_log;
+// unx18559_ktest_boot_b08（收库补登记）
+pub mod unx18559_ktest_boot_b08;
+// unx18560_b08_batch_closure（收库补登记）
+pub mod unx18560_b08_batch_closure;
+// UNX-F18561 版本面联签总纲（三段联合冻结） · 0x80800段
+pub mod unx18561_cosign_master;
+// UNX-F18562 manifest 解析挂接联签（对 AI-17） · 0x80840段
+pub mod unx18562_manifest_cosign;
+// UNX-F18563 hive 访问挂接联签（对 AI-18） · 0x80880段
+pub mod unx18563_hive_cosign;
+// UNX-F18564 Wine 上栈环境联签（对 AI-21） · 0x808C0段
+pub mod unx18564_wine_stack_cosign;
+// UNX-F18565 vcredist 免装联签收口（对 AI-22） · 0x80900段
+pub mod unx18565_vcredist_noinst;
+// UNX-F18566 三段联合通判据（锚 2 前半集成跑） · 0x80940段
+pub mod unx18566_tri_joint_gate;
+// UNX-F18567 MSI 引擎前置联检（表模型/事务预告） · 0x80980段
+pub mod unx18567_msi_precheck;
+// UNX-F18568 版本面全量回归（B01–B08 判据联合） · 0x809C0段
+pub mod unx18568_full_regression;
+// UNX-F18569 版本面域账守恒核（B01–B09 累计） · 0x80A00段
+pub mod unx18569_domain_ledger_core;
+// UNX-F18570 上游变更跟随账（接口漂移监测） · 0x80A40段
+pub mod unx18570_upstream_follow;
+// UNX-F18571 ADR-UNX-008 锚基线填充判据（波 07 裁决消费） · 0x80A80段
+pub mod unx18571_anchor_baseline;
+// UNX-F18572 版本面防重总声明（九批全量聚类） · 0x80AC0段
+pub mod unx18572_topic_cluster;
+// UNX-F18573 版本面缺陷账聚合（BUG-UNX E4 分册开账） · 0x80B00段
+pub mod unx18573_defect_ledger;
+// UNX-F18574 版本面体验完整性映射（章 4 前半） · 0x80B40段
+pub mod unx18574_exp_mapping;
+// UNX-F18575 版本面 20 维验收自查映射（前半） · 0x80B80段
+pub mod unx18575_dims20_mapping;
+// UNX-F18576 版本面观测总出口（统一导出器） · 0x80BC0段
+pub mod unx18576_obs_export;
+// unx1866_deadlockd（收库补登记）
+pub mod unx1866_deadlockd;
+// unx1883_tripchain（收库补登记）
+pub mod unx1883_tripchain;
+// unx1907_xstinj（收库补登记）
+pub mod unx1907_xstinj;
+// unx1924_pcid（收库补登记）
+pub mod unx1924_pcid;
+// unx1945_initipi（收库补登记）
+pub mod unx1945_initipi;
+// unx1965_trlatency（收库补登记）
+pub mod unx1965_trlatency;
+// unx1985_govinj（收库补登记）
+pub mod unx1985_govinj;
+// unx2011_ktestfam（收库补登记）
+pub mod unx2011_ktestfam;
+// unx2024_menuforecast（收库补登记）
+pub mod unx2024_menuforecast;
+// unx2042_effcurve（收库补登记）
+pub mod unx2042_effcurve;
+// unx2064_sampbeat（收库补登记）
+pub mod unx2064_sampbeat;
+// unx2085_stressxp（收库补登记）
+pub mod unx2085_stressxp;
+// unx2114_docgraph2（收库补登记）
+pub mod unx2114_docgraph2;
+// unx2124_reconcile2（收库补登记）
+pub mod unx2124_reconcile2;
+// unx2144_jointest（收库补登记）
+pub mod unx2144_jointest;
+// unx2164_stressinj（收库补登记）
+pub mod unx2164_stressinj;
+// unx2184_judge3s（收库补登记）
+pub mod unx2184_judge3s;
+// unx2204_freezelist（收库补登记）
+pub mod unx2204_freezelist;
+// unx2226_rootsync（收库补登记）
+pub mod unx2226_rootsync;
+// unx2244_freezefinal（收库补登记）
+pub mod unx2244_freezefinal;
+// unx2264_debtplan（收库补登记）
+pub mod unx2264_debtplan;
+// unx2284_schedpan（收库补登记）
+pub mod unx2284_schedpan;
+// unx2304_vocab（收库补登记）
+pub mod unx2304_vocab;
+// unx2324_c1c2（收库补登记）
+pub mod unx2324_c1c2;
+// unx2344_grand800（收库补登记）
+pub mod unx2344_grand800;
+// unx2364_uxclose（收库补登记）
+pub mod unx2364_uxclose;
+// unx2384_fgapcheck（收库补登记）
+pub mod unx2384_fgapcheck;
+// unx2485_hugewm（收库补登记）
+pub mod unx2485_hugewm;
+// unx2505_allocself（收库补登记）
+pub mod unx2505_allocself;
+// unx2524_batchtidy（收库补登记）
+pub mod unx2524_batchtidy;
+// unx2544_allocfinal（收库补登记）
+pub mod unx2544_allocfinal;
+// unx2605_filepage_fault（收库补登记）
+pub mod unx2605_filepage_fault;
+// unx2625_asid_rotation（收库补登记）
+pub mod unx2625_asid_rotation;
+// unx2645_fork_isolation（收库补登记）
+pub mod unx2645_fork_isolation;
+// unx2665_readhit_noblock（收库补登记）
+pub mod unx2665_readhit_noblock;
+// unx2684_pagecache_selfcheck（收库补登记）
+pub mod unx2684_pagecache_selfcheck;
+// unx2704_active_demote（收库补登记）
+pub mod unx2704_active_demote;
+// unx2725_clean_release（收库补登记）
+pub mod unx2725_clean_release;
+// unx2743_thread_sleep_wake（收库补登记）
+pub mod unx2743_thread_sleep_wake;
+// unx2764_pageclass_rate（收库补登记）
+pub mod unx2764_pageclass_rate;
+// unx2784_hugepage_split（收库补登记）
+pub mod unx2784_hugepage_split;
+// unx2803_release_storm（收库补登记）
+pub mod unx2803_release_storm;
+// unx2823_fault_reclaim_war（收库补登记）
+pub mod unx2823_fault_reclaim_war;
+// unx3440_feat（收库补登记）
+pub mod unx3440_feat;
+// unx3444_feat（收库补登记）
+pub mod unx3444_feat;
+// unx3445_4kb（收库补登记）
+pub mod unx3445_4kb;
+// unx3446_cpu（收库补登记）
+pub mod unx3446_cpu;
+// unx3447_no_parallel（收库补登记）
+pub mod unx3447_no_parallel;
+// unx3448_feat（收库补登记）
+pub mod unx3448_feat;
+// unx3449_p50_p99（收库补登记）
+pub mod unx3449_p50_p99;
+// unx3450_40（收库补登记）
+pub mod unx3450_40;
+// unx3451_feat（收库补登记）
+pub mod unx3451_feat;
+// unx3452_120_warn_critical_40（收库补登记）
+pub mod unx3452_120_warn_critical_40;
+// unx3453_per_case（收库补登记）
+pub mod unx3453_per_case;
+// unx3454_feat（收库补登记）
+pub mod unx3454_feat;
+// unx3455_flaky_flaky（收库补登记）
+pub mod unx3455_flaky_flaky;
+// unx3456_feat（收库补登记）
+pub mod unx3456_feat;
+// unx3457_fail（收库补登记）
+pub mod unx3457_fail;
+// unx3458_api（收库补登记）
+pub mod unx3458_api;
+// unx36261_ilevel（收库补登记）
+pub mod unx36261_ilevel;
+// unx36262_nowriteup（收库补登记）
+pub mod unx36262_nowriteup;
+// unx36263_xbits（收库补登记）
+pub mod unx36263_xbits;
+// unx36264_uacengine（收库补登记）
+pub mod unx36264_uacengine;
+// unx36265_filttok（收库补登记）
+pub mod unx36265_filttok;
+// unx36266_uacdeflt（收库补登记）
+pub mod unx36266_uacdeflt;
+// unx36267_uacdeny（收库补登记）
+pub mod unx36267_uacdeny;
+// unx36268_elevreq（收库补登记）
+pub mod unx36268_elevreq;
+// unx36269_autoelev（收库补登记）
+pub mod unx36269_autoelev;
+// unx36270_uaccancel（收库补登记）
+pub mod unx36270_uaccancel;
+// unx36271_secdesk（收库补登记）
+pub mod unx36271_secdesk;
+// unx36272_reqelev（收库补登记）
+pub mod unx36272_reqelev;
+// unx36273_svcdeny（收库补登记）
+pub mod unx36273_svcdeny;
+// unx36274_uacgold（收库补登记）
+pub mod unx36274_uacgold;
+// unx36275_ilevlock（收库补登记）
+pub mod unx36275_ilevlock;
+// unx36276_uacperf（收库补登记）
+pub mod unx36276_uacperf;
+// unx36277_uacfuzz（收库补登记）
+pub mod unx36277_uacfuzz;
+// unx36278_uacwinref（收库补登记）
+pub mod unx36278_uacwinref;
+// unx36279_uacktest（收库补登记）
+pub mod unx36279_uacktest;
+// unx36280_uacclose（收库补登记）
+pub mod unx36280_uacclose;
+// unx36281_xmatrix（收库补登记）
+pub mod unx36281_xmatrix;
+// unx36283_mseg（收库补登记）
+pub mod unx36283_mseg;
+// unx36288_mseg（收库补登记）
+pub mod unx36288_mseg;
+// unx36291_mseg（收库补登记）
+pub mod unx36291_mseg;
+// unx36293_mseg（收库补登记）
+pub mod unx36293_mseg;
+// unx36295_mseg（收库补登记）
+pub mod unx36295_mseg;
+// unx36297_mseg（收库补登记）
+pub mod unx36297_mseg;
+// unx43201_manifest（收库补登记）
+pub mod unx43201_manifest;
+// unx43202_compset（收库补登记）
+pub mod unx43202_compset;
+// unx43203_payref（收库补登记）
+pub mod unx43203_payref;
+// unx43204_vercon（收库补登记）
+pub mod unx43204_vercon;
+// unx43205_depclosure（收库补登记）
+pub mod unx43205_depclosure;
+// unx43206_mfhash（收库补登记）
+pub mod unx43206_mfhash;
+// unx43207_vercmp（收库补登记）
+pub mod unx43207_vercmp;
+// unx49101_layouts（收库补登记）
+pub mod unx49101_layouts;
+// unx49103_intl_east（收库补登记）
+pub mod unx49103_intl_east;
+// unx49105_rtl_persist（收库补登记）
+pub mod unx49105_rtl_persist;
+// unx50001_gamutmap（收库补登记）
+pub mod unx50001_gamutmap;
+// unx50002_intent4（收库补登记）
+pub mod unx50002_intent4;
+// unx50003_blackpoint（收库补登记）
+pub mod unx50003_blackpoint;
+// unx50004_graypath（收库补登记）
+pub mod unx50004_graypath;
+// unx50005_iccfallback（收库补登记）
+pub mod unx50005_iccfallback;
+// unx50006_colorbudget（收库补登记）
+pub mod unx50006_colorbudget;
+// unx50007_colorb14（收库补登记）
+pub mod unx50007_colorb14;
+// unx50008_colorcards（收库补登记）
+pub mod unx50008_colorcards;
+// unx50009_colortrace（收库补登记）
+pub mod unx50009_colortrace;
+// unx50010_colorerrs（收库补登记）
+pub mod unx50010_colorerrs;
+// unx50011_colorfuzz（收库补登记）
+pub mod unx50011_colorfuzz;
+// unx50012_colorvec（收库补登记）
+pub mod unx50012_colorvec;
+// unx50013_colorfreeze（收库补登记）
+pub mod unx50013_colorfreeze;
+// unx50014_duotone（收库补登记）
+pub mod unx50014_duotone;
+// unx50015_colorgdi（收库补登记）
+pub mod unx50015_colorgdi;
+// unx50016_colormodel（收库补登记）
+pub mod unx50016_colormodel;
+// unx50017_colort1（收库补登记）
+pub mod unx50017_colort1;
+// unx50018_b21vec（收库补登记）
+pub mod unx50018_b21vec;
+// unx50019_b21grep（收库补登记）
+pub mod unx50019_b21grep;
+// unx50020_b21seal（收库补登记）
+pub mod unx50020_b21seal;
+// unx50021_nup（收库补登记）
+pub mod unx50021_nup;
+// unx50022_nuporder（收库补登记）
+pub mod unx50022_nuporder;
+// unx50023_booklet（收库补登记）
+pub mod unx50023_booklet;
+// unx50024_poster（收库补登记）
+pub mod unx50024_poster;
+// unx50025_fitpage（收库补登记）
+pub mod unx50025_fitpage;
+// unx50026_rotate（收库补登记）
+pub mod unx50026_rotate;
+// unx50027_layoutduplex（收库补登记）
+pub mod unx50027_layoutduplex;
+// unx50028_layoutpreview（收库补登记）
+pub mod unx50028_layoutpreview;
+// unx50029_layouttrace（收库补登记）
+pub mod unx50029_layouttrace;
+// unx50030_layouterrs（收库补登记）
+pub mod unx50030_layouterrs;
+// unx50031_layoutsamples（收库补登记）
+pub mod unx50031_layoutsamples;
+// unx50032_layoutfuzz（收库补登记）
+pub mod unx50032_layoutfuzz;
+// unx50033_layoutfreeze（收库补登记）
+pub mod unx50033_layoutfreeze;
+// unx50034_layoutvec（收库补登记）
+pub mod unx50034_layoutvec;
+// unx50035_binding（收库补登记）
+pub mod unx50035_binding;
+// unx50036_cropline（收库补登记）
+pub mod unx50036_cropline;
+// unx50037_layoutt1（收库补登记）
+pub mod unx50037_layoutt1;
+// unx50038_b22vec（收库补登记）
+pub mod unx50038_b22vec;
+// unx50039_b22grep（收库补登记）
+pub mod unx50039_b22grep;
+// unx50040_b22seal（收库补登记）
+pub mod unx50040_b22seal;
+// unx50041_wmtext（收库补登记）
+pub mod unx50041_wmtext;
+// unx50042_wmimage（收库补登记）
+pub mod unx50042_wmimage;
+// unx50043_wmvar（收库补登记）
+pub mod unx50043_wmvar;
+// unx50044_hftpl（收库补登记）
+pub mod unx50044_hftpl;
+// unx50045_wmlayer（收库补登记）
+pub mod unx50045_wmlayer;
+// unx50046_wmsecret（收库补登记）
+pub mod unx50046_wmsecret;
+// unx50047_wmnup（收库补登记）
+pub mod unx50047_wmnup;
+// unx50048_wmduplex（收库补登记）
+pub mod unx50048_wmduplex;
+// unx50049_hfmirror（收库补登记）
+pub mod unx50049_hfmirror;
+// unx50050_wmtrace（收库补登记）
+pub mod unx50050_wmtrace;
+// unx50051_wmerrs（收库补登记）
+pub mod unx50051_wmerrs;
+// unx50052_wmsamples（收库补登记）
+pub mod unx50052_wmsamples;
+// unx50053_wmfreeze（收库补登记）
+pub mod unx50053_wmfreeze;
+// unx50054_wmfuzz（收库补登记）
+pub mod unx50054_wmfuzz;
+// unx50055_wmvec（收库补登记）
+pub mod unx50055_wmvec;
+// unx50056_fontfallback（收库补登记）
+pub mod unx50056_fontfallback;
+// unx50057_wmperf（收库补登记）
+pub mod unx50057_wmperf;
+// unx50058_b23vec（收库补登记）
+pub mod unx50058_b23vec;
+// unx50059_b23grep（收库补登记）
+pub mod unx50059_b23grep;
+// unx50060_b23seal（收库补登记）
+pub mod unx50060_b23seal;
+// unx50061_duplex3（收库补登记）
+pub mod unx50061_duplex3;
+// unx50062_duplexmatrix（收库补登记）
+pub mod unx50062_duplexmatrix;
+// unx50063_duplexodd（收库补登记）
+pub mod unx50063_duplexodd;
+// unx50064_trayselect（收库补登记）
+pub mod unx50064_trayselect;
+// unx50065_paperout（收库补登记）
+pub mod unx50065_paperout;
+// unx50066_outputbin（收库补登记）
+pub mod unx50066_outputbin;
+// unx50067_papersize（收库补登记）
+pub mod unx50067_papersize;
+// unx50068_custompaper（收库补登记）
+pub mod unx50068_custompaper;
+// unx50069_mediaipp（收库补登记）
+pub mod unx50069_mediaipp;
+// unx50070_duplexorder（收库补登记）
+pub mod unx50070_duplexorder;
+// unx50071_papertrace（收库补登记）
+pub mod unx50071_papertrace;
+// unx50072_papererrs（收库补登记）
+pub mod unx50072_papererrs;
+// unx50073_paperfuzz（收库补登记）
+pub mod unx50073_paperfuzz;
+// unx50074_papersamples（收库补登记）
+pub mod unx50074_papersamples;
+// unx50075_paperfreeze（收库补登记）
+pub mod unx50075_paperfreeze;
+// unx50076_papervec（收库补登记）
+pub mod unx50076_papervec;
+// unx50077_papert1（收库补登记）
+pub mod unx50077_papert1;
+// unx50078_b24vec（收库补登记）
+pub mod unx50078_b24vec;
+// unx50079_b24grep（收库补登记）
+pub mod unx50079_b24grep;
+// unx50080_b24seal（收库补登记）
+pub mod unx50080_b24seal;
+// unx50081_subsetter（收库补登记）
+pub mod unx50081_subsetter;
+// unx50082_fontembed（收库补登记）
+pub mod unx50082_fontembed;
+// unx50083_residentmatch（收库补登记）
+pub mod unx50083_residentmatch;
+// unx50084_fontdl（收库补登记）
+pub mod unx50084_fontdl;
+// unx50085_cjkdl（收库补登记）
+pub mod unx50085_cjkdl;
+// unx50086_fontlicense（收库补登记）
+pub mod unx50086_fontlicense;
+// unx50087_fontsubst（收库补登记）
+pub mod unx50087_fontsubst;
+// unx50088_fontmetrics（收库补登记）
+pub mod unx50088_fontmetrics;
+// unx50089_fontgdi（收库补登记）
+pub mod unx50089_fontgdi;
+// unx50090_fonttrace（收库补登记）
+pub mod unx50090_fonttrace;
+// unx50091_fonterrs（收库补登记）
+pub mod unx50091_fonterrs;
+// unx50092_fontfuzz（收库补登记）
+pub mod unx50092_fontfuzz;
+// unx50093_fontsamples（收库补登记）
+pub mod unx50093_fontsamples;
+// unx50094_fontfreeze（收库补登记）
+pub mod unx50094_fontfreeze;
+// unx50095_fontvec（收库补登记）
+pub mod unx50095_fontvec;
+// unx50096_fontiso（收库补登记）
+pub mod unx50096_fontiso;
+// unx50097_fontt1（收库补登记）
+pub mod unx50097_fontt1;
+// unx50098_b25vec（收库补登记）
+pub mod unx50098_b25vec;
+// unx50099_b25grep（收库补登记）
+pub mod unx50099_b25grep;
+// unx50100_b25seal（收库补登记）
+pub mod unx50100_b25seal;
+// unx50101_pdfpt（收库补登记）
+pub mod unx50101_pdfpt;
+// unx50102_pdfcheck（收库补登记）
+pub mod unx50102_pdfcheck;
+// unx50103_pspt（收库补登记）
+pub mod unx50103_pspt;
+// unx50104_ptfallback（收库补登记）
+pub mod unx50104_ptfallback;
+// unx50105_pdfrange（收库补登记）
+pub mod unx50105_pdfrange;
+// unx50106_ptcopies（收库补登记）
+pub mod unx50106_ptcopies;
+// unx50107_ptintent（收库补登记）
+pub mod unx50107_ptintent;
+// unx50108_ptduplex（收库补登记）
+pub mod unx50108_ptduplex;
+// unx50109_pterrs（收库补登记）
+pub mod unx50109_pterrs;
+// unx50110_pttrace（收库补登记）
+pub mod unx50110_pttrace;
+// unx50111_ptfuzz（收库补登记）
+pub mod unx50111_ptfuzz;
+// unx50112_ptgdi（收库补登记）
+pub mod unx50112_ptgdi;
+// unx50113_ptfreeze（收库补登记）
+pub mod unx50113_ptfreeze;
+// unx50114_ptvec（收库补登记）
+pub mod unx50114_ptvec;
+// unx50115_ptsamples（收库补登记）
+pub mod unx50115_ptsamples;
+// unx50116_ptperf（收库补登记）
+pub mod unx50116_ptperf;
+// unx50117_ptt1（收库补登记）
+pub mod unx50117_ptt1;
+// unx50118_b26vec（收库补登记）
+pub mod unx50118_b26vec;
+// unx50119_b26grep（收库补登记）
+pub mod unx50119_b26grep;
+// unx50120_b26seal（收库补登记）
+pub mod unx50120_b26seal;
+// unx50121_usbprobe（收库补登记）
+pub mod unx50121_usbprobe;
+// unx50122_usbchan（收库补登记）
+pub mod unx50122_usbchan;
+// unx50123_devid1284（收库补登记）
+pub mod unx50123_devid1284;
+// unx50124_usbflow（收库补登记）
+pub mod unx50124_usbflow;
+// unx50125_usbhot（收库补登记）
+pub mod unx50125_usbhot;
+// unx50126_usbpipe（收库补登记）
+pub mod unx50126_usbpipe;
+// unx50127_usbchunk（收库补登记）
+pub mod unx50127_usbchunk;
+// unx50128_usberrs（收库补登记）
+pub mod unx50128_usberrs;
+// unx50129_usbtrace（收库补登记）
+pub mod unx50129_usbtrace;
+// unx50130_usbfuzz（收库补登记）
+pub mod unx50130_usbfuzz;
+// unx50131_usbqemu（收库补登记）
+pub mod unx50131_usbqemu;
+// unx50132_usbfreeze（收库补登记）
+pub mod unx50132_usbfreeze;
+// unx50133_usbvec（收库补登记）
+pub mod unx50133_usbvec;
+// unx50134_usbt1（收库补登记）
+pub mod unx50134_usbt1;
+// unx50135_usbmulti（收库补登记）
+pub mod unx50135_usbmulti;
+// unx50136_usbprogress（收库补登记）
+pub mod unx50136_usbprogress;
+// unx50137_b27vec（收库补登记）
+pub mod unx50137_b27vec;
+// unx50138_b27grep（收库补登记）
+pub mod unx50138_b27grep;
+// unx50139_b27probe（收库补登记）
+pub mod unx50139_b27probe;
+// unx50140_b27seal（收库补登记）
+pub mod unx50140_b27seal;
+// unx50141_mdnsdiscover（收库补登记）
+pub mod unx50141_mdnsdiscover;
+// unx50142_mdnsrecords（收库补登记）
+pub mod unx50142_mdnsrecords;
+// unx50143_lpdbackend（收库补登记）
+pub mod unx50143_lpdbackend;
+// unx50144_lpdqueue（收库补登记）
+pub mod unx50144_lpdqueue;
+// unx50145_snmpprobe（收库补登记）
+pub mod unx50145_snmpprobe;
+// unx50146_discoveragg（收库补登记）
+pub mod unx50146_discoveragg;
+// unx50147_discoverttl（收库补登记）
+pub mod unx50147_discoverttl;
+// unx50148_netrecover（收库补登记）
+pub mod unx50148_netrecover;
+// unx50149_discoveripp（收库补登记）
+pub mod unx50149_discoveripp;
+// unx50150_discovertrace（收库补登记）
+pub mod unx50150_discovertrace;
+// unx50151_discovererrs（收库补登记）
+pub mod unx50151_discovererrs;
+// unx50152_discoverfuzz（收库补登记）
+pub mod unx50152_discoverfuzz;
+// unx50167_ticketseal（收库补登记）
+pub mod unx50167_ticketseal;
+// unx50172_ticketfreeze（收库补登记）
+pub mod unx50172_ticketfreeze;
+// unx50177_tickett1（收库补登记）
+pub mod unx50177_tickett1;
+// unx50178_b29vec（收库补登记）
+pub mod unx50178_b29vec;
+// unx50201_pagecount（收库补登记）
+pub mod unx50201_pagecount;
+// unx50202_colorbw（收库补登记）
+pub mod unx50202_colorbw;
+// unx50203_copies（收库补登记）
+pub mod unx50203_copies;
+// unx50204_owner（收库补登记）
+pub mod unx50204_owner;
+// unx50205_rollup（收库补登记）
+pub mod unx50205_rollup;
+// unx51501_trim_passthrough（收库补登记）
+pub mod unx51501_trim_passthrough;
+// unx51506_mode_switch（收库补登记）
+pub mod unx51506_mode_switch;
+// unx51507_soak_ledger（收库补登记）
+pub mod unx51507_soak_ledger;
+// unx51546_hub_fw_bcd（收库补登记）
+pub mod unx51546_hub_fw_bcd;
+// unx51547_event_storm_shaper（收库补登记）
+pub mod unx51547_event_storm_shaper;
+// unx51548_topo_change_ledger（收库补登记）
+pub mod unx51548_topo_change_ledger;
+// unx51549_oc_partition_poweroff（收库补登记）
+pub mod unx51549_oc_partition_poweroff;
+// unx51550_b18_errpath（收库补登记）
+pub mod unx51550_b18_errpath;
+// unx51551_b18_obs（收库补登记）
+pub mod unx51551_b18_obs;
+// unx51552_b18_k4_anchor（收库补登记）
+pub mod unx51552_b18_k4_anchor;
+// unx51553_hub_hotplug_stress（收库补登记）
+pub mod unx51553_hub_hotplug_stress;
+// unx51553_hub_unplug 已删除（同卡重复残件，由 unx51553_hub_hotplug_stress 收库）
+// unx51554_b18_errcode（收库补登记）
+pub mod unx51554_b18_errcode;
+// unx51555_b18_power_tier（收库补登记）
+pub mod unx51555_b18_power_tier;
+// unx51556_policy_audit_ledger（收库补登记）
+pub mod unx51556_policy_audit_ledger;
+// unx51557_multi_hub_policy（收库补登记）
+pub mod unx51557_multi_hub_policy;
+// unx51558_b18_m2_anchor（收库补登记）
+pub mod unx51558_b18_m2_anchor;
+// unx51559_b18_grep_record（收库补登记）
+pub mod unx51559_b18_grep_record;
+// unx51560_b18_seal（收库补登记）
+pub mod unx51560_b18_seal;
+// unx51561_iad_multi_class（收库补登记）
+pub mod unx51561_iad_multi_class;
+// unx51562_class_isolation（收库补登记）
+pub mod unx51562_class_isolation;
+// unx51563_shared_bw_coord（收库补登记）
+pub mod unx51563_shared_bw_coord;
+// unx51564_comp_teardown（收库补登记）
+pub mod unx51564_comp_teardown;
+// unx51565_quirk_stack_ledger（收库补登记）
+pub mod unx51565_quirk_stack_ledger;
+// unx51566_enum_order_stable（收库补登记）
+pub mod unx51566_enum_order_stable;
+// unx51567_three_class_io_stress（收库补登记）
+pub mod unx51567_three_class_io_stress;
+// unx51568_vendor_desc_fixup（收库补登记）
+pub mod unx51568_vendor_desc_fixup;
+// unx51569_b19_errpath（收库补登记）
+pub mod unx51569_b19_errpath;
+// unx51570_b19_obs（收库补登记）
+pub mod unx51570_b19_obs;
+// unx51571_b19_anchor（收库补登记）
+pub mod unx51571_b19_anchor;
+// unx51572_b19_errcode（收库补登记）
+pub mod unx51572_b19_errcode;
+// unx51573_sample_ledger_ext（收库补登记）
+pub mod unx51573_sample_ledger_ext;
+// unx51574_class_priority_nego（收库补登记）
+pub mod unx51574_class_priority_nego;
+// unx51575_reenum_tolerance（收库补登记）
+pub mod unx51575_reenum_tolerance;
+// unx51576_vendor_class_na（收库补登记）
+pub mod unx51576_vendor_class_na;
+// unx51577_perf_baseline_b19（收库补登记）
+pub mod unx51577_perf_baseline_b19;
+// unx51578_sample_retest_reg（收库补登记）
+pub mod unx51578_sample_retest_reg;
+// unx51579_b19_grep_record（收库补登记）
+pub mod unx51579_b19_grep_record;
+// unx51580_b19_seal（收库补登记）
+pub mod unx51580_b19_seal;
+// unx51581_m_wave_regress（收库补登记）
+pub mod unx51581_m_wave_regress;
+// unx51582_m_perf_3wave（收库补登记）
+pub mod unx51582_m_perf_3wave;
+// unx51583_errcode_tables_final（收库补登记）
+pub mod unx51583_errcode_tables_final;
+// unx51584_quirk_table_final（收库补登记）
+pub mod unx51584_quirk_table_final;
+// unx51585_mem_ledger_zero_leak（收库补登记）
+pub mod unx51585_mem_ledger_zero_leak;
+// unx51586_obs_cover_full（收库补登记）
+pub mod unx51586_obs_cover_full;
+// unx51587_doc_crosscheck（收库补登记）
+pub mod unx51587_doc_crosscheck;
+// unx51588_redline_review（收库补登记）
+pub mod unx51588_redline_review;
+// unx51589_hw_gate_list（收库补登记）
+pub mod unx51589_hw_gate_list;
+// unx51590_b20_errpath（收库补登记）
+pub mod unx51590_b20_errpath;
+// unx51591_b20_obs（收库补登记）
+pub mod unx51591_b20_obs;
+// unx51592_m_seal（收库补登记）
+pub mod unx51592_m_seal;
+// unx51593_b20_grep_record（收库补登记）
+pub mod unx51593_b20_grep_record;
+// unx51594_wave23_preview（收库补登记）
+pub mod unx51594_wave23_preview;
+// unx51595_uasp_bot_throughput（收库补登记）
+pub mod unx51595_uasp_bot_throughput;
+// unx51596_cdc_24h_zero_err（收库补登记）
+pub mod unx51596_cdc_24h_zero_err;
+// unx51597_sample_ledger_recheck（收库补登记）
+pub mod unx51597_sample_ledger_recheck;
+// unx51598_defect_ledger_p0（收库补登记）
+pub mod unx51598_defect_ledger_p0;
+// unx51599_b20_grep_final（收库补登记）
+pub mod unx51599_b20_grep_final;
+// unx51600_b20_seal（收库补登记）
+pub mod unx51600_b20_seal;
+// unx51601_event_ring_overflow_recover（收库补登记）
+pub mod unx51601_event_ring_overflow_recover;
+// unx51602_cmd_timeout_cancel（收库补登记）
+pub mod unx51602_cmd_timeout_cancel;
+// unx51603_doorbell_defense（收库补登记）
+pub mod unx51603_doorbell_defense;
+// unx51604_hc_halt_recovery（收库补登记）
+pub mod unx51604_hc_halt_recovery;
+// unx51605_mmio_whitelist（收库补登记）
+pub mod unx51605_mmio_whitelist;
+// unx51606_msix_storm_suppress（收库补登记）
+pub mod unx51606_msix_storm_suppress;
+// unx51607_trb_defense（收库补登记）
+pub mod unx51607_trb_defense;
+// unx51608_scratchpad_quirk（收库补登记）
+pub mod unx51608_scratchpad_quirk;
+// unx51609_devctx_crc_ledger（收库补登记）
+pub mod unx51609_devctx_crc_ledger;
+// unx51610_halfinit_recover（收库补登记）
+pub mod unx51610_halfinit_recover;
+// unx51611_reg_watchdog（收库补登记）
+pub mod unx51611_reg_watchdog;
+// unx51612_segtable_rebuild（收库补登记）
+pub mod unx51612_segtable_rebuild;
+// unx51613_inject_matrix_reg（收库补登记）
+pub mod unx51613_inject_matrix_reg;
+// unx51614_b21_converge_gate（收库补登记）
+pub mod unx51614_b21_converge_gate;
+// unx51615_b21_consist_assertor（收库补登记）
+pub mod unx51615_b21_consist_assertor;
+// unx51616_b21_attribution（收库补登记）
+pub mod unx51616_b21_attribution;
+// unx51617_b21_j1j1r_machine（收库补登记）
+pub mod unx51617_b21_j1j1r_machine;
+// unx51618_b21_drill_feed（收库补登记）
+pub mod unx51618_b21_drill_feed;
+// unx51619_b21_grep_record（收库补登记）
+pub mod unx51619_b21_grep_record;
+// unx51620_b21_seal（收库补登记）
+pub mod unx51620_b21_seal;
+// unx51621_desc_len_spoof（收库补登记）
+pub mod unx51621_desc_len_spoof;
+// unx51622_cfg_desc_selfref（收库补登记）
+pub mod unx51622_cfg_desc_selfref;
+// unx51623_set_addr_replay（收库补登记）
+pub mod unx51623_set_addr_replay;
+// unx51624_settle_storm（收库补登记）
+pub mod unx51624_settle_storm;
+// unx51625_bad_string_desc（收库补登记）
+pub mod unx51625_bad_string_desc;
+// unx51626_iface_count_lie（收库补登记）
+pub mod unx51626_iface_count_lie;
+// unx51627_ep_desc_malformed（收库补登记）
+pub mod unx51627_ep_desc_malformed;
+// unx51628_enum_dos_slowdev（收库补登记）
+pub mod unx51628_enum_dos_slowdev;
+// unx51629_attack_sample_ext（收库补登记）
+pub mod unx51629_attack_sample_ext;
+// unx51630_b22_attack_regress（收库补登记）
+pub mod unx51630_b22_attack_regress;
+// unx51631_isolation_whitelist（收库补登记）
+pub mod unx51631_isolation_whitelist;
+// unx51632_b22_errcode（收库补登记）
+pub mod unx51632_b22_errcode;
+// unx51633_b22_obs（收库补登记）
+pub mod unx51633_b22_obs;
+// unx51634_attack_normal_concur（收库补登记）
+pub mod unx51634_attack_normal_concur;
+// unx51635_fuzz_desc_1e4（收库补登记）
+pub mod unx51635_fuzz_desc_1e4;
+// unx51636_b22_j1j1r_machine（收库补登记）
+pub mod unx51636_b22_j1j1r_machine;
+// unx51637_b22_drill_feed（收库补登记）
+pub mod unx51637_b22_drill_feed;
+// unx51638_b22_grep_record（收库补登记）
+pub mod unx51638_b22_grep_record;
+// unx51639_b22_seal（收库补登记）
+pub mod unx51639_b22_seal;
+// unx51640_tx_ring_backpressure（收库补登记）
+pub mod unx51640_tx_ring_backpressure;
+// unx51641_short_packet_inject（收库补登记）
+pub mod unx51641_short_packet_inject;
+// unx51642_stall_storm（收库补登记）
+pub mod unx51642_stall_storm;
+// unx51643_cancel_race_50（收库补登记）
+pub mod unx51643_cancel_race_50;
+// unx51644_babble_defense（收库补登记）
+pub mod unx51644_babble_defense;
+// unx51645_ctrl_phase_disorder（收库补登记）
+pub mod unx51645_ctrl_phase_disorder;
+// unx51646_intr_ep_loss_recover（收库补登记）
+pub mod unx51646_intr_ep_loss_recover;
+// unx51647_isoc_seq_recover（收库补登记）
+pub mod unx51647_isoc_seq_recover;
+// unx51648_cb_exception_isolation（收库补登记）
+pub mod unx51648_cb_exception_isolation;
+// unx51649_b23_converge_gate（收库补登记）
+pub mod unx51649_b23_converge_gate;
+// unx51650_post_cancel_ring_consist（收库补登记）
+pub mod unx51650_post_cancel_ring_consist;
+// unx52001_vs2022_community（收库补登记）
+pub mod unx52001_vs2022_community;
+// unx52002_vs2022_professional（收库补登记）
+pub mod unx52002_vs2022_professional;
+// unx52003_vs2022_enterprise（收库补登记）
+pub mod unx52003_vs2022_enterprise;
+// unx52004_vs2019_community（收库补登记）
+pub mod unx52004_vs2019_community;
+// unx52005_vs2019_enterprise（收库补登记）
+pub mod unx52005_vs2019_enterprise;
+// unx52006_vs2017_community（收库补登记）
+pub mod unx52006_vs2017_community;
+// unx52007_btools2022（收库补登记）
+pub mod unx52007_btools2022;
+// unx52008_btools2019（收库补登记）
+pub mod unx52008_btools2019;
+// unx52009_vsix_manager（收库补登记）
+pub mod unx52009_vsix_manager;
+// unx52010_vsix_install（收库补登记）
+pub mod unx52010_vsix_install;
+// unx52011_vcruntime2022（收库补登记）
+pub mod unx52011_vcruntime2022;
+// unx52012_vcruntime2019（收库补登记）
+pub mod unx52012_vcruntime2019;
+// unx52013_remote_tools（收库补登记）
+pub mod unx52013_remote_tools;
+// unx5442_rootenum（收库补登记）
+pub mod unx5442_rootenum;
+// unx5462_regrmat（收库补登记）
+pub mod unx5462_regrmat;
+// unx5482_lazalloc（收库补登记）
+pub mod unx5482_lazalloc;
+// unx5502_txstruct（收库补登记）
+pub mod unx5502_txstruct;
+// unx81001_ledgerschema（收库补登记）
+pub mod unx81001_ledgerschema;
+// unx9202_rw_badfd_matrix_ebadf（收库补登记）
+pub mod unx9202_rw_badfd_matrix_ebadf;
+// unx9203_rw_badptr_matrix_efault（收库补登记）
+pub mod unx9203_rw_badptr_matrix_efault;
+// unx9242_matrix_mmap_addr（收库补登记）
+pub mod unx9242_matrix_mmap_addr;
+// unx9243_matrix_mmap_einval（收库补登记）
+pub mod unx9243_matrix_mmap_einval;
+// unx9282_matrix_kill_pid（收库补登记）
+pub mod unx9282_matrix_kill_pid;
+// unx9283_matrix_wait_pid（收库补登记）
+pub mod unx9283_matrix_wait_pid;
+// unx9284_matrix_fork_clone（收库补登记）
+pub mod unx9284_matrix_fork_clone;
+// unx9285_matrix_fork_clone（收库补登记）
+pub mod unx9285_matrix_fork_clone;
+// unx9286_matrix_setpgid_pid（收库补登记）
+pub mod unx9286_matrix_setpgid_pid;
+// unx9287_matrix_setsid_eperm（收库补登记）
+pub mod unx9287_matrix_setsid_eperm;
+// unx9288_matrix_execve_eacces（收库补登记）
+pub mod unx9288_matrix_execve_eacces;
+// unx9289_matrix_e2big_argv（收库补登记）
+pub mod unx9289_matrix_e2big_argv;
+// unx9290_matrix_boundary_execve（收库补登记）
+pub mod unx9290_matrix_boundary_execve;
+// unx9291_race_wait_exit（收库补登记）
+pub mod unx9291_race_wait_exit;
+// unx9292_race_sigchld（收库补登记）
+pub mod unx9292_race_sigchld;
+// unx9293_order_perm_esrch（收库补登记）
+pub mod unx9293_order_perm_esrch;
+// unx9294_eprobe_suite_proc（收库补登记）
+pub mod unx9294_eprobe_suite_proc;
+// unx9295_etype_vs_reconcile_proc（收库补登记）
+pub mod unx9295_etype_vs_reconcile_proc;
+// unx9296_etype_vs_compare_proc（收库补登记）
+pub mod unx9296_etype_vs_compare_proc;
+// unx9297_etype_recheck_declare（收库补登记）
+pub mod unx9297_etype_recheck_declare;
+// unx9298_etype_takeover_note_proc（收库补登记）
+pub mod unx9298_etype_takeover_note_proc;
+// unx9299_etype_vs_consumer_proc（收库补登记）
+pub mod unx9299_etype_vs_consumer_proc;
+// unx9300_ktest_syscall_b25（收库补登记）
+pub mod unx9300_ktest_syscall_b25;
+// unx9301_charter_eintr（收库补登记）
+pub mod unx9301_charter_eintr;
+// unx9302_matrix_sa_restart_syscall（收库补登记）
+pub mod unx9302_matrix_sa_restart_syscall;
+// unx9303_matrix_read_write（收库补登记）
+pub mod unx9303_matrix_read_write;
+// unx9304_matrix_nanosleep_eintr（收库补登记）
+pub mod unx9304_matrix_nanosleep_eintr;
+// unx9305_matrix_wait_eintr（收库补登记）
+pub mod unx9305_matrix_wait_eintr;
+// unx9306_matrix_poll_epoll（收库补登记）
+pub mod unx9306_matrix_poll_epoll;
+// unx9307_matrix_hook_eintr（收库补登记）
+pub mod unx9307_matrix_hook_eintr;
+// unx9308_matrix_flock_lockf（收库补登记）
+pub mod unx9308_matrix_flock_lockf;
+// unx9309_matrix_race（收库补登记）
+pub mod unx9309_matrix_race;
+// unx9310_matrix_eintr（收库补登记）
+pub mod unx9310_matrix_eintr;
+// unx9311_matrix_bytes_copied（收库补登记）
+pub mod unx9311_matrix_bytes_copied;
+// unx9312_injector_eintr（收库补登记）
+pub mod unx9312_injector_eintr;
+// unx9313_order_eintr（收库补登记）
+pub mod unx9313_order_eintr;
+// unx9314_race_stats_declare（收库补登记）
+pub mod unx9314_race_stats_declare;
+// unx9315_reconcile_hook_eintr（收库补登记）
+pub mod unx9315_reconcile_hook_eintr;
+// unx9316_reconcile_eintr_a1（收库补登记）
+pub mod unx9316_reconcile_eintr_a1;
+// unx9317_compare_eintr_windows（收库补登记）
+pub mod unx9317_compare_eintr_windows;
+// unx9318_consumer_eintr_glibc（收库补登记）
+pub mod unx9318_consumer_eintr_glibc;
+// unx9319_race_suite（收库补登记）
+pub mod unx9319_race_suite;
+// unx9320_ktest_syscall_b26（收库补登记）
+pub mod unx9320_ktest_syscall_b26;
+// unx9321_charter_domain_einval（收库补登记）
+pub mod unx9321_charter_domain_einval;
+// unx9322_matrix_gettimeofday_clock_gettim（收库补登记）
+pub mod unx9322_matrix_gettimeofday_clock_gettim;
+// unx9323_matrix_clock_settime_einval（收库补登记）
+pub mod unx9323_matrix_clock_settime_einval;
+// unx9324_matrix_timer_create_timer_settim（收库补登记）
+pub mod unx9324_matrix_timer_create_timer_settim;
+// unx9325_matrix_posix_eagain（收库补登记）
+pub mod unx9325_matrix_posix_eagain;
+// unx9326_matrix_setitimer（收库补登记）
+pub mod unx9326_matrix_setitimer;
+// unx9327_matrix_clock_nanosleep（收库补登记）
+pub mod unx9327_matrix_clock_nanosleep;
+// unx9328_matrix_getrusage_b15（收库补登记）
+pub mod unx9328_matrix_getrusage_b15;
+// unx9329_matrix_setrlimit（收库补登记）
+pub mod unx9329_matrix_setrlimit;
+// unx9330_matrix_rlimit_einval（收库补登记）
+pub mod unx9330_matrix_rlimit_einval;
+// unx9331_matrix_sched_setaffinity_einval（收库补登记）
+pub mod unx9331_matrix_sched_setaffinity_einval;
+// unx9332_matrix_sched_setscheduler_einval（收库补登记）
+pub mod unx9332_matrix_sched_setscheduler_einval;
+// unx9333_matrix_boundary_tv_nsec（收库补登记）
+pub mod unx9333_matrix_boundary_tv_nsec;
+// unx9334_eprobe_suite_timeres（收库补登记）
+pub mod unx9334_eprobe_suite_timeres;
+// unx9335_etype_vs_reconcile_timeres（收库补登记）
+pub mod unx9335_etype_vs_reconcile_timeres;
+// unx9336_etype_vs_compare_timeres（收库补登记）
+pub mod unx9336_etype_vs_compare_timeres;
+// unx9337_etype_recheck_declare（收库补登记）
+pub mod unx9337_etype_recheck_declare;
+// unx9338_etype_takeover_note_timeres（收库补登记）
+pub mod unx9338_etype_takeover_note_timeres;
+// unx9339_etype_vs_consumer_timeres（收库补登记）
+pub mod unx9339_etype_vs_consumer_timeres;
+// unx9340_ktest_syscall_b27（收库补登记）
+pub mod unx9340_ktest_syscall_b27;
+// unx9341_charter_matrix_assembly（收库补登记）
+pub mod unx9341_charter_matrix_assembly;
+// unx9342_matrix_assembly_global（收库补登记）
+pub mod unx9342_matrix_assembly_global;
+// unx9343_matrix_assembly_global（收库补登记）
+pub mod unx9343_matrix_assembly_global;
+// unx9344_matrix_assembly_global（收库补登记）
+pub mod unx9344_matrix_assembly_global;
+// unx9345_matrix_assembly_global（收库补登记）
+pub mod unx9345_matrix_assembly_global;
+// unx9346_matrix_global_nosys（收库补登记）
+pub mod unx9346_matrix_global_nosys;
+// unx9347_assembly_efault_ebadf（收库补登记）
+pub mod unx9347_assembly_efault_ebadf;
+// unx9348_assembly_errno_errno（收库补登记）
+pub mod unx9348_assembly_errno_errno;
+// unx9349_injector_assembly_fuzz（收库补登记）
+pub mod unx9349_injector_assembly_fuzz;
+// unx9350_boundary_equiv_assembly（收库补登记）
+pub mod unx9350_boundary_equiv_assembly;
+// unx9351_equiv_assembly_null（收库补登记）
+pub mod unx9351_equiv_assembly_null;
+// unx9352_equiv_assembly_fd（收库补登记）
+pub mod unx9352_equiv_assembly_fd;
+// unx9353_race_assembly_eintr（收库补登记）
+pub mod unx9353_race_assembly_eintr;
+// unx9354_matrix_regression_global（收库补登记）
+pub mod unx9354_matrix_regression_global;
+// unx9355_etype_vs_reconcile_suite（收库补登记）
+pub mod unx9355_etype_vs_reconcile_suite;
+// unx9356_etype_vs_assembly_lxerrno（收库补登记）
+pub mod unx9356_etype_vs_assembly_lxerrno;
+// unx9357_etype_vs_global_windows（收库补登记）
+pub mod unx9357_etype_vs_global_windows;
+// unx9358_etype_recheck_matrix_declare（收库补登记）
+pub mod unx9358_etype_recheck_matrix_declare;
+// unx9359_etype_takeover_list_note（收库补登记）
+pub mod unx9359_etype_takeover_list_note;
+// unx9360_ktest_closure_syscall（收库补登记）
+pub mod unx9360_ktest_closure_syscall;
+// unx9361_charter_cosign_c2（收库补登记）
+pub mod unx9361_charter_cosign_c2;
+// unx9362_c3_ltp（收库补登记）
+pub mod unx9362_c3_ltp;
+// unx9363_jointest_regression_ltp（收库补登记）
+pub mod unx9363_jointest_regression_ltp;
+// unx9364_cosign_table_rs（收库补登记）
+pub mod unx9364_cosign_table_rs;
+// unx9365_jointest_syscall_entry（收库补登记）
+pub mod unx9365_jointest_syscall_entry;
+// unx9366_jointest_errno_errno（收库补登记）
+pub mod unx9366_jointest_errno_errno;
+// unx9367_jointest_uaccess_c3（收库补登记）
+pub mod unx9367_jointest_uaccess_c3;
+// unx9368_jointest_stats_meter（收库补登记）
+pub mod unx9368_jointest_stats_meter;
+// unx9369_jointest_perm_guard（收库补登记）
+pub mod unx9369_jointest_perm_guard;
+// unx9370_cosign_freeze_list（收库补登记）
+pub mod unx9370_cosign_freeze_list;
+// unx9371_jointest_list_ltp（收库补登记）
+pub mod unx9371_jointest_list_ltp;
+// unx9372_ktest_jointest_baseline（收库补登记）
+pub mod unx9372_ktest_jointest_baseline;
+// unx9373_jointest（收库补登记）
+pub mod unx9373_jointest;
+// unx9374_cosign_handoff_f9095（收库补登记）
+pub mod unx9374_cosign_handoff_f9095;
+// unx9375_declare_dedup_c2（收库补登记）
+pub mod unx9375_declare_dedup_c2;
+// unx9376_declare_deps_c3（收库补登记）
+pub mod unx9376_declare_deps_c3;
+// unx9377_jointest_windows（收库补登记）
+pub mod unx9377_jointest_windows;
+// unx9378_consumer_jointest_glibc（收库补登记）
+pub mod unx9378_consumer_jointest_glibc;
+// unx9379_declare（收库补登记）
+pub mod unx9379_declare;
+// unx9380_ktest_syscall_b29（收库补登记）
+pub mod unx9380_ktest_syscall_b29;
+// unx9381_charter_cosign_hook（收库补登记）
+pub mod unx9381_charter_cosign_hook;
+// unx9382_cosign_hook_futex（收库补登记）
+pub mod unx9382_cosign_hook_futex;
+// unx9383_matrix_jointest_hook（收库补登记）
+pub mod unx9383_matrix_jointest_hook;
+// unx9384_cosign_hook_epoll_ctl（收库补登记）
+pub mod unx9384_cosign_hook_epoll_ctl;
+// unx9385_matrix_jointest_epoll（收库补登记）
+pub mod unx9385_matrix_jointest_epoll;
+// unx9386_jointest_poll_select（收库补登记）
+pub mod unx9386_jointest_poll_select;
+// unx9387_cosign_hook_pty（收库补登记）
+pub mod unx9387_cosign_hook_pty;
+// unx9388_cosign_hook_b11（收库补登记）
+pub mod unx9388_cosign_hook_b11;
+// unx9389_jointest_a3_fake（收库补登记）
+pub mod unx9389_jointest_a3_fake;
+// unx9390_race_jointest_stats（收库补登记）
+pub mod unx9390_race_jointest_stats;
+// unx9391_matrix_jointest_hook（收库补登记）
+pub mod unx9391_matrix_jointest_hook;
+// unx9392_cosign_freeze_c2（收库补登记）
+pub mod unx9392_cosign_freeze_c2;
+// unx9393_cosign_freeze_list（收库补登记）
+pub mod unx9393_cosign_freeze_list;
+// unx9394_declare_dedup_c2（收库补登记）
+pub mod unx9394_declare_dedup_c2;
+// unx9395_declare_deps_c4（收库补登记）
+pub mod unx9395_declare_deps_c4;
+// unx9396_windows_waitabletimer_iocp（收库补登记）
+pub mod unx9396_windows_waitabletimer_iocp;
+// unx9397_consumer_glibc_pthread（收库补登记）
+pub mod unx9397_consumer_glibc_pthread;
+// unx9398_declare（收库补登记）
+pub mod unx9398_declare;
+// unx9399_jointest_list_glibc（收库补登记）
+pub mod unx9399_jointest_list_glibc;
+// unx9400_ktest_closure_syscall（收库补登记）
+pub mod unx9400_ktest_closure_syscall;
+// unx9401_charter_cosign_c2（收库补登记）
+pub mod unx9401_charter_cosign_c2;
+// unx9402_clock_nanosleep（收库补登记）
+pub mod unx9402_clock_nanosleep;
+// unx9403_timer_create_face（收库补登记）
+pub mod unx9403_timer_create_face;
+// unx9404_sched_policy_matrix（收库补登记）
+pub mod unx9404_sched_policy_matrix;
+// unx9405_getrusage_ledger（收库补登记）
+pub mod unx9405_getrusage_ledger;
+// unx9406_prctl_option_face（收库补登记）
+pub mod unx9406_prctl_option_face;
+// unx9407_personality_uname_face（收库补登记）
+pub mod unx9407_personality_uname_face;
+// unx9408_mlock_rlimit_face（收库补登记）
+pub mod unx9408_mlock_rlimit_face;
+// unx9409_madvise_face（收库补登记）
+pub mod unx9409_madvise_face;
+// unx9410_sigmask_face（收库补登记）
+pub mod unx9410_sigmask_face;
+// unx9411_rlimit_matrix（收库补登记）
+pub mod unx9411_rlimit_matrix;
+// unx9412_sysinfo_times_face（收库补登记）
+pub mod unx9412_sysinfo_times_face;
+// unx9413_miscfd_closure（收库补登记）
+pub mod unx9413_miscfd_closure;
+// unx943_tophalfdeep（收库补登记）
+pub mod unx943_tophalfdeep;
+// unx984_vecisolate（收库补登记）
+pub mod unx984_vecisolate;
+// unx52014_intellitrace_collector（收库补登记）
+pub mod unx52014_intellitrace_collector;
+// unx52015_test_agent2022（收库补登记）
+pub mod unx52015_test_agent2022;
+// unx52016_ssdt_git（收库补登记）
+pub mod unx52016_ssdt_git;
+// unx52017_team_explorer（收库补登记）
+pub mod unx52017_team_explorer;
+// unx52018_vstu_dotnet（收库补登记）
+pub mod unx52018_vstu_dotnet;
+// unx52019_dotnet_sdk（收库补登记）
+pub mod unx52019_dotnet_sdk;
+// unx52020_help_viewer（收库补登记）
+pub mod unx52020_help_viewer;
+// unx52021_vscode_track（收库补登记）
+pub mod unx52021_vscode_track;
+// unx52022_vscode_insiders（收库补登记）
+pub mod unx52022_vscode_insiders;
+// unx52023_vscodium（收库补登记）
+pub mod unx52023_vscodium;
+// unx52024_pulsar_eol（收库补登记）
+pub mod unx52024_pulsar_eol;
+// unx52025_obsidian_vault（收库补登记）
+pub mod unx52025_obsidian_vault;
+// unx52026_obsidian_render（收库补登记）
+pub mod unx52026_obsidian_render;
+// unx52027_typora_bigfile（收库补登记）
+pub mod unx52027_typora_bigfile;
+// unx52028_marktext_export（收库补登记）
+pub mod unx52028_marktext_export;
+// unx52029_zettlr_frontmatter（收库补登记）
+pub mod unx52029_zettlr_frontmatter;
+// unx52030_notable_storemode（收库补登记）
+pub mod unx52030_notable_storemode;
+// unx52031_boostnote_crt（收库补登记）
+pub mod unx52031_boostnote_crt;

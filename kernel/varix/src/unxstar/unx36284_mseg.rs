@@ -353,7 +353,8 @@ mod tests {
         assert!(denied.contains(&48), "DACL 锚格 48 必须在拒格清单");
         assert!(denied.contains(&84), "IL 锚格 84 必须在拒格清单");
         assert!(!denied.contains(&0), "许格 0 不许混入拒格清单");
-        let row = diag_at(&led, 48).ok().unwrap_or(DiagRow { cell: 0, verdict: 9, gate: 9 });
+        // 收库修正（AI-INTAKE-1107）：diag_at 已返回 Option，去掉误加的 .ok()。
+        let row = diag_at(&led, 48).unwrap_or(DiagRow { cell: 0, verdict: 9, gate: 9 });
         assert_eq!(row.gate, G_DACL);
         assert!(diag_at(&led, 999).is_none(), "越界格回查恒 None");
     }

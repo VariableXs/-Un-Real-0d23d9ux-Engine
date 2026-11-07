@@ -312,9 +312,9 @@ pub fn inject_rounds(rounds: u32) -> Result<InjectLedger, u32> {
     let mut led = InjectLedger::new();
     let mut r = 0;
     while r < rounds {
-        // 槽0：越账。
+        // 槽0：越账（收库修正：越界探针改 get 判缺——直接裸下标 LEDGER_COUNT 是编译期必炸，非越账语义）。
         let mut l0 = LinkLedger::new();
-        let hit0 = l0.counters[LEDGER_COUNT + 0];
+        let hit0 = l0.counters.get(LEDGER_COUNT + 0).is_none();
         let _ = hit0;
         led.record(0, LEDGER_COUNT == 10);
         // 槽1：双计。

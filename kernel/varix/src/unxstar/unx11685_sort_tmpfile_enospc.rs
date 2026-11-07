@@ -7125,7 +7125,7 @@ fn message_ok() -> bool {
             None => return false,
         };
         let o = truth(i);
-        let m = message(sh, &o);
+        let m = message(&sh, &o);
         if m.is_empty() == o.prints() {
             return false;
         }
@@ -8173,7 +8173,7 @@ fn corpus_ok() -> bool {
             Some(v) => *v,
             None => return false,
         };
-        let p = plan(sh);
+        let p = plan(&sh);
         let want_lines = match ACT_LINES.get(m) {
             Some(v) => *v,
             None => return false,

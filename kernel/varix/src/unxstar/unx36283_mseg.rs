@@ -127,6 +127,7 @@ pub const BASE_ALLOW: [u32; PAIR_N] = [
     0, 0, 0x0F, // S1×O0..O2
     0, 0, 0x0F, // S1×O3..O5
     0, 0, 0x0F, // S2×O0..O2
+    0, 0, 0, // S2×O3..O5（缺基准数据，聚合位归零；BASE_VALID 标 N/A）
 ];
 pub const BASE_DENY: [u32; PAIR_N] = [
     0, 0x03, 0, // S0×O0..O2
@@ -134,12 +135,14 @@ pub const BASE_DENY: [u32; PAIR_N] = [
     0x0F, 0, 0, // S1×O0..O2
     0, 0, 0, // S1×O3..O5
     0, 0xFF, 0, // S2×O0..O2
+    0, 0, 0, // S2×O3..O5（缺基准数据）
 ];
 
-/// 基准数据覆盖面：对偶 12/13/14（S2×O3..O5，即格 96..119）缺基准机
+/// 基准数据覆盖面：对偶 15/16/17（S2×O3..O5，即格 96..119）缺基准机
 /// 数据——如实标 N/A，不虚报覆盖。
 pub const BASE_VALID: [bool; PAIR_N] = [
-    true, true, true, true, true, true, true, true, true, true, true, true, false, false, false,
+    true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+    false, false, false,
 ];
 
 /// 基准机裁决（异构路径：聚合位直接判定）。

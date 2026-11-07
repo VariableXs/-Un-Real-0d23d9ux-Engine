@@ -5604,7 +5604,7 @@ fn corpus_ok() -> bool {
             Some(v) => *v,
             None => return false,
         };
-        if s.tag != w || let_some_tag(s, w) {
+        if s.tag != w || let_some_tag(&s, w) {
             return false;
         }
         if let Some(slot) = own_tags.get_mut(i) {
@@ -5612,7 +5612,7 @@ fn corpus_ok() -> bool {
         }
         i += 1;
     }
-    if !tags_equal(own_tags.as_slice(), WANT_TAGS) {
+    if !tags_equal(own_tags.as_slice(), &WANT_TAGS) {
         return false;
     }
     let mut a = 0usize;

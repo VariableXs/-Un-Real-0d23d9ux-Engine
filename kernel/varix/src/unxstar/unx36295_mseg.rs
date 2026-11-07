@@ -51,7 +51,7 @@ pub fn batch_of(crit: u32) -> Result<usize, u16> {
     if crit < 36161 || crit >= 36161 + GATE_N as u32 {
         return Err(E_RANGE);
     }
-    Ok(((crit - 36161) / PER_BATCH) as usize)
+    Ok(((crit - 36161) / PER_BATCH as u32) as usize)
 }
 
 /// 段闸报告（全绿位面 + 计数 + 域档锚）。
@@ -192,7 +192,7 @@ pub fn drill() -> Result<u32, u16> {
     while i < greens.len() {
         let crit = greens[i];
         let b = batch_of(crit)?;
-        let base = 36161 + b * PER_BATCH;
+        let base = (36161 + b * PER_BATCH) as u32;
         if crit < base || crit >= base + PER_BATCH as u32 {
             return Err(E_TRACE); // 码不在所属批窗 = 不可追溯
         }

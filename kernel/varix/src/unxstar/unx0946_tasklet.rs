@@ -170,7 +170,7 @@ pub fn drill() -> Result<u32, u16> {
         let cpu = i as usize % NCPU;
         let kind = match i % 3 { 0 => TlKind::NetRx, 1 => TlKind::Block, _ => TlKind::Timer };
         tb.schedule(cpu, kind)?;
-        let v = tb.run(cpu, kind, 100 + i * 10)?;
+        let v = tb.run(cpu, kind, 100 + i as u64 * 10)?;
         if v != 1 { return Err(E_LOST); }
     }
     if !tb.invariant_ok() { return Err(E_LOST); }
@@ -278,4 +278,82 @@ pub fn drill_ext() -> Result<u32, u16> {
     tb.run(1, TlKind::NetRx, 9000)?;
     if tb.parallel_peak() < 2 { return Err(E_CONCUR); }
     Ok(0)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx946_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx946_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0946_tasklet");
+    // J1 核心路径：串行互斥、跨核并行、FIFO 序、风暴合并。
+    s.add("核心路径drill全过", drill() == Ok(0), "并发注入/FIFO 审计/5 票合并/跨核并行全过返回 0");
+    // J2 扩展审计：全矩阵扫描/分布账/守恒/批回归。
+    s.add("扩展审计drill全过", drill_ext() == Ok(0), "六场景（12 格扫描/分布/票仓清/FIFO/批回归/并行度）全过返回 0");
+    // J3 批回归 10/10。
+    s.add("批回归10/10", tl_regress(10) == Ok(10), "10 轮调度-执行全绿");
+    // J4 恒等式：空底座票仓总和 ≥ 执行票总和且 total==runs。
+    s.add("空底座不变量", TaskletBase::new().invariant_ok(), "空底座 v>=r 且 total==runs.len()==0");
+    // J5 容量闭集冻结。
+    s.add("核数型号闭集", NCPU == 4 && NTYPES == 3, "4 核 × 3 型闭集不漂移");
+    // J6 正例：调度-执行往返票数守恒 + FIFO 审计。
+    let mut pos = TaskletBase::new();
+    let pos_ok = pos.schedule(0, TlKind::NetRx).is_ok()
+        && pos.run(0, TlKind::NetRx, 100) == Ok(1)
+        && pos.fifo_audit() == Ok(1)
+        && pos.invariant_ok()
+        && ticket_closed(&pos).is_ok();
+    s.add("正例调度执行往返", pos_ok, "schedule→run 票 1/1、fifo_audit 1 条、票仓全清");
+    // J7 反例一：在跑期间同核同型再入必拦（E_CONCUR）。
+    let mut neg = TaskletBase::new();
+    let probe_hit = neg.concurrency_probe(0, TlKind::NetRx) == Ok(false)
+        && neg.schedule(0, TlKind::NetRx) == Err(E_CONCUR);
+    let _ = neg.release(0, TlKind::NetRx);
+    s.add("同核同型再入拦", probe_hit, "运行位占用期间 schedule 被 E_CONCUR 拒");
+    // J8 反例二：空票执行与核号越界。
+    let mut neg2 = TaskletBase::new();
+    s.add("空票与越界拒", neg2.run(0, TlKind::NetRx, 0) == Err(E_STATE)
+        && neg2.schedule(NCPU, TlKind::NetRx) == Err(E_CPU)
+        && neg2.run(NCPU, TlKind::Timer, 0) == Err(E_CPU),
+        "零票执行 E_STATE、cpu==NCPU 双口 E_CPU");
+    // J9 风暴合并：同核同型 5 票合并成一次执行。
+    let mut tb5 = TaskletBase::new();
+    let _ = tb5.schedule(2, TlKind::Timer);
+    let _ = tb5.schedule(2, TlKind::Timer);
+    let _ = tb5.schedule(2, TlKind::Timer);
+    let _ = tb5.schedule(2, TlKind::Timer);
+    let _ = tb5.schedule(2, TlKind::Timer);
+    s.add("5票合并一次执行", tb5.run(2, TlKind::Timer, 900) == Ok(5) && tb5.total == 1,
+        "同核同型 5 次 schedule 合并出 1 次 run、票 5/5");
+    // J10 全矩阵扫描：每核每型一往返、分布均一。
+    let mut tbm = TaskletBase::new();
+    let matrix_ok = full_matrix_scan(&mut tbm, 100) == Ok((NCPU * NTYPES) as u32)
+        && ticket_closed(&tbm).is_ok()
+        && tbm.fifo_audit() == Ok((NCPU * NTYPES) as u32);
+    s.add("全矩阵扫描12格", matrix_ok, "4 核×3 型全调度-执行、票仓清、FIFO 12 条");
+    // J11 跨核同刻并行合法。
+    let mut tbp = TaskletBase::new();
+    let _ = tbp.schedule(0, TlKind::Block);
+    let _ = tbp.schedule(1, TlKind::Block);
+    let _ = tbp.run(0, TlKind::Block, 1000);
+    let _ = tbp.run(1, TlKind::Block, 1000);
+    s.add("跨核同刻并行", tbp.parallel_peak() >= 2, "同逻辑时刻双核在跑 peak≥2");
+    // J12 型闭集命名。
+    s.add("三型命名闭集", TlKind::NetRx.as_str() == "net-rx" && TlKind::Block.as_str() == "block"
+        && TlKind::Timer.as_str() == "timer" && TlKind::Timer.idx() == 2,
+        "as_str/idx 与冻结口径一致");
+    // J13 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0x7C40, "0x7C40 段本单独占不漂移");
+    // 动态明细两列。
+    let sum_len = tbm.summary().len();
+    s.add_dyn("执行摘要非空", sum_len > 0, &alloc::format!("summary {} 字节（runs/peak/三型分账）", sum_len));
+    let dist = kind_dist(&tbm);
+    let [d0, d1, d2] = dist;
+    s.add_dyn("型分布均一", d0 == NCPU as u32 && d1 == NCPU as u32 && d2 == NCPU as u32,
+        &alloc::format!("三型各 {} 次（4 核各 1 次）", NCPU));
+    s
 }

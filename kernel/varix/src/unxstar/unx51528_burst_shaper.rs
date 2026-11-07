@@ -551,9 +551,9 @@ mod tests {
 
     #[test]
     fn zero_grant_booked_when_bucket_drained() {
-        let mut e = BurstShaper::new();
-        let _ = e.grant(1, 4096);
-        let rec = e.grant(1, 512);
+        let mut e = BurstShaper::with_limits(1000, 0, 2048, 64);
+        let _ = e.grant(1, 1000);
+        let rec = e.grant(2, 512);
         assert!(matches!(rec, Ok(r) if r.granted == 0 && r.shaped == 512));
         assert_eq!(e.zero_grant_cnt(), 1);
         assert_eq!(e.phase(), ShapePhase::Drained);
@@ -574,7 +574,7 @@ mod tests {
         let v0 = e.version();
         let mut caught = 0u32;
         for i in 0..10u32 {
-            let r = e.grant(9 - i.min(8), 100);
+            let r = e.grant(9 - i.min(8) as u64, 100);
             if r == Err(BurstCode::TickBackward) {
                 caught += 1;
                 e.note_detected();
@@ -588,7 +588,8 @@ mod tests {
     #[test]
     fn phase_write_injection_caught_x10() {
         let mut e = BurstShaper::new();
-        let _ = e.grant(1, 4000);
+        // 2048 = MAX_REQUEST_TOKENS 上限内：tokens 4096→2048，落 Shaping 相位。
+        let _ = e.grant(1, 2048);
         for _ in 0..10 {
             assert_eq!(e.inject_phase_write(ShapePhase::Burst), Err(BurstCode::PhaseLocked));
             e.note_detected();
@@ -621,14 +622,15 @@ mod tests {
     fn netting_20_rounds_zero_drift() {
         let mut e = BurstShaper::new();
         let _ = e.grant(1, 600);
-        let _ = e.grant(2, 3000);
-        let _ = e.grant(3, 1500);
+        let _ = e.grant(2, 2048);
+        let _ = e.grant(3, 2048);
         let _ = e.grant(4, 0);
         for _ in 0..NETTING_ROUNDS {
             assert_eq!(e.netting_drift(), 0);
         }
-        assert_eq!(e.sum_granted(), 600 + 3000 + 1500);
-        assert_eq!(e.sum_shaped(), 996);
+        // token 轨迹：4096→3496→3752→1704→1960；第 3 笔 granted=1960 shaped=88。
+        assert_eq!(e.sum_granted(), 600 + 2048 + 1960);
+        assert_eq!(e.sum_shaped(), 88);
     }
 
     #[test]

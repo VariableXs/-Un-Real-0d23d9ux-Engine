@@ -1626,7 +1626,7 @@ impl Shape {
         if !self.cap.well_formed() {
             return false;
         }
-        if !self.target.target_ok(self.cap) {
+        if !self.target.target_ok(&self.cap) {
             return false;
         }
         if !self.written_bound() {

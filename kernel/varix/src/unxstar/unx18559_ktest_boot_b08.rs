@@ -316,7 +316,8 @@ pub fn theme_dedup() -> Result<u32, u32> {
     while i < 20 {
         let byte = i / 8;
         let bit = 1u8 << (i % 8);
-        let cur = plane.get(byte).ok_or(KbCode::ThemeMismatch.code())?;
+        // 收库修正（AI-INTAKE-1107）：cur 先行拷贝（u8 Copy），解除借用冲突。
+        let cur = *plane.get(byte).ok_or(KbCode::ThemeMismatch.code())?;
         if (cur & bit) != 0 {
             return Err(KbCode::ThemeMismatch.code());
         }
@@ -392,7 +393,10 @@ pub fn mini_hash(claims: &[&str; 5]) -> u32 {
     let mut acc: u32 = SEG_BASE;
     let mut i = 0;
     while i < claims.len() {
-        let c = claims.get(i).ok_or(KbCode::ThemeMismatch.code())?;
+        let c = match claims.get(i) {
+            Some(c) => c,
+            None => return KbCode::ThemeMismatch.code(),
+        };
         let bytes = c.as_bytes();
         let mut bi = 0;
         while bi < bytes.len() {

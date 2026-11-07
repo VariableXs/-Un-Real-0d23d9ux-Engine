@@ -646,7 +646,10 @@ pub fn segment_guard() -> bool {
 /// 运行期摘要（动态明细消费）。
 pub fn summary() -> String {
     let g = golden_run();
-    format!("{:?}", g.0)
+    match g {
+        Ok(v) => format!("{:?}", v),
+        Err(e) => format!("err({})", e),
+    }
 }
 
 // ── 检查入口（判据 8–20 条） ────────────────────────────────────

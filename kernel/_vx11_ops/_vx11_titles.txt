@@ -1,0 +1,200 @@
+UNX-F50001 gamutmap 0x42c40 420 sRGB→打印机 gamut 映射 L2（感知意图基线）
+UNX-F50002 intent4 0x42c60 480 渲染意图四档实现（感知/相对比色/饱和/绝对）
+UNX-F50003 blackpoint 0x42c80 400 黑点补偿开关语义（显式登记不静默）
+UNX-F50004 graypath 0x42ca0 380 灰度打印路径（RGB→K 单通道归一）
+UNX-F50005 iccfallback 0x42cc0 360 ICC profile 缺失降级档（内置 sRGB 兜底+显式标记）
+UNX-F50006 colorbudget 0x42ce0 340 色彩预算账（每页色彩处理耗时上限）
+UNX-F50007 colorb14 0x42d00 320 色彩与 B14 基础档联签（单源零改写）
+UNX-F50008 colorcards 0x42d20 300 色彩样本页（24 色卡样本入账）
+UNX-F50009 colortrace 0x42d40 300 色彩埋点（映射/意图/降级三点）
+UNX-F50010 colorerrs 0x42d60 280 色彩错误码族（15 条：profile 损坏/意图不支持等）
+UNX-F50011 colorfuzz 0x42d80 280 色彩 fuzz 面（坏 profile 注入不崩）
+UNX-F50012 colorvec 0x42da0 260 色彩向量账（色块用例集+校验和）
+UNX-F50013 colorfreeze 0x42dc0 260 色彩冻结接口（渲染管线消费单点面）
+UNX-F50014 duotone 0x42de0 240 双色打印档（黑白+专色简化语义显式登记）
+UNX-F50015 colorgdi 0x42e00 240 色彩与 GDI 管线共用联签（B06 判据主轴）
+UNX-F50016 colormodel 0x42e20 220 色彩能力协商（打印机 ColorModel 求交）
+UNX-F50017 colort1 0x42e40 220 色彩真机对照登记位（T1 档 ×2 台随闸门补测槽位）
+UNX-F50018 b21vec 0x42e60 200 B21 批向量账骨架（色彩用例集生成器+校验和）
+UNX-F50019 b21grep 0x42e80 200 B21 批防重 grep 执行记录（关键词族：color/gamut/icc/intent）
+UNX-F50020 b21seal 0x42ea0 300 B21 批收官印（20 条冻结/累计 126,000 行）
+UNX-F50021 nup 0x42ec0 420 N-up 布局引擎（2/4/6/9/16-up 页面编排）
+UNX-F50022 nuporder 0x42ee0 480 N-up 页序规范（横排/纵排两种序显式可选）
+UNX-F50023 booklet 0x42f00 400 小册子排版（对折骑马钉序：奇偶面镜像排布）
+UNX-F50024 poster 0x42f20 380 海报拼接（2×2/3×3 放大切割+重叠边）
+UNX-F50025 fitpage 0x42f40 360 页边距与缩放协商（fit-to-page/shrink 显式语义）
+UNX-F50026 rotate 0x42f60 340 旋转语义（横纸张竖内容 90°/270° 旋转账）
+UNX-F50027 layoutduplex 0x42f80 320 布局与双面联签（N-up+duplex 组合页序单源）
+UNX-F50028 layoutpreview 0x42fa0 300 布局预览账（预览渲染与实际输出一致性抽检）
+UNX-F50029 layouttrace 0x42fc0 300 布局埋点（编排/预览/输出三点）
+UNX-F50030 layouterrs 0x42fe0 280 布局错误码族（15 条：页数超限/纸张过小等）
+UNX-F50031 layoutsamples 0x43000 280 布局样本页（N-up ×5 档样本入账）
+UNX-F50032 layoutfuzz 0x43020 260 布局 fuzz 面（极端页数/极端缩放注入不崩）
+UNX-F50033 layoutfreeze 0x43040 260 布局冻结接口（管线消费单点面）
+UNX-F50034 layoutvec 0x43060 240 布局向量账（编排用例集+校验和）
+UNX-F50035 binding 0x43080 240 骑马钉与胶装两种册序差异显式登记
+UNX-F50036 cropline 0x430a0 220 海报切割线标记（裁切线/重叠区可视档）
+UNX-F50037 layoutt1 0x430c0 220 布局真机对照登记位（T1 档 ×2 台随闸门补测槽位）
+UNX-F50038 b22vec 0x430e0 200 B22 批向量账骨架（布局用例集生成器+校验和）
+UNX-F50039 b22grep 0x43100 200 B22 批防重 grep 执行记录（关键词族：nup/booklet/poster/layout）
+UNX-F50040 b22seal 0x43120 300 B22 批收官印（20 条冻结/累计 132,000 行）
+UNX-F50041 wmtext 0x43140 420 文本水印引擎（角度/透明度/字号三参数）
+UNX-F50042 wmimage 0x43160 480 图像水印（透明 PNG 合成与缩放定位）
+UNX-F50043 wmvar 0x43180 400 动态变量水印（页码/日期/用户名占位符族）
+UNX-F50044 hftpl 0x431a0 380 页眉页脚模板（左中右三槽+首页不同档）
+UNX-F50045 wmlayer 0x431c0 360 水印层序语义（正文上/下两档显式登记）
+UNX-F50046 wmsecret 0x431e0 340 机密级水印预设（草稿/机密/绝密三档文案与样式）
+UNX-F50047 wmnup 0x43200 320 水印与 N-up 组合（每子页独立/整页共享两档）
+UNX-F50048 wmduplex 0x43220 300 水印与双面组合（背面自动淡化档）
+UNX-F50049 hfmirror 0x43240 300 页眉页脚与镜像页（小册子内侧边距镜像）
+UNX-F50050 wmtrace 0x43260 280 水印埋点（合成/变量/层序三点）
+UNX-F50051 wmerrs 0x43280 280 水印错误码族（10 条：字体缺失/图坏/参数越界）
+UNX-F50052 wmsamples 0x432a0 260 水印样本页（×6 档样本入账）
+UNX-F50053 wmfreeze 0x432c0 260 水印冻结接口（管线消费单点面）
+UNX-F50054 wmfuzz 0x432e0 240 水印 fuzz 面（坏图/坏参数注入不崩）
+UNX-F50055 wmvec 0x43300 240 水印向量账（合成用例集+校验和）
+UNX-F50056 fontfallback 0x43320 220 中英文字体回退链（缺字形回退显式记账）
+UNX-F50057 wmperf 0x43340 220 水印性能预算（合成耗时上限模拟器档）
+UNX-F50058 b23vec 0x43360 200 B23 批向量账骨架（水印用例集生成器+校验和）
+UNX-F50059 b23grep 0x43380 200 B23 批防重 grep 执行记录（关键词族：watermark/header/footer/overlay）
+UNX-F50060 b23seal 0x433a0 300 B23 批收官印（20 条冻结/累计 138,000 行）
+UNX-F50061 duplex3 0x433c0 420 双面三模语义总账（单面/长边翻/短边翻）
+UNX-F50062 duplexmatrix 0x433e0 480 长边/短边翻与横竖纸张交叉矩阵（4 组合）
+UNX-F50063 duplexodd 0x43400 400 双面奇数页补白页语义（显式登记不静默）
+UNX-F50064 trayselect 0x43420 380 纸盒选择语义（自动/手送/纸盒 1–N 优先级账）
+UNX-F50065 paperout 0x43440 360 缺纸中断恢复（换纸续印页序一致性）
+UNX-F50066 outputbin 0x43460 340 出纸通道语义（逐张/订书/打孔目标通道账）
+UNX-F50067 papersize 0x43480 320 纸张尺寸归一（ISO/US/信封逐族映射表）
+UNX-F50068 custompaper 0x434a0 300 自定义纸张账（用户自定义尺寸上下限校验）
+UNX-F50069 mediaipp 0x434c0 300 纸张与 IPP media 求交联签（B17 求交器单源）
+UNX-F50070 duplexorder 0x434e0 280 双面与 B04 页序规范联签（交错序单源）
+UNX-F50071 papertrace 0x43500 280 纸张处理埋点（选择/切换/缺纸三点）
+UNX-F50072 papererrs 0x43520 260 纸张错误码族（15 条：缺纸/卡纸/尺寸不符等）
+UNX-F50073 paperfuzz 0x43540 260 纸张 fuzz 面（坏尺寸/坏盒号注入不崩）
+UNX-F50074 papersamples 0x43560 240 纸张处理样本页（双面三模 ×3 样本入账）
+UNX-F50075 paperfreeze 0x43580 240 纸张冻结接口（管线/UI 消费单点面）
+UNX-F50076 papervec 0x435a0 220 纸张向量账（选择用例集+校验和）
+UNX-F50077 papert1 0x435c0 220 纸张真机对照登记位（T1 档 ×2 台随闸门补测槽位）
+UNX-F50078 b24vec 0x435e0 200 B24 批向量账骨架（纸张用例集生成器+校验和）
+UNX-F50079 b24grep 0x43600 200 B24 批防重 grep 执行记录（关键词族：duplex/tray/media/bin）
+UNX-F50080 b24seal 0x43620 300 B24 批收官印（20 条冻结/累计 144,000 行）
+UNX-F50081 subsetter 0x43640 420 字体子集化器（字形裁剪到实际使用集）
+UNX-F50082 fontembed 0x43660 480 TrueType/Type1 双格式嵌入账
+UNX-F50083 residentmatch 0x43680 400 打印机驻留字体匹配器（名字/度量匹配优先级）
+UNX-F50084 fontdl 0x436a0 380 字体下载通道（PCL/PS 载体两档）
+UNX-F50085 cjkdl 0x436c0 360 CJK 大字库按需下载（用页触发的字形批量账）
+UNX-F50086 fontlicense 0x436e0 340 字体许可位检查（可嵌入位拒绝嵌入显式告警）
+UNX-F50087 fontsubst 0x43700 320 字体替换表（缺失字体→替代映射显式登记）
+UNX-F50088 fontmetrics 0x43720 300 字体度量一致性账（字距/行高与源一致）
+UNX-F50089 fontgdi 0x43740 300 字体与 GDI 管线共用联签（B06 判据主轴）
+UNX-F50090 fonttrace 0x43760 280 字体埋点（子集化/下载/替换三点）
+UNX-F50091 fonterrs 0x43780 280 字体错误码族（15 条：坏字体/许可拒绝/下载超时等）
+UNX-F50092 fontfuzz 0x437a0 260 字体 fuzz 面（坏字体文件注入不崩）
+UNX-F50093 fontsamples 0x437c0 260 字体样本页（×4 档样本入账：西文/CJK/混排）
+UNX-F50094 fontfreeze 0x437e0 240 字体冻结接口（管线消费单点面）
+UNX-F50095 fontvec 0x43800 240 字体向量账（嵌入用例集+校验和）
+UNX-F50096 fontiso 0x43820 220 字体下载会话隔离（任务间零字体泄漏）
+UNX-F50097 fontt1 0x43840 220 字体真机对照登记位（T1 档 ×2 台随闸门补测槽位）
+UNX-F50098 b25vec 0x43860 200 B25 批向量账骨架（字体用例集生成器+校验和）
+UNX-F50099 b25grep 0x43880 200 B25 批防重 grep 执行记录（关键词族：font/embed/subset/download）
+UNX-F50100 b25seal 0x438a0 300 B25 批收官印（20 条冻结/累计 150,000 行）
+UNX-F50101 pdfpt 0x438c0 420 PDF 直通判定器（打印机原生 PDF 支持探测）
+UNX-F50102 pdfcheck 0x438e0 480 PDF 直通透传校验（页数/加密/损坏三检）
+UNX-F50103 pspt 0x43900 400 PS 直通判定器与版本档（PS2/PS3 探测）
+UNX-F50104 ptfallback 0x43920 380 直通失败回退光栅化链（自动切换显式登记）
+UNX-F50105 pdfrange 0x43940 360 PDF 页选择范围透传（页码区间裁剪不重排）
+UNX-F50106 ptcopies 0x43960 340 直通任务副本数语义（打印机侧 copies 透传档）
+UNX-F50107 ptintent 0x43980 320 直通与色彩意图透传（Intent 声明透传不处理档）
+UNX-F50108 ptduplex 0x439a0 300 直通与双面透传（Duplex 声明透传档）
+UNX-F50109 pterrs 0x439c0 300 直通失败码族（10 条：加密/损坏/不支持等）
+UNX-F50110 pttrace 0x439e0 280 直通埋点（判定/透传/回退三点）
+UNX-F50111 ptfuzz 0x43a00 280 直通 fuzz 面（坏 PDF/坏 PS 注入不崩）
+UNX-F50112 ptgdi 0x43a20 260 直通与 GDI 管线共用联签（B06 判据主轴）
+UNX-F50113 ptfreeze 0x43a40 260 直通冻结接口（spool 递交单点面）
+UNX-F50114 ptvec 0x43a60 240 直通向量账（PDF/PS 用例集+校验和）
+UNX-F50115 ptsamples 0x43a80 240 直通样本页账（×3 样本入账）
+UNX-F50116 ptperf 0x43aa0 220 直通性能账（大文件零整载流式透传）
+UNX-F50117 ptt1 0x43ac0 220 直通真机对照登记位（T1 档 ×2 台随闸门补测槽位）
+UNX-F50118 b26vec 0x43ae0 200 B26 批向量账骨架（直通用例集生成器+校验和）
+UNX-F50119 b26grep 0x43b00 200 B26 批防重 grep 执行记录（关键词族：passthrough/pdf/ps/fallback）
+UNX-F50120 b26seal 0x43b20 300 B26 批收官印（20 条冻结/累计 156,000 行）
+UNX-F50121 usbprobe 0x43b40 420 USB 打印类接口探测（printer class 描述符解析）
+UNX-F50122 usbchan 0x43b60 480 打印类两通道语义（全双工/单向绑定端点账）
+UNX-F50123 devid1284 0x43b80 400 IEEE 1284.4 设备 ID 解析（MFG/MDL/CMD 逐键）
+UNX-F50124 usbflow 0x43ba0 380 USB 打印流控（bulk 端点 STALL/NAK 处理账）
+UNX-F50125 usbhot 0x43bc0 360 热插拔事件账（接入/拔出任务保全语义）
+UNX-F50126 usbpipe 0x43be0 340 USB 与 AI-65 管道联签（上游接口零改写）
+UNX-F50127 usbchunk 0x43c00 320 传输背压与分块账（块大小协商档）
+UNX-F50128 usberrs 0x43c20 300 USB 错误码族（15 条：端点停/设备断/带宽不足等）
+UNX-F50129 usbtrace 0x43c40 300 USB 埋点（探测/绑定/传输/拔出四点）
+UNX-F50130 usbfuzz 0x43c60 280 USB fuzz 面（坏描述符注入不崩）
+UNX-F50131 usbqemu 0x43c80 280 USB 模拟器模型账（QEMU USB printer 模型对接档）
+UNX-F50132 usbfreeze 0x43ca0 260 USB 冻结接口（后端消费单点面）
+UNX-F50133 usbvec 0x43cc0 260 USB 向量账（传输用例集+校验和）
+UNX-F50134 usbt1 0x43ce0 240 真机 USB 打印判据登记位（T1 档 ×2 台随闸门补测槽位）
+UNX-F50135 usbmulti 0x43d00 240 多设备并发账（双 USB 打印机并发零串扰）
+UNX-F50136 usbprogress 0x43d20 220 传输进度诚实上报（字节级进度三要素）
+UNX-F50137 b27vec 0x43d40 220 B27 批向量账骨架（USB 用例集生成器+校验和）
+UNX-F50138 b27grep 0x43d60 200 B27 批防重 grep 执行记录（关键词族：usb/printer/bulk/1284）
+UNX-F50139 b27probe 0x43d80 200 （合并入收官）B27 批集成自检探针
+UNX-F50140 b27seal 0x43da0 300 B27 批收官印（20 条冻结/累计 162,000 行）
+UNX-F50141 mdnsdiscover 0x43dc0 420 mDNS 打印服务发现（_ipp._tcp/_printer._tcp 双型）
+UNX-F50142 mdnsrecords 0x43de0 480 mDNS 记录解析（TXT 键值族逐键落账）
+UNX-F50143 lpdbackend 0x43e00 400 LPD 后端（LPR 协议 job 递交最小档）
+UNX-F50144 lpdqueue 0x43e20 380 LPD 队列查询与取消档
+UNX-F50145 snmpprobe 0x43e40 360 SNMPv1 打印 MIB 探针（可选档缺省关闭）
+UNX-F50146 discoveragg 0x43e60 340 发现结果聚合器（多协议去重合并单源视图）
+UNX-F50147 discoverttl 0x43e80 320 发现缓存与 TTL 失效账
+UNX-F50148 netrecover 0x43ea0 240 网络分区恢复账（断网→恢复重发现幂等）
+UNX-F50149 discoveripp 0x43ec0 300 发现与 B12 IPP 发现链联签（单源零改写）
+UNX-F50150 discovertrace 0x43ee0 280 发现埋点（发现/解析/聚合三点）
+UNX-F50151 discovererrs 0x43f00 280 发现错误码族（15 条：超时/坏包/冲突等）
+UNX-F50152 discoverfuzz 0x43f20 260 发现 fuzz 面（坏 mDNS/SNMP 包注入不崩）
+UNX-F50153 discoverfreeze 0x43f40 260 发现冻结接口（UI/后端消费单点面）
+UNX-F50154 discovervec 0x43f60 260 发现向量账（mDNS/LPD/SNMP 用例集+校验和）
+UNX-F50155 lpdsched 0x43f80 240 LPD 与 B16 队列联签（递交链单点）
+UNX-F50156 nett1 0x43fa0 240 网络真机判据登记位（局域网 3 台实机随闸门补测槽位）
+UNX-F50157 discoverperf 0x43fc0 220 发现性能账（全网扫描耗时上限模拟器档）
+UNX-F50158 b28vec 0x43fe0 220 B28 批向量账骨架（发现用例集生成器+校验和）
+UNX-F50159 b28grep 0x44000 200 B28 批防重 grep 执行记录（关键词族：mdns/lpd/snmp/discover）
+UNX-F50160 b28seal 0x44020 300 B28 批收官印（20 条冻结/累计 168,000 行）
+UNX-F50161 ticketxml 0x44040 420 PrintTicket/PrintCapabilities XML 解析器
+UNX-F50162 ticketmodel 0x44060 480 Feature/Option/ParameterDef 三层模型装配
+UNX-F50163 scoredprop 0x44080 400 ScoredProperty 权重语义（近似匹配排序）
+UNX-F50164 constraint 0x440a0 380 约束引擎（Ticket↔Capabilities 违规检测与修复建议）
+UNX-F50165 ticketns 0x440c0 360 Ticket 版本命名空间账（v1/v2 命名空间映射）
+UNX-F50166 ticketdevmode 0x440e0 340 Ticket 持久化与 DEVMODE 双向映射 L2（语义级）
+UNX-F50167 ticketseal 0x44100 320 Ticket 校验和与防篡改账
+UNX-F50168 ticketdiff 0x44120 300 Ticket 差异对比器（用户可见变更清单）
+UNX-F50169 ticketerrs 0x44140 300 Ticket 错误码族（15 条：命名空间错/约束违规等）
+UNX-F50170 tickettrace 0x44160 280 Ticket 埋点（解析/校验/映射三点）
+UNX-F50171 ticketfuzz 0x44180 280 Ticket fuzz 面（坏 XML/坏命名空间注入不崩）
+UNX-F50172 ticketfreeze 0x441a0 260 Ticket 冻结接口（管线/UI 消费单点面）
+UNX-F50173 ticketvec 0x441c0 260 Ticket 向量账（用例集+校验和）
+UNX-F50174 ticketsamples 0x441e0 240 Ticket 样本库（×10 真实结构样本入库）
+UNX-F50175 ticketipp 0x44200 240 Ticket 与 IPP job-attrs 求交联签（B17 单源）
+UNX-F50176 ticketdefault 0x44220 220 缺省 Ticket 生成器（出厂缺省显式登记）
+UNX-F50177 tickett1 0x44240 220 Ticket 真机判据登记位（T1 档 ×2 台随闸门补测槽位）
+UNX-F50178 b29vec 0x44260 200 B29 批向量账骨架（Ticket 用例集生成器+校验和）
+UNX-F50179 b29grep 0x44280 200 B29 批防重 grep 执行记录（关键词族：ticket/capability/constraint）
+UNX-F50180 b29seal 0x442a0 300 B29 批收官印（20 条冻结/累计 174,000 行）
+UNX-F50181 schedprio 0x442c0 420 队列调度器（优先级抢占档语义）
+UNX-F50182 schedfair 0x442e0 480 调度公平性账（低优先级饥饿阈值显式登记）
+UNX-F50183 schedpause 0x44300 400 任务暂停/恢复全路径
+UNX-F50184 schedtimer 0x44320 380 定时打印档（预约时间到点触发账）
+UNX-F50185 schedevent 0x44340 360 队列事件通知账（状态变更→UI 推送单点）
+UNX-F50186 schedbusy 0x44360 340 打印机忙/闲探测调度（忙时排队档）
+UNX-F50187 schedretry 0x44380 320 失败重试策略账（传输失败指数退避+上限）
+UNX-F50188 schedidem 0x443a0 300 重试幂等保障（重试零重复页断言）
+UNX-F50189 schedqueue 0x443c0 240 调度与 B16 队列联签（生命周期单源）
+UNX-F50190 schedtrace 0x443e0 280 调度埋点（入队/调度/重试/完成四点）
+UNX-F50191 schederrs 0x44400 280 调度错误码族（15 条：队列满/预约过/重试耗尽等）
+UNX-F50192 schedfuzz 0x44420 260 调度 fuzz 面（乱序事件注入不崩）
+UNX-F50193 schedfreeze 0x44440 260 调度冻结接口（UI/后端消费单点面）
+UNX-F50194 schedvec 0x44460 260 调度向量账（调度用例集+校验和）
+UNX-F50195 schedmulti 0x44480 240 多队列并行调度账（双打印机并行零互饿）
+UNX-F50196 schedperf 0x444a0 240 调度性能账（调度决策耗时上限）
+UNX-F50197 schedexp 0x444c0 220 调度体验日志面（排队挫败信号捕获档）
+UNX-F50198 b30vec 0x444e0 220 B30 批向量账骨架（调度用例集生成器+校验和）
+UNX-F50199 b30grep 0x44500 200 B30 批防重 grep 执行记录（关键词族：schedule/priority/retry/pause）
+UNX-F50200 b30seal 0x44520 300 B30 批收官印（20 条冻结/累计 180,000 行）

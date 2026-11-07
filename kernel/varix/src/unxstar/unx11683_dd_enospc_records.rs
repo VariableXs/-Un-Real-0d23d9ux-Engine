@@ -7584,9 +7584,10 @@ mod tests {
 
     #[test]
     fn t_run_with_out_of_range_slot_is_rejected() {
-        assert_eq!(run_with(Some((CORPUS, Fault::Code))), Err(DD_ESLOT));
-        assert_eq!(run_with(Some((CORPUS + 8, Fault::Ok))), Err(DD_ESLOT));
-        assert_eq!(run_with(Some((usize::MAX, Fault::Seal))), Err(DD_ESLOT));
+        // 收库修正（AI-INTAKE-1107）：Report 无 PartialEq/Debug，改用 matches! 判错码。
+        assert!(matches!(run_with(Some((CORPUS, Fault::Code))), Err(DD_ESLOT)));
+        assert!(matches!(run_with(Some((CORPUS + 8, Fault::Ok))), Err(DD_ESLOT)));
+        assert!(matches!(run_with(Some((usize::MAX, Fault::Seal))), Err(DD_ESLOT)));
         assert_eq!(Fault::Slot.code(), DD_ESLOT);
         assert!(reds_ok());
     }

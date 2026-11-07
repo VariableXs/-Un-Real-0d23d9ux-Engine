@@ -538,12 +538,12 @@ pub fn probe_matrix_missing() -> Result<(), u32> {
 /// 探针 B：相位越级（冷账直取收口）必拒。
 pub fn probe_phase_skip() -> Result<(), u32> {
     let g = JointGate::new();
-    match GatePhase::Cold.advance(GatePhase::Sealed) {
+    let r = match GatePhase::Cold.advance(GatePhase::Sealed) {
         Err(c) if c == TriCode::ConservationBreak.code() => Ok(()),
         _ => Err(TriCode::ConservationBreak.code()),
-    }
+    };
     let _ = g;
-    Ok(())
+    r
 }
 
 /// 探针 C：段判码逐段命中（好例过、逐段违约给对应段判码）。

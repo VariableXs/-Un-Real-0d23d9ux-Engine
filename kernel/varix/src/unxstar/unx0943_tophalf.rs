@@ -257,7 +257,7 @@ pub fn forbid_audit() -> Result<(), u16> {
 pub fn trigger_ratio(th: &TopHalf) -> u32 {
     if th.recs.is_empty() { return 0; }
     let t = th.recs.iter().filter(|r| r.triggered).count();
-    t * 100 / th.recs.len()
+    (t * 100 / th.recs.len()) as u32
 }
 
 /// 批回归：N 轮常规事件流全过。
@@ -281,7 +281,7 @@ pub fn drill_ext() -> Result<u32, u16> {
     let mut th = TopHalf::new();
     for i in 0..10u32 {
         let ev = DevEvent { stat: 0x10 + i as u16, bh_load_us: if i % 2 == 0 { 5 } else { 0 } };
-        th.run_top(&ev, 1000 + i * 10)?;
+        th.run_top(&ev, 1000 + i as u64 * 10)?;
     }
     // 场景一：报表可渲染且含十条。
     let rep = cost_report(&th)?;
@@ -316,7 +316,7 @@ pub fn acts_render(acts: u8) -> String {
 pub fn budget_waterline(th: &TopHalf, window_us: u64) -> u32 {
     if window_us == 0 { return 100; }
     let (_, avg) = cost_stats(th);
-    (avg * 100 / window_us).min(100)
+    ((avg * 100 / window_us).min(100)) as u32
 }
 
 /// 批状态机巡检：空闲态唯一合法稳态。
@@ -325,4 +325,64 @@ pub fn idle_patrol(th: &TopHalf) -> Result<(), u16> {
         TopState::Idle => Ok(()),
         _ => Err(E_STATE),
     }
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx943_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx943_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0943_tophalf");
+    // J1 核心路径：预算内事件全过、违禁 60/60 全拦。
+    s.add("核心路径drill全过", drill() == Ok(0), "三事件落账+minimal_audit+六禁项60次全拦返回 0");
+    // J2 扩展审计：报表/统计/权重/触发率/批回归。
+    s.add("扩展审计drill全过", drill_ext() == Ok(0), "六场景（报表/总成本/权重/触发率/批回归/拦截账）全过返回 0");
+    // J3 批回归 10/10。
+    s.add("批回归10/10", top_regress(10) == Ok(10), "10 轮常规事件流全部账平");
+    // J4 状态机不变量：新账 Idle 且无超预算记录。
+    s.add("空账状态机不变量", TopHalf::new().invariant_ok(), "新账 state==Idle 且零超 5µs 记录");
+    // J5 预算常量冻结：≤5µs。
+    s.add("预算常量冻结", BUDGET_US == 5, "top half 单次预算 5µs 不漂移");
+    // J6 正例：三件套齐备的上半执行（有下半触发成本 3、无触发成本 2）。
+    let mut th = TopHalf::new();
+    let ev1 = DevEvent { stat: 0x1, bh_load_us: 50 };
+    let ev2 = DevEvent { stat: 0x2, bh_load_us: 0 };
+    let pos_ok = th.run_top(&ev1, 10) == Ok(3)
+        && th.run_top(&ev2, 20) == Ok(2)
+        && th.minimal_audit() == Ok(2)
+        && th.invariant_ok()
+        && idle_patrol(&th).is_ok();
+    s.add("正例三件套执行", pos_ok, "两事件 run_top 账 3µs/2µs、三件套齐、终态 Idle");
+    // J7 反例一：零状态样本（未取状态即收工）被 E_NOSTAT 拦。
+    let ev_bad = DevEvent { stat: 0, bh_load_us: 1 };
+    s.add("零状态反例拦", TopHalf::new().run_top(&ev_bad, 1) == Err(E_NOSTAT), "stat==0 被拒——空转上半不允许");
+    // J8 反例二：六类禁做动作逐类全拦并分账。
+    let mut th2 = TopHalf::new();
+    let forbids = [Forbid::Sleep, Forbid::LockLong, Forbid::Alloc,
+                   Forbid::CopyBig, Forbid::UserCopy, Forbid::Reenter];
+    let mut all_rej = true;
+    for f in forbids.iter() {
+        if th2.forbid_check(*f) != Err(E_FORBID) { all_rej = false; }
+    }
+    s.add("六类禁做全拦", all_rej && th2.blocked.len() == 6, "forbid_check 六类全 Err(E_FORBID) 且拦截账 6 行");
+    // J9 禁项权重单调：Sleep 最贵、Reenter 最轻。
+    s.add("禁项权重单调", forbid_audit().is_ok(), "forbid_weights 逐项递减审计通过");
+    // J10 成本账：总成本与触发率。
+    let (total, _) = cost_stats(&th);
+    s.add("成本账守恒", total == 5, "3µs+2µs 合计 5µs");
+    s.add("触发率恰半", trigger_ratio(&th) == 50, "两事件一触发一不触发 = 50%");
+    // J11 三件套位图渲染口径。
+    s.add("位图渲染口径", acts_render(7) == "acts[RLT]" && acts_render(3) == "acts[RL-]", "acts 位图 R/L/T 渲染与冻结口径一致");
+    // J12 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0x7BE0, "0x7BE0 段本单独占不漂移");
+    // 动态明细两列。
+    let rep_len = cost_report(&th).map(|t| t.len()).unwrap_or(0);
+    s.add_dyn("成本报表可渲染", rep_len > 0, &alloc::format!("cost_report {} 字节（逐条 t=成本）", rep_len));
+    let blk_len = th2.blocked_summary().len();
+    s.add_dyn("拦截摘要非空", blk_len > 0, &alloc::format!("blocked_summary {} 字节（禁项×次数）", blk_len));
+    s
 }

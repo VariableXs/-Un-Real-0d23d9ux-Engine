@@ -555,7 +555,7 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     // J1 主判据：黄金全链 + 嫌疑清单=空断言。
     let g = golden_run();
     let g_ok = match &g {
-        Ok((resolved, _, _)) => *resolved == 30 && *g != (0, 0, 0),
+        Ok((resolved, _, _)) => *resolved == 30 && !matches!(g, Ok((0, 0, 0))),
         Err(_) => false,
     };
     v.push(("J1-嫌疑清单空断言", g_ok, format!("{:?}", g)));

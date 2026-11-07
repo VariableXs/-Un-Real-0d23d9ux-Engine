@@ -155,10 +155,10 @@ pub fn intercept_fifty() -> Result<u32, u16> {
         i += 1;
     }
     // 族二：原地提权 20 例——恒拒。
-    let mut j = 0;
+    let mut j = 0usize;
     while j < 20 {
         let req = iv::InPlaceRequest {
-            uid: j,
+            uid: j as u32, // 收库修正：usize→u32 显式收窄（InPlaceRequest.uid 为 u32）
             current: ilv::IL_TABLE[j % 5],
             target: ilv::IL_TABLE[4],
         };

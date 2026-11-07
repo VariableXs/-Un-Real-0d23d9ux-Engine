@@ -146,6 +146,8 @@ pub struct PoolStat {
 pub struct DualCtrlBw {
     window: u64,
     version: u64,
+    /// 单笔申请上限（with_limits 可调；request 判序用，禁用全局常量）。
+    per_req: u64,
     p0: PoolState,
     p1: PoolState,
     injected: u64,
@@ -159,6 +161,7 @@ impl DualCtrlBw {
         DualCtrlBw {
             window: 1,
             version: 0,
+            per_req: PER_REQ_CAP,
             p0: PoolState::new(XHC0_BUDGET, MAX_POOL_ROWS),
             p1: PoolState::new(XHC1_BUDGET, MAX_POOL_ROWS),
             injected: 0,
@@ -172,6 +175,7 @@ impl DualCtrlBw {
         DualCtrlBw {
             window: 1,
             version: 0,
+            per_req: cap,
             p0: PoolState::new(b0, max_rows),
             p1: PoolState::new(b1, max_rows),
             injected: 0,
@@ -205,9 +209,15 @@ impl DualCtrlBw {
         if window > self.window {
             self.window = window;
         }
+        let win = self.window;
+        let cap = self.per_req;
         let p = self.pool_mut(ctrl);
         p.req_total += 1;
         if want as u64 > PER_REQ_CAP {
+            p.rejected_cnt += 1;
+            return Err(DualBwCode::ReqOverCap);
+        }
+        if want as u64 > p.budget {
             p.rejected_cnt += 1;
             return Err(DualBwCode::ReqOverCap);
         }
@@ -215,14 +225,14 @@ impl DualCtrlBw {
             p.rejected_cnt += 1;
             return Err(DualBwCode::LedgerFull);
         }
-        let granted = (want as u64).min(p.remaining);
+        let granted = (want as u64).min(cap).min(p.remaining);
         let refused = want as u64 - granted;
         p.remaining -= granted;
         let rec = PoolGrant {
             seq: p.rows.len() as u32,
             want,
             granted: granted as u32,
-            window: self.window,
+            window: win,
         };
         p.rows.push(rec);
         p.granted_total += granted;

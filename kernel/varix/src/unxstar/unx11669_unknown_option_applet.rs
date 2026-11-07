@@ -1628,7 +1628,7 @@ pub fn msg_bb_unrecognized(a: Applet, body: &str) -> String {
 /// busybox 缺值：只落 usage 面，正文由 applet 自出。
 pub fn msg_bb_usage_die(a: Applet) -> String {
     let mut s = applet_prefix(a);
-    s.push_str(bb_usage_line(a).as_str());
+    s.push_str(bb_usage_line(a));
     s
 }
 

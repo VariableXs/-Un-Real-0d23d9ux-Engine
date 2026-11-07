@@ -31,6 +31,7 @@
 
 use crate::alloc::format;
 use crate::alloc::string::String;
+use crate::alloc::string::ToString;
 use alloc::vec::Vec;
 use crate::checks::CheckSet;
 

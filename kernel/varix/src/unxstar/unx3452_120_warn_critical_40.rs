@@ -29,6 +29,7 @@
 
 use alloc::format;
 use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 诊断段基址（0x40 对齐，B15 批段窗 [0x79E00, 0x79FC0] 内）。

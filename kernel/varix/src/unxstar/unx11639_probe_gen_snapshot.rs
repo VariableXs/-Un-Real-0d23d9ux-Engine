@@ -5409,8 +5409,9 @@ mod tests {
     fn t09_segment_and_permille_text() {
         assert_eq!(seg_text(SEG_BASE).as_str(), "0x6d170");
         assert_eq!(permille_text(929).as_str(), "929permille");
-        assert_eq!(bool_text(true).as_str(), "true");
-        assert_eq!(bool_text(false).as_str(), "false");
+        // 收库修正（AI-INTAKE-1107）：bool_text 返回 &str，&str::as_str 未稳定，直接比较。
+        assert_eq!(bool_text(true), "true");
+        assert_eq!(bool_text(false), "false");
     }
 
     #[test]
@@ -6021,7 +6022,8 @@ mod tests {
             assert!(b.first_mismatch().is_some());
             which += 1;
         }
-        let fresh = Ledger::new();
+        // 收库修正（AI-INTAKE-1107）：freeze/replay/audit 需 &mut，fresh 声明为 mut。
+        let mut fresh = Ledger::new();
         assert!(fresh.replay().is_err());
         assert!(fresh.freeze().is_err());
         assert!(fresh.audit().is_err());

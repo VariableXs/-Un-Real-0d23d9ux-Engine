@@ -699,7 +699,7 @@ pub fn segment_guard() -> bool {
     // 域账闭式：BATCH_TOTAL × 9 == GRAND_TOTAL 且 ROWS_PER_BATCH 推导自洽。
     BATCH_TOTAL.saturating_mul(BATCH_N as u32) == GRAND_TOTAL
         && ROWS_PER_BATCH % ROW_PERIOD == 0
-        && ROWS_PER_BATCH / ROW_PERIOD * 500 == BATCH_TOTAL
+        && ROWS_PER_BATCH / ROW_PERIOD * 500 == BATCH_TOTAL as usize
 }
 
 /// 运行期摘要（动态明细消费）。

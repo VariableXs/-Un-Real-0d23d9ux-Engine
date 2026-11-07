@@ -8218,7 +8218,8 @@ mod tests {
         let mut l = Ledger::new();
         assert!(l.is_empty());
         assert_eq!(l.len(), 0);
-        assert_eq!(l.sample(0), None);
+        // 收库修正（AI-INTAKE-1107）：Sample 无 PartialEq，改用 is_none 判空。
+        assert!(l.sample(0).is_none());
         // 跳格：先登记第 1 格必拒。
         assert_eq!(l.register(cell(1)), Err(AV_ESLOT));
         assert_eq!(l.rejects(), 1);
@@ -8229,10 +8230,12 @@ mod tests {
         assert_eq!(l.register(cell(0)), Err(AV_ESLOT));
         assert_eq!(l.rejects(), 2);
         assert!(!l.is_empty());
-        assert_eq!(l.sample(1), None);
-        assert_eq!(l.sample(200), None);
+        // 收库修正（AI-INTAKE-1107）：Sample 无 PartialEq，改用 is_none 判空。
+        assert!(l.sample(1).is_none());
+        assert!(l.sample(200).is_none());
         assert_eq!(l.audit(), Err(AV_EBAL));
-        assert_eq!(l.freeze(), Ok(()).map_or(0, |_| 2u32), "冻结返回段数");
+        // 收库修正（AI-INTAKE-1107）：freeze 返回 Result<u64,u32> 即冻结指纹，与 root() 对账。
+        assert_eq!(l.freeze().unwrap_or(0), l.root(), "冻结返回冻结指纹");
     }
 
     #[test]

@@ -394,4 +394,382 @@ pub const ALL_CODES: [ObsCode; 10] = [
     ObsCode::ConservedBroken,
 ];
 
-// __PART2__
+/// 收口自检（≥12 条判据形态）。
+pub fn run_unx51532_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx51532");
+    // 1 正常流：四点各打一发，覆盖率 100，账平。
+    {
+        let mut e = ObsHub::new();
+        let _ = e.emit(ObsPoint::Budget, 1);
+        let _ = e.emit(ObsPoint::Arb, 1);
+        let _ = e.emit(ObsPoint::Shape, 1);
+        let _ = e.emit(ObsPoint::Reject, 1);
+        s.add_dyn(
+            "四点全打覆盖率 100",
+            e.coverage_pct() == 100 && e.ledger_ok() && e.ring_len() == 4,
+            "四点全使能全打点且零丢点才是埋点 100%",
+        );
+    }
+    // 2 边界零：零序号拒。
+    {
+        let mut e = ObsHub::new();
+        let r = e.emit(ObsPoint::Budget, 0);
+        s.add_dyn(
+            "零序号打点拒",
+            r == Err(ObsCode::SeqBackward),
+            "序号必须严格大于水位，零序号当场拒",
+        );
+    }
+    // 3 边界上限：u32::MAX 放行后无法再打。
+    {
+        let mut e = ObsHub::new();
+        let a = e.emit(ObsPoint::Shape, u32::MAX);
+        let b = e.emit(ObsPoint::Shape, u32::MAX);
+        s.add_dyn(
+            "序号上限边界",
+            a.is_ok() && b == Err(ObsCode::SeqBackward),
+            "上限序号放行一次，其后无更大序号可打",
+        );
+    }
+    // 4 注入必抓：序号倒退 ×10 轮，状态冻结。
+    {
+        let mut e = ObsHub::new();
+        let _ = e.emit(ObsPoint::Arb, 10);
+        let v0 = e.version();
+        let f0 = e.probe_stat(ObsPoint::Arb).fired;
+        let mut caught = 0u32;
+        for _ in 0..INJ_ROUNDS {
+            let r = e.emit(ObsPoint::Arb, 3);
+            if r == Err(ObsCode::SeqBackward) {
+                caught += 1;
+                e.note_detected();
+            }
+        }
+        s.add_dyn(
+            "序号倒退注入 10/10 且状态冻结",
+            caught == 10
+                && e.version() == v0
+                && e.probe_stat(ObsPoint::Arb).fired == f0,
+            "倒退必须全抓且拒后打点数与版本不动",
+        );
+    }
+    // 5 注入必抓：未使能探针 ×10（使能判据先于序号）。
+    {
+        let mut e = ObsHub::new();
+        e.set_enabled(ObsPoint::Budget, false);
+        let mut caught = 0u32;
+        for _ in 0..INJ_ROUNDS {
+            let r = e.emit(ObsPoint::Budget, 0);
+            if r == Err(ObsCode::ProbeDisabled) {
+                caught += 1;
+                e.note_detected();
+            }
+        }
+        s.add_dyn(
+            "未使能注入 10/10 且判序使能先",
+            caught == 10,
+            "停用点打点必须显性拒，且使能判据先于序号",
+        );
+    }
+    // 6 注入必抓：拒绝事件缺要素 ×10（三缺轮换），全拒不入账。
+    {
+        let mut e = ObsHub::new();
+        let mut caught = 0u32;
+        for i in 0..INJ_ROUNDS {
+            let bad = match i % 3 {
+                0 => RejectEvt { seq: 1, cause_code: 9, ep: 0, tokens: 8, has_snapshot: true },
+                1 => RejectEvt { seq: 1, cause_code: 2, ep: EPS as u8, tokens: 8, has_snapshot: true },
+                _ => RejectEvt { seq: 1, cause_code: 2, ep: 1, tokens: 8, has_snapshot: false },
+            };
+            let r = e.observe_reject(bad);
+            if r == Err(ObsCode::CauseUnknown) || r == Err(ObsCode::RejectIncomplete) {
+                caught += 1;
+                e.note_detected();
+            }
+        }
+        s.add_dyn(
+            "缺要素拒绝事件注入 10/10",
+            caught == 10 && e.rejects_len() == 0,
+            "缺任一要素整条拒收，不入账",
+        );
+    }
+    // 7 拒绝事件齐备率 100%。
+    {
+        let mut e = ObsHub::new();
+        for i in 0..8u32 {
+            let _ = e.observe_reject(RejectEvt {
+                seq: i + 1,
+                cause_code: 1 + (i % 4) as u8,
+                ep: (i % EPS as u32) as u8,
+                tokens: i * 8,
+                has_snapshot: true,
+            });
+        }
+        s.add_dyn(
+            "拒绝事件三要素齐备率 100%",
+            e.reject_complete_rate() == 100 && e.rejects_len() == 8,
+            "存入事件必须全齐备",
+        );
+    }
+    // 8 原因码闭集外 → CauseUnknown，闭集内文案非空。
+    {
+        let mut closed = true;
+        for i in 0..REJECT_CAUSE_CODES.len() {
+            let c = match REJECT_CAUSE_CODES.get(i) {
+                Some(v) => *v,
+                None => 0,
+            };
+            if reject_cause_detail(c).is_empty() {
+                closed = false;
+            }
+        }
+        let mut e = ObsHub::new();
+        let r = e.observe_reject(RejectEvt {
+            seq: 1,
+            cause_code: 200,
+            ep: 0,
+            tokens: 1,
+            has_snapshot: true,
+        });
+        s.add_dyn(
+            "原因码闭集判据",
+            closed && r == Err(ObsCode::CauseUnknown),
+            "闭集内文案齐备，闭集外整条拒收",
+        );
+    }
+    // 9 容量耗尽：环满丢点入账并扣覆盖率。
+    {
+        let mut e = ObsHub::new();
+        let mut ok_cnt = 0u32;
+        for i in 1..=40u32 {
+            let p = match i % 4 {
+                0 => ObsPoint::Budget,
+                1 => ObsPoint::Arb,
+                2 => ObsPoint::Shape,
+                _ => ObsPoint::Reject,
+            };
+            if e.emit(p, i).is_ok() {
+                ok_cnt += 1;
+            }
+        }
+        s.add_dyn(
+            "环账容量耗尽",
+            ok_cnt == MAX_EVENTS as u32
+                && e.ring_len() == MAX_EVENTS
+                && e.lost() == 8
+                && e.coverage_pct() == 75,
+            "环满丢点必须显性计数并扣减覆盖率",
+        );
+    }
+    // 10 覆盖率算术：缺一点 75，补齐 100。
+    {
+        let mut e = ObsHub::new();
+        let _ = e.emit(ObsPoint::Budget, 1);
+        let _ = e.emit(ObsPoint::Arb, 1);
+        let _ = e.emit(ObsPoint::Shape, 1);
+        let miss = e.coverage_pct();
+        let _ = e.emit(ObsPoint::Reject, 1);
+        s.add_dyn(
+            "覆盖率算术",
+            miss == 75 && e.coverage_pct() == 100,
+            "每点 25，四点全打满百",
+        );
+    }
+    // 11 判定次序：三要素先于序号。
+    {
+        let mut e = ObsHub::new();
+        let _ = e.observe_reject(RejectEvt {
+            seq: 9,
+            cause_code: 1,
+            ep: 0,
+            tokens: 4,
+            has_snapshot: true,
+        });
+        let r = e.observe_reject(RejectEvt {
+            seq: 2,
+            cause_code: 1,
+            ep: 0,
+            tokens: 4,
+            has_snapshot: false,
+        });
+        s.add_dyn(
+            "判序三要素先于序号",
+            r == Err(ObsCode::RejectIncomplete),
+            "缺要素的事件无论序号如何都整条拒收",
+        );
+    }
+    // 12 对账守恒：注入=检出+逃逸，逃逸 0，打点账平。
+    {
+        let mut e = ObsHub::new();
+        for _ in 0..10u32 {
+            let _ = e.emit(ObsPoint::Budget, 0);
+            e.note_detected();
+        }
+        s.add_dyn(
+            "注入账守恒",
+            e.conserved() && e.injected() == 10,
+            "注入=检出+逃逸，逃逸恒 0，Σ打点=环账",
+        );
+    }
+    // 13 双跑一致。
+    s.add_dyn("双跑逐字段一致", dual_run_consistent(), "同一打点序列两次建账逐字段相等");
+    // 14 文案闭集非空。
+    {
+        let mut closed = true;
+        for c in ALL_CODES.iter() {
+            if c.detail().is_empty() {
+                closed = false;
+            }
+        }
+        s.add_dyn("文案闭集非空", closed, "每个诊断码都必须有中文建议");
+    }
+    // 15 段位守卫。
+    s.add_dyn("段位守卫", seg_guard_ok(), "SEG_BASE 对齐且在分派区间");
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn four_probes_full_coverage() {
+        let mut e = ObsHub::new();
+        assert!(e.emit(ObsPoint::Budget, 1).is_ok());
+        assert!(e.emit(ObsPoint::Arb, 1).is_ok());
+        assert!(e.emit(ObsPoint::Shape, 1).is_ok());
+        assert!(e.emit(ObsPoint::Reject, 1).is_ok());
+        assert_eq!(e.coverage_pct(), 100);
+        assert!(e.ledger_ok());
+        assert_eq!(e.ring_len(), 4);
+    }
+
+    #[test]
+    fn zero_seq_rejected_and_max_seq_boundary() {
+        let mut e = ObsHub::new();
+        assert_eq!(e.emit(ObsPoint::Budget, 0), Err(ObsCode::SeqBackward));
+        assert!(e.emit(ObsPoint::Budget, u32::MAX).is_ok());
+        assert_eq!(e.emit(ObsPoint::Budget, u32::MAX), Err(ObsCode::SeqBackward));
+    }
+
+    #[test]
+    fn seq_backward_injection_caught_x10() {
+        let mut e = ObsHub::new();
+        let _ = e.emit(ObsPoint::Arb, 10);
+        let v0 = e.version();
+        for _ in 0..10 {
+            assert_eq!(e.emit(ObsPoint::Arb, 3), Err(ObsCode::SeqBackward));
+            e.note_detected();
+        }
+        assert_eq!(e.version(), v0);
+        assert!(e.conserved());
+    }
+
+    #[test]
+    fn disabled_probe_injection_caught_x10() {
+        let mut e = ObsHub::new();
+        e.set_enabled(ObsPoint::Shape, false);
+        for _ in 0..10 {
+            assert_eq!(e.emit(ObsPoint::Shape, 5), Err(ObsCode::ProbeDisabled));
+            e.note_detected();
+        }
+        assert_eq!(e.probe_stat(ObsPoint::Shape).fired, 0);
+        assert!(e.conserved());
+    }
+
+    #[test]
+    fn incomplete_reject_caught_x10_and_rate_100() {
+        let mut e = ObsHub::new();
+        let flavors = [
+            RejectEvt { seq: 1, cause_code: 7, ep: 0, tokens: 8, has_snapshot: true },
+            RejectEvt { seq: 1, cause_code: 2, ep: EPS as u8, tokens: 8, has_snapshot: true },
+            RejectEvt { seq: 1, cause_code: 2, ep: 1, tokens: 8, has_snapshot: false },
+        ];
+        for i in 0..10u32 {
+            let bad = flavors[(i % 3) as usize];
+            let r = e.observe_reject(bad);
+            assert!(r == Err(ObsCode::CauseUnknown) || r == Err(ObsCode::RejectIncomplete));
+            e.note_detected();
+        }
+        assert_eq!(e.rejects_len(), 0);
+        assert_eq!(e.reject_complete_rate(), 100);
+        assert!(e.conserved());
+    }
+
+    #[test]
+    fn complete_rejects_stored_with_monotonic_seq() {
+        let mut e = ObsHub::new();
+        for i in 0..8u32 {
+            let evt = RejectEvt {
+                seq: i + 1,
+                cause_code: 1 + (i % 4) as u8,
+                ep: (i % EPS as u32) as u8,
+                tokens: i * 8,
+                has_snapshot: true,
+            };
+            assert!(e.observe_reject(evt).is_ok());
+        }
+        assert_eq!(e.rejects_len(), 8);
+        assert_eq!(e.reject_complete_rate(), 100);
+        assert_eq!(e.probe_stat(ObsPoint::Reject).last_seq, 8);
+    }
+
+    #[test]
+    fn buffer_full_counts_lost_and_penalizes_coverage() {
+        let mut e = ObsHub::new();
+        let mut ok_cnt = 0u32;
+        for i in 1..=40u32 {
+            let p = match i % 4 {
+                0 => ObsPoint::Budget,
+                1 => ObsPoint::Arb,
+                2 => ObsPoint::Shape,
+                _ => ObsPoint::Reject,
+            };
+            if e.emit(p, i).is_ok() {
+                ok_cnt += 1;
+            }
+        }
+        assert_eq!(ok_cnt, MAX_EVENTS as u32);
+        assert_eq!(e.lost(), 8);
+        assert_eq!(e.coverage_pct(), 75);
+    }
+
+    #[test]
+    fn coverage_arithmetic() {
+        let mut e = ObsHub::new();
+        let _ = e.emit(ObsPoint::Budget, 1);
+        let _ = e.emit(ObsPoint::Arb, 1);
+        let _ = e.emit(ObsPoint::Shape, 1);
+        assert_eq!(e.coverage_pct(), 75);
+        let _ = e.emit(ObsPoint::Reject, 1);
+        assert_eq!(e.coverage_pct(), 100);
+    }
+
+    #[test]
+    fn judge_order_elements_before_seq_and_enabled_before_seq() {
+        let mut e = ObsHub::new();
+        let _ = e.observe_reject(RejectEvt { seq: 9, cause_code: 1, ep: 0, tokens: 4, has_snapshot: true });
+        assert_eq!(
+            e.observe_reject(RejectEvt { seq: 2, cause_code: 1, ep: 0, tokens: 4, has_snapshot: false }),
+            Err(ObsCode::RejectIncomplete)
+        );
+        e.set_enabled(ObsPoint::Budget, false);
+        assert_eq!(e.emit(ObsPoint::Budget, 0), Err(ObsCode::ProbeDisabled));
+    }
+
+    #[test]
+    fn dual_run_seg_and_closed_set() {
+        assert!(dual_run_consistent());
+        assert!(seg_guard_ok());
+        for c in ALL_CODES.iter() {
+            assert!(!c.detail().is_empty());
+        }
+        for i in 0..REJECT_CAUSE_CODES.len() {
+            let c = match REJECT_CAUSE_CODES.get(i) {
+                Some(v) => *v,
+                None => 0,
+            };
+            assert!(!reject_cause_detail(c).is_empty());
+        }
+    }
+}

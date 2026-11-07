@@ -265,7 +265,7 @@ pub fn table_merge(layers: &PanoLayers) -> Result<[u8; KEY_N], u32> {
 
 /// 三视图合并一致核：路 1 与路 2 逐键对拍。
 pub fn three_view_consistent(layers: &PanoLayers) -> Result<bool, u32> {
-    let v3 = merge_layers(layers)?;
+    let v3 = merge_layers(&layers)?;
     let v3b = table_merge(layers)?;
     let mut i = 0;
     while i < KEY_N {
@@ -534,7 +534,7 @@ pub fn golden_run() -> Result<(u32, u32, u32), u32> {
     if !consistent {
         return Err(PvCode::MergeMismatch.code());
     }
-    let v3 = merge_layers(layers.clone())?;
+    let v3 = merge_layers(&layers.clone())?;
     // 覆盖语义逐键复算：偶数键应用覆盖（值≠默认），奇数键默认兜底。
     let mut i = 0;
     while i < KEY_N {
@@ -569,14 +569,14 @@ pub fn golden_run() -> Result<(u32, u32, u32), u32> {
 /// 探针三序（合并/空层/全层）。
 pub fn probe_seq_a() -> Result<u32, u32> {
     let layers = PanoLayers { bottle: make_bottle_layer(), app: make_app_layer() };
-    let v = merge_layers(layers)?;
+    let v = merge_layers(&layers)?;
     Ok(v.fingerprint)
 }
 
 pub fn probe_seq_b() -> Result<u32, u32> {
     // 双空层：合并全 UNSET，导出文本含 "?" 槽。
     let layers = PanoLayers { bottle: PanoLayer::new(), app: PanoLayer::new() };
-    let v = merge_layers(layers)?;
+    let v = merge_layers(&layers)?;
     let text = export_view(&v)?;
     if !text.contains('?') {
         return Err(PvCode::ExportEmpty.code());
@@ -587,7 +587,7 @@ pub fn probe_seq_b() -> Result<u32, u32> {
 /// 篡改检出：导出文本改一位 → 解析指纹闸必拒。
 pub fn probe_seq_c() -> Result<(), u32> {
     let layers = PanoLayers { bottle: make_bottle_layer(), app: make_app_layer() };
-    let v = merge_layers(layers)?;
+    let v = merge_layers(&layers)?;
     let text = export_view(&v)?;
     let mut bytes: Vec<u8> = text.as_bytes().to_vec();
     // 找第一个数字槽位改值（0→1）。
@@ -668,7 +668,7 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     let tv = three_view_consistent(&layers);
     v.push(("J1-三视图合并一致", tv == Ok(true), format!("{:?}", tv)));
     // 往返：导出→解析逐槽相等。
-    let rt = match merge_layers(layers.clone()) {
+    let rt = match merge_layers(&layers.clone()) {
         Ok(v3) => roundtrip_ok(&v3) == Ok(true),
         Err(_) => false,
     };
@@ -686,7 +686,7 @@ pub fn extra_checks() -> Vec<(&'static str, bool, String)> {
     // 篡改检出（指纹闸）。
     v.push(("J2-篡改必拒", probe_seq_c().is_ok(), String::from("导出文本改一位→解析拒")));
     // 覆盖语义（偶数键应用覆盖/奇数键默认兜底）。
-    let cover = match merge_layers(layers.clone()) {
+    let cover = match merge_layers(&layers.clone()) {
         Ok(v3) => {
             v3.merged.get(0).copied().unwrap_or(0xFF) == 1
                 && v3.merged.get(1).copied().unwrap_or(0xFF) == 1
@@ -747,7 +747,7 @@ mod tests {
     fn three_view_merge_two_paths_agree() {
         let layers = PanoLayers { bottle: make_bottle_layer(), app: make_app_layer() };
         assert_eq!(three_view_consistent(&layers), Ok(true));
-        let v = merge_layers(layers).unwrap_or(PanoView {
+        let v = merge_layers(&layers).unwrap_or(PanoView {
             merged: [0; KEY_N],
             bottle: [0; KEY_N],
             app: [0; KEY_N],
@@ -760,7 +760,7 @@ mod tests {
     #[test]
     fn export_parse_roundtrip() {
         let layers = PanoLayers { bottle: make_bottle_layer(), app: make_app_layer() };
-        let v = merge_layers(layers).unwrap_or(PanoView {
+        let v = merge_layers(&layers).unwrap_or(PanoView {
             merged: [0; KEY_N],
             bottle: [0; KEY_N],
             app: [0; KEY_N],

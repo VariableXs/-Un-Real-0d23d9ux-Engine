@@ -340,7 +340,7 @@ impl StormTierBook {
             }
             i += 1;
         }
-        if ups != downs + (self.cur.code() - 1) {
+        if ups != downs + (self.cur.code() as u32 - 1) { // 收库修正：code() 返回 u8，与 u32 账面对加前显式升位
             return Err(XC_CONSERVATION);
         }
         Ok(())
@@ -434,4 +434,126 @@ pub fn drill() -> Result<u32, u16> {
         return Err(XC_DRIFT);
     }
     Ok(0)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx983_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx983_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0983_stormtier");
+    // J1 核心路径：逐级升→四类注入拦→降回→守恒→双导出。
+    s.add("核心路径drill全过", drill() == Ok(0), "S1→S4 逐级/注入四拦/降回 S1/守恒/指纹稳定返回 0");
+    // J2 风暴四级闭集（码 1..=4 双向可逆）。
+    let tier_closed = StormTier::from_code(1) == Some(StormTier::S1)
+        && StormTier::from_code(2) == Some(StormTier::S2)
+        && StormTier::from_code(3) == Some(StormTier::S3)
+        && StormTier::from_code(4) == Some(StormTier::S4)
+        && StormTier::from_code(0).is_none()
+        && StormTier::from_code(5).is_none()
+        && StormTier::S1.code() == 1 && StormTier::S4.code() == 4;
+    s.add("风暴四级闭集", tier_closed, "from_code 1..=4 可逆、0/5 拒、码值冻结");
+    // J3 三列元数据（判据/动作/升级条件）逐级齐备。
+    let meta_ok = [StormTier::S1, StormTier::S2, StormTier::S3, StormTier::S4]
+        .iter()
+        .all(|t| !t.name().is_empty() && !t.criterion().is_empty() && !t.action().is_empty());
+    s.add("三列元数据齐备", meta_ok, "四级 name/criterion/action 全非空");
+    // J4 评估回执闭集（码 1..=3 双向可逆）。
+    let eval_closed = EvalKind::from_code(1) == Some(EvalKind::RateDown)
+        && EvalKind::from_code(2) == Some(EvalKind::Ordered)
+        && EvalKind::from_code(3) == Some(EvalKind::WindowUp)
+        && EvalKind::from_code(0).is_none()
+        && EvalKind::from_code(4).is_none()
+        && EvalKind::RateDown.code() == 1 && EvalKind::WindowUp.code() == 3;
+    s.add("评估回执闭集", eval_closed, "from_code 1..=3 可逆、0/4 拒、码值冻结");
+    // J5 正例：逐级升级只进不跳（S1→S2→S3→S4）。
+    let ladder_ok = match StormTierBook::new(TIER_CAP) {
+        Ok(mut b) => {
+            let r1 = b.escalate(true, 10);
+            let r2 = b.escalate(true, 20);
+            let r3 = b.escalate(true, 30);
+            r1 == Ok(StormTier::S2) && r2 == Ok(StormTier::S3) && r3 == Ok(StormTier::S4)
+                && b.current() == StormTier::S4 && b.len() == 3
+        }
+        Err(_) => false,
+    };
+    s.add("逐级升级到四级", ladder_ok, "三升全过且逐级落账 3 行、终态 S4");
+    // J6 反例一：四级再升/判据缺失/tick 回退三类注入全拦。
+    let neg1_ok = match StormTierBook::new(TIER_CAP) {
+        Ok(mut b) => {
+            let _ = b.escalate(true, 10);
+            let _ = b.escalate(true, 20);
+            let _ = b.escalate(true, 30);
+            b.escalate(true, 40) == Err(XC_UNDERFLOW)
+                && b.escalate(false, 50) == Err(XC_NO_CRITERION)
+                && b.escalate(true, 20) == Err(XC_TICK_REGRESS)
+        }
+        Err(_) => false,
+    };
+    s.add("升级三类注入拦", neg1_ok, "S4 再升 UNDERFLOW、无判据 NO_CRITERION、tick 回退 TICK_REGRESS");
+    // J7 正例+反例：逐级降回（各带评估回执）、一级再降拦。
+    let down_ok = match StormTierBook::new(TIER_CAP) {
+        Ok(mut b) => {
+            let _ = b.escalate(true, 10);
+            let _ = b.escalate(true, 20);
+            let _ = b.escalate(true, 30);
+            let d1 = b.deescalate(EvalKind::RateDown, 40);
+            let d2 = b.deescalate(EvalKind::Ordered, 50);
+            let d3 = b.deescalate(EvalKind::WindowUp, 60);
+            d1 == Ok(StormTier::S3) && d2 == Ok(StormTier::S2) && d3 == Ok(StormTier::S1)
+                && b.current() == StormTier::S1
+                && b.deescalate(EvalKind::RateDown, 70) == Err(XC_UNDERFLOW)
+        }
+        Err(_) => false,
+    };
+    s.add("逐级降回带回执", down_ok, "三降各带回执、终态 S1、一级再降 UNDERFLOW 拦");
+    // J8 分级账守恒：四级行数和==总行数 + 级位平衡。
+    let audit_ok = match StormTierBook::new(TIER_CAP) {
+        Ok(mut b) => {
+            let _ = b.escalate(true, 10);
+            let _ = b.escalate(true, 20);
+            let _ = b.deescalate(EvalKind::RateDown, 20);
+            b.audit_conservation().is_ok()
+                && b.audit_level_balance().is_ok()
+                && b.len() == 3
+                && b.per_tier().iter().sum::<u64>() == 3
+        }
+        Err(_) => false,
+    };
+    s.add("分级账守恒双审计", audit_ok, "2 升 1 降、级位平衡 ups==downs+(cur-1)、per_tier 和==3");
+    // J9 反例二：定容非法（容量为零）拒收。
+    let cap_ok = match StormTierBook::new(0) {
+        Err(XC_CAP_INVALID) => true,
+        _ => false,
+    };
+    s.add("零容量拒收", cap_ok, "new(0) 被 XC_CAP_INVALID 拒——账本定容非零纪律");
+    // J10 诊断段独占与常量冻结。
+    s.add("诊断段位独占", SEG_BASE == 0x80E0 && TIER_CAP == 32, "0x80E0 段独占、账容 32 冻结");
+    // 动态明细两列。
+    let (export_ok, fp_stable, export_len) = match StormTierBook::new(TIER_CAP) {
+        Ok(mut b) => {
+            let _ = b.escalate(true, 10);
+            let _ = b.escalate(true, 20);
+            let fp1 = b.fingerprint();
+            let e1 = b.export();
+            let fp2 = b.fingerprint();
+            (e1.is_ok(), fp1 == fp2, e1.map(|t| t.len()).unwrap_or(0))
+        }
+        Err(_) => (false, false, 0),
+    };
+    s.add_dyn("导出对拍稳定", export_ok && fp_stable, &alloc::format!("分级账导出 {} 字节、双指纹一致 {}", export_len, fp_stable));
+    let (rej_book, rej_n) = match StormTierBook::new(TIER_CAP) {
+        Ok(mut b) => {
+            let _ = b.escalate(false, 10);
+            let _ = b.deescalate(EvalKind::RateDown, 10);
+            (true, b.rejected())
+        }
+        Err(_) => (false, 0u32),
+    };
+    s.add_dyn("拒收显性记账", rej_book && rej_n == 2, &alloc::format!("无判据升 + 一级降各拒一次，rejected={}", rej_n));
+    s
 }

@@ -360,7 +360,7 @@ impl ClusterRegistry {
     }
 
     /// 摘要（双跑对拍用）。
-    pub fn summary(&self) -> (usize, u32, usize, usize) {
+    pub fn summary(&self) -> (usize, u64, usize, usize) {
         (
             self.count,
             self.bucket_bits,
@@ -371,7 +371,7 @@ impl ClusterRegistry {
 }
 
 // ── 黄金全链：180 条规范语料注册→聚类→声明→对表核验 ────────────
-pub fn golden_run() -> Result<(usize, u32, usize, usize), u32> {
+pub fn golden_run() -> Result<(usize, u64, usize, usize), u32> {
     let mut reg = ClusterRegistry::new();
     let mut n = 0;
     while n < TOPIC_TOTAL {

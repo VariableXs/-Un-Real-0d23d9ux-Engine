@@ -56,7 +56,7 @@ pub fn batch_of(crit: u32) -> Result<usize, u16> {
     if crit < 36161 || crit >= 36161 + TOTAL as u32 {
         return Err(E_RANGE);
     }
-    Ok(((crit - 36161) / PER_BATCH) as usize)
+    Ok(((crit - 36161) / PER_BATCH as u32) as usize)
 }
 
 /// 排除面：判据是否显性排除（在册才允许缺闸——禁静默缩量）。
@@ -140,7 +140,7 @@ impl GateLedger {
     /// 失败重放定位到批：判据码 → 批号 + 批内序（一步定位）。
     pub fn replay_locate(&self, crit: u32) -> Result<(usize, usize), u16> {
         let b = batch_of(crit)?;
-        let base = 36161 + b * PER_BATCH;
+        let base = (36161 + b * PER_BATCH) as u32;
         if crit < base || crit >= base + PER_BATCH as u32 {
             return Err(E_REPLAY);
         }

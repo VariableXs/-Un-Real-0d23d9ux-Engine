@@ -99,7 +99,7 @@ impl ProfileLedger {
     /// 画像落账：三维核验 + 分档 + 重算一致才落。
     pub fn profile(&mut self, name_id: u32, f: Feat3) -> Result<Tier, u16> {
         if !f.in_range() { return Err(E_DIM); }
-        let sc = score(f)?;
+        let sc = score(&f)?;
         let t = tier_of(&f)?;
         self.entries.push(Profile { name_id, feat: f, sc, tier: t });
         Ok(t)
@@ -176,4 +176,86 @@ pub fn drill() -> Result<u32, u16> {
     if e + m + h != 13 { return Err(E_STATE); }
     if pl.summary().is_empty() { return Err(E_STATE); }
     Ok(0)
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx962_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+pub fn run_unx962_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0962_tiermap");
+    // J1 核心路径：权重审计、边界落档、十样本画像回放。
+    s.add("核心路径drill全过", drill() == Ok(0), "权重表/边界样本/十样本/越界拒/分布全过返回 0");
+    // J2 权重表自检：三权重和 == 100。
+    s.add("权重表自检", weights_audit() == Ok(100), "WEIGHTS 40+35+25=100 冻结");
+    // J3 分档阈值冻结（宁高勿低）。
+    s.add("分档阈值冻结", TH_MEDIUM == 300 && TH_HARD == 600, "score<300 易、300..600 中、≥600 难");
+    // J4 正例：边界样本恰界归高档。
+    let mut pl = ProfileLedger::new();
+    let mut b_ok = true;
+    for (f, expect) in boundary_samples() {
+        if pl.profile(0, f) != Ok(expect) { b_ok = false; }
+    }
+    s.add("边界样本落档", b_ok && pl.entries.len() == 3, "305/315 落 Medium、720 落 Hard——恰界宁高勿低");
+    // J5 正例：三维全域画像正反档。
+    let f_hard = Feat3 { density: 8, latency: 8, coupling: 8 };
+    let f_med = Feat3 { density: 3, latency: 3, coupling: 3 };
+    let f_easy = Feat3 { density: 0, latency: 0, coupling: 0 };
+    let f6 = Feat3 { density: 6, latency: 6, coupling: 6 };
+    let tier_ok = tier_of(&f_hard) == Ok(Tier::Hard)
+        && tier_of(&f_med) == Ok(Tier::Medium)
+        && tier_of(&f_easy) == Ok(Tier::Easy)
+        && score(&f6) == Ok(600)
+        && score(&f_easy) == Ok(0);
+    s.add("全域画像三档", tier_ok, "800/300/0 分档与得分逐点核对");
+    // J6 反例：维越界必拦（density>9）。
+    let bad = Feat3 { density: 10, latency: 0, coupling: 0 };
+    s.add("维越界拦", !bad.in_range() && ProfileLedger::new().profile(99, bad) == Err(E_DIM)
+        && score(&bad) == Err(E_DIM), "density==10 双口（profile/score）均 E_DIM 拒");
+    // J7 归档回放：全部条目重算同档。
+    let replay_ok = pl.replay() == Ok(3);
+    for (f, _) in boundary_samples() { let _ = pl.profile(0, f); }
+    s.add("归档回放3条", replay_ok, "3 边界条目重算得分/档位逐条一致");
+    // J8 全量回放：13 条目（3 边界 + 10 全域）分布守恒（独立净账）。
+    let ten = [
+        Feat3 { density: 0, latency: 0, coupling: 0 },
+        Feat3 { density: 9, latency: 0, coupling: 0 },
+        Feat3 { density: 0, latency: 9, coupling: 0 },
+        Feat3 { density: 0, latency: 0, coupling: 9 },
+        Feat3 { density: 5, latency: 5, coupling: 5 },
+        Feat3 { density: 8, latency: 8, coupling: 8 },
+        Feat3 { density: 2, latency: 2, coupling: 2 },
+        Feat3 { density: 6, latency: 6, coupling: 6 },
+        Feat3 { density: 3, latency: 3, coupling: 3 },
+        Feat3 { density: 1, latency: 1, coupling: 1 },
+    ];
+    let mut pl2 = ProfileLedger::new();
+    let mut all_in = true;
+    for (f, _) in boundary_samples() {
+        if pl2.profile(0, f).is_err() { all_in = false; }
+    }
+    for (i, f) in ten.iter().enumerate() {
+        if pl2.profile(i as u32, *f).is_err() { all_in = false; }
+    }
+    let (e, m, h) = pl2.dist();
+    s.add("十三目分布守恒", all_in && pl2.entries.len() == 13 && e + m + h == 13 && pl2.replay() == Ok(13),
+        "13 条目全落账、三档分布和==总、回放同档");
+    // J9 档位闭集与序。
+    let ord_ok = Tier::Easy < Tier::Medium && Tier::Medium < Tier::Hard
+        && Tier::Easy.as_str() == "easy" && Tier::Medium.as_str() == "medium"
+        && Tier::Hard.as_str() == "hard";
+    s.add("三档闭集有序", ord_ok, "PartialOrd 三档递增、命名冻结");
+    // J10 诊断段独占。
+    s.add("诊断段位独占", SEG_BASE == 0x7E40, "0x7E40 段本单独占不漂移");
+    // 动态明细两列。
+    let sum_len = pl2.summary().len();
+    s.add_dyn("画像摘要非空", sum_len > 0, &alloc::format!("summary {} 字节（n/easy/medium/hard）", sum_len));
+    let (de, dm, dh) = pl2.dist();
+    s.add_dyn("三档分布可报", de + dm + dh == 13,
+        &alloc::format!("easy {} / medium {} / hard {}", de, dm, dh));
+    s
 }

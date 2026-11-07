@@ -56,7 +56,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
-use super::unx48941_wheel_core as p_core;
+// 收库修正：unx48941_wheel_core 登记于 unxstar/mod.rs，本模块由 intake_1107 嵌套登记，须用 crate::unxstar 全路径。
+use crate::unxstar::unx48941_wheel_core as p_core;
 
 // ── 段位与规模 ───────────────────────────────────────────────────
 /// 本模块段基址（B16 第二槽）。

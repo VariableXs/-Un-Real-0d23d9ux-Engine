@@ -40,7 +40,8 @@ const E_GATE_CLOSED: u16 = 4;
 const E_NO_EVIDENCE: u16 = 5;
 const E_BAD_DELTA: u16 = 6;
 const E_PATCH_RANGE: u16 = 7;
-const E_STATE: u16 = 8;
+// 收库修正：同段位卡（unx0950_stall 等）跨卡归因引用本码，提升为 pub。
+pub const E_STATE: u16 = 8;
 const E_DEVICE: u16 = 9;
 const E_EVIDENCE_LONG: u16 = 10;
 

@@ -1,0 +1,8 @@
+[package]
+name = "vx9tpl"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "vx9tpl"
+path = "src/main.rs"

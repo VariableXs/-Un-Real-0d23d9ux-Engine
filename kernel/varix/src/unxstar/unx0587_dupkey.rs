@@ -1618,7 +1618,7 @@ impl FirstWinLedger {
 
     /// 未知账出现数折算（Σ 复现账 count + 槽满溢出数；供恒等式对账）。
     fn unknown_occurrences_sum(&self) -> u32 {
-        let mut n = 0;
+        let mut n: u32 = 0;
         let mut i = 0;
         while i < self.unknown_ledger.len() {
             n = n.wrapping_add(self.unknown_ledger[i].count as u32);
@@ -2664,11 +2664,11 @@ pub fn dual_run(batch: &[(&str, &str)]) -> Result<DualRunReport, DupKeyError> {
     }
     // 跑 A。
     let mut sa = ParamStream::new();
-    let mut oa = Vec::with_capacity(batch.len());
+    let mut oa: Vec<PushNote> = Vec::with_capacity(batch.len());
     let mut i = 0;
     while i < batch.len() {
         match sa.push(batch[i].0, batch[i].1) {
-            Ok(o) => oa.push(o),
+            Ok(o) => oa.push(PushNote::Ok(o)),
             Err(e) => oa_push_err_note(&mut oa, &e),
         }
         i += 1;
@@ -2677,11 +2677,11 @@ pub fn dual_run(batch: &[(&str, &str)]) -> Result<DualRunReport, DupKeyError> {
     let snap_a = sa.snapshot()?;
     // 跑 B。
     let mut sb = ParamStream::new();
-    let mut ob = Vec::with_capacity(batch.len());
+    let mut ob: Vec<PushNote> = Vec::with_capacity(batch.len());
     let mut j = 0;
     while j < batch.len() {
         match sb.push(batch[j].0, batch[j].1) {
-            Ok(o) => ob.push(o),
+            Ok(o) => ob.push(PushNote::Ok(o)),
             Err(e) => oa_push_err_note(&mut ob, &e),
         }
         j += 1;
@@ -3712,4 +3712,113 @@ mod tests {
         ));
         Ok(())
     }
+}
+
+// ════════════════════ 判据聚合入口（AI-INTAKE-1107 收库补齐） ════════════════════
+//
+// 修正记录：本模块历史会话只交付了域模型与测试，从未交付 run_unx587_checks
+// 聚合入口——等于从未参与判据聚合闭环。此入口把模块自身的公开 API 逐项
+// 折叠成 CheckSet 判据（判据强度不降：每条判据都调真实 API、断真实性质）。
+
+use crate::checks::CheckSet;
+
+/// 65 字节超长值样本（> VAL_MAX=64——值超长卫的负样本）。
+const LONG_VAL: &str = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+
+pub fn run_unx587_checks() -> CheckSet {
+    let mut s = CheckSet::new("unx0587_dupkey");
+    // J1 注入面 3/3：同键三现 1/1+2/2、异值分列、双重违规。
+    s.add("注入面3/3全检出", injection_gate().is_ok(), "triple/diff_val/unknown_dup 三用例全检出（1000‰）");
+    // J2 三现注入自证面（J 判据核心）：生效 1/1 + 重复 2/2 + 生效=首现。
+    let triple_ok = match FirstWinLedger::triple_inject_face("heap.mb", "512", "1024", "2048") {
+        Ok(f) => f.pass && f.effective_entries == 1 && f.dup_counted == 2 && f.effective_is_first,
+        Err(_) => false,
+    };
+    s.add("三现注入自证面", triple_ok, "heap.mb 三现：生效 1 槽、重复计 2、生效值=首现 512");
+    // J3 双跑确定性对拍：指纹与逐笔全等。
+    let batch: [(&str, &str); 4] = [("quiet", "true"), ("quiet", "on"), ("loglevel", "3"), ("loglevel", "7")];
+    let dual_ok = match dual_run_gate(&batch) {
+        Ok(rep) => rep.all_match && rep.outcomes_match,
+        Err(_) => false,
+    };
+    s.add("双跑对拍确定性", dual_ok, "同批次两净流重放：账面指纹+快照指纹+逐笔全等");
+    // J4 键空间闭集：24 键冻结、查表双向。
+    s.add("键空间24键闭集", KEY_TABLE.len() == KEY_N && key_index("quiet") == Some(1)
+        && key_index("no.such.key").is_none() && key_name(0) == "nokaslr"
+        && is_whitelisted("loglevel") && !is_whitelisted("evil.key"),
+        "KEY_TABLE 24 行、key_index/key_name/is_whitelisted 双向一致");
+    // J5 布尔词形规范化：8 词形归 2 位、闭集外拒。
+    s.add("布尔词形规范化", matches!(canonical_bool("on"), Ok(true))
+        && matches!(canonical_bool("0"), Ok(false))
+        && matches!(canonical_bool("yes"), Ok(true))
+        && matches!(canonical_bool("maybe"), Err(DupKeyError::BoolValInvalid)),
+        "on/yes→true、0→false、闭集外 BoolValInvalid");
+    // J6 正例：首现口径三现账（同值/异值分列）。
+    let mut ps = ParamStream::new();
+    let p1 = ps.push("quiet", "true");
+    let p2 = ps.push("quiet", "on");
+    let p3 = ps.push("quiet", "false");
+    let fw_ok = match p1 { Ok(o) => o.first_win && o.occurrence == 1, Err(_) => false }
+        && match p2 { Ok(o) => !o.first_win && o.dup_no == 1, Err(_) => false }
+        && match p3 { Ok(o) => !o.first_win && o.dup_no == 2, Err(_) => false }
+        && ps.ledger().effective_count() == 1
+        && ps.ledger().total_duplicates() == 2
+        && ps.ledger().same_val_dups() == 1
+        && ps.ledger().diff_val_dups() == 1
+        && ps.ledger().effective_str("quiet").map(|t| t == "true").unwrap_or(false);
+    s.add("首现口径三现账", fw_ok, "true 生效；on 同值重复、false 异值重复；生效值恒=首现");
+    // J7 五卫逐卫反例：空键/键超长/未知键/布尔词形/值超长全拒。
+    let mut pg = ParamStream::new();
+    let guard_ok = matches!(pg.push("", "v"), Err(DupKeyError::EmptyKey))
+        && matches!(pg.push("this.key.is.way.too.long.for.whitelist", "v"), Err(DupKeyError::KeyTooLong))
+        && matches!(pg.push("evil.key", "v"), Err(DupKeyError::UnknownKey))
+        && matches!(pg.push("quiet", "maybe"), Err(DupKeyError::BoolValInvalid))
+        && matches!(pg.push("quiet", LONG_VAL), Err(DupKeyError::ValueTooLong))
+        && pg.push("quiet", "true").is_ok();
+    s.add("五卫反例全拒", guard_ok, "EmptyKey/KeyTooLong/UnknownKey/BoolValInvalid/ValueTooLong 逐卫拦截后首现正常入账");
+    // J8 封流纪律：seal 后写拦截 + 重复封流拦截。
+    let mut ps2 = ParamStream::new();
+    let _ = ps2.push("loglevel", "3");
+    let seal_ok = ps2.seal().is_ok()
+        && matches!(ps2.push("loglevel", "4"), Err(DupKeyError::StreamSealed))
+        && matches!(ps2.seal(), Err(DupKeyError::StreamSealed));
+    s.add("封流后写拦截", seal_ok, "seal 后 push 与重复 seal 均 StreamSealed（100% 面）");
+    // J9 快照纪律：一拍槽 + 指纹复核 + 首现断言面。
+    let snap_ok = match ps2.snapshot() {
+        Ok(snap) => snap.verify_fingerprint().is_ok()
+            && matches!(snap.dup_count_of("loglevel"), Ok(0))
+            && snap.effective_str("loglevel").map(|t| t == "3").unwrap_or(false)
+            && matches!(ps2.snapshot(), Err(DupKeyError::SnapshotSealed))
+            && snap.assert_face(&ps2).map(|f| f.pass).unwrap_or(false),
+        Err(_) => false,
+    };
+    s.add("快照一拍自证", snap_ok, "指纹复核过、二拍 SnapshotSealed、assert_face 三断言全过");
+    // J10 恒等式自审 + 健康闸。
+    let mut paudit = ParamStream::new();
+    let _ = paudit.push("quiet", "true");
+    let _ = paudit.push("quiet", "false");
+    let aud_ok = paudit.ledger_mut().audit_gate().is_ok()
+        && paudit.ledger().last_audit_ok() == Some(true)
+        && paudit.ledger().health_gate().is_ok();
+    s.add("恒等式自审过闸", aud_ok, "七式恒等式全平、last_audit_ok=Some(true)、健康分过地板线");
+    // J11 重复簿可查：键→清单+位置+同异标注。
+    let book_ok = match paudit.ledger().dup_book_of("quiet") {
+        Ok(list) => match list.get(0) {
+            Some(e) => list.len() == 1 && e.occurrence == 2 && !e.same_as_effective && e.ordinal == 2,
+            None => false,
+        },
+        Err(_) => false,
+    };
+    s.add("重复簿可查", book_ok, "quiet 第 2 现@序2、异值标注、簿 1 笔");
+    // J12 诊断码段闭集：0x1E90..=0x1E9F 全落段内。
+    s.add("诊断码段闭集", DupKeyError::UnknownKey.in_segment() && DupKeyError::InvalidParam.in_segment()
+        && DupKeyError::UnknownKey.code() == DK_SEG_BASE && DupKeyError::InvalidParam.code() == DK_SEG_TOP,
+        "16 码闭集界钉（首尾变体即段界）");
+    // 动态明细两列。
+    let rep_ok = paudit.ledger().render_dup_report().map(|t| t.contains("重复参数账") && t.contains("quiet")).unwrap_or(false);
+    s.add_dyn("人话报告可渲染", rep_ok, &alloc::format!("render_dup_report 含表头与键行（预算 {} 字节）", REPORT_BUDGET));
+    let fp1 = paudit.ledger().fingerprint();
+    let fp2 = paudit.ledger().fingerprint();
+    s.add_dyn("账面指纹稳定", fp1 == fp2, &alloc::format!("FNV 双算一致 {:016x}", fp1));
+    s
 }

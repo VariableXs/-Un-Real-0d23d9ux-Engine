@@ -27,6 +27,7 @@
 //! ═══════════════════════════════════════════════════════════════════════
 
 use crate::alloc::format;
+use alloc::vec::Vec;
 use crate::checks::CheckSet;
 
 /// 诊断段基址（0x7EAC0，G1 工单 A05 批03 独占窗口，0x40 对齐）。

@@ -18,6 +18,7 @@
 
 use alloc::format;
 use alloc::vec::Vec;
+use alloc::string::String;
 use crate::checks::CheckSet;
 
 /// 诊断段基址（F10028 独占 0x40 窗口）。

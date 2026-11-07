@@ -27,8 +27,6 @@
 //!    saturating_*，无 unwrap/expect/panic/裸下标。
 
 use alloc::format;
-use alloc::string::String;
-use alloc::vec::Vec;
 
 use crate::checks::CheckSet;
 
