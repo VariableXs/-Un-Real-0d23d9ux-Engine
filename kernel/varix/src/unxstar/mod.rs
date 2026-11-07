@@ -17138,3 +17138,5 @@ pub mod unx52034_cpptools;
 pub mod unx52035_git_views;
 // unx52036_eslint（收库补登记）
 pub mod unx52036_eslint;
+// unx52037_prettier（收库补登记）
+pub mod unx52037_prettier;
