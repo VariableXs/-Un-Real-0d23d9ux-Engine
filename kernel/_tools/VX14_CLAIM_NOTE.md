@@ -73,10 +73,19 @@
     +未回推先结论闸+三态注入 10/10）
   - 52040 试收口报告（五面 35 格+混合 IO ≤×1.5 封顶+B4×A4=128 联动
     +daemon 7 天零泄漏+JBR 上栈 4 层+三态注入 10/10）
-- [ ] 写码 52041~52199（159 单待写）
-- mod.rs 已补登记 52014~52040（52001~52013 此前已登记）；
-  本地探针 VX14 全量 40 单 TOTAL=40 RED=0 PANIC=0 测试 449/449
-  （提交 1fe38a44/58492fdc；探针 harness 重建后仅挂 VX14 模块）。
+  - 52041 IDEA Ultimate（JetBrains 共面 6×20=120 格+shim 三元闸+复用率
+    ≥80% 单向账）
+  - 52042 IDEA Community（解释器三源 ×10 工程 30 格+20 操作集+拍序单调）
+  - 52043 PyCharm Pro（五档 ×6 面 30 格分账+Pro/Com 分账零混账+单调）
+  - 52044 PyCharm CE（五档 ×4 面 20 格+Pro 参照账零混+单调）
+  - 52045 WebStorm（工具链十段 ×8 工程 80 格+Node 挂接三元闸+拍序单调）
+  - 52046 GoLand（build/test/dlv ×10 场景 30 格+go 环境三元闸）
+  - 52047 CLion（CMake 五段 ×8 工程 40 格+MSBuild 消费 6 格+前置闸
+    +ReSharper 声明四行）
+- [ ] 写码 52048~52199（152 单待写）
+- mod.rs 已补登记 52014~52047（52001~52013 此前已登记）；
+  本地探针 VX14 全量 47 单 TOTAL=47 RED=0 PANIC=0 测试 505/505
+  （提交 baa8e029；探针 harness 重建后仅挂 VX14 模块）。
 - 云端通道（AI-VX11-1107）：AutoDL 4090D connect.cqa1.seetacloud.com:27347
   实例关机中（TCP 主动拒绝，出网正常）——待控制台开机后切云端编译验证；
   通道脚本 %LOCALAPPDATA%/Temp/vx9_probe/cloud_run.py（paramiko，密码经
@@ -84,7 +93,7 @@
 - [ ] 完成单任务板写回「已完成 + 结果摘要」
 
 ## 交接（下一会话）
-1. **52041~52199 共 159 单待写**：逐卡取 _tools/vx14_cards.json（title/
+1. **52048~52199 共 152 单待写**：逐卡取 _tools/vx14_cards.json（title/
    quota/criteria 逐字锚定），SEG=0xC4000+0x40×(id−52000)。板面判据锚
    后一编号 J1 条款为惯例（off-by-one 板式），照原文锚定即可。
 2. 域语义分层（KB-COMPAT 六判据收口）五样板已立：
