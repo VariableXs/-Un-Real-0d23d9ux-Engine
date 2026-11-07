@@ -17182,6 +17182,8 @@ pub mod unx52054_dottrace;
 pub mod unx52055_dotmemory;
 // unx52056_toolbox（收库补登记）
 pub mod unx52056_toolbox;
+// unx52057_jbr_stack（收库补登记）
+pub mod unx52057_jbr_stack;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
