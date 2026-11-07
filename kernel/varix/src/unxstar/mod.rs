@@ -17236,6 +17236,16 @@ pub mod unx52081_astudio;
 pub mod unx52082_adbfastboot;
 // unx52083_gradle（收库补登记）
 pub mod unx52083_gradle;
+// unx52084_kotlin（收库补登记）
+pub mod unx52084_kotlin;
+// unx52091_agp（VX14 批次：AGP 构建链收口）
+pub mod unx52091_agp;
+// unx52092_logcatwin（VX14 批次：Logcat 工具窗消费面收口）
+pub mod unx52092_logcatwin;
+// unx52093_layoutinsp（VX14 批次：Layout Inspector 消费面收口）
+pub mod unx52093_layoutinsp;
+// unx52094_apkanalyzer（VX14 批次：APK Analyzer 消费面收口）
+pub mod unx52094_apkanalyzer;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
