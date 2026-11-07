@@ -17166,6 +17166,8 @@ pub mod unx52046_goland;
 pub mod unx52047_clion;
 // unx52048_rider（收库补登记）
 pub mod unx52048_rider;
+// unx52049_datagrip（收库补登记）
+pub mod unx52049_datagrip;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
