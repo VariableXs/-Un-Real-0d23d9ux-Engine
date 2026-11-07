@@ -108,10 +108,17 @@
     +解析前置闸）
   - 52065 .NET FX 4.8 DP（build/publish ×10 工程 20 格+AOT 链 4 格
     可运行+L4 分账 4 行+publish 前置闸）
-- [ ] 写码 52066~52199（134 单待写）
-- mod.rs 已补登记 52014~52065（52001~52013 此前已登记）；
-  本地探针 VX14 全量 65 单 TOTAL=65 RED=0 PANIC=0 测试 639/639
-  （提交 98dceea9；探针 harness 重建后仅挂 VX14 模块）。
+  - 52066 .NET 8 SDK（global.json 五场景选择+钉版单向账+回退 LTS 闸）
+  - 52067 .NET 6 SDK（restore/pack/push 20 操作集+B2/B3 联动守恒
+    +AI-23 背书 4 行+拍序单向）
+  - 52068 NuGet（端口安装 ×20 命中二元+MSBuild 集成 5 格+git 嫁接
+    4 件判绿+拍序单调）
+  - 52069 vcpkg（端口 ×20 命中二元+集成 5 格+自举克隆 4 件判绿
+    +拍序单调）
+- [ ] 写码 52070~52199（130 单待写）
+- mod.rs 已补登记 52014~52069（52001~52013 此前已登记）；
+  本地探针 VX14 全量 69 单 TOTAL=69 RED=0 PANIC=0 测试 667/667
+  （提交 e347d730；探针 harness 重建后仅挂 VX14 模块）。
 - 云端通道（AI-VX11-1107）：AutoDL 4090D connect.cqa1.seetacloud.com:27347
   实例关机中（TCP 主动拒绝，出网正常）——待控制台开机后切云端编译验证；
   通道脚本 %LOCALAPPDATA%/Temp/vx9_probe/cloud_run.py（paramiko，密码经
@@ -119,7 +126,7 @@
 - [ ] 完成单任务板写回「已完成 + 结果摘要」
 
 ## 交接（下一会话）
-1. **52066~52199 共 134 单待写**：逐卡取 _tools/vx14_cards.json（title/
+1. **52070~52199 共 130 单待写**：逐卡取 _tools/vx14_cards.json（title/
    quota/criteria 逐字锚定），SEG=0xC4000+0x40×(id−52000)。板面判据锚
    后一编号 J1 条款为惯例（off-by-one 板式），照原文锚定即可。
 2. 域语义分层（KB-COMPAT 六判据收口）五样板已立：
