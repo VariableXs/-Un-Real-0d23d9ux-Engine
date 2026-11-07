@@ -17168,6 +17168,8 @@ pub mod unx52047_clion;
 pub mod unx52048_rider;
 // unx52049_datagrip（收库补登记）
 pub mod unx52049_datagrip;
+// unx52050_phpstorm（收库补登记）
+pub mod unx52050_phpstorm;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
