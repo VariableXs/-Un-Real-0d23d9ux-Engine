@@ -17240,6 +17240,8 @@ pub mod unx52083_gradle;
 pub mod unx52084_kotlin;
 // unx52095_scrcpy（收库补登记，VX14 段 52095，并行会话已占 52086–52094）
 pub mod unx52095_scrcpy;
+// unx52096_univadb（收库补登记，VX14 段 52096）
+pub mod unx52096_univadb;
 // unx52087_temurin17（VX14 批次：Temurin JDK 17 收口，与 L4 分账）
 pub mod unx52087_temurin17;
 // unx52088_temurin21（VX14 批次：Temurin JDK 21 收口，LTS 上探）
