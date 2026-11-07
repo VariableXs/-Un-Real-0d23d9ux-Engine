@@ -17162,6 +17162,8 @@ pub mod unx52044_pycharm_ce;
 pub mod unx52045_webstorm;
 // unx52046_goland（收库补登记）
 pub mod unx52046_goland;
+// unx52047_clion（收库补登记）
+pub mod unx52047_clion;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
