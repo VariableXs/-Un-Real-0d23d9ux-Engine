@@ -16780,6 +16780,26 @@ pub mod unx51668_b24_adversarial_regress;
 pub mod unx51669_precheck_bypass_probe;
 // unx51670_uasp_bot_downgrade（收库补登记）
 pub mod unx51670_uasp_bot_downgrade;
+// unx51691_b25_errcode（收库补登记）
+pub mod unx51691_b25_errcode;
+// unx51692_b25_j1j1r_machine（收库补登记）
+pub mod unx51692_b25_j1j1r_machine;
+// unx51693_adv_sample_ext_36（收库补登记）
+pub mod unx51693_adv_sample_ext_36;
+// unx51694_adv_fuzz_1e4（收库补登记）
+pub mod unx51694_adv_fuzz_1e4;
+// unx51695_adv_audit_ledger（收库补登记）
+pub mod unx51695_adv_audit_ledger;
+// unx51696_drill_auto_adv2（收库补登记）
+pub mod unx51696_drill_auto_adv2;
+// unx51697_b25_drill_feed（收库补登记）
+pub mod unx51697_b25_drill_feed;
+// unx51698_b25_grep_record（收库补登记）
+pub mod unx51698_b25_grep_record;
+// unx51699_b25_seal（收库补登记）
+pub mod unx51699_b25_seal;
+// unx51700_b25_closure（收库补登记）
+pub mod unx51700_b25_closure;
 // unx52001_vs2022_community（收库补登记）
 pub mod unx52001_vs2022_community;
 // unx52002_vs2022_professional（收库补登记）
@@ -17142,3 +17162,5 @@ pub mod unx52036_eslint;
 pub mod unx52037_prettier;
 // unx52038_msdocker（收库补登记）
 pub mod unx52038_msdocker;
+// unx52039_electron_preverify（收库补登记）
+pub mod unx52039_electron_preverify;
