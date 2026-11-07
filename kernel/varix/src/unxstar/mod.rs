@@ -17188,6 +17188,8 @@ pub mod unx52057_jbr_stack;
 pub mod unx52058_gradle_daemon;
 // unx52059_fleet（收库补登记）
 pub mod unx52059_fleet;
+// unx52060_mps（收库补登记）
+pub mod unx52060_mps;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
