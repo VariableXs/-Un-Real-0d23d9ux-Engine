@@ -17212,6 +17212,8 @@ pub mod unx52069_vcpkg;
 pub mod unx52070_wix;
 // unx52071_inno（收库补登记）
 pub mod unx52071_inno;
+// unx52072_nsis（收库补登记）
+pub mod unx52072_nsis;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
