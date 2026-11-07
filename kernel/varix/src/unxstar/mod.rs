@@ -17244,6 +17244,8 @@ pub mod unx52095_scrcpy;
 pub mod unx52096_univadb;
 // unx52097_googleusb（收库补登记，VX14 段 52097）
 pub mod unx52097_googleusb;
+// unx52098_fastbootdry（收库补登记，VX14 段 52098）
+pub mod unx52098_fastbootdry;
 // unx52087_temurin17（VX14 批次：Temurin JDK 17 收口，与 L4 分账）
 pub mod unx52087_temurin17;
 // unx52088_temurin21（VX14 批次：Temurin JDK 21 收口，LTS 上探）
