@@ -132,10 +132,14 @@
     +消费前置闸）
   - 52079 SCons（Makefile ×10 -j4 二元 20 格+并行度 ≤4 闸+并行拍 8
     单调+L4 分账声明 2 行）
-- [ ] 写码 52080~52199（120 单待写）
-- mod.rs 已补登记 52014~52079（52001~52013 此前已登记）；
-  本地探针 VX14 全量 79 单 TOTAL=79 RED=0 PANIC=0 测试 737/737
-  （提交 690fbfe2；探针 harness 重建后仅挂 VX14 模块）。
+  - 52080 Make for Windows（ADB 枚举复用 M5 8 台+N/A 声明 3 行不虚报
+    +Make 六标准目标）
+  - 52081 Android Studio（adb 20 操作五类+M5 枚举 6 台+fastboot 分账
+    声明 2 行+类别单调）
+- [ ] 写码 52082~52199（118 单待写）
+- mod.rs 已补登记 52014~52081（52001~52013 此前已登记）；
+  本地探针 VX14 全量 81 单 TOTAL=81 RED=0 PANIC=0 测试 751/751
+  （提交 a64f075b；探针 harness 重建后仅挂 VX14 模块）。
 - 云端通道（AI-VX11-1107）：AutoDL 4090D connect.cqa1.seetacloud.com:27347
   实例关机中（TCP 主动拒绝，出网正常）——待控制台开机后切云端编译验证；
   通道脚本 %LOCALAPPDATA%/Temp/vx9_probe/cloud_run.py（paramiko，密码经
@@ -143,7 +147,7 @@
 - [ ] 完成单任务板写回「已完成 + 结果摘要」
 
 ## 交接（下一会话）
-1. **52080~52199 共 120 单待写**：逐卡取 _tools/vx14_cards.json（title/
+1. **52082~52199 共 118 单待写**：逐卡取 _tools/vx14_cards.json（title/
    quota/criteria 逐字锚定），SEG=0xC4000+0x40×(id−52000)。板面判据锚
    后一编号 J1 条款为惯例（off-by-one 板式），照原文锚定即可。
 2. 域语义分层（KB-COMPAT 六判据收口）五样板已立：
