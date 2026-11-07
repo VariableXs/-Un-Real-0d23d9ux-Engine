@@ -17376,14 +17376,6 @@ pub mod unx52187_fork;
 pub mod unx52186_githubdesktop;
 // unx52185_sourcetree（收库补登记·下行线 AI-VX11-1107）
 pub mod unx52185_sourcetree;
-// unx52213_tableplus（VX15 批二登记）
-pub mod unx52213_tableplus;
-// unx52214_beekeeper（VX15 批二登记）
-pub mod unx52214_beekeeper;
-// unx52215_dbvisualizer（VX15 批二登记）
-pub mod unx52215_dbvisualizer;
-// unx52216_squirrel（VX15 批二登记）
-pub mod unx52216_squirrel;
 // unx52217_razorsql（VX15 批二登记）
 pub mod unx52217_razorsql;
 // unx52218_toad_oracle（VX15 批二登记）
