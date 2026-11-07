@@ -17140,3 +17140,5 @@ pub mod unx52035_git_views;
 pub mod unx52036_eslint;
 // unx52037_prettier（收库补登记）
 pub mod unx52037_prettier;
+// unx52038_msdocker（收库补登记）
+pub mod unx52038_msdocker;
