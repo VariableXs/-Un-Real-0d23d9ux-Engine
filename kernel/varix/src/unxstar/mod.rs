@@ -17234,6 +17234,8 @@ pub mod unx52080_makegnu;
 pub mod unx52081_astudio;
 // unx52082_adbfastboot（收库补登记）
 pub mod unx52082_adbfastboot;
+// unx52083_gradle（收库补登记）
+pub mod unx52083_gradle;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
