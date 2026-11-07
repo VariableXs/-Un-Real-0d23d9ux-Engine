@@ -17206,6 +17206,8 @@ pub mod unx52066_dotnet8;
 pub mod unx52067_dotnet6;
 // unx52068_nuget（收库补登记）
 pub mod unx52068_nuget;
+// unx52069_vcpkg（收库补登记）
+pub mod unx52069_vcpkg;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
