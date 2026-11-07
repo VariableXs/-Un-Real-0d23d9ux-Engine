@@ -17170,6 +17170,8 @@ pub mod unx52048_rider;
 pub mod unx52049_datagrip;
 // unx52050_phpstorm（收库补登记）
 pub mod unx52050_phpstorm;
+// unx52051_rubymine（收库补登记）
+pub mod unx52051_rubymine;
 // unx984_vecisolate（收库补登记）
 pub mod unx984_vecisolate;
 // unx52014_intellitrace_collector（收库补登记）
