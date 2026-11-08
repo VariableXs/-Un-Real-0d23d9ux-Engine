@@ -17987,5 +17987,19 @@ pub mod unx52519_wtprofile;
 // unx52520_lspNet（VX16 批十五登记）
 pub mod unx52520_lspNet;
 
-
-
+// unx52521_octave（VX16 批十六登记）
+pub mod unx52521_octave;
+// unx52522_scilab（VX16 批十六登记）
+pub mod unx52522_scilab;
+// unx52523_juliawin（VX16 批十六登记）
+pub mod unx52523_juliawin;
+// unx52524_rwin（VX16 批十六登记）
+pub mod unx52524_rwin;
+// unx52525_maxima（VX16 批十六登记）
+pub mod unx52525_maxima;
+// unx52526_pywin（VX16 批十六登记）
+pub mod unx52526_pywin;
+// unx52527_gnuplot（VX16 批十六登记）
+pub mod unx52527_gnuplot;
+// unx52528_graphviz（VX16 批十六登记）
+pub mod unx52528_graphviz;
